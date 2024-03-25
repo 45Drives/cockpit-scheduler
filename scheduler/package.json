@@ -1,0 +1,40 @@
+{
+  "name": "houston-scheduler",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Houston Scheduler for Automating Server Tasks",
+  "types": "./src/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "author": "Jordan Keough",
+  "license": "none",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@45drives/cockpit-css": "^0.1.12",
+    "@45drives/cockpit-helpers": "^0.1.19",
+    "@45drives/cockpit-typings": "^0.1.2",
+    "@headlessui/vue": "^1.7.13",
+    "@heroicons/vue": "^2.0.18",
+    "@tailwindcss/forms": "^0.5.2",
+    "heroicons": "^2.0.18",
+    "tsc": "^2.0.4",
+    "vue": "^3.2.37"
+  },
+  "devDependencies": {
+    "@45drives/cockpit-vue-components": "^0.1.0-beta2",
+    "@vitejs/plugin-vue": "^3.0.0",
+    "autoprefixer": "^10.4.8",
+    "postcss": "^8.4.16",
+    "tailwindcss": "^3.1.8",
+    "typescript": "^5.0.4",
+    "vite": "^3.2.6",
+    "vite-plugin-vue-type-imports": "^0.2.0"
+  }
+}

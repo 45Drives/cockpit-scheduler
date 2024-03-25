@@ -1,0 +1,5 @@
+cockpit-scheduler (0.1.0-1focal) focal; urgency=medium
+
+  * initial release
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 08 Mar 2024 09:23:59 -0400
