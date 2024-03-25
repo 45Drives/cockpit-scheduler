@@ -33,8 +33,6 @@ def generate_timer_file(action, params, file_name):
     #     schedule += f"{int(params['seconds']):02d}"
     # else
 
-
-
     schedule = generate_on_calendar(params)
     print(f"schedule: {schedule}")
 
@@ -100,40 +98,8 @@ def generate_on_calendar(schedule):
 
     return expression.strip()
 
-
-# # Example usage
-# schedule = {
-#     'pattern': 'weekly',
-#     'dayOfWeek': 'Sun',
-#     'year': '*',
-#     'month': '*',
-#     'day': '*',
-#     'hour': '00',
-#     'minute': '00',
-#     'second': '00'
-# }
-
-# on_calendar_expression = generate_on_calendar(schedule)
-# print("OnCalendar expression:", on_calendar_expression)
-
-
-
 def main():
-    # parser = argparse.ArgumentParser(description='Create service file')
-    # parser.add_argument('params', type=dict, help='parameters for generating service file')
-
-    # args = parser.parse_args()
-
-    # generate_service_file(args.params)
-    
-    # params = {
-    #     'path':'./create-snapshot.py',
-    #     'dataset':'tank/dozer',
-    #     'recursive': False,
-        # 'name': 'testSnap',
-    #     'action':'create_snapshot',
-    # }
-
+  
     service_args = {
         'path':'usr/local/bin/create-snapshot.py',
         'filesystem':'tank/dozer',
@@ -147,13 +113,6 @@ def main():
         'second': '00'
     }
 
-    # action_script = params['path'] + ' ' + params['filesystem']
-
-    # if params.get('recursive', False):
-    #     action_script += "--r"
-    # if 'name' in params:
-    #     action_script += f"--custom-name {params['name']}"
-    
     action_script = service_args['path'] + ' ' + service_args['filesystem']
 
     if service_args.get('recursive', False):

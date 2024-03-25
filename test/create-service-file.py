@@ -36,22 +36,8 @@ WantedBy=multi-user.target
     print(f'Service file generated: {service_file_path}')
 
 def main():
-    # parser = argparse.ArgumentParser(description='Create service file')
-    # parser.add_argument('params', type=dict, help='parameters for generating service file')
-
-    # args = parser.parse_args()
-
-    # generate_service_file(args.params)
-    
-    # params = {
-    #     'path':'./create-snapshot.py',
-    #     'dataset':'tank/dozer',
-    #     'recursive': False,
-        # 'name': 'testSnap',
-    #     'action':'create_snapshot',
-    # }
     args = {
-        'path':'./create-snapshot.py',
+        'path':'usr/local/bin/create-snapshot.py',
         'filesystem':'tank/dozer',
         'recursive': False,
         'action':'create_snapshot',
