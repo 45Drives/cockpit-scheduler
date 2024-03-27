@@ -1,9 +1,9 @@
 <template>
 	<div class="min-h-screen h-full w-full min-w-fit flex flex-col bg-default overflow-auto">
-		<HoustonHeader moduleName="ZFS" sourceURL=""
+		<HoustonHeader moduleName="Houston Scheduler" sourceURL=""
 			issuesURL="" :pluginVersion="Number(pluginVersion)"
 			:infoNudgeScrollbar="true" />
-		<Navigation :navigationItems="navigation" :currentNavigationItem="currentNavigationItem" :navigationCallback="navigationCallback" :show="show"/>
+		<!-- <Navigation :navigationItems="navigation" :currentNavigationItem="currentNavigationItem" :navigationCallback="navigationCallback" :show="show"/> -->
 		<Scheduler :tag="navTag"/>
 	</div>
 </template>
@@ -28,17 +28,17 @@ const notifications = ref<any>(null);
 const show = ref(true);
 const navTag = ref('dashboard');
 
-const currentNavigationItem = computed<NavigationItem | undefined>(() => navigation.find(item => item.current));
+// const currentNavigationItem = computed<NavigationItem | undefined>(() => navigation.find(item => item.current));
 
 //navigation for tabs
-const navigationCallback: NavigationCallback = (item: NavigationItem) => {
-	navTag.value = item.tag;
-};
+// const navigationCallback: NavigationCallback = (item: NavigationItem) => {
+// 	navTag.value = item.tag;
+// };
 
-//tabs for navigation
-const navigation = reactive<NavigationItem[]>([
-	{ name: 'Dashboard', tag: 'dashboard', current: computed(() => navTag.value == 'dashboard') as unknown as boolean, show: true, },
-].filter(item => item.show));
+// //tabs for navigation
+// const navigation = reactive<NavigationItem[]>([
+// 	{ name: 'Dashboard', tag: 'dashboard', current: computed(() => navTag.value == 'dashboard') as unknown as boolean, show: true, },
+// ].filter(item => item.show));
 
 provide('notifications', notifications);
 provide('notification-fifo', props.notificationFIFO);

@@ -1,9 +1,10 @@
 <template>
 	<div>
-		<!-- <div class="w-full h-dvh min-h-dvh overflow-visible bg-default text-default">
-
-
-		</div> -->
+		<div class="w-full h-dvh min-h-dvh overflow-visible bg-default text-default">
+			<div class="p-2">
+				<Dashboard/>
+			</div>
+		</div>
 	</div>
 </template>
 
@@ -11,7 +12,7 @@
 import { ref, Ref, provide, watchEffect } from 'vue';
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-
+import Dashboard from '../components/dashboard/Dashboard.vue';
 
 interface SchedulerProps {
   	tag: string;
