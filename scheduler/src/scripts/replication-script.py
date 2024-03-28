@@ -183,7 +183,7 @@ def main():
 	parser.add_argument('--root', type=str, help='root of send destination')
 	parser.add_argument('--path', type=str, help='path of send destination')
 	parser.add_argument('--user', type=str, nargs='?', default='root', help='user of ssh connection (root)')
-	parser.add_argument('--host', type=str, nargs='?', default=None, help='hostname or ip of ssh connection')
+	parser.add_argument('--host', type=str, nargs='?', default="", help='hostname or ip of ssh connection')
 	parser.add_argument('--port', type=str, default='22', help='port to connect via ssh (22)')
 	parser.add_argument('--mbuffsize', type=str, default='1', help='size value of mbuffer')
 	parser.add_argument('--mbuffunit', type=str, default='G', help='unit to use for mbuffer size')
@@ -208,45 +208,55 @@ def main():
 	sourceSnapshots = get_local_snapshots(sourceFilesystem)
 	sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)
 	mostRecentSourceSnap = get_most_recent_snapshot(sourceSnapshots)
- 
-	if (sshHost):
+	incrementalSnapName = ""
+  
+	if sshHost:
 		destinationSnapshots = get_remote_snapshots(sshUser, sshHost, sshPort, receivingFilesystem)
 	else:
 		destinationSnapshots = get_local_snapshots(receivingFilesystem)
   
-	destinationSnapshots.sort(key=lambda x: x.creation, reverse=True)
- 
-	# print("sourceSnapshots:")
-	# for snap in sourceSnapshots:
-		# print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+	if destinationSnapshots is not None:
+		destinationSnapshots.sort(key=lambda x: x.creation, reverse=True)
+		# print("sourceSnapshots:")
+		# for snap in sourceSnapshots:
+			# print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
 
-	# print("destinationSnapshots:")
-	# for snap in destinationSnapshots:
-		# print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+		# print("destinationSnapshots:")
+		# for snap in destinationSnapshots:
+			# print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
 
-	mostRecentDestinationSnap = get_most_recent_snapshot(destinationSnapshots)
-	print(f"mostRecentDestSnap ->\n-------------------------------------\nName: {mostRecentDestinationSnap.name}\nGUID: {mostRecentDestinationSnap.guid}\nCreation: {mostRecentDestinationSnap.creation}\n-------------------------------------")
+		mostRecentDestinationSnap = get_most_recent_snapshot(destinationSnapshots)
+		if mostRecentDestinationSnap is not None:
+			print(f"mostRecentDestSnap\n-----------------------------\nName: {mostRecentDestinationSnap.name}\nGUID: {mostRecentDestinationSnap.guid}\nCreation: {mostRecentDestinationSnap.creation}\n-----------------------------")
 
-	if mostRecentDestinationSnap.guid in [snap.guid for snap in sourceSnapshots]:
-		incrementalSnapName = mostRecentDestinationSnap.name
-		print("Setting incrementalSnap to:", incrementalSnapName)
-	else:
-		incrementalSnapName = ""
-		print("No incremental snapshot found. Setting incrementalSnap to empty string.")
+			# if mostRecentDestinationSnap.guid in [snap.guid for snap in sourceSnapshots]:
+			# 	incrementalSnapName = mostRecentDestinationSnap.name
+			# 	print("Setting incrementalSnap to:", incrementalSnapName)
+			# else:
+			# 	incrementalSnapName = ""
+			# 	print("No incremental snapshot found. Setting incrementalSnap to empty string.")
+			for source_snap in sourceSnapshots:
+				if source_snap.guid == mostRecentDestinationSnap.guid:
+					incrementalSnapName = source_snap.name
+					print("Setting incrementalSnap to:", incrementalSnapName)
+					break  # Exit loop once a matching snapshot is found
+				else:
+					incrementalSnapName = ""  # If no match is found, set to empty string
+					print("No matching snapshot found in the source dataset.")
 
-	print("incrementalSnap:", incrementalSnapName)
+			print("incrementalSnap:", incrementalSnapName)
 
+		
+			common_snapshots = set(sourceSnapshots) & set(destinationSnapshots)
+
+			if common_snapshots:
+				common_ancestor = max(common_snapshots)
+				if common_ancestor in destinationSnapshots:
+					incrementalSnapName = common_ancestor
 	
-	common_snapshots = set(sourceSnapshots) & set(destinationSnapshots)
-
-	if common_snapshots:
-		common_ancestor = max(common_snapshots)
-		if common_ancestor in destinationSnapshots:
-			incrementalSnapName = common_ancestor
-
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
- 
-	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost,sshPort, sshUser, mBufferSize, mBufferUnit)
+	print(f"----------------------\nPARAMETER CHECK:\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\n----------------------\n")
+	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit)
 
 if __name__ == "__main__":
 	main()
