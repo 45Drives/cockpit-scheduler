@@ -207,7 +207,7 @@ def main():
 
 	sourceSnapshots = get_local_snapshots(sourceFilesystem)
 	sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)
-	mostRecentSourceSnap = get_most_recent_snapshot(sourceSnapshots)
+
 	incrementalSnapName = ""
   
 	if sshHost:
@@ -227,14 +227,8 @@ def main():
 
 		mostRecentDestinationSnap = get_most_recent_snapshot(destinationSnapshots)
 		if mostRecentDestinationSnap is not None:
-			print(f"mostRecentDestSnap\n-----------------------------\nName: {mostRecentDestinationSnap.name}\nGUID: {mostRecentDestinationSnap.guid}\nCreation: {mostRecentDestinationSnap.creation}\n-----------------------------")
+			# print(f"\n********mostRecentDestSnap********\nName: {mostRecentDestinationSnap.name}\nGUID: {mostRecentDestinationSnap.guid}\nCreation: {mostRecentDestinationSnap.creation}\n****************END***************\n")
 
-			# if mostRecentDestinationSnap.guid in [snap.guid for snap in sourceSnapshots]:
-			# 	incrementalSnapName = mostRecentDestinationSnap.name
-			# 	print("Setting incrementalSnap to:", incrementalSnapName)
-			# else:
-			# 	incrementalSnapName = ""
-			# 	print("No incremental snapshot found. Setting incrementalSnap to empty string.")
 			for source_snap in sourceSnapshots:
 				if source_snap.guid == mostRecentDestinationSnap.guid:
 					incrementalSnapName = source_snap.name
@@ -242,10 +236,7 @@ def main():
 					break  # Exit loop once a matching snapshot is found
 				else:
 					incrementalSnapName = ""  # If no match is found, set to empty string
-					print("No matching snapshot found in the source dataset.")
-
-			print("incrementalSnap:", incrementalSnapName)
-
+					# print("Not a match.")
 		
 			common_snapshots = set(sourceSnapshots) & set(destinationSnapshots)
 
@@ -255,7 +246,7 @@ def main():
 					incrementalSnapName = common_ancestor
 	
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
-	print(f"----------------------\nPARAMETER CHECK:\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\n----------------------\n")
+	print(f"\n-----------PARAMETER CHECK------------\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\n------------------END-----------------\n")
 	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit)
 
 if __name__ == "__main__":
