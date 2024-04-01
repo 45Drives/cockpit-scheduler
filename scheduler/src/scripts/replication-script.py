@@ -55,6 +55,7 @@ def get_remote_snapshots(user, host, port, filesystem):
 		
 		ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 		output = subprocess.check_output(ssh_cmd)
+  
 		snapshots = []
 		for line in output.splitlines():
 			match = re.match(r'^([\w\/@]+)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}\s+\d{4})', line.decode('utf-8'))

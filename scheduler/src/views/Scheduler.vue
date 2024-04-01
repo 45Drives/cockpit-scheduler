@@ -20,5 +20,43 @@ interface SchedulerProps {
 
 const props = defineProps<SchedulerProps>();
 
+const taskTemplates = ref<TaskTemplate[]>([
+    {
+        name: 'ZFS Replication Task',
+        parameterSchema: {
+            label: 'ZFS Replication Config',
+            key: 'zfs_replication', // Unique key for the parameter schema
+            children: [
+                { label: 'Source', key: 'source', children: []},
+                { label: 'Destination', key: 'dest', children: []},
+                { label: 'Compression', key: 'compression', children: []},
+                // Add other parameters as needed
+            ]
+        }
+    },
+    // Add more TaskTemplates as necessary
+]);
 
-</script>
+
+const taskInstances = ref<TaskInstance[]>([
+    {
+        name: 'ZFS Replication Task 1',
+        template: taskTemplates[0], // Reference to the ZFS Replication TaskTemplate
+        parameters: {
+            label: 'zfs rep task config',
+            key: 'zfs_rep_task_1',
+            children: []
+        },
+        schedule: {
+            enabled: true,
+            intervals: []
+        }
+    },
+    // Add more TaskInstances as necessary
+]);
+
+
+provide('task-instances', taskInstances);
+provide('task-templates', taskTemplates);
+
+</script> 

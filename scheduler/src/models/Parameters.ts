@@ -1,4 +1,5 @@
 // Parameters.ts
+
 export class ParameterNode {
     label: string;
     key: string;
@@ -14,16 +15,18 @@ export class ParameterNode {
         this.children.push(child);
     }
 
-    asEnvKeyValues() {
-        
+    asEnvKeyValues(): string[] {
+        return this.children.map(c => c.asEnvKeyValues()) // recursively get child key=value pairs
+            .flat()
+            .map(kv => `${this.key}_${kv}`); // prefix key with parent key and _
     }
 
     isValid() {
-
+        // Implementation for validation
     }
 
     uiComponent() {
-
+        // Implementation for generating UI component
     }
 }
 
@@ -34,14 +37,9 @@ export class StringParameter extends ParameterNode {
         super(label, key);
         this.value = value;
     }
-}
 
-export class BoolParameter extends ParameterNode {
-    value: boolean;
-
-    constructor(label: string, key: string, value: boolean) {
-        super(label, key);
-        this.value = value;
+    asEnvKeyValues(): string[] {
+        return [`${this.key}=${this.value}`]; // Generate key=value pair for StringParameter
     }
 }
 
@@ -52,7 +50,25 @@ export class IntParameter extends ParameterNode {
         super(label, key);
         this.value = value;
     }
+
+    asEnvKeyValues(): string[] {
+        return [`${this.key}=${this.value.toString()}`]; // Generate key=value pair for IntParameter
+    }
 }
+
+export class BoolParameter extends ParameterNode {
+    value: boolean;
+
+    constructor(label: string, key: string, value: boolean) {
+        super(label, key);
+        this.value = value;
+    }
+
+    asEnvKeyValues(): string[] {
+        return [`${this.key}=${this.value ? 'true' : 'false'}`]; // Generate key=value pair for BoolParameter
+    }
+}
+
 
 export class SelectionOption {
     value: string | number | boolean;
