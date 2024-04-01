@@ -1,4 +1,5 @@
 // Scheduler.ts
+
 import { ParameterNode, SelectionParameter, SelectionOption, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from './Parameters';
 import { TaskInstance, TaskTemplate } from './Tasks';
 
@@ -24,15 +25,15 @@ export class Scheduler {
     }
     
     registerTaskInstance(TaskInstance) {
-    
+        //create systemd, timer, env files here
     }
     
     unregisterTaskInstance(TaskInstance) {
-    
+        //delete task + associated files
     }
     
     updateTaskInstance(TaskInstance) {
-    
+        //populate data from env file and then delete + recreate task files
     }
     
     runTaskNow(TaskInstance) {
@@ -44,7 +45,7 @@ export class Scheduler {
     }
     
     enableSchedule(TaskInstance) {
-    
+        
     }
     
     disableSchedule(TaskInstance) {

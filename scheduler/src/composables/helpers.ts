@@ -94,7 +94,6 @@ export const convertSizeToBytesDecimal = (size) => {
 };
 
 
-
 //get size number from data size string
 export const getSizeNumberFromString = (sizeString) => {
 	const [value, unit] = sizeString.split(' ');

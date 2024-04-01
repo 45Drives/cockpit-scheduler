@@ -32,39 +32,39 @@
                             <thead class="bg-accent">
                                 <tr class="border border-default grid grid-cols-5">
                                     <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-default border border-default">
+                                    <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
                                         Name
                                     </th>
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-default border border-default">
+                                    <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
                                         Scheduled
                                     </th>
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-default border border-default">
+                                    <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
                                         Status
                                     </th>
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-default border border-default">
+                                    <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
                                         Last Run
                                     </th>
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-default border border-default">
+                                    <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
                                         Details
                                     </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-default">
-                                <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm" v-for="dummyTaskInstance, index in dummyTaskInstances" :key="dummyTaskInstance.parameters.key">
+                                <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm py-1" v-for="dummyTaskInstance, index in dummyTaskInstances" :key="dummyTaskInstance.parameters.key">
                                     <!-- Table Cells -> TaskName, Checkbox, Status, LastRunTimestamp, ChevronButton -->
-                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-default border border-default">
+                                    <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                         {{ dummyTaskInstance.name }}
                                     </td>
-                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-default border border-default">
+                                    <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                         <input type="checkbox" v-model="dummyTaskInstance.schedule.enabled"/>
                                     </td>
-                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-default border border-default">
+                                    <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                         N/A
                                     </td>
-                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-default border border-default">
+                                    <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                         &lt;timestamp here&gt;
                                     </td>
-                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-default border border-default">
+                                    <td class="whitespace-nowrap text-sm font-medium text-default border-default">
                                         <!-- <ChevronRightIcon class="w-6 h-6"/>  -->
                                         <button class="btn btn-secondary">View Details</button>
                                     </td>                         

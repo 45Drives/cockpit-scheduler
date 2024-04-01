@@ -73,6 +73,7 @@ def get_remote_snapshots(user, host, port, filesystem):
         	
 def get_most_recent_snapshot(snapshots):
     if snapshots:
+        # snapshots.sort(key=lambda x: x.creation, reverse=True)
         return snapshots[0]
     else:
         return None

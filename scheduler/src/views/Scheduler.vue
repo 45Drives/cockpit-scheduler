@@ -13,6 +13,7 @@ import { ref, Ref, provide, watchEffect } from 'vue';
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import Dashboard from '../components/dashboard/Dashboard.vue';
+import { Scheduler } from '../models/Scheduler';
 
 interface SchedulerProps {
   	tag: string;
