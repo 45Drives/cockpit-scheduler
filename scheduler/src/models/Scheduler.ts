@@ -3,18 +3,18 @@
 import { ParameterNode, SelectionParameter, SelectionOption, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from './Parameters';
 import { TaskInstance, TaskTemplate, TaskSchedule, TaskScheduleInterval, ZFSReplicationTaskTemplate } from './Tasks';
 
-export class Scheduler {
+export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
     taskInstances: TaskInstance[];
 
-    constructor(taskTemplates: TaskTemplate[], taskInstances: TaskInstance[]) {
+    constructor(taskTemplates: TaskTemplate[] = [], taskInstances: TaskInstance[] = []) {
         this.taskTemplates = taskTemplates;
         this.taskInstances = taskInstances;
     }
     
     loadTaskTemplates() {
         // check /opt/45drives/houston/scheduler/templates/ for .service files
-
+        
     }
     
     loadTaskInstances() {
@@ -26,10 +26,11 @@ export class Scheduler {
     }
     
     registerTaskInstance(TaskInstance) {
-        //create script to generate env file with task parameters + schedule data
-        //run script to generate service + timer
+        //create script to generate env file with task parameters
+        //run script to generate service + timer via env file and schedule passed as string
 
-        
+
+
         //generate key/value pairs
         /* ParameterNode.asEnvKeyValues() {
                 return children.map(c => c.asEnvKeyValues()) // recursively get child key=value pairs

@@ -1,5 +1,5 @@
 <template>
-    <Modal :isOpen="showWizard" :margin-top="'mt-28'" :width="'w-3/5'" :min-width="'min-w-3/5'">
+    <Modal @close="showWizard = false" :isOpen="showWizard" :margin-top="'mt-28'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
             Add New Task
         </template>
@@ -11,8 +11,10 @@
 						<option v-for="template, idx in taskTemplates" :key="idx" :value="template.name">{{ template.name }}</option>
 					</select>
 				</div>
-                <div>
-                    <component :is="parameter.uiComponent()" :name="parameter.key" :value="parameter.value" v-for="parameter in selectedTemplate!.parameterSchema.children" :key="parameter.key" />
+                <div v-if="selectedTemplate">
+                    <div v-for="param in selectedTemplate.parameterSchema.children" :key="param.key">
+                        <!-- <component :is="param.uiComponent()" :name="param.label" :value="param.value" @update:value="param.value = $event" /> -->
+                    </div>
                 </div>
             </div>
         </template>
@@ -20,7 +22,7 @@
             <div class="w-full grid grid-rows-2">
 				<div class="w-full row-start-1 justify-center items-center">
                     <div class="justify-self-start mt-2">
-                        <!-- <p class="text-danger" v-if="errorFeedback">{{ errorFeedback }}</p> -->
+                        <p class="text-danger" v-if="errorFeedback">{{ errorFeedback }}</p>
                     </div>
 				</div>
 				
@@ -46,8 +48,8 @@
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import { Switch } from '@headlessui/vue';
-import Modal from '../components/common/Modal.vue';
-
+import Modal from '../common/Modal.vue';
+import { ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Parameters';
 
 interface AddTaskProps {
 	idKey: string;
@@ -59,8 +61,10 @@ const props = defineProps<AddTaskProps>();
 const newTask = ref<TaskInstanceType>();
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
+
 const showWizard = inject<Ref<boolean>>('show-wizard')!;
 const adding = ref(false);
+const errorFeedback = ref('')
 
 const selectedTemplate = ref<TaskTemplateType>();
 

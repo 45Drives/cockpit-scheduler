@@ -22,7 +22,7 @@ interface TaskScheduleType {
 
 interface TaskScheduleIntervalType {
 	value: number;
-	unit: 'seconds'|'minutes'|'hours'|'days'|'weeks'|'months'|'years';
+	unit: 'seconds'|'minutes'|'hours'|'days'|'weeks'|'months'|'years'|'dayOfWeek'|'dayOfMonth';
 	// etc. ??? DayOfWeek, DayOfMonth, account for steps/lists/ranges?
 	// presets: none | hourly | daily | weekly | monthly | yearly
 }

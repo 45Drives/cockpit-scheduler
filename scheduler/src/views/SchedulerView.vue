@@ -23,7 +23,7 @@
                                 </div> -->
                                 <div class="mt-5 py-0.5 px-3">
                                     <!-- <router-link :to="'/forms/new'"> -->
-                                        <button class="btn btn-primary">Add New Task</button>
+                                        <button @click="showWizard = true" class="btn btn-primary">Add New Task</button>
                                     <!-- </router-link> -->
                                 </div>
                             </div>
@@ -83,6 +83,9 @@
                     </div>
                 </div>
 			</div>
+            <div v-if="showWizard">
+                <AddTask :id-key="'add-task-modal'"/>
+            </div>
 		</div>
 	</div>
 </template>
@@ -95,12 +98,10 @@ import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRi
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import LoadingSpinner from '../components/common/LoadingSpinner.vue';
 import { Scheduler } from '../models/Scheduler';
+import AddTask from "../components/wizard/AddTask.vue";
+import { ZFSReplicationTaskTemplate } from "../models/Tasks";
 
-interface SchedulerProps {
-  	tag: string;
-}
 
-const props = defineProps<SchedulerProps>();
 
 const dummyTaskTemplates = ref<TaskTemplateType[]>([
     {
@@ -116,6 +117,7 @@ const dummyTaskTemplates = ref<TaskTemplateType[]>([
             ]
         }
     },
+
     // Add more TaskTemplates as necessary
 ]);
 
@@ -136,6 +138,8 @@ const dummyTaskInstances = ref<TaskInstanceType[]>([
     },
     // Add more TaskInstances as necessary
 ]);
+
+
 
 const showWizard = ref(false);
 

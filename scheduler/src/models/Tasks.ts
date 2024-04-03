@@ -2,7 +2,7 @@
 
 import { ParameterNode, SelectionParameter, SelectionOption, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from './Parameters';
 
-export class TaskTemplate {
+export class TaskTemplate implements TaskTemplateType {
     name: string;
     parameterSchema: ParameterNode;
 
@@ -16,7 +16,7 @@ export class TaskTemplate {
     }
 }
 
-export class TaskInstance {
+export class TaskInstance implements TaskInstanceType {
     name: string;
     template: TaskTemplate;
     parameters: ParameterNode;
@@ -30,7 +30,7 @@ export class TaskInstance {
     }
 }
 
-export class TaskSchedule {
+export class TaskSchedule implements TaskScheduleType{
     enabled: boolean;
     intervals: TaskScheduleInterval[];
 
@@ -40,7 +40,7 @@ export class TaskSchedule {
     }
 }
 
-export class TaskScheduleInterval {
+export class TaskScheduleInterval implements TaskScheduleIntervalType{
     value: number;
     unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
     //need to account for DayOfWeek, DayOfMonth, steps, ranges, lists, etc.

@@ -3,10 +3,10 @@ import StringParameterComponent from '../components/parameters/StringParam.vue'
 import IntParameterComponent from '../components/parameters/IntParam.vue'
 import SelectParameterComponent from '../components/parameters/SelectParam.vue'
 import BoolParameterComponent from '../components/parameters/BoolParam.vue'
-import ZFSRepParameterComponent from '../components/parameters/ZFSRepParam.vue' 
+import ZFSDatasetParameterComponent from '../components/parameters/ZFSDatasetParam.vue' 
 import { Component } from 'vue'
 
-export class ParameterNode {
+export class ParameterNode implements ParameterNodeType {
     label: string;
     key: string;
     children: ParameterNode[];
@@ -43,7 +43,7 @@ export class ParameterNode {
         } else if (this instanceof SelectionParameter) {
             return SelectParameterComponent;
         } else if (this instanceof ZfsDatasetParameter) {
-            return ZFSRepParameterComponent;
+            return ZFSDatasetParameterComponent;
         } else {
             // Handle other parameter types or default case
             return StringParameterComponent;
@@ -51,7 +51,7 @@ export class ParameterNode {
     }
 }
 
-export class StringParameter extends ParameterNode {
+export class StringParameter extends ParameterNode implements StringParameterType {
     value: string;
 
     constructor(label: string, key: string, value: string = '') {
@@ -64,7 +64,7 @@ export class StringParameter extends ParameterNode {
     }
 }
 
-export class IntParameter extends ParameterNode {
+export class IntParameter extends ParameterNode implements IntParameterType {
     value: number;
 
     constructor(label: string, key: string, value: number = 0) {
@@ -77,7 +77,7 @@ export class IntParameter extends ParameterNode {
     }
 }
 
-export class BoolParameter extends ParameterNode {
+export class BoolParameter extends ParameterNode implements BoolParameterType {
     value: boolean;
 
     constructor(label: string, key: string, value: boolean = false) {
@@ -91,7 +91,7 @@ export class BoolParameter extends ParameterNode {
 }
 
 
-export class SelectionOption {
+export class SelectionOption implements SelectionOptionType {
     value: string | number | boolean;
     label: string;
 
@@ -101,7 +101,7 @@ export class SelectionOption {
     }
 }
 
-export class SelectionParameter extends ParameterNode {
+export class SelectionParameter extends ParameterNode implements SelectionParameterType {
     value: string;
     options: SelectionOption[];
 
@@ -120,7 +120,7 @@ export class SelectionParameter extends ParameterNode {
     }
 }
 
-export class ZfsDatasetParameter extends ParameterNode {
+export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeType {
     constructor(label: string, key: string, host: string = "", port: number = 0, pool: string = "", dataset: string = "") {
         super(label, key);
         
