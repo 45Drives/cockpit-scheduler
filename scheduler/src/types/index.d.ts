@@ -1,26 +1,26 @@
-interface Scheduler {
-	taskTemplates: TaskTemplate[];
-	taskInstances: TaskInstance[];
+interface SchedulerType {
+	taskTemplates: TaskTemplateType[];
+	taskInstances: TaskInstanceType[];
 }
 
-interface TaskTemplate {
+interface TaskTemplateType {
 	name: string;
-	parameterSchema: ParameterNode;
+	parameterSchema: ParameterNodeType;
 }
 
-interface TaskInstance {
+interface TaskInstanceType {
 	name: string;
-	template: TaskTemplate;
-	parameters: ParameterNode;
-	schedule: TaskSchedule;
+	template: TaskTemplateType;
+	parameters: ParameterNodeType;
+	schedule: TaskScheduleType;
 }
 
-interface TaskSchedule {
+interface TaskScheduleType {
 	enabled: boolean;
-	intervals: TaskScheduleInterval[];
+	intervals: TaskScheduleIntervalType[];
 }
 
-interface TaskScheduleInterval {
+interface TaskScheduleIntervalType {
 	value: number;
 	unit: 'seconds'|'minutes'|'hours'|'days'|'weeks'|'months'|'years';
 	// etc. ??? DayOfWeek, DayOfMonth, account for steps/lists/ranges?
@@ -35,43 +35,43 @@ interface LocationType {
 	path: string;
 }
 
-interface ParameterNode {
+interface ParameterNodeType {
 	label: string;
 	key: string;
-	children: ParameterNode[];
+	children: ParameterNodeType[];
 }
 
-interface SelectionParameter extends ParameterNode {
+interface SelectionParameterType extends ParameterNodeType {
 	value: string;
-	options: SelectionOption[];
+	options: SelectionOptionType[];
 }
 
-interface SelectionOption {
+interface SelectionOptionType {
     value: string | number | boolean;
     label: string;
 }
 
-interface StringParameter extends ParameterNode {
+interface StringParameterType extends ParameterNodeType {
 	value: string;
 }
 
-interface BoolParameter extends ParameterNode {
+interface BoolParameterType extends ParameterNodeType {
 	value: boolean;
 }
 
-interface IntParameter extends ParameterNode {
+interface IntParameterType extends ParameterNodeType {
 	value: number;
 }
 
-interface ZfsDatasetParameter extends ParameterNode {
+interface ZfsDatasetParameterType extends ParameterNodeType {
 	children: []
 }
   
-interface TaskExecutionLog {
-	entries: TaskExecutionResult[];
+interface TaskExecutionLogType {
+	entries: TaskExecutionResultType[];
 }
 
-interface TaskExecutionResult {
+interface TaskExecutionResultType {
 	exitCode: number;
 	output: string;
 	startDate: Date;

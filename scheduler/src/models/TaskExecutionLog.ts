@@ -15,7 +15,7 @@ export class TaskExecutionLog {
         // return TaskExecutionResult[];
     }
 
-    getLatesEntryFor(TaskInstance) {
+    getLatestEntryFor(TaskInstance) {
         return TaskExecutionResult || 'None';
     }
 

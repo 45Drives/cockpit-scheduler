@@ -16,31 +16,6 @@ export class TaskTemplate {
     }
 }
 
-/* export class ZFSReplicationTaskTemplate extends TaskTemplate {
-    name: string;
-    parameterSchema: ParameterNode;
-
-    constructor(name: string, parameterSchema: ParameterNode) {
-        super(name, parameterSchema);
-       
-    }
-} */
-
-/* // Create parameter schema for ZFS replication task
-const parameterSchema = new ParameterNode("ZFS Replication Config", "zfsRepConfig");
-const sourceDatasetParam = new ZfsDatasetParameter("Source Dataset", "sourceDataset");
-const destinationDatasetParam = new ZfsDatasetParameter("Destination Dataset", "destDataset");
-const compressionParam = new BoolParameter("Compression", "compress", false);
-const rawParam = new BoolParameter("Raw", "raw", false);
-
-parameterSchema.addChild(sourceDatasetParam);
-parameterSchema.addChild(destinationDatasetParam);
-parameterSchema.addChild(compressionParam);
-
-// Instantiate TaskTemplate for ZFS replication task
-export const zfsReplicationTaskTemplate = new TaskTemplate("ZFS Replication Task", parameterSchema);
- */
-
 export class TaskInstance {
     name: string;
     template: TaskTemplate;
@@ -54,4 +29,53 @@ export class TaskInstance {
         this.schedule = schedule;
     }
 }
+
+export class TaskSchedule {
+    enabled: boolean;
+    intervals: TaskScheduleInterval[];
+
+    constructor(enabled: boolean, intervals: TaskScheduleInterval[]) {
+        this.enabled = enabled;
+        this.intervals = intervals;
+    }
+}
+
+export class TaskScheduleInterval {
+    value: number;
+    unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
+    //need to account for DayOfWeek, DayOfMonth, steps, ranges, lists, etc.
+
+    constructor(value: number, unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years') {
+        this.value = value;
+        this.unit = unit;
+    }
+    
+}
+
+export class ZFSReplicationTaskTemplate implements TaskTemplate {
+    name: string;
+    parameterSchema: ParameterNode;
+
+    constructor() {
+        this.name = "ZFS Replication Task";
+        this.parameterSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
+            .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', ''))
+            .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', ''))
+            .addChild(new ParameterNode('Send Options', 'sendOptions')
+                .addChild(new BoolParameter('Compression', 'compression', false))
+                .addChild(new BoolParameter('Raw', 'raw', false))
+                .addChild(new BoolParameter('Recursive', 'recursive', false))
+                .addChild(new IntParameter('MBuffer Size', 'mbufferSize', 1))
+                .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
+                .addChild(new StringParameter('Custom Name', 'customName', ''))
+            )
+            .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5));
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
+}
+
 

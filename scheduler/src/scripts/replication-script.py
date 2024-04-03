@@ -81,8 +81,10 @@ def get_most_recent_snapshot(snapshots):
 def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G"):
     try:
         # Initial local send command
-        send_cmd = ['zfs', 'send', '-v']
-
+        send_cmd = ['zfs', 'send']
+        
+        # send_cmd.append('-v')
+        
         if compressed:
             send_cmd.append('-Lce')
 
@@ -104,7 +106,9 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
         # If sending locally
         if recvHost == "":
-            recv_cmd = ['zfs', 'recv', '-v']
+            recv_cmd = ['zfs', 'recv']
+            
+            # recv_cmd.append('-v')
 
             recv_cmd.append(recvName)
 
@@ -147,7 +151,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
             ssh_cmd.append(recvHostUser + '@' + recvHost)
 
             ssh_cmd.extend(['zfs', 'recv'])
-            ssh_cmd.append('-v')
+            
+            # ssh_cmd.append('-v')
 
             ssh_cmd.append(recvName)
 
@@ -178,7 +183,7 @@ def main():
 	parser = argparse.ArgumentParser(description='ZFS Replication Script')
 	parser.add_argument('filesystem', type=str, help='source filesystem to snapshot')
 	parser.add_argument('-R', '--recursive', action='store_true', help='recursively snap all child datasets')
-	parser.add_argument('-cn', '--custom-name', type=str, nargs='?', default=None, help='custom name for snapshot')
+	parser.add_argument('-cn', '--customName', type=str, nargs='?', default=None, help='custom name for snapshot')
 	compression_options = parser.add_mutually_exclusive_group()
 	compression_options.add_argument('-r', '--raw', action='store_true', help='send raw')
 	compression_options.add_argument('-c', '--compressed', action='store_true', help='send compressed')
@@ -194,7 +199,7 @@ def main():
  
 	sourceFilesystem = args.filesystem
 	isRecursiveSnap = args.recursive
-	customName = args.custom_name
+	customName = args.customName
 	isRaw = args.raw
 	isCompressed = args.compressed
 	destinationRoot = args.root
@@ -205,7 +210,7 @@ def main():
 	mBufferSize = args.mbuffsize
 	mBufferUnit = args.mbuffunit
 
-	receivingFilesystem = (f"{destinationRoot}{destinationPath}")
+	receivingFilesystem = (f"{destinationRoot}/{destinationPath}")
 
 	sourceSnapshots = get_local_snapshots(sourceFilesystem)
 	sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)

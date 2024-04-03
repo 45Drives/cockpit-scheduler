@@ -1,4 +1,10 @@
 // Parameters.ts
+import StringParameterComponent from '../components/parameters/StringParam.vue'
+import IntParameterComponent from '../components/parameters/IntParam.vue'
+import SelectParameterComponent from '../components/parameters/SelectParam.vue'
+import BoolParameterComponent from '../components/parameters/BoolParam.vue'
+import ZFSRepParameterComponent from '../components/parameters/ZFSRepParam.vue' 
+import { Component } from 'vue'
 
 export class ParameterNode {
     label: string;
@@ -13,6 +19,7 @@ export class ParameterNode {
 
     addChild(child: ParameterNode) {
         this.children.push(child);
+        return this;
     }
 
     asEnvKeyValues(): string[] {
@@ -25,15 +32,29 @@ export class ParameterNode {
         // Implementation for validation
     }
 
-    uiComponent() {
-        // Implementation for generating UI component
+    uiComponent(): Component {
+         // Dynamically return Vue component based on parameter type
+         if (this instanceof StringParameter) {
+            return StringParameterComponent;
+        } else if (this instanceof IntParameter) {
+            return IntParameterComponent;
+        } else if (this instanceof BoolParameter) {
+            return BoolParameterComponent;
+        } else if (this instanceof SelectionParameter) {
+            return SelectParameterComponent;
+        } else if (this instanceof ZfsDatasetParameter) {
+            return ZFSRepParameterComponent;
+        } else {
+            // Handle other parameter types or default case
+            return StringParameterComponent;
+        }
     }
 }
 
 export class StringParameter extends ParameterNode {
     value: string;
 
-    constructor(label: string, key: string, value: string) {
+    constructor(label: string, key: string, value: string = '') {
         super(label, key);
         this.value = value;
     }
@@ -46,7 +67,7 @@ export class StringParameter extends ParameterNode {
 export class IntParameter extends ParameterNode {
     value: number;
 
-    constructor(label: string, key: string, value: number) {
+    constructor(label: string, key: string, value: number = 0) {
         super(label, key);
         this.value = value;
     }
@@ -59,7 +80,7 @@ export class IntParameter extends ParameterNode {
 export class BoolParameter extends ParameterNode {
     value: boolean;
 
-    constructor(label: string, key: string, value: boolean) {
+    constructor(label: string, key: string, value: boolean = false) {
         super(label, key);
         this.value = value;
     }
@@ -84,14 +105,18 @@ export class SelectionParameter extends ParameterNode {
     value: string;
     options: SelectionOption[];
 
-    constructor(label: string, key: string, value: string) {
+    constructor(label: string, key: string, value: string = '', options: SelectionOption[] = []) {
         super(label, key);
         this.value = value;
-        this.options = [];
+        this.options = options;
     }
 
     addOption(option: SelectionOption) {
         this.options.push(option);
+    }
+
+    asEnvKeyValues(): string[] {
+        return [`${this.key}=${this.value}`]; // Implement logic to handle options if needed
     }
 }
 
@@ -102,6 +127,7 @@ export class ZfsDatasetParameter extends ParameterNode {
         // Add child parameters
         this.addChild(new StringParameter("Host", "host", host));
         this.addChild(new IntParameter("Port", "port", port));
+        // this.addChild(new StringParameter("User", "user", user);)
         
         const poolParam = new SelectionParameter("Pool", "pool", pool);
         this.addChild(poolParam);
@@ -118,8 +144,8 @@ export class ZfsDatasetParameter extends ParameterNode {
 
     // Method to convert ZfsDatasetParameter to a location
     toLocation(): LocationType {
-        // const label = (this.children[0] as StringParameter).value;
-        // const key = (this.children[1] as StringParameter).value;
+        const label = (this.children[0] as StringParameter).value;
+        const key = (this.children[1] as StringParameter).value;
         const host = (this.children[2] as StringParameter).value;
         const port = (this.children[3] as IntParameter).value;
         const root = (this.children[4] as SelectionParameter).value;

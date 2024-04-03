@@ -1,7 +1,7 @@
 // Scheduler.ts
 
 import { ParameterNode, SelectionParameter, SelectionOption, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from './Parameters';
-import { TaskInstance, TaskTemplate } from './Tasks';
+import { TaskInstance, TaskTemplate, TaskSchedule, TaskScheduleInterval, ZFSReplicationTaskTemplate } from './Tasks';
 
 export class Scheduler {
     taskTemplates: TaskTemplate[];
@@ -14,6 +14,7 @@ export class Scheduler {
     
     loadTaskTemplates() {
         // check /opt/45drives/houston/scheduler/templates/ for .service files
+
     }
     
     loadTaskInstances() {
@@ -25,7 +26,52 @@ export class Scheduler {
     }
     
     registerTaskInstance(TaskInstance) {
-        //create systemd, timer, env files here
+        //create script to generate env file with task parameters + schedule data
+        //run script to generate service + timer
+
+        
+        //generate key/value pairs
+        /* ParameterNode.asEnvKeyValues() {
+                return children.map(c => c.asEnvKeyValues()) // recursively get child key=value pairs
+                            .flat()
+                            .map(kv => "${key}_${kv}"); // prefix key with parent key and _
+            }
+            StringParameter.asEnvKeyValues() {
+                return [
+                    "${key}=${value}", // this node's env key=value pair
+                ];
+            }
+            IntParameter.asEnvKeyValues() {
+                return [
+                    "${key}=${value.toString()}", // this node's env key=value pair
+                ];
+            }
+            BoolParameter.asEnvKeyValues() {
+                return [
+                    "${key}=${value ? 'true' : 'false'}", // this node's env key=value pair
+                ];
+            } 
+            
+            // e.g.
+            conf = ParameterNode("ZFS Replication Config", "zfsRepConfig")
+            .addChild(ZfsDatasetParameter("Source Dataset", "sourceDataset"))
+            .addChild(ZfsDatasetParameter("Destination Dataset", "destDataset"))
+            // etc ...
+            .addChild(BoolParameter("Use Compression", "compression"));
+
+            // after configuring...
+
+            conf.asEnvKeyValuePairs() returns ->
+            [
+                "zfsRepConfig_sourceDataset_pool=tank",
+                "zfsRepConfig_sourceDataset_dataset=dataset1",
+                "zfsRepConfig_destDataset_host=192.168.4.20",
+                "zfsRepConfig_destDataset_pool=tank",
+                "zfsRepConfig_destDataset_dataset=dataset1",
+                ...
+                "zfsRepConfig_useCompression=true",
+            ]
+        */
     }
     
     unregisterTaskInstance(TaskInstance) {
@@ -55,26 +101,4 @@ export class Scheduler {
     updateSchedule(TaskInstance) {
         
     }
-}
-
-export class TaskSchedule {
-    enabled: boolean;
-    intervals: TaskScheduleInterval[];
-
-    constructor(enabled: boolean, intervals: TaskScheduleInterval[]) {
-        this.enabled = enabled;
-        this.intervals = intervals;
-    }
-}
-
-export class TaskScheduleInterval {
-    value: number;
-    unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
-    //need to account for DayOfWeek, DayOfMonth, steps, ranges, lists, etc.
-
-    constructor(value: number, unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years') {
-        this.value = value;
-        this.unit = unit;
-    }
-    
 }

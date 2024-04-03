@@ -3,17 +3,18 @@ import subprocess
 import datetime
 import os
 
-def generate_service_file(action_script, params, file_name):
+def generate_service_file(action_script, params, file_name, env_path):
     service_content = f"""[Unit]
 Description={params['action']} service
 
 [Service]
 Type=oneshot
+EnvironmentFile={env_path}
 ExecStart=python3 {action_script}
 Restart=on-failure
-RestartSec=10
-StartLimitBurst=5
-StartLimitInterval=10s
+RestartSec=5
+StartLimitBurst=3
+StartLimitInterval=30s
 
 [Install]
 WantedBy=multi-user.target
