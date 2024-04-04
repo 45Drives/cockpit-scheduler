@@ -15,13 +15,9 @@ import "@45drives/cockpit-vue-components/dist/style.css";
 import { pluginVersion } from "./version";
 import { HoustonHeader } from "@45drives/cockpit-vue-components";
 import { FIFO } from '@45drives/cockpit-helpers';
-import Navigation from "./components/common/Navigation.vue";
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate, TaskSchedule } from './models/Tasks';
-import { ParameterNode, SelectionParameter, SelectionOption, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from './models/Parameters';
+import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate } from './models/Tasks';
 import { Scheduler } from './models/Scheduler';
-/* // @ts-ignore
-import get_templates_script from "./scripts/get-task-templates.py"; */
 
 interface AppProps {
 	notificationFIFO: FIFO;
@@ -41,6 +37,10 @@ function initializeTaskTemplates(): TaskTemplate[] {
 
 // Instantiate task templates
 const taskTemplates = initializeTaskTemplates();
+const taskInstances = ref<TaskInstance[]>([]);
+const myScheduler = new Scheduler(taskTemplates, taskInstances.value)
+
+
 
 // Example usage:
 // taskTemplates.forEach(template => {
@@ -94,9 +94,10 @@ export async function loadTaskTemplates() {
 } */
 
 onMounted(() => {
-	
+
 });
 
+provide('scheduler', myScheduler);
 provide('task-templates', taskTemplates);
 provide('notifications', notifications);
 provide('notification-fifo', props.notificationFIFO);

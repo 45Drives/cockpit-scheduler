@@ -50,6 +50,7 @@ import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 
 import { Switch } from '@headlessui/vue';
 import Modal from '../common/Modal.vue';
 import { ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Parameters';
+import { TaskTemplate } from '../../models/Tasks';
 
 interface AddTaskProps {
 	idKey: string;
@@ -64,17 +65,12 @@ const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 
 const showWizard = inject<Ref<boolean>>('show-wizard')!;
 const adding = ref(false);
+
 const errorFeedback = ref('')
 
-const selectedTemplate = ref<TaskTemplateType>();
+// const selectedTemplate = ref();
 
-
-function addTaskBtn() {
-
-}
-
-
-/* const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
+const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
     .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', '', ''))
     .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
     .addChild(new ParameterNode('Send Options', 'sendOptions')
@@ -86,7 +82,16 @@ function addTaskBtn() {
         .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
         .addChild(new StringParameter('Custom Name', 'customName', ''))
     )
-    .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5)); */
+    .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5));
+
+const selectedTemplate = new TaskTemplate('ZFS Replication Task', configSchema)
+
+function addTaskBtn() {
+
+}
+
+
+
     
 
 const getIdKey = (name: string) => `${props.idKey}-${name}`;

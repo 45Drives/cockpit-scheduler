@@ -5,6 +5,7 @@ import SelectParameterComponent from '../components/parameters/SelectParam.vue'
 import BoolParameterComponent from '../components/parameters/BoolParam.vue'
 import ZFSDatasetParameterComponent from '../components/parameters/ZFSDatasetParam.vue' 
 import { Component } from 'vue'
+import GenericComponent from '../components/common/GenericComponent.vue'
 
 export class ParameterNode implements ParameterNodeType {
     label: string;
@@ -46,7 +47,7 @@ export class ParameterNode implements ParameterNodeType {
             return ZFSDatasetParameterComponent;
         } else {
             // Handle other parameter types or default case
-            return StringParameterComponent;
+            return GenericComponent;
         }
     }
 }

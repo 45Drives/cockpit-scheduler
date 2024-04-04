@@ -128,7 +128,8 @@ def generate_concrete_service_file(template_content, output_file_path):
     
 #     with open(output_file_path, 'w') as file:
 #         file.write(timer_content)
-      
+  
+
 def main():
     # parser = argparse.ArgumentParser(description='Generate Service + Timer Files from Template + Env Files')
     # parser.add_argument('-t', '--template', type=str, nargs=1, help='template service file path')
@@ -166,6 +167,11 @@ def main():
     generate_concrete_service_file(template_content, output_file_path)
     print(template_content)
     print("Concrete service file generated successfully.")
+    
+    
+    
+    os.symlink(template_file_path, output_file_path)
+    print(f"Symlink created: {output_file_path} -> {template_file_path}")
     
     
 if __name__ == "__main__":

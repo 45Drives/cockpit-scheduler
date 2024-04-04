@@ -66,9 +66,9 @@ interface IntParameterType extends ParameterNodeType {
 	value: number;
 }
 
-interface ZfsDatasetParameterType extends ParameterNodeType {
-	children: []
-}
+// interface ZfsDatasetParameterType extends ParameterNodeType {
+// 	children: []
+// }
   
 interface TaskExecutionLogType {
 	entries: TaskExecutionResultType[];
@@ -81,19 +81,19 @@ interface TaskExecutionResultType {
 	finishDate: Date;
 }
 
-interface ZFSReplicationTaskTemplate extends TaskTemplate {
+// interface ZFSReplicationTaskTemplate extends TaskTemplate {
 
-}
+// }
 
 
 type ConfirmationCallback = () => void;
 
 //object for navigation (generic)
-interface NavigationItem {
-	name: string;
-	tag: string;
-	current: boolean;
-	show: boolean;
-}
+// interface NavigationItem {
+// 	name: string;
+// 	tag: string;
+// 	current: boolean;
+// 	show: boolean;
+// }
 
-type NavigationCallback = (item: NavigationItem) => void;
+// type NavigationCallback = (item: NavigationItem) => void;
