@@ -14,9 +14,10 @@
 </template>
 <script setup lang="ts">
 
-interface StringParamProps {
-    param: StringParameterType;
+interface ParameterComponentProps {
+    param: ParameterNodeType;
+    type: string;
 }
 
-const props = defineProps<StringParamProps>();
+const props = defineProps<ParameterComponentProps>();
 </script>

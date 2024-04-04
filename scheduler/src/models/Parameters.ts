@@ -34,7 +34,7 @@ export class ParameterNode implements ParameterNodeType {
 
     uiComponent(): Component {
          // Dynamically return Vue component based on parameter type
-         if (this instanceof StringParameter) {
+        if (this instanceof StringParameter) {
             return StringParameterComponent;
         } else if (this instanceof IntParameter) {
             return IntParameterComponent;
@@ -121,13 +121,13 @@ export class SelectionParameter extends ParameterNode implements SelectionParame
 }
 
 export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeType {
-    constructor(label: string, key: string, host: string = "", port: number = 0, pool: string = "", dataset: string = "") {
+    constructor(label: string, key: string, host: string = "", port: number = 0, pool: string = "", dataset: string = "", user: string = "") {
         super(label, key);
         
         // Add child parameters
         this.addChild(new StringParameter("Host", "host", host));
         this.addChild(new IntParameter("Port", "port", port));
-        // this.addChild(new StringParameter("User", "user", user);)
+        this.addChild(new StringParameter("User", "user", user));
         
         const poolParam = new SelectionParameter("Pool", "pool", pool);
         this.addChild(poolParam);

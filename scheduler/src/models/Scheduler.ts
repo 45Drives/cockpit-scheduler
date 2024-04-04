@@ -7,15 +7,15 @@ export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
     taskInstances: TaskInstance[];
 
-    constructor(taskTemplates: TaskTemplate[] = [], taskInstances: TaskInstance[] = []) {
+    constructor(taskTemplates: TaskTemplate[], taskInstances: TaskInstance[]) {
         this.taskTemplates = taskTemplates;
         this.taskInstances = taskInstances;
     }
     
-    loadTaskTemplates() {
-        // check /opt/45drives/houston/scheduler/templates/ for .service files
+    // loadTaskTemplates() {
+    //     // check /opt/45drives/houston/scheduler/templates/ for .service files
         
-    }
+    // }
     
     loadTaskInstances() {
         // check /etc/systemd/system/ for .service files (that also have .env)

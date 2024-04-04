@@ -69,8 +69,12 @@
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-default">
                                                     <!-- <ChevronRightIcon class="w-6 h-6"/>  -->
-                                                    <button class="btn btn-secondary">View Details</button>
-                                                </td>                         
+                                                    <button v-if="showDetails == true" @click="taskDetailsBtn()" class="btn btn-secondary">View Details</button>
+                                                    <button v-if="showDetails == false" @click="taskDetailsBtn()" class="btn btn-secondary">Close Details</button>
+                                                </td>
+                                                <td v-if="showDetails == true" class="col-span-5 h-20">
+                                                    Add Details Here
+                                                </td>           
                                             </tr>
                                         </tbody>
                                     </table>
@@ -102,30 +106,31 @@ import AddTask from "../components/wizard/AddTask.vue";
 import { ZFSReplicationTaskTemplate } from "../models/Tasks";
 
 
+const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 
-const dummyTaskTemplates = ref<TaskTemplateType[]>([
-    {
-        name: 'ZFS Replication Task',
-        parameterSchema: {
-            label: 'ZFS Replication Config',
-            key: 'zfs_replication', // Unique key for the parameter schema
-            children: [
-                { label: 'Source', key: 'source', children: []},
-                { label: 'Destination', key: 'dest', children: []},
-                { label: 'Compression', key: 'compression', children: []},
-                // Add other parameters as needed
-            ]
-        }
-    },
+// const dummyTaskTemplates = ref<TaskTemplateType[]>([
+//     {
+//         name: 'ZFS Replication Task',
+//         parameterSchema: {
+//             label: 'ZFS Replication Config',
+//             key: 'zfs_replication', // Unique key for the parameter schema
+//             children: [
+//                 { label: 'Source', key: 'source', children: []},
+//                 { label: 'Destination', key: 'dest', children: []},
+//                 { label: 'Compression', key: 'compression', children: []},
+//                 // Add other parameters as needed
+//             ]
+//         }
+//     },
 
-    // Add more TaskTemplates as necessary
-]);
+//     // Add more TaskTemplates as necessary
+// ]);
 
 
 const dummyTaskInstances = ref<TaskInstanceType[]>([
     {
         name: 'ZFS Replication Task 1',
-        template: dummyTaskTemplates[0], // Reference to the ZFS Replication TaskTemplate
+        template: taskTemplates[0], // Reference to the ZFS Replication TaskTemplate
         parameters: {
             label: 'zfs rep task config',
             key: 'zfs_rep_task_1',
@@ -140,10 +145,14 @@ const dummyTaskInstances = ref<TaskInstanceType[]>([
 ]);
 
 
-
 const showWizard = ref(false);
+const showDetails = ref(false);
+
+function taskDetailsBtn() {
+    showDetails.value = !showDetails.value;
+}
 
 provide('show-wizard', showWizard);
 provide('task-instances', dummyTaskInstances);
-provide('task-templates', dummyTaskTemplates);
+// provide('task-templates', dummyTaskTemplates);
 </script> 

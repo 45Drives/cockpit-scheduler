@@ -35,10 +35,13 @@ interface LocationType {
 	path: string;
 }
 
+type UIComponent = any;
+
 interface ParameterNodeType {
 	label: string;
 	key: string;
 	children: ParameterNodeType[];
+	uiComponent?(): UIComponent;
 }
 
 interface SelectionParameterType extends ParameterNodeType {

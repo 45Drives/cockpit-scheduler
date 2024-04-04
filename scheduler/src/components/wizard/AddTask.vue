@@ -8,12 +8,12 @@
                 <div>
 					<label :for="getIdKey('task-template-selection')" class="block text-sm font-medium leading-6 text-default">Select Type of Task to Add</label>
 					<select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-						<option v-for="template, idx in taskTemplates" :key="idx" :value="template.name">{{ template.name }}</option>
+						<option v-for="template, idx in taskTemplates" :key="idx" :value="template">{{ template.name }}</option>
 					</select>
 				</div>
                 <div v-if="selectedTemplate">
                     <div v-for="param in selectedTemplate.parameterSchema.children" :key="param.key">
-                        <!-- <component :is="param.uiComponent()" :name="param.label" :value="param.value" @update:value="param.value = $event" /> -->
+                        <component :is="param.uiComponent!()" :param="param"/>
                     </div>
                 </div>
             </div>
@@ -73,6 +73,21 @@ function addTaskBtn() {
 
 }
 
+
+/* const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
+    .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', '', ''))
+    .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
+    .addChild(new ParameterNode('Send Options', 'sendOptions')
+        .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
+        .addChild(new BoolParameter('Raw', 'raw_flag', false))
+        .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+        .addChild(new IntParameter('MBuffer Size', 'mbufferSize', 1))
+        .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
+        .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
+        .addChild(new StringParameter('Custom Name', 'customName', ''))
+    )
+    .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5)); */
+    
 
 const getIdKey = (name: string) => `${props.idKey}-${name}`;
 </script>

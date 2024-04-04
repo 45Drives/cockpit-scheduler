@@ -59,14 +59,15 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
     constructor() {
         this.name = "ZFS Replication Task";
         this.parameterSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
-            .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', ''))
-            .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', ''))
+            .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', '', ''))
+            .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
             .addChild(new ParameterNode('Send Options', 'sendOptions')
-                .addChild(new BoolParameter('Compression', 'compression', false))
-                .addChild(new BoolParameter('Raw', 'raw', false))
-                .addChild(new BoolParameter('Recursive', 'recursive', false))
+                .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
+                .addChild(new BoolParameter('Raw', 'raw_flag', false))
+                .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
                 .addChild(new IntParameter('MBuffer Size', 'mbufferSize', 1))
                 .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
+                .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
                 .addChild(new StringParameter('Custom Name', 'customName', ''))
             )
             .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5));
