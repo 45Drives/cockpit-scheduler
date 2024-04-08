@@ -152,8 +152,8 @@ def main():
     
     # Define file paths (testing)
     template_file_path = "/opt/45drives/houston/scheduler/templates/ZfsReplicationTask.service"
-    env_file_path = "/etc/systemd/system/ZfsReplicationTask_0.env"
-    output_file_path = "/etc/systemd/system/ZfsReplicationTask_0.service"
+    env_file_path = "/etc/systemd/system/houston_scheduler_ZfsReplicationTask_0.env"
+    output_file_path = "/etc/systemd/system/houston_scheduler_ZfsReplicationTask_0.service"
     template_content = read_template_service_file(template_file_path)
 
     # Parse keys/values from environment file
@@ -170,8 +170,8 @@ def main():
     
     
     
-    os.symlink(template_file_path, output_file_path)
-    print(f"Symlink created: {output_file_path} -> {template_file_path}")
+    # os.symlink(template_file_path, output_file_path)
+    # print(f"Symlink created: {output_file_path} -> {template_file_path}")
     
     
 if __name__ == "__main__":

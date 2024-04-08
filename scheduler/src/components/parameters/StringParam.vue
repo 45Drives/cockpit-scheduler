@@ -16,6 +16,7 @@
 
 interface StringParamProps {
     param: StringParameterType;
+    value: string;
 }
 
 const props = defineProps<StringParamProps>();

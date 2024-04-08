@@ -13,7 +13,8 @@
 				</div>
                 <div v-if="selectedTemplate">
                     <div v-for="param in selectedTemplate.parameterSchema.children" :key="param.key">
-                        <component :is="param.uiComponent!()" :param="param"/>
+                        <!-- <component :is="param.uiComponent!()" :param="param"/> -->
+                        
                     </div>
                 </div>
             </div>
@@ -49,8 +50,8 @@
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import { Switch } from '@headlessui/vue';
 import Modal from '../common/Modal.vue';
-import { ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Parameters';
-import { TaskTemplate } from '../../models/Tasks';
+import ParameterInput from '../common/ParameterInput.vue';
+import { TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
 
 interface AddTaskProps {
 	idKey: string;

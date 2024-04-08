@@ -11,11 +11,17 @@ export class Scheduler implements SchedulerType {
         // check /etc/systemd/system/ for .service files (that also have .env)
         
     }
+    
+    
+
 
     registerTaskInstance(taskInstance) {
         //generate key/value pairs
         //run script to generate env file with key/value pairs
         //run script to generate service + timer via env file + template, with schedule (as string?)
+
+
+        //run systemctl daemon-reload
 
     }   
     
@@ -28,6 +34,8 @@ export class Scheduler implements SchedulerType {
     }
     
     runTaskNow(taskInstance) {
+        //execute service file now
+
         // return TaskExecutionResult;
     }
     
@@ -36,11 +44,13 @@ export class Scheduler implements SchedulerType {
     }
     
     enableSchedule(taskInstance) {
-        
+        //activate timer file
+        //run systemctl daemon-reload
     }
     
     disableSchedule(taskInstance) {
-        
+        //deactivate timer file
+        //run systemctl daemon-reload
     }
     
     updateSchedule(taskInstance) {
@@ -115,7 +125,7 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
                 .addChild(new IntParameter('MBuffer Size', 'mbufferSize', 1))
                 .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
                 .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
-                .addChild(new StringParameter('Custom Name', 'customName', ''))
+                .addChild(new StringParameter('Custom Name Schema', 'customNameSchema', ''))
             )
             .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5));
     }

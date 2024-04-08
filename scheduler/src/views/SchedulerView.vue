@@ -69,8 +69,8 @@
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-default">
                                                     <!-- <ChevronRightIcon class="w-6 h-6"/>  -->
-                                                    <button v-if="showDetails == true" @click="taskDetailsBtn()" class="btn btn-secondary">View Details</button>
-                                                    <button v-if="showDetails == false" @click="taskDetailsBtn()" class="btn btn-secondary">Close Details</button>
+                                                    <button v-if="showDetails == false" @click="taskDetailsBtn()" class="btn btn-secondary">View Details</button>
+                                                    <button v-if="showDetails == true" @click="taskDetailsBtn()" class="btn btn-secondary">Close Details</button>
                                                 </td>
                                                 <td v-if="showDetails == true" class="col-span-5 h-20">
                                                     Add Details Here
@@ -101,12 +101,13 @@ import {computed, Ref, inject, ref, provide} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRightIcon } from '@heroicons/vue/24/outline';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import LoadingSpinner from '../components/common/LoadingSpinner.vue';
-import { Scheduler } from '../models/Scheduler';
+import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/Classes';
 import AddTask from "../components/wizard/AddTask.vue";
-import { ZFSReplicationTaskTemplate } from "../models/Tasks";
 
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
+// const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
+const dummyTaskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 // const dummyTaskTemplates = ref<TaskTemplateType[]>([
 //     {
@@ -127,22 +128,7 @@ const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 // ]);
 
 
-const dummyTaskInstances = ref<TaskInstanceType[]>([
-    {
-        name: 'ZFS Replication Task 1',
-        template: taskTemplates[0], // Reference to the ZFS Replication TaskTemplate
-        parameters: {
-            label: 'zfs rep task config',
-            key: 'zfs_rep_task_1',
-            children: []
-        },
-        schedule: {
-            enabled: true,
-            intervals: []
-        }
-    },
-    // Add more TaskInstances as necessary
-]);
+
 
 
 const showWizard = ref(false);

@@ -15,11 +15,12 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
 	command = [ 'zfs', 'snapshot' ]
 	if is_recursive:
 		command.append('-r')
-	
+	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+ 
 	if custom_name:
-		new_snap = (f'{filesystem}@{custom_name}')
+		new_snap = (f'{filesystem}@{custom_name}-{timestamp}')
 	else:
-		timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+		
 		new_snap = (f'{filesystem}@{timestamp}')
   
 	command.append(new_snap)
@@ -34,7 +35,7 @@ def get_local_snapshots(filesystem):
 		output = subprocess.check_output(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 		snapshots = []
 		for line in output.splitlines():
-			match = re.match(r'^([\w\/@]+)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}\s+\d{4})', line.decode('utf-8'))
+			match = re.match(r'^([\w\/@-]+(?:-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2})?)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
 			if match:
 				snapshot_name = match.group(1)
 				snapshot_guid = match.group(2)
@@ -47,29 +48,37 @@ def get_local_snapshots(filesystem):
 		return []
 
 def get_remote_snapshots(user, host, port, filesystem):
-	try:
-		ssh_cmd = ['ssh']
-		if port != '22':
-			ssh_cmd.extend(['-p', port])
-		ssh_cmd.append(user + '@' + host)
-		
-		ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
-		output = subprocess.check_output(ssh_cmd)
-  
-		snapshots = []
-		for line in output.splitlines():
-			match = re.match(r'^([\w\/@]+)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}\s+\d{4})', line.decode('utf-8'))
-			if match:
-				snapshot_name = match.group(1)
-				snapshot_guid = match.group(2)
-				snapshot_creation = match.group(3)
-				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
-				snapshots.append(snapshot)
+    try:
+        ssh_cmd = ['ssh']
+        if port != '22':
+            ssh_cmd.extend(['-p', port])
+        ssh_cmd.append(user + '@' + host)
+        
+        ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
+        
+        # print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
+        
+        output = subprocess.check_output(ssh_cmd)
+        
+        snapshots = []
+        for line in output.splitlines():
+            match = re.match(r'^([\w\/@-]+(?:-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2})?)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
+            if match:
+                snapshot_name = match.group(1)
+                snapshot_guid = match.group(2)
+                snapshot_creation = match.group(3)
+                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
+                snapshots.append(snapshot)
 
-		return snapshots
+        return snapshots
 
-	except subprocess.CalledProcessError:
-		return []
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing SSH command: {e}")  # Error handling
+        return []
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")  # Error handling
+        return []
+
         	
 def get_most_recent_snapshot(snapshots):
     if snapshots:
@@ -226,11 +235,11 @@ def main():
 		destinationSnapshots.sort(key=lambda x: x.creation, reverse=True)
 		# print("sourceSnapshots:")
 		# for snap in sourceSnapshots:
-			# print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+		# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
 
 		# print("destinationSnapshots:")
 		# for snap in destinationSnapshots:
-			# print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+		# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
 
 		mostRecentDestinationSnap = get_most_recent_snapshot(destinationSnapshots)
 		if mostRecentDestinationSnap is not None:

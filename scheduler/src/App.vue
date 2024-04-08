@@ -16,8 +16,7 @@ import { pluginVersion } from "./version";
 import { HoustonHeader } from "@45drives/cockpit-vue-components";
 import { FIFO } from '@45drives/cockpit-helpers';
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate } from './models/Tasks';
-import { Scheduler } from './models/Scheduler';
+import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from './models/Classes';
 
 interface AppProps {
 	notificationFIFO: FIFO;
@@ -40,64 +39,32 @@ const taskTemplates = initializeTaskTemplates();
 const taskInstances = ref<TaskInstance[]>([]);
 const myScheduler = new Scheduler(taskTemplates, taskInstances.value)
 
+const dummyTaskInstances = ref<TaskInstanceType[]>([
+    {
+        name: 'ZFS Replication Task 1',
+        template: taskTemplates[0], // Reference to the ZFS Replication TaskTemplate
+        parameters: {
+            label: 'zfs rep task config',
+            key: 'zfs_rep_task_1',
+            children: []
+        },
+        schedule: {
+            enabled: true,
+            intervals: []
+        }
+    },
+    // Add more TaskInstances as necessary
+]);
 
-
-// Example usage:
-// taskTemplates.forEach(template => {
-//     console.log(`Task Template: ${template.name}`);
-//     console.log('Parameter Schema:');
-//     console.log(template.parameterSchema); // Output the object directly
-//     // Alternatively, you can access individual properties
-//     console.log(`Label: ${template.parameterSchema.label}`);
-//     console.log(`Key: ${template.parameterSchema.key}`);
-//     console.log('Children:');
-//     template.parameterSchema.children.forEach(child => {
-//         console.log(`Child Label: ${child.label}`);
-//         console.log(`Child Key: ${child.key}`);
-// 		child.children.forEach(child => {
-// 			console.log(`Child Label: ${child.label}`);
-// 			console.log(`Child Key: ${child.key}`);
-// 			// Output additional properties of the child if needed
-// 		});
-//     });
-// });
-
-
-/* export async function getTaskTemplates() {
-	try {
-		//['/usr/bin/env', 'python3', '-c', script, ...args ]
-		const state = useSpawn([]);
-		const templates = (await state.promise()).stdout;
-		return templates;
-	} catch (state) {
-		console.error(errorString(state));
-		return null;
-	}
-
-}
-
-export async function loadTaskTemplates() {
-	try {
-		const rawJSON = await getTaskTemplates();
-		const parsedJSON = JSON.parse(rawJSON);
-
-		for (let i = 0; i < parsedJSON.length; i++) {
-			const template = {
-				
-			}
-
-			templateList.value.push(template);
-		}
-	} catch (error) {
-		console.error("An error occurred getting templates:", error);
-	}
-} */
+const entries = ref<TaskExecutionResult[]>([]);
+const myTaskLog = new TaskExecutionLog(entries.value);
 
 onMounted(() => {
-
+	// myScheduler.loadTaskInstances();
 });
 
 provide('scheduler', myScheduler);
+provide('task-instances', dummyTaskInstances);
 provide('task-templates', taskTemplates);
 provide('notifications', notifications);
 provide('notification-fifo', props.notificationFIFO);
