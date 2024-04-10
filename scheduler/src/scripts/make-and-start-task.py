@@ -39,10 +39,6 @@ def parse_env_file(parameter_env_file_path):
 def read_schedule_json(file_path):
     try:
         with open(file_path, 'r') as file:
-            raw_content = file.read()
-            print(f"Raw content: {raw_content[:500]}")
-            
-            
             data = json.load(file)
             return data
     except FileNotFoundError:
@@ -51,20 +47,6 @@ def read_schedule_json(file_path):
     except json.JSONDecodeError:
         print(f"Error decoding JSON from file: {file_path}")
         return None
-
-def interval_to_on_calendar(interval):
-    parts = []
-    
-    if 'dayOfWeek' in interval:
-        day_of_week = ','.join(interval['dayOfWeek'])
-        parts.append(day_of_week)
-        
-    year_part, month_part, day_part = '*', '*', '*'
-    
-    for unit in ['year', 'month', 'day']:
-        if unit in interval:
-            value = interval[unit]['value']
-            
 
 def interval_to_on_calendar(interval):
     parts = []
@@ -116,46 +98,6 @@ def interval_to_on_calendar(interval):
     
     return 'OnCalendar=' + ' '.join(parts)
 
-
-
-# def interval_to_on_calendar(interval):
-#     # Default parts
-#     parts, date_parts, time_parts = [], [], ['00', '00', '00']  # Default time set to 00:00:00
-
-#     # Day of the week handling
-#     if 'dayOfWeek' in interval:
-#         days = ','.join(interval['dayOfWeek'])
-#         parts.append(days)
-
-#     # Date component handling with steps
-#     for unit, default in [('year', '*'), ('month', '*'), ('day', '*')]:
-#         value = interval.get(unit, {'value': default}).get('value')
-#         step = interval.get(unit, {}).get('step')
-#         if step:
-#             value = f'{value}/{step}'
-#         date_parts.append(value)
-
-#     # Time component handling with steps
-#     for i, unit in enumerate(['hour', 'minute', 'second']):
-#         if unit in interval:
-#             value = interval[unit]['value']
-#             step = interval[unit].get('step')
-#             if step:
-#                 value = f'{value}/{step}'
-#             time_parts[i] = value
-
-#     # Combining date and time parts
-#     date_part = '-'.join(date_parts)
-#     time_part = ':'.join(time_parts)
-
-#     parts.append(date_part)
-#     parts.append(time_part)
-
-#     on_calendar_expression = ' '.join(parts)
-#     return f'OnCalendar={on_calendar_expression}'
-
-
-
 def replace_service_placeholders(service_template_content, parameters):
     for key, value in parameters.items():
         placeholder = "{" + key + "}"
@@ -172,13 +114,13 @@ def manage_systemd_service(timer_file_name):
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
     # Enable the timer
-    subprocess.run(['sudo', 'systemctl', 'enable', f'houston_scueduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', f'houston_scheduler_{timer_file_name}'], check=True)
     
     # Start the timer
-    subprocess.run(['sudo', 'systemctl', 'start', f'houston_scueduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'start', f'houston_scheduler_{timer_file_name}'], check=True)
     
     # Optionally, check the status of the timer
-    subprocess.run(['sudo', 'systemctl', 'status', f'houston_scueduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'status', f'houston_scheduler_{timer_file_name}'], check=True)
 
 
 def main():
@@ -207,9 +149,6 @@ def main():
     output_path_service = f"/etc/systemd/system/houston_scheduler_{service_file_name}"
     output_path_timer = f"/etc/systemd/system/houston_scheduler_{timer_file_name}"
     
-    schedule_data = read_schedule_json(schedule_json_path)
-    # print(schedule_data)
-    
     service_template_content = read_template_file(template_service_path)
     timer_template_content = read_template_file(template_timer_path)
     
@@ -224,6 +163,9 @@ def main():
     generate_concrete_file(service_template_content, output_path_service)
     print(service_template_content)
     print("Concrete service file generated successfully.")
+    
+    schedule_data = read_schedule_json(schedule_json_path)
+    # print(schedule_data)
     
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
