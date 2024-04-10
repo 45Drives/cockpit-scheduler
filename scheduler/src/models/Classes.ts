@@ -97,17 +97,30 @@ export class TaskSchedule implements TaskScheduleType{
     }
 }
 
-export class TaskScheduleInterval implements TaskScheduleIntervalType{
-    value: number;
-    unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
-    //need to account for DayOfWeek, DayOfMonth, steps, ranges, lists, etc.
+class TaskScheduleInterval implements TaskScheduleIntervalType {
+    [key: string]: any; // Use a more specific type if possible
+    dayOfWeek?: DayOfWeek[];
 
-    constructor(value: number, unit: 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years') {
-        this.value = value;
-        this.unit = unit;
+    constructor(intervalData: TaskScheduleIntervalType) {
+        Object.keys(intervalData).forEach(key => {
+            this[key] = intervalData[key];
+        });
     }
-    
 }
+
+// export class TaskScheduleInterval implements TaskScheduleIntervalType {
+//     value: TimeComponentType;
+//     unit: TimeUnit;
+//     dayOfWeek?: (DayOfWeek)[];
+
+//     constructor(value: TimeComponentType, unit: TimeUnit, dayOfWeek?: (DayOfWeek)[]) {
+//         this.value = value;
+//         this.unit = unit;
+//         this.dayOfWeek = dayOfWeek || [];
+//     }
+
+// }
+
 
 export class ZFSReplicationTaskTemplate implements TaskTemplate {
     name: string;

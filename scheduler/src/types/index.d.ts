@@ -15,17 +15,35 @@ interface TaskInstanceType {
 	schedule: TaskScheduleType;
 }
 
+type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
+type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
+
+interface TimeComponentType {
+	value: number | string;
+	step?: number;
+}
+
 interface TaskScheduleType {
 	enabled: boolean;
 	intervals: TaskScheduleIntervalType[];
 }
 
-interface TaskScheduleIntervalType {
-	value: number;
-	unit: 'seconds'|'minutes'|'hours'|'days'|'weeks'|'months'|'years'|'dayOfWeek'|'dayOfMonth';
-	// etc. ??? DayOfWeek, DayOfMonth, account for steps/lists/ranges?
-	// presets: none | hourly | daily | weekly | monthly | yearly
-}
+// interface TaskScheduleIntervalType {
+// 	value: TimeComponentType;
+// 	unit: TimeUnit;
+// 	dayOfWeek?: (DayOfWeek)[];
+// }
+
+type TaskScheduleIntervalType = {
+    [K in TimeUnit]?: TimeComponentType; // Make each property optional
+} & {
+    dayOfWeek?: (DayOfWeek)[]; // Additional properties can be added like this
+};
+
+// interface TaskScheduleIntervalType {
+//     [K in TimeUnit]?: TimeComponentType;
+//     dayOfWeek?: DayOfWeek[]; // Keeping dayOfWeek as a separate, optional property
+// }
 
 interface LocationType {
 	host: string;

@@ -10,6 +10,13 @@ def read_template_file(template_file_path):
         return file.read()
 
 
+def extract_description(service_template_content):
+    for line in service_template_content.split('\n'):
+        if line.startswith('Description='):
+            return line.split('=', 1)[1]
+    return None
+
+
 def parse_env_file(parameter_env_file_path):
     parameters = {}
     with open(parameter_env_file_path, "r") as f:
@@ -110,55 +117,74 @@ def generate_concrete_file(template_content, output_file_path):
     with open(output_file_path, 'w') as file:
         file.write(template_content)
     
+    
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate Service + Timer Files from Template + Env Files')
-    parser.add_argument('-st', '--serviceTemplate', type=str, help='template service file path')
-    parser.add_argument('-e', '--env', type=str, help='env file path')
-    parser.add_argument('-tt', '--timerTemplate', type=str, help='template timer file path')
-    parser.add_argument('-s', '--schedule', type=str, help='schedule json')
+    # parser = argparse.ArgumentParser(description='Generate Service + Timer Files from Template + Env Files')
+    # parser.add_argument('-t', '--template', type=str, nargs=1, help='template service file path')
+    # parser.add_argument('-e', '--env', type=str, nargs=1, help='env file path')
     
-    args = parser.parse_args()
-    template_service_path = args.serviceTemplate
-    param_env_path = args.env
-    template_timer_path = args.timerTemplate
-    schedule_json_path = args.schedule
+    # parser.add_argument('-s', '--schedule', type=str, nargs='?', help='schedule json')
     
-    param_env_filename = param_env_path.split('/')[-1]
+    # args = parser.parse_args()
+    # template_path = args.template
+    # param_env_path = args.env
+    # schedule_json_path = args.schedule
     
-    id_number = param_env_filename.split('_')[1]
+    # param_env_filename = param_env_path.split('/')[-1]
+    # id_number = param_env_filename.split('_')[1]
+    # task_name = template_path.split('/')[-1].split('.')[0]
+    # output_path_service = f"/etc/systemd/system/{task_name}_{id_number}.service"
+    # output_path_timer = f"/etc/systemd/system/{task_name}_{id_number}.timer"
+    # schedule = read_schedule_json(schedule_json_path)
+    # service_template_content = read_template_file(template_service_file_path)
+    # timer_template_content = read_template_file(template_timer_file_path)
+    # task_name = extract_description(service_template_content)
     
-    task_template_name = template_service_path.split('/')[-1].split('.')[0]
-    task_instance_name = task_template_name + '_' + id_number
-        
-    output_path_service = f"/etc/systemd/system/{task_instance_name}.service"
-    output_path_timer = f"/etc/systemd/system/{task_instance_name}.timer"
-    schedule_data = read_schedule_json(schedule_json_path)
-    service_template_content = read_template_file(template_service_path)
-    timer_template_content = read_template_file(template_timer_path)
+    
+    # Define file paths (testing)
+    template_service_file_path = "/opt/45drives/houston/scheduler/templates/ZfsReplicationTask.service"
+    template_timer_file_path = "/opt/45drives/houston/scheduler/templates/Schedule.timer"
+    
+    parameter_env_file_path = "/etc/systemd/system/houston_scheduler_ZfsReplicationTask_0.env"
+    schedule_json_file_path = "/etc/systemd/system/houston_scheduler_ZfsReplicatonTask_0.json"
+    
+    # dynamically create these paths
+    service_output_file_path = "/etc/systemd/system/houston_scheduler_ZfsReplicationTask_0.service"
+    timer_output_file_path = "/etc/systemd/system/houston_scheduler_ZfsReplicationTask_0.timer"
+    
+    service_template_content = read_template_file(template_service_file_path)
+    timer_template_content = read_template_file(template_timer_file_path)
+
+    schedule_data = read_schedule_json(schedule_json_file_path)
+    
+    task_name = extract_description(service_template_content)
     
     # Parse keys/values from environment file
-    parameters = parse_env_file(param_env_path)
+    parameters = parse_env_file(parameter_env_file_path)
 
     # Replace placeholders in service file template with environment variables
     service_template_content = replace_service_placeholders(service_template_content, parameters)
-    service_template_content = service_template_content.replace("{param_env_path}", param_env_path)
+    service_template_content = service_template_content.replace("{param_env_path}", parameter_env_file_path)
 
     # Generate concrete service file
-    generate_concrete_file(service_template_content, output_path_service)
+    generate_concrete_file(service_template_content, service_output_file_path)
     print(service_template_content)
     print("Concrete service file generated successfully.")
     
-    print(schedule_data)
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
-    timer_template_content = timer_template_content.replace("{{description}}", "Timer for " + task_instance_name).replace("{{on_calendar_lines}}", on_calendar_lines_str)
+    timer_template_content = timer_template_content.replace("{{description}}", "Timer for " + task_name).replace("{{on_calendar_lines}}", on_calendar_lines_str)
     
     # Generate concrete timer file
-    generate_concrete_file(timer_template_content, output_path_timer)
+    generate_concrete_file(timer_template_content, timer_output_file_path)
     print(timer_template_content)
     print("Concrete timer file generated successfully.")
     
+    
+    
+    # os.symlink(template_service_file_path, service_output_file_path)
+    # print(f"Symlink created: {service_output_file_path} -> {template_service_file_path}")
     
     
 if __name__ == "__main__":
