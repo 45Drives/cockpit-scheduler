@@ -16,12 +16,10 @@ export class Scheduler implements SchedulerType {
 
 
     registerTaskInstance(taskInstance) {
-        //generate key/value pairs
-        //run script to generate env file with key/value pairs
-        //run script to generate service + timer via env file + template, with schedule (as string?)
+        //generate env file with key/value pairs (Task Parameters)
+        //generate json file with enabled boolean + intervals (Schedule Intervals)
 
-
-        //run systemctl daemon-reload
+        //run script to generate service + timer via template, param env and schedule json
 
     }   
     

@@ -80,20 +80,22 @@ def interval_to_on_calendar(interval):
     date_part = f'{year_part}-{month_part}-{day_part}'
     parts.append(date_part)
     
-    # Handle hour and minute, including steps
+    # Handle hour, minute, and second, including steps
     hour = interval.get('hour', {}).get('value', '*')
     minute = interval.get('minute', {}).get('value', '0')
-    time_part = f'{hour}:{minute}'
+    second = interval.get('second', {}).get('value', '0')
+    time_part = f'{hour}:{minute}:{second}'
     
     # Apply steps to time components if present
-    for unit in ['hour', 'minute']:
+    for unit in ['hour', 'minute', 'second']:
         if unit in interval and 'step' in interval[unit]:
             step = interval[unit]['step']
             if unit == 'hour':
-                time_part = f'{hour}/{step}:{minute}'
+                time_part = f'{hour}/{step}:{minute}:{second}'
             elif unit == 'minute':
-                time_part = f'{hour}:{minute}/{step}'
-    
+                time_part = f'{hour}:{minute}/{step}:{second}'
+            elif unit == 'second':
+                time_part = f'{hour}:{minute}:{second}/{step}'
     parts.append(time_part)
     
     return 'OnCalendar=' + ' '.join(parts)
@@ -169,15 +171,6 @@ def main():
     
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
-    
-    # on_calendar_lines = []
-    # for interval in schedule_data['intervals']:
-    #     print(interval)  # Inspect each interval
-    #     try:
-    #         on_calendar_line = interval_to_on_calendar(interval)
-    #         on_calendar_lines.append(on_calendar_line)
-    #     except TypeError as e:
-    #         print(f"Error processing interval: {interval}. Error: {e}")
             
     timer_template_content = timer_template_content.replace("{description}", "Timer for " + task_instance_name).replace("{on_calendar_lines}", on_calendar_lines_str)
     
