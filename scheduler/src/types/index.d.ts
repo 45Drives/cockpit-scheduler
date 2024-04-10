@@ -28,17 +28,17 @@ interface TaskScheduleType {
 	intervals: TaskScheduleIntervalType[];
 }
 
-// interface TaskScheduleIntervalType {
-// 	value: TimeComponentType;
-// 	unit: TimeUnit;
-// 	dayOfWeek?: (DayOfWeek)[];
-// }
-
 type TaskScheduleIntervalType = {
     [K in TimeUnit]?: TimeComponentType; // Make each property optional
 } & {
     dayOfWeek?: (DayOfWeek)[]; // Additional properties can be added like this
 };
+
+// interface TaskScheduleIntervalType {
+// 	value: TimeComponentType;
+// 	unit: TimeUnit;
+// 	dayOfWeek?: (DayOfWeek)[];
+// }
 
 // interface TaskScheduleIntervalType {
 //     [K in TimeUnit]?: TimeComponentType;

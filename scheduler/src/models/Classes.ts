@@ -95,6 +95,49 @@ export class TaskSchedule implements TaskScheduleType{
         this.enabled = enabled;
         this.intervals = intervals;
     }
+
+    // intervalToOnCalendar(interval: TaskScheduleIntervalType): string {
+    //     let parts: string[] = [];
+    
+    //     // Handle DayOfWeek
+    //     if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
+    //         parts.push(interval.dayOfWeek.join(','));
+    //     }
+    
+    //     // Date components
+    //     let dateParts = ['*', '*', '*']; // Defaults to every day
+    //     ['year', 'month', 'day'].forEach((unit, index) => {
+    //         if (interval[unit]) {
+    //             let value = interval[unit]!.value.toString();
+    //             if (interval[unit]!.step) {
+    //                 value += `/${interval[unit]!.step}`;
+    //             }
+    //             dateParts[index] = value;
+    //         }
+    //     });
+    
+    //     // Time components
+    //     let timeParts = ['00', '00', '00']; // Defaults to 00:00:00
+    //     ['hour', 'minute', 'second'].forEach((unit, index) => {
+    //         if (interval[unit]) {
+    //             let value = interval[unit]!.value.toString();
+    //             if (interval[unit]!.step) {
+    //                 value += `/${interval[unit]!.step}`;
+    //             }
+    //             timeParts[index] = value;
+    //         }
+    //     });
+    
+    //     parts.push(dateParts.join('-'));
+    //     parts.push(timeParts.join(':'));
+    
+    //     return `OnCalendar=${parts.join(' ')}`;
+    // }
+
+    // generateOnCalendarExpressions(taskSchedule: TaskSchedule): string[] {
+    //     return taskSchedule.intervals.map(interval => this.intervalToOnCalendar(interval));
+    // }
+    
 }
 
 class TaskScheduleInterval implements TaskScheduleIntervalType {
