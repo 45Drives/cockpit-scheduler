@@ -70,11 +70,28 @@
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-default">
                                                     <!-- <ChevronRightIcon class="w-6 h-6"/>  -->
                                                     <!-- Need to account for multiple tasks in list, currently one button controls all task details -->
-                                                    <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
-                                                    <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
+                                                    <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
+                                                    <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="col-span-5 h-20">
-                                                    Add Details Here
+                                                <td v-if="showDetails[index]" class="my-5 col-span-5 h-20">
+                                                    <div class="grid grid-cols-5">
+                                                        <div class="col-span-1">
+                                                            <p></p>
+                                                            <p></p>
+                                                        </div>
+                                                        <div class="col-span-1">
+
+                                                        </div>
+                                                        <div class="col-span-1">
+
+                                                        </div>
+                                                        <div class="col-span-1">
+
+                                                        </div>
+                                                        <div class="col-span-1">
+
+                                                        </div>
+                                                    </div>
                                                 </td>           
                                             </tr>
                                         </tbody>
@@ -108,27 +125,6 @@ import AddTask from "../components/wizard/AddTask.vue";
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
-// const dummyTaskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
-
-// const dummyTaskTemplates = ref<TaskTemplateType[]>([
-//     {
-//         name: 'ZFS Replication Task',
-//         parameterSchema: {
-//             label: 'ZFS Replication Config',
-//             key: 'zfs_replication', // Unique key for the parameter schema
-//             children: [
-//                 { label: 'Source', key: 'source', children: []},
-//                 { label: 'Destination', key: 'dest', children: []},
-//                 { label: 'Compression', key: 'compression', children: []},
-//                 // Add other parameters as needed
-//             ]
-//         }
-//     },
-
-//     // Add more TaskTemplates as necessary
-// ]);
-
-
 
 
 
@@ -141,6 +137,4 @@ function taskDetailsBtn(idx) {
 }
 
 provide('show-wizard', showWizard);
-// provide('task-instances', dummyTaskInstances);
-// provide('task-templates', dummyTaskTemplates);
 </script> 

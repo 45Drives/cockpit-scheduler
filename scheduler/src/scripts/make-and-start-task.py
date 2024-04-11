@@ -59,46 +59,31 @@ def interval_to_on_calendar(interval):
     # Initialize default values for date components
     year_part, month_part, day_part = '*', '*', '*'
     
-    # Handle year, month, and day, including steps
+    # Handle year, month, and day
     for unit in ['year', 'month', 'day']:
         if unit in interval:
             value = interval[unit]['value']
-            step = interval[unit].get('step')
-            if step:
-                part = f'{value}/{step}'
-            else:
-                part = value
-            
             if unit == 'year':
-                year_part = part
+                year_part = value
             elif unit == 'month':
-                month_part = part
+                month_part = value
             elif unit == 'day':
-                day_part = part
+                day_part = value
     
     # Construct the date part
     date_part = f'{year_part}-{month_part}-{day_part}'
     parts.append(date_part)
     
-    # Handle hour, minute, and second, including steps
+    # Handle hour, minute, and second
     hour = interval.get('hour', {}).get('value', '*')
-    minute = interval.get('minute', {}).get('value', '0')
+    minute = interval.get('minute', {}).get('value', '*')
     second = interval.get('second', {}).get('value', '0')
     time_part = f'{hour}:{minute}:{second}'
     
-    # Apply steps to time components if present
-    for unit in ['hour', 'minute', 'second']:
-        if unit in interval and 'step' in interval[unit]:
-            step = interval[unit]['step']
-            if unit == 'hour':
-                time_part = f'{hour}/{step}:{minute}:{second}'
-            elif unit == 'minute':
-                time_part = f'{hour}:{minute}/{step}:{second}'
-            elif unit == 'second':
-                time_part = f'{hour}:{minute}:{second}/{step}'
     parts.append(time_part)
     
     return 'OnCalendar=' + ' '.join(parts)
+
 
 def replace_service_placeholders(service_template_content, parameters):
     for key, value in parameters.items():

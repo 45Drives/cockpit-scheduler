@@ -26,6 +26,7 @@ export class Scheduler implements SchedulerType {
                     const newTaskTemplate = new ZFSReplicationTaskTemplate;
                     const parameters = task.parameters;
                     const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.parameterSchema, parameters);
+
                     const newSchedule = new TaskSchedule(task.schedule.enabled, task.schedule.intervals);
                     const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
                     this.taskInstances.push(newTaskInstance);
@@ -96,7 +97,35 @@ export class Scheduler implements SchedulerType {
 
         return nodeCopy;
     }
+
+/* 
+    mapParametersToSchema(node: ParameterNode, parentKey: string, parameters: Record<string, string>): void {
+        const fullKeyPrefix = parentKey ? `${parentKey}_` : '';
     
+        node.children.forEach(child => {
+            const childFullKey = `${fullKeyPrefix}${child.key}`;
+            if (child instanceof ParameterNode && child.children.length > 0) {
+                // For nested nodes, recurse with the updated prefix
+                this.mapParametersToSchema(child, childFullKey, parameters);
+            } else {
+                // Leaf node, attempt to set its value from parameters
+                const parameterValue = parameters[childFullKey];
+                if (parameterValue !== undefined) {
+                    // Convert and assign the value based on the type of the parameter node
+                    if (child instanceof BoolParameter) {
+                        child.value = parameterValue === 'true';
+                    } else if (child instanceof IntParameter) {
+                        child.value = parseInt(parameterValue, 10);
+                    } else if (child instanceof StringParameter || child instanceof ZfsDatasetParameter) {
+                        child.value = parameterValue;
+                    } else {
+                        console.warn(`Unhandled parameter type for key: ${childFullKey}`);
+                    }
+                }
+            }
+        });
+    }
+*/
 
 
     registerTaskInstance(taskInstance) {
@@ -128,11 +157,13 @@ export class Scheduler implements SchedulerType {
     enableSchedule(taskInstance) {
         //activate timer file
         //run systemctl daemon-reload
+        //flip checkbox value
     }
     
     disableSchedule(taskInstance) {
         //deactivate timer file
         //run systemctl daemon-reload
+        //flip checkbox value
     }
     
     updateSchedule(taskInstance) {
@@ -208,7 +239,7 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
                 .addChild(new IntParameter('MBuffer Size', 'mbufferSize', 1))
                 .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
                 .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
-                .addChild(new StringParameter('Custom Name Schema', 'customNameSchema', ''))
+                .addChild(new StringParameter('Custom Name', 'customName', ''))
             )
             .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5));
     }
