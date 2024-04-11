@@ -53,13 +53,13 @@
                                             </tr>
                                         </thead>
                                         <tbody class="bg-default">
-                                            <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm py-1" v-for="dummyTaskInstance, index in dummyTaskInstances" :key="dummyTaskInstance.parameters.key">
+                                            <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm py-1" v-for="taskInstance, index in taskInstances" :key="index">
                                                 <!-- Table Cells -> TaskName, Checkbox, Status, LastRunTimestamp, ChevronButton -->
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
-                                                    {{ dummyTaskInstance.name }}
+                                                    {{ taskInstance.name }}
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
-                                                    <input type="checkbox" v-model="dummyTaskInstance.schedule.enabled"/>
+                                                    <input type="checkbox" v-model="taskInstance.schedule.enabled"/>
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                                     N/A
@@ -69,10 +69,11 @@
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-default">
                                                     <!-- <ChevronRightIcon class="w-6 h-6"/>  -->
-                                                    <button v-if="showDetails == false" @click="taskDetailsBtn()" class="btn btn-secondary">View Details</button>
-                                                    <button v-if="showDetails == true" @click="taskDetailsBtn()" class="btn btn-secondary">Close Details</button>
+                                                    <!-- Need to account for multiple tasks in list, currently one button controls all task details -->
+                                                    <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
+                                                    <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails == true" class="col-span-5 h-20">
+                                                <td v-if="showDetails[index]" class="col-span-5 h-20">
                                                     Add Details Here
                                                 </td>           
                                             </tr>
@@ -106,8 +107,8 @@ import AddTask from "../components/wizard/AddTask.vue";
 
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
-// const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
-const dummyTaskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
+const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
+// const dummyTaskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 // const dummyTaskTemplates = ref<TaskTemplateType[]>([
 //     {
@@ -132,13 +133,14 @@ const dummyTaskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 
 const showWizard = ref(false);
-const showDetails = ref(false);
+// const showDetails = ref(false);
+const showDetails = ref({});
 
-function taskDetailsBtn() {
-    showDetails.value = !showDetails.value;
+function taskDetailsBtn(idx) {
+    showDetails.value[idx] = !showDetails.value[idx];
 }
 
 provide('show-wizard', showWizard);
-provide('task-instances', dummyTaskInstances);
+// provide('task-instances', dummyTaskInstances);
 // provide('task-templates', dummyTaskTemplates);
 </script> 

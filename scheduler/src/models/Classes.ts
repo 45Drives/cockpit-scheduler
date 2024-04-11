@@ -18,18 +18,84 @@ export class Scheduler implements SchedulerType {
         try {
             const state = useSpawn(['/usr/bin/env','python3', '-c', get_tasks_script], {superuser: 'try'});
             const tasksOutput = (await state.promise()).stdout;
-            console.log('Raw tasksOutput:', tasksOutput);
+            // console.log('Raw tasksOutput:', tasksOutput);
             const tasksData = JSON.parse(tasksOutput);
 
-            console.log('tasksData:', tasksData);
+            tasksData.forEach(task => {
+                if (task.template == 'ZfsReplicationTask') {
+                    const newTaskTemplate = new ZFSReplicationTaskTemplate;
+                    const parameters = task.parameters;
+                    const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.parameterSchema, parameters);
+                    const newSchedule = new TaskSchedule(task.schedule.enabled, task.schedule.intervals);
+                    const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
+                    this.taskInstances.push(newTaskInstance);
+                }
+            });
+
+            console.log('this.taskInstances:', this.taskInstances);
     
         } catch (error) {
             console.error(errorString(error));
             return null;
         }
     }
-    
-    
+        
+        
+    createParameterNodeFromSchema(parameterNode: ParameterNode, parameters: Record<string, string>): ParameterNode {
+        // Create a copy of the parameter node to fill with values
+        const nodeCopy = new ParameterNode(parameterNode.label, parameterNode.key);
+
+        // Iterate over child nodes in the schema
+        parameterNode.children.forEach(childSchema => {
+            let childCopy;
+
+            // Check the type of the child to determine how to instantiate it
+            if (childSchema instanceof ZfsDatasetParameter) {
+                // Extract and set the properties for ZfsDatasetParameter
+                // Assuming ZfsDatasetParameter has a method like .setValue() or similar to set its value from parameters
+                childCopy = new ZfsDatasetParameter(
+                    childSchema.label, 
+                    childSchema.key,
+                    parameters[`${parameterNode.key}_${childSchema.key}_host`],
+                    parseInt(parameters[`${parameterNode.key}_${childSchema.key}_port`]),
+                    parameters[`${parameterNode.key}_${childSchema.key}_user`],
+                    parameters[`${parameterNode.key}_${childSchema.key}_pool`],
+                    parameters[`${parameterNode.key}_${childSchema.key}_dataset`]
+                );
+            } else if (childSchema instanceof BoolParameter) {
+                // Similar handling for BoolParameter
+                childCopy = new BoolParameter(
+                    childSchema.label, 
+                    childSchema.key, 
+                    parameters[`${parameterNode.key}_${childSchema.key}`] === 'true'
+                );
+            } else if (childSchema instanceof IntParameter) {
+                // Similar handling for IntParameter
+                childCopy = new IntParameter(
+                    childSchema.label, 
+                    childSchema.key, 
+                    parseInt(parameters[`${parameterNode.key}_${childSchema.key}`])
+                );
+            } else if (childSchema instanceof StringParameter) {
+                // Similar handling for StringParameter
+                childCopy = new StringParameter(
+                    childSchema.label, 
+                    childSchema.key, 
+                    parameters[`${parameterNode.key}_${childSchema.key}`]
+                );
+            } else if (childSchema instanceof ParameterNode) {
+                // If the child is a generic ParameterNode, recursively build its structure
+                childCopy = this.createParameterNodeFromSchema(childSchema, parameters);
+            }
+
+            // Add the instantiated child to the node copy
+            if (childCopy) {
+                nodeCopy.addChild(childCopy);
+            }
+        });
+
+        return nodeCopy;
+    }
     
 
 

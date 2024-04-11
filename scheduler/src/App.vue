@@ -39,22 +39,22 @@ const taskTemplates = initializeTaskTemplates();
 const taskInstances = ref<TaskInstance[]>([]);
 const myScheduler = new Scheduler(taskTemplates, taskInstances.value)
 
-const dummyTaskInstances = ref<TaskInstanceType[]>([
-    {
-        name: 'ZFS Replication Task 1',
-        template: taskTemplates[0], // Reference to the ZFS Replication TaskTemplate
-        parameters: {
-            label: 'zfs rep task config',
-            key: 'zfs_rep_task_1',
-            children: []
-        },
-        schedule: {
-            enabled: true,
-            intervals: []
-        }
-    },
-    // Add more TaskInstances as necessary
-]);
+// const dummyTaskInstances = ref<TaskInstanceType[]>([
+//     {
+//         name: 'ZFS Replication Task 1',
+//         template: taskTemplates[0], // Reference to the ZFS Replication TaskTemplate
+//         parameters: {
+//             label: 'zfs rep task config',
+//             key: 'zfs_rep_task_1',
+//             children: []
+//         },
+//         schedule: {
+//             enabled: true,
+//             intervals: []
+//         }
+//     },
+//     // Add more TaskInstances as necessary
+// ]);
 
 const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
@@ -64,7 +64,7 @@ onMounted(() => {
 });
 
 provide('scheduler', myScheduler);
-provide('task-instances', dummyTaskInstances);
+provide('task-instances', taskInstances);
 provide('task-templates', taskTemplates);
 provide('notifications', notifications);
 provide('notification-fifo', props.notificationFIFO);
