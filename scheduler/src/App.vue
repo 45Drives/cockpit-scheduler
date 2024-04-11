@@ -60,7 +60,7 @@ const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
 
 onMounted(() => {
-	// myScheduler.loadTaskInstances();
+	myScheduler.loadTaskInstances();
 });
 
 provide('scheduler', myScheduler);
