@@ -18,6 +18,10 @@ export function yesNoToBool(state: string) {
 	if (state == 'yes') { return true } else if (state == 'no') { return false }
 }
 
+export function boolToYesNo(state: boolean) {
+	if (state == true) { return 'Yes' } else if (state == false) { return 'No' }
+}
+
 //change the first letter of a word to upper case
 export const upperCaseWord = (word => {
 	let lowerCaseWord = word.toLowerCase();

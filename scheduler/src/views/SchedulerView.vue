@@ -7,7 +7,7 @@
                         <div class="flex flex-row justify-between sm:flex sm:items-center">
                             <div class="px-4 sm:px-0 sm:flex-auto">
                                 <!-- <h2 class="block text-medium font-medium leading-6 text-default">Tasks</h2> -->
-                                <p class="mt-2 text-medium text-default">List of all task instances. Click on Details button to view details.</p>
+                                <p class="mt-2 text-medium text-default">List of all task instances. Click on View Details button to view details.</p>
                             </div>
                             <div class="flex flex-row justify-between">
                                 <!-- <div class="px-3">
@@ -62,7 +62,7 @@
                                                     <input type="checkbox" v-model="taskInstance.schedule.enabled"/>
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
-                                                    N/A
+                                                    &lt;status here&gt;
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                                     &lt;timestamp here&gt;
@@ -73,24 +73,69 @@
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="my-5 col-span-5 h-20">
-                                                    <div class="grid grid-cols-5">
+                                                <td v-if="showDetails[index]" class="col-span-5 h-full border border-default p-2 m-2">
+                                                    <!-- Details for ZFS Replication Task -->
+                                                    <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">
                                                         <div class="col-span-1">
-                                                            <p></p>
-                                                            <p></p>
+                                                            <p class="my-2">
+                                                                Task Type: <b>{{ taskInstance.template.name }}</b>
+                                                            </p>
+                                                            <p class="my-2">
+                                                                Send Type:
+                                                                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
+                                                                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b> 
+                                                            </p>
+                                                           
                                                         </div>
                                                         <div class="col-span-1">
+                                                            <p class="my-2">
+                                                                Source: <b>{{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/{{ findValue(taskInstance.parameters, 'sourceDataset', 'dataset') }}</b>
+                                                            </p>
+                                                            <p class="my-2">
+                                                                Destination: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/{{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}</b>
+                                                            </p> 
+                                                            <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
+                                                                Remote SSH Host: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'host') }}</b>
+                                                                <br/>
+                                                                Remote SSH Port: : <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
+                                                            </p>
+                                                        </div>
+                                                        <div class="col-span-1">
+                                                             <p class="my-2">
+                                                                Recursive: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag')) }}</b>
+                                                            </p>
+                                                            <p class="my-2">
+                                                                Raw: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'raw_flag')) }}</b>
+                                                            </p>
+                                                            <p class="my-2">
+                                                                Compressed: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag')) }}</b>
+                                                            </p>
+                                                        </div>
+                                                       
+                                                        <div class="col-span-2">
+                                                            <p class="my-2">Scheduled Intervals:</p>
+                                                            <div v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
+                                                                <p class="mx-1" v-if="interval.day">Day: {{interval.day.value}}</p>
+                                                                <p class="mx-1" v-if="interval.month">Month: {{interval.month.value}}</p>
+                                                                <p class="mx-1" v-if="interval.year">Year: {{interval.year.value}}</p>
+                                                                <p class="mx-1" v-if="interval.hour">Hour: {{interval.hour.value}}</p>
+                                                                <p class="mx-1" v-if="interval.minute">Minute: {{interval.minute.value}}</p>
+                                                                <p class="mx-1" v-if="interval.dayOfWeek">Day(s) of Week:{{interval.dayOfWeek.values}}</p>
+                                                            </div>
+                                                        </div>                                        
+                                                    </div>
+                                                    <div class="inline-button-group-row justify-between items-center text-center col-span-5 ">
 
-                                                        </div>
-                                                        <div class="col-span-1">
-
-                                                        </div>
-                                                        <div class="col-span-1">
-
-                                                        </div>
-                                                        <div class="col-span-1">
-
-                                                        </div>
+                                                        <button class="btn btn-primary">
+                                                            Run Task
+                                                        </button>
+                                                        <button class="btn btn-secondary">
+                                                            Edit Task
+                                                        </button>
+                                                        <button class="btn btn-danger">
+                                                            Remove Task
+                                                        </button>
+                                                            
                                                     </div>
                                                 </td>           
                                             </tr>
@@ -120,13 +165,11 @@ import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRi
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import LoadingSpinner from '../components/common/LoadingSpinner.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/Classes';
+import { boolToYesNo } from '../composables/helpers'
 import AddTask from "../components/wizard/AddTask.vue";
-
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
-
-
 
 const showWizard = ref(false);
 // const showDetails = ref(false);
@@ -134,6 +177,37 @@ const showDetails = ref({});
 
 function taskDetailsBtn(idx) {
     showDetails.value[idx] = !showDetails.value[idx];
+}
+
+function findValue(obj, targetKey, valueKey) {
+    if (!obj || typeof obj !== 'object') return null;
+
+    // Checking the current level
+    if (obj.key === targetKey) {
+        let foundChild = obj.children?.find(child => child.key === valueKey);
+        return foundChild ? (foundChild.value !== undefined ? foundChild.value : 'Not found') : 'Not found';
+    }
+
+    // Recursively checking in children
+    if (Array.isArray(obj.children)) {
+        for (let child of obj.children) {
+            const result = findValue(child, targetKey, valueKey);
+            if (result !== null) {  // Ensure '0', 'false', or empty string are valid returns
+                return result;
+            }
+        }
+    }
+    
+    return null;  // Return null if nothing is found
+}
+
+
+function getTaskStatus() {
+
+}
+
+function getLastRunTimestamp() {
+
 }
 
 provide('show-wizard', showWizard);

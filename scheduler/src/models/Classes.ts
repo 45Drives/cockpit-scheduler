@@ -42,217 +42,65 @@ export class Scheduler implements SchedulerType {
     }
         
 
-
- // Helper function to flatten the ParameterNode schema into a dictionary for easy lookup
- flattenSchema(node: ParameterNode, prefix = ''): { [key: string]: ParameterNode } {
-    let dict: { [key: string]: ParameterNode } = {};
-    const currentPrefix = prefix ? prefix + '_' : '';
-    dict[currentPrefix + node.key] = node;
-    node.children.forEach(child => {
-        Object.assign(dict, this.flattenSchema(child, currentPrefix + node.key));
-    });
-    return dict;
-}
-
-// Main function to create a ParameterNode from JSON parameters based on a schema
-createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
-    // Flatten the schema to easily match keys from JSON
-    const flatSchema = this.flattenSchema(schema);
-    // Create a deep clone of the schema to fill in values without modifying the original schema
-    function cloneSchema(node: ParameterNode): ParameterNode {
-        let newNode: ParameterNode;
-        // Check node type to instantiate correct parameter type
-        if (node instanceof StringParameter) {
-            newNode = new StringParameter(node.label, node.key);
-        } else if (node instanceof IntParameter) {
-            newNode = new IntParameter(node.label, node.key);
-        } else if (node instanceof BoolParameter) {
-            newNode = new BoolParameter(node.label, node.key);
-        } else {
-            newNode = new ParameterNode(node.label, node.key);
-        }
-
-        node.children.forEach(child => {
-            newNode.addChild(cloneSchema(child));
-        });
-        return newNode;
-    }
-    const parameterRoot = cloneSchema(schema);
-
-    // Function to assign values from JSON to the corresponding ParameterNode
-    function assignValues(node: ParameterNode, prefix = ''): void {
+    // Helper function to flatten the ParameterNode schema into a dictionary for easy lookup
+    flattenSchema(node: ParameterNode, prefix = ''): { [key: string]: ParameterNode } {
+        let dict: { [key: string]: ParameterNode } = {};
         const currentPrefix = prefix ? prefix + '_' : '';
-        const fullKey = currentPrefix + node.key;
-        console.log(`Assigning value for key: ${fullKey}`);  // Debug log to see which keys are being processed
-        if (parameters.hasOwnProperty(fullKey)) {
-            let value = parameters[fullKey];
-            console.log(`Found value: ${value} for key: ${fullKey}`);  // Debug log to confirm values
-            if (node instanceof StringParameter || node instanceof SelectionParameter) {
-                node.value = value;
-            } else if (node instanceof IntParameter) {
-                node.value = parseInt(value);
-            } else if (node instanceof BoolParameter) {
-                node.value = value === 'true';
-            }
-        }
-        node.children.forEach(child => assignValues(child, fullKey));
+        dict[currentPrefix + node.key] = node;
+        node.children.forEach(child => {
+            Object.assign(dict, this.flattenSchema(child, currentPrefix + node.key));
+        });
+        return dict;
     }
 
-    // Start the assignment from the root
-    assignValues(parameterRoot);
-    return parameterRoot;
-}
-
-
-        
-/*     createParameterNodeFromSchema(parameterNode, parameters) {
-        // Log the incoming node and parameters to see what's being processed
-        console.log(`Creating parameter node from schema for ${parameterNode.label} with key ${parameterNode.key}`);
-        console.log(`Incoming parameters:`, parameters);
-    
-        // Create a copy of the parameter node to fill with values
-        const nodeCopy = new ParameterNode(parameterNode.label, parameterNode.key);
-    
-        // Iterate over child nodes in the schema
-        parameterNode.children.forEach(childSchema => {
-            console.log(`Processing child node: ${childSchema.label} with key ${childSchema.key}`);
-    
-            let childCopy;
-    
-            // Determine the full parameter key for logging
-            const fullParamKey = `${parameterNode.key}_${childSchema.key}`;
-            console.log(`Full parameter key constructed: ${fullParamKey}`);
-    
-            // Check the type of the child to determine how to instantiate it
-            if (childSchema instanceof ZfsDatasetParameter) {
-                // Log the specific keys and values being used to instantiate this parameter
-                console.log(`Values for ZfsDatasetParameter: host=${parameters[`${fullParamKey}_host`]}, port=${parameters[`${fullParamKey}_port`]}, pool=${parameters[`${fullParamKey}_pool`]}, pool=${parameters[`${fullParamKey}_dataset`]}`);
-                
-                childCopy = new ZfsDatasetParameter(
-                    childSchema.label,
-                    childSchema.key,
-                    parameters[`${fullParamKey}_host`],
-                    parseInt(parameters[`${fullParamKey}_port`]),
-                    parameters[`${fullParamKey}_user`],
-                    parameters[`${fullParamKey}_pool`],
-                    parameters[`${fullParamKey}_dataset`]
-                );
-            } else if (childSchema instanceof BoolParameter) {
-                console.log(`Value for BoolParameter: ${parameters[fullParamKey]} (expected true/false)`);
-                
-                childCopy = new BoolParameter(
-                    childSchema.label,
-                    childSchema.key,
-                    parameters[fullParamKey] === 'true'
-                );
-            } else if (childSchema instanceof IntParameter) {
-                console.log(`Value for IntParameter: ${parameters[fullParamKey]} (parsed integer)`);
-    
-                childCopy = new IntParameter(
-                    childSchema.label,
-                    childSchema.key,
-                    parseInt(parameters[fullParamKey])
-                );
-            } else if (childSchema instanceof StringParameter) {
-                console.log(`Value for StringParameter: ${parameters[fullParamKey]} (raw string)`);
-    
-                childCopy = new StringParameter(
-                    childSchema.label,
-                    childSchema.key,
-                    parameters[fullParamKey]
-                );
-            } else if (childSchema instanceof ParameterNode) {
-                console.log(`Recursively building parameter node for ${childSchema.label}`);
-    
-                childCopy = this.createParameterNodeFromSchema(childSchema, parameters);
-            }
-    
-            if (childCopy) {
-                console.log(`Adding child: ${childCopy.label}`);
-                nodeCopy.addChild(childCopy);
+    // Main function to create a ParameterNode from JSON parameters based on a schema
+    createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
+        // Flatten the schema to easily match keys from JSON
+        const flatSchema = this.flattenSchema(schema);
+        // Create a deep clone of the schema to fill in values without modifying the original schema
+        function cloneSchema(node: ParameterNode): ParameterNode {
+            let newNode: ParameterNode;
+            // Check node type to instantiate correct parameter type
+            if (node instanceof StringParameter) {
+                newNode = new StringParameter(node.label, node.key);
+            } else if (node instanceof IntParameter) {
+                newNode = new IntParameter(node.label, node.key);
+            } else if (node instanceof BoolParameter) {
+                newNode = new BoolParameter(node.label, node.key);
             } else {
-                console.log(`Warning: Child node for ${childSchema.label} could not be created. Check parameter keys and values.`);
+                newNode = new ParameterNode(node.label, node.key);
             }
-        });
-    
-        return nodeCopy;
-    } */
 
+            node.children.forEach(child => {
+                newNode.addChild(cloneSchema(child));
+            });
+            return newNode;
+        }
+        const parameterRoot = cloneSchema(schema);
 
-    
-    // createParameterNodeFromSchema(parameterNode, parameters) {
-    //     // Log the incoming node and parameters to see what's being processed
-    //     console.log(`Creating parameter node from schema for ${parameterNode.label} with key ${parameterNode.key}`);
-    //     console.log(`Incoming parameters:`, parameters);
-    
-    //     // Create a copy of the parameter node to fill with values
-    //     const nodeCopy = new ParameterNode(parameterNode.label, parameterNode.key);
-    
-    //     // Iterate over child nodes in the schema
-    //     parameterNode.children.forEach(childSchema => {
-    //         console.log(`Processing child node: ${childSchema.label} with key ${childSchema.key}`);
-    
-    //         let childCopy;
-    
-    //         // Build the full key from the parent node key and the child node key
-    //         const fullParamKey = `${parameterNode.key}_${childSchema.key}`;
-    //         console.log(`Full parameter key constructed: ${fullParamKey}`);
-    //         console.log(`Value retrieved for key '${fullParamKey}':`, parameters[fullParamKey]);
-    
-    //         // Check the type of the child to determine how to instantiate it
-    //         if (childSchema instanceof ZfsDatasetParameter) {
-    //             console.log(`Instantiating ZfsDatasetParameter with values host=${parameters[`${fullParamKey}_host`]}`);
-                
-    //             childCopy = new ZfsDatasetParameter(
-    //                 childSchema.label,
-    //                 childSchema.key,
-    //                 parameters[`${fullParamKey}_host`],
-    //                 parseInt(parameters[`${fullParamKey}_port`]),
-    //                 parameters[`${fullParamKey}_user`],
-    //                 parameters[`${fullParamKey}_pool`],
-    //                 parameters[`${fullParamKey}_dataset`]
-    //             );
-    //         } else if (childSchema instanceof BoolParameter) {
-    //             console.log(`Instantiating BoolParameter with value:`, parameters[fullParamKey] === 'true');
-                
-    //             childCopy = new BoolParameter(
-    //                 childSchema.label,
-    //                 childSchema.key,
-    //                 parameters[fullParamKey] === 'true'
-    //             );
-    //         } else if (childSchema instanceof IntParameter) {
-    //             console.log(`Instantiating IntParameter with value:`, parseInt(parameters[fullParamKey]));
-                
-    //             childCopy = new IntParameter(
-    //                 childSchema.label,
-    //                 childSchema.key,
-    //                 parseInt(parameters[fullParamKey])
-    //             );
-    //         } else if (childSchema instanceof StringParameter) {
-    //             console.log(`Instantiating StringParameter with value:`, parameters[fullParamKey]);
-                
-    //             childCopy = new StringParameter(
-    //                 childSchema.label,
-    //                 childSchema.key,
-    //                 parameters[fullParamKey]
-    //             );
-    //         } else if (childSchema instanceof ParameterNode) {
-    //             console.log(`Recursively building parameter node for ${childSchema.label}`);
-                
-    //             childCopy = this.createParameterNodeFromSchema(childSchema, parameters);
-    //         }
-    
-    //         if (childCopy) {
-    //             nodeCopy.addChild(childCopy);
-    //             console.log(`Added child node: ${childSchema.label} with key ${childSchema.key}`);
-    //         } else {
-    //             console.log(`Warning: Child node for ${childSchema.label} could not be created. Check parameter keys and values.`);
-    //         }
-    //     });
-    
-    //     return nodeCopy;
-    // }
-    
+        // Function to assign values from JSON to the corresponding ParameterNode
+        function assignValues(node: ParameterNode, prefix = ''): void {
+            const currentPrefix = prefix ? prefix + '_' : '';
+            const fullKey = currentPrefix + node.key;
+            // console.log(`Assigning value for key: ${fullKey}`);  // Debug log to see which keys are being processed
+            if (parameters.hasOwnProperty(fullKey)) {
+                let value = parameters[fullKey];
+                // console.log(`Found value: ${value} for key: ${fullKey}`);  // Debug log to confirm values
+                if (node instanceof StringParameter || node instanceof SelectionParameter) {
+                    node.value = value;
+                } else if (node instanceof IntParameter) {
+                    node.value = parseInt(value);
+                } else if (node instanceof BoolParameter) {
+                    node.value = value === 'true';
+                }
+            }
+            node.children.forEach(child => assignValues(child, fullKey));
+        }
+
+        // Start the assignment from the root
+        assignValues(parameterRoot);
+        return parameterRoot;
+    }
 
     registerTaskInstance(taskInstance) {
         //generate env file with key/value pairs (Task Parameters)
