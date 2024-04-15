@@ -42,61 +42,79 @@ export class Scheduler implements SchedulerType {
     }
         
         
-    createParameterNodeFromSchema(parameterNode: ParameterNode, parameters: Record<string, string>): ParameterNode {
+    createParameterNodeFromSchema(parameterNode, parameters) {
+        // Log the incoming node and parameters to see what's being processed
+        console.log(`Creating parameter node from schema for ${parameterNode.label} with key ${parameterNode.key}`);
+        console.log(`Incoming parameters:`, parameters);
+    
         // Create a copy of the parameter node to fill with values
         const nodeCopy = new ParameterNode(parameterNode.label, parameterNode.key);
-
+    
         // Iterate over child nodes in the schema
         parameterNode.children.forEach(childSchema => {
+            console.log(`Processing child node: ${childSchema.label} with key ${childSchema.key}`);
+    
             let childCopy;
-
+    
+            // Determine the full parameter key for logging
+            const fullParamKey = `${parameterNode.key}_${childSchema.key}`;
+            console.log(`Full parameter key constructed: ${fullParamKey}`);
+    
             // Check the type of the child to determine how to instantiate it
             if (childSchema instanceof ZfsDatasetParameter) {
-                // Extract and set the properties for ZfsDatasetParameter
-                // Assuming ZfsDatasetParameter has a method like .setValue() or similar to set its value from parameters
+                // Log the specific keys and values being used to instantiate this parameter
+                console.log(`Values for ZfsDatasetParameter: host=${parameters[`${fullParamKey}_host`]}, port=${parameters[`${fullParamKey}_port`]}`);
+                
                 childCopy = new ZfsDatasetParameter(
-                    childSchema.label, 
+                    childSchema.label,
                     childSchema.key,
-                    parameters[`${parameterNode.key}_${childSchema.key}_host`],
-                    parseInt(parameters[`${parameterNode.key}_${childSchema.key}_port`]),
-                    parameters[`${parameterNode.key}_${childSchema.key}_user`],
-                    parameters[`${parameterNode.key}_${childSchema.key}_pool`],
-                    parameters[`${parameterNode.key}_${childSchema.key}_dataset`]
+                    parameters[`${fullParamKey}_host`],
+                    parseInt(parameters[`${fullParamKey}_port`]),
+                    parameters[`${fullParamKey}_user`],
+                    parameters[`${fullParamKey}_pool`],
+                    parameters[`${fullParamKey}_dataset`]
                 );
             } else if (childSchema instanceof BoolParameter) {
-                // Similar handling for BoolParameter
+                console.log(`Value for BoolParameter: ${parameters[fullParamKey]} (expected true/false)`);
+                
                 childCopy = new BoolParameter(
-                    childSchema.label, 
-                    childSchema.key, 
-                    parameters[`${parameterNode.key}_${childSchema.key}`] === 'true'
+                    childSchema.label,
+                    childSchema.key,
+                    parameters[fullParamKey] === 'true'
                 );
             } else if (childSchema instanceof IntParameter) {
-                // Similar handling for IntParameter
+                console.log(`Value for IntParameter: ${parameters[fullParamKey]} (parsed integer)`);
+    
                 childCopy = new IntParameter(
-                    childSchema.label, 
-                    childSchema.key, 
-                    parseInt(parameters[`${parameterNode.key}_${childSchema.key}`])
+                    childSchema.label,
+                    childSchema.key,
+                    parseInt(parameters[fullParamKey])
                 );
             } else if (childSchema instanceof StringParameter) {
-                // Similar handling for StringParameter
+                console.log(`Value for StringParameter: ${parameters[fullParamKey]} (raw string)`);
+    
                 childCopy = new StringParameter(
-                    childSchema.label, 
-                    childSchema.key, 
-                    parameters[`${parameterNode.key}_${childSchema.key}`]
+                    childSchema.label,
+                    childSchema.key,
+                    parameters[fullParamKey]
                 );
             } else if (childSchema instanceof ParameterNode) {
-                // If the child is a generic ParameterNode, recursively build its structure
+                console.log(`Recursively building parameter node for ${childSchema.label}`);
+    
                 childCopy = this.createParameterNodeFromSchema(childSchema, parameters);
             }
-
-            // Add the instantiated child to the node copy
+    
             if (childCopy) {
+                console.log(`Adding child: ${childCopy.label}`);
                 nodeCopy.addChild(childCopy);
+            } else {
+                console.log(`Warning: Child node for ${childSchema.label} could not be created. Check parameter keys and values.`);
             }
         });
-
+    
         return nodeCopy;
     }
+    
 
 /* 
     mapParametersToSchema(node: ParameterNode, parentKey: string, parameters: Record<string, string>): void {

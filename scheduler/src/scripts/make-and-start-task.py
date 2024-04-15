@@ -125,16 +125,20 @@ def main():
     
     param_env_filename = param_env_path.split('/')[-1]
     
-    id_number = param_env_filename.split('_')[-1].split('.')[0]
-    
     task_template_name = template_service_path.split('/')[-1].split('.')[0]
-    task_instance_name = task_template_name + '_' + id_number
+    
+    # task name based on template name and id number
+    # id_number = param_env_filename.split('_')[-1].split('.')[0]
+    # task_instance_name = task_template_name + '_' + id_number
+    
+    # env file will always be saved as 'houston_scheduler_{taskName}.env'
+    task_instance_name = param_env_filename.split('_')[3].split('.')[0]
     
     service_file_name = task_instance_name + '.service'
     timer_file_name = task_instance_name + '.timer'
         
-    output_path_service = f"/etc/systemd/system/houston_scheduler_{service_file_name}"
-    output_path_timer = f"/etc/systemd/system/houston_scheduler_{timer_file_name}"
+    output_path_service = f"/etc/systemd/system/houston_scheduler_{task_template_name}_{service_file_name}"
+    output_path_timer = f"/etc/systemd/system/houston_scheduler_{task_template_name}_{timer_file_name}"
     
     service_template_content = read_template_file(template_service_path)
     timer_template_content = read_template_file(template_timer_path)
@@ -157,14 +161,15 @@ def main():
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
             
-    timer_template_content = timer_template_content.replace("{description}", "Timer for " + task_instance_name).replace("{on_calendar_lines}", on_calendar_lines_str)
+    timer_template_content = timer_template_content.replace("{description}", "Timer for " + task_instance_name + " (" + task_template_name + ")").replace("{on_calendar_lines}", on_calendar_lines_str)
     
     # Generate concrete timer file
     generate_concrete_file(timer_template_content, output_path_timer)
     print(timer_template_content)
     print("Concrete timer file generated successfully.")
     
-    manage_systemd_service(timer_file_name)
+    # Restart systemd-daemon and enable & start timer
+    # manage_systemd_service(timer_file_name)
     
 if __name__ == "__main__":
 	main()
