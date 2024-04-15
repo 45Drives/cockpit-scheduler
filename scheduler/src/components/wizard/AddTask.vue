@@ -83,7 +83,11 @@ const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepCon
         .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
         .addChild(new StringParameter('Custom Name', 'customName', ''))
     )
-    .addChild(new IntParameter('Snapshot Retention', 'snapsToKeep', 5));
+    .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
+        .addChild(new IntParameter('Source', 'source', 5))
+        .addChild(new IntParameter('Destination', 'destination', 5)
+    )
+);
 
 const selectedTemplate = new TaskTemplate('ZFS Replication Task', configSchema)
 
