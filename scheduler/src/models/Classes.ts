@@ -1,6 +1,10 @@
 import { useSpawn, errorString } from '@45drives/cockpit-helpers';
 // @ts-ignore
-import get_tasks_script from '../scripts/get-task-instances.py?raw'
+import get_tasks_script from '../scripts/get-task-instances.py?raw';
+// @ts-ignore
+import get_datasets_script from '../scripts/get-datasets-in-pool.py?raw';
+// @ts-ignore
+import get_pools_script from '../scripts/get-pools.py?raw';
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
 
@@ -222,16 +226,22 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
         );
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ZFSReplicationTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
+    
+    // createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): TaskInstance {
+    //     return new TaskInstance(this.name, this, parameters, schedule!);
+    // }
+    
 }
 
 export class ParameterNode implements ParameterNodeType {
     label: string;
     key: string;
     children: ParameterNode[];
+    value: any;
 
     constructor(label: string, key: string) {
         this.label = label;
@@ -271,6 +281,9 @@ export class ParameterNode implements ParameterNodeType {
             return GenericComponent;
         }
     } */
+
+
+      
 }
 
 export class StringParameter extends ParameterNode implements StringParameterType {
@@ -352,13 +365,46 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         this.addChild(new StringParameter("User", "user", user));
         
         // const poolParam = new SelectionParameter("Pool", "pool", pool);
-        const poolParam = new StringParameter("Pool", "pool", pool);
+        const poolParam = new SelectionParameter("Pool", "pool", pool);
         this.addChild(poolParam);
         
         // const datasetParam = new SelectionParameter("Dataset", "dataset", dataset);
-        const datasetParam = new StringParameter("Dataset", "dataset", dataset);     
+        const datasetParam = new SelectionParameter("Dataset", "dataset", dataset);     
         this.addChild(datasetParam);
+
     }
+
+    async loadPools() {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_pools_script, this.children['host'], this.children['port'], this.children['user']]);
+        const poolsData = (await state.promise()).stdout;
+        const pools = JSON.parse(poolsData)
+        const poolParam = this.getChild('pool') as SelectionParameter;
+
+        pools.forEach(pool => {
+            poolParam.addOption(new SelectionOption(pool, pool));
+            // this.loadDatasets(pools[0]);
+        });
+    }
+
+    async loadDatasets(pool: string) {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_datasets_script, this.children['host'], this.children['port'], this.children['user'], pool]);
+        const datasetsData = (await state.promise()).stdout;
+        const datasets = JSON.parse(datasetsData)
+        const datasetParam = this.getChild('dataset') as SelectionParameter;
+        datasets.forEach(dataset => {
+            datasetParam.addOption(new SelectionOption(dataset, dataset));
+        });
+    }
+
+    getChild(key: string): ParameterNode {
+        const child = this.children.find(child => child.key === key);
+        if (!child) {
+            throw new Error(`Child with key ${key} not found`);
+        }
+        return child;
+    }
+    
+
 
     // Method to create ZfsDatasetParameter from a location
     static fromLocation(label: string, key: string, location: Location): ZfsDatasetParameter {
@@ -372,7 +418,7 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         const key = (this.children[1] as StringParameter).value;
         const host = (this.children[2] as StringParameter).value;
         const port = (this.children[3] as IntParameter).value;
-        const user = (this.children[4] as SelectionParameter).value;
+        const user = (this.children[4] as StringParameter).value;
         const root = (this.children[5] as SelectionParameter).value;
         const path = (this.children[6] as SelectionParameter).value;
 

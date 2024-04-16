@@ -4,7 +4,7 @@
             Add New Task
         </template>
         <template v-slot:content>
-            <div>
+            <div v-if="taskTemplates.length > 0">
                 <div>
 					<label :for="getIdKey('task-template-selection')" class="block text-sm font-medium leading-6 text-default">Select Type of Task to Add</label>
 					<select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
@@ -12,10 +12,9 @@
 					</select>
 				</div>
                 <div v-if="selectedTemplate">
-                    <div v-for="param in selectedTemplate.parameterSchema.children" :key="param.key">
-                        <!-- <component :is="param.uiComponent!()" :param="param"/> -->
-                        
-                    </div>
+                    <!-- <div v-for="param in selectedTemplate.parameterSchema" :key="param.key"> -->
+                        <ParameterInput :selectedTemplate="selectedTemplate"/>
+                    <!-- </div> -->
                 </div>
             </div>
         </template>
@@ -48,10 +47,10 @@
 </template>
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
-import { Switch } from '@headlessui/vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../common/ParameterInput.vue';
 import { TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
+
 
 interface AddTaskProps {
 	idKey: string;
@@ -63,6 +62,8 @@ const props = defineProps<AddTaskProps>();
 const newTask = ref<TaskInstanceType>();
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
+const sourceDatasets = ref([]);
+const destDatasets = ref([]);
 
 const showWizard = inject<Ref<boolean>>('show-wizard')!;
 const adding = ref(false);
@@ -89,14 +90,28 @@ const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepCon
     )
 );
 
-const selectedTemplate = new TaskTemplate('ZFS Replication Task', configSchema)
+// const selectedTemplate = new TaskTemplate(taskTemplates[0].name, configSchema)
+const selectedTemplate = ref<TaskTemplateType>(taskTemplates[0]);
+
 
 function addTaskBtn() {
-
+    
 }
 
+// const newTask = reactive<TaskInstance>({
+//     name: '',
+//     template: new ZFSReplicationTaskTemplate(),
+//     parameters: {
+        
+//     },
+// });
 
-
+onMounted(() => {
+    // if (taskTemplates.value.length > 0) {
+    //     selectedTemplate.value = taskTemplates.value[0];
+    // }
+    
+});
     
 
 const getIdKey = (name: string) => `${props.idKey}-${name}`;

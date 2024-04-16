@@ -113,7 +113,7 @@
                                                         </div>
                                                        
                                                         <div class="col-span-2">
-                                                            <p class="my-2">Scheduled Intervals:</p>
+                                                            <p class="my-2">Schedules:</p>
                                                             <div v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
                                                                 <p class="mx-1" v-if="interval.day">Day: {{interval.day.value}}</p>
                                                                 <p class="mx-1" v-if="interval.month">Month: {{interval.month.value}}</p>
@@ -124,16 +124,23 @@
                                                             </div>
                                                         </div>                                        
                                                     </div>
-                                                    <div class="inline-button-group-row justify-between items-center text-center col-span-5 ">
+                                                    <div class="button-group-row justify-between col-span-5 mt-2 ">
 
-                                                        <button class="btn btn-primary">
-                                                            Run Task
+                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
+                                                            Run Now
+                                                            <PlayIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button class="btn btn-secondary">
-                                                            Edit Task
+                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                            Edit
+                                                            <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button class="btn btn-danger">
-                                                            Remove Task
+                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                            Manage
+                                                            <CalendarDaysIcon class="h-5 ml-2 mt-0.5"/>
+                                                        </button>
+                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+                                                            Remove
+                                                            <TrashIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
                                                             
                                                     </div>
@@ -160,15 +167,15 @@
 <script setup lang="ts">
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-import {computed, Ref, inject, ref, provide} from 'vue';
-import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRightIcon } from '@heroicons/vue/24/outline';
+import {computed, Ref, inject, ref, provide, onMounted} from 'vue';
+import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRightIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon } from '@heroicons/vue/24/outline';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import LoadingSpinner from '../components/common/LoadingSpinner.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/Classes';
 import { boolToYesNo } from '../composables/helpers'
 import AddTask from "../components/wizard/AddTask.vue";
 
-const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
+// const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 const showWizard = ref(false);
@@ -209,6 +216,8 @@ function getTaskStatus() {
 function getLastRunTimestamp() {
 
 }
+
+
 
 provide('show-wizard', showWizard);
 </script> 

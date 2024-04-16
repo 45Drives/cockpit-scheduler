@@ -58,7 +58,7 @@ interface ParameterNodeType {
 	label: string;
 	key: string;
 	children: ParameterNodeType[];
-	uiComponent?(): UIComponent;
+	value: any?
 }
 
 interface SelectionParameterType extends ParameterNodeType {
