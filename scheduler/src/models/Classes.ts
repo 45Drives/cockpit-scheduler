@@ -1,12 +1,9 @@
-import { useSpawn, errorString } from '@45drives/cockpit-helpers';
-// @ts-ignore
-import get_tasks_script from '../scripts/get-task-instances.py?raw';
-// @ts-ignore
-import get_datasets_script from '../scripts/get-datasets-in-pool.py?raw';
-// @ts-ignore
-import get_pools_script from '../scripts/get-pools.py?raw';
-
-//['/usr/bin/env', 'python3', '-c', script, ...args ]
+import { getTaskData, getPoolData, getDatasetData } from '../composables/getData';
+import BoolParam from '../components/parameters/BoolParam.vue';
+import StringParam from '../components/parameters/StringParam.vue';
+import SelectParam from '../components/parameters/SelectParam.vue';
+import IntParam from '../components/parameters/IntParam.vue';
+import ZFSDatasetParam from '../components/parameters/ZFSDatasetParam.vue';
 
 
 export class Scheduler implements SchedulerType {
@@ -19,30 +16,23 @@ export class Scheduler implements SchedulerType {
     }
 
     async loadTaskInstances() {
-        try {
-            const state = useSpawn(['/usr/bin/env','python3', '-c', get_tasks_script], {superuser: 'try'});
-            const tasksOutput = (await state.promise()).stdout;
-            // console.log('Raw tasksOutput:', tasksOutput);
-            const tasksData = JSON.parse(tasksOutput);
+     
+        const tasksData = await getTaskData();
 
-            tasksData.forEach(task => {
-                if (task.template == 'ZfsReplicationTask') {
-                    const newTaskTemplate = new ZFSReplicationTaskTemplate;
-                    const parameters = task.parameters;
-                    const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.parameterSchema, parameters);
+        tasksData.forEach(task => {
+            if (task.template == 'ZfsReplicationTask') {
+                const newTaskTemplate = new ZFSReplicationTaskTemplate;
+                const parameters = task.parameters;
+                const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.parameterSchema, parameters);
 
-                    const newSchedule = new TaskSchedule(task.schedule.enabled, task.schedule.intervals);
-                    const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
-                    this.taskInstances.push(newTaskInstance);
-                }
-            });
+                const newSchedule = new TaskSchedule(task.schedule.enabled, task.schedule.intervals);
+                const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
+                this.taskInstances.push(newTaskInstance);
+            }
+        });
 
-            console.log('this.taskInstances:', this.taskInstances);
-    
-        } catch (error) {
-            console.error(errorString(error));
-            return null;
-        }
+        console.log('this.taskInstances:', this.taskInstances);
+
     }
         
 
@@ -264,25 +254,53 @@ export class ParameterNode implements ParameterNodeType {
         // Implementation for validation
     }
 
-    /* uiComponent(): Component {
+    uiComponent(): UIComponent {
          // Dynamically return Vue component based on parameter type
         if (this instanceof StringParameter) {
-            return StringParameterComponent;
+            return StringParam;
         } else if (this instanceof IntParameter) {
-            return IntParameterComponent;
+            return IntParam;
         } else if (this instanceof BoolParameter) {
-            return BoolParameterComponent;
+            return BoolParam;
         } else if (this instanceof SelectionParameter) {
-            return SelectParameterComponent;
+            return SelectParam;
         } else if (this instanceof ZfsDatasetParameter) {
-            return ZFSDatasetParameterComponent;
+            return ZFSDatasetParam;
         } else {
             // Handle other parameter types or default case
-            return GenericComponent;
+            return StringParam;
         }
-    } */
+    }
 
-
+    // cloneParameterNode(node) {
+    //     let clonedNode;
+      
+    //     if (node instanceof StringParameter) {
+    //       clonedNode = new StringParameter(node.label, node.key, node.value);
+    //     } else if (node instanceof IntParameter) {
+    //       clonedNode = new IntParameter(node.label, node.key, node.value);
+    //     } else if (node instanceof BoolParameter) {
+    //       clonedNode = new BoolParameter(node.label, node.key, node.value);
+    //     } else if (node instanceof SelectionParameter) {
+    //       clonedNode = new SelectionParameter(node.label, node.key, node.value, [...node.options]);
+    //     } else if (node instanceof ZfsDatasetParameter) {
+    //         const host = node.getChild('host').value;
+    //         const port = node.getChild('port').value;
+    //         const user = node.getChild('user').value;
+    //         const pool = node.getChild('pool').value;
+    //         const dataset = node.getChild('dataset').value;
+    //         clonedNode = new ZfsDatasetParameter(node.label, node.key, host, port, user, pool, dataset);
+    //     } else {
+    //       clonedNode = new ParameterNode(node.label, node.key);
+    //     }
+      
+    //     // Recursively clone children
+    //     node.children.forEach(child => {
+    //       clonedNode.addChild(this.cloneParameterNode(child));
+    //     });
+      
+    //     return clonedNode;
+    //   }
       
 }
 
@@ -366,6 +384,7 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         
         // const poolParam = new SelectionParameter("Pool", "pool", pool);
         const poolParam = new SelectionParameter("Pool", "pool", pool);
+        
         this.addChild(poolParam);
         
         // const datasetParam = new SelectionParameter("Dataset", "dataset", dataset);
@@ -375,9 +394,7 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
     }
 
     async loadPools() {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_pools_script, this.children['host'], this.children['port'], this.children['user']]);
-        const poolsData = (await state.promise()).stdout;
-        const pools = JSON.parse(poolsData)
+        const pools = await getPoolData(this.children['host'], this.children['port'], this.children['user'])
         const poolParam = this.getChild('pool') as SelectionParameter;
 
         pools.forEach(pool => {
@@ -387,10 +404,9 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
     }
 
     async loadDatasets(pool: string) {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_datasets_script, this.children['host'], this.children['port'], this.children['user'], pool]);
-        const datasetsData = (await state.promise()).stdout;
-        const datasets = JSON.parse(datasetsData)
+        const datasets = await getDatasetData(this.children['host'], this.children['port'], this.children['user'], pool);
         const datasetParam = this.getChild('dataset') as SelectionParameter;
+        
         datasets.forEach(dataset => {
             datasetParam.addOption(new SelectionOption(dataset, dataset));
         });

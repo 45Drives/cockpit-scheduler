@@ -49,7 +49,7 @@
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../common/ParameterInput.vue';
-import { TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
+import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
 
 
 interface AddTaskProps {
@@ -62,8 +62,7 @@ const props = defineProps<AddTaskProps>();
 const newTask = ref<TaskInstanceType>();
 
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
-const sourceDatasets = ref([]);
-const destDatasets = ref([]);
+const myScheduler = inject<Scheduler>('scheduler')!;
 
 const showWizard = inject<Ref<boolean>>('show-wizard')!;
 const adding = ref(false);
@@ -72,7 +71,7 @@ const errorFeedback = ref('')
 
 // const selectedTemplate = ref();
 
-const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
+const zfsRepConfigSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
     .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', '', ''))
     .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
     .addChild(new ParameterNode('Send Options', 'sendOptions')
@@ -91,8 +90,7 @@ const configSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepCon
 );
 
 // const selectedTemplate = new TaskTemplate(taskTemplates[0].name, configSchema)
-const selectedTemplate = ref<TaskTemplateType>(taskTemplates[0]);
-
+const selectedTemplate = ref<TaskTemplateType>();
 
 function addTaskBtn() {
     
@@ -104,6 +102,10 @@ function addTaskBtn() {
 //     parameters: {
         
 //     },
+// });
+
+// watch(selectedTemplate, (newVal, oldVal) => {
+
 // });
 
 onMounted(() => {

@@ -33,17 +33,6 @@ type TaskScheduleIntervalType = {
     dayOfWeek?: (DayOfWeek)[]; // Additional properties can be added like this
 };
 
-// interface TaskScheduleIntervalType {
-// 	value: TimeComponentType;
-// 	unit: TimeUnit;
-// 	dayOfWeek?: (DayOfWeek)[];
-// }
-
-// interface TaskScheduleIntervalType {
-//     [K in TimeUnit]?: TimeComponentType;
-//     dayOfWeek?: DayOfWeek[]; // Keeping dayOfWeek as a separate, optional property
-// }
-
 interface LocationType {
 	host: string;
 	port: number;
@@ -58,7 +47,8 @@ interface ParameterNodeType {
 	label: string;
 	key: string;
 	children: ParameterNodeType[];
-	value: any?
+	value?: any;
+	uiComponent?: UIComponent;
 }
 
 interface SelectionParameterType extends ParameterNodeType {
@@ -104,13 +94,3 @@ interface TaskExecutionResultType {
 
 
 type ConfirmationCallback = () => void;
-
-//object for navigation (generic)
-// interface NavigationItem {
-// 	name: string;
-// 	tag: string;
-// 	current: boolean;
-// 	show: boolean;
-// }
-
-// type NavigationCallback = (item: NavigationItem) => void;
