@@ -1,5 +1,6 @@
 <template>
     <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+
         <div name="source-data" class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
             <label class="mt-1 block text-base leading-6 text-default">Source Location</label>
             <div name="source-pool">
@@ -14,7 +15,12 @@
                     <option v-for="dataset in sourceDatasets">{{ dataset }}</option>
                 </select>
             </div>
+            <div name="source-snapshot-retention">
+                <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Source)</label>
+                <input type="number" v-model="snapsToKeepSrc" class="mt-1 block w-full input-textlike bg-default" placeholder=""/> 
+            </div>
         </div>
+
         <div name="destination-data" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
             <label class="mt-1 block text-base leading-6 text-default">Target Location</label>
             <div name="destination-pool">
@@ -29,12 +35,17 @@
                     <option v-for="dataset in destDatasets">{{ dataset }}</option>
                 </select>
             </div>
+            <div name="destination-snapshot-retention">
+                <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Destination)</label>
+                <input type="number" v-model="snapsToKeepDest" class="mt-1 block w-full input-textlike bg-default" placeholder=""/> 
+            </div>
         </div>
-        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
+
+        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
             <div class="grid grid-cols-2 mt-1">
                 <label class="col-span-1 block text-base leading-6 text-default">Remote Target</label>
-                <div class="col-span-1 items-end text-end justify-end -mt-2">
-                        <button v-if="!testingSSH" @click="confirmTest(destHost)" class="mt-1 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                <div class="col-span-1 items-end text-end justify-end -mt-3">
+                        <button v-if="!testingSSH" @click="confirmTest(destHost, destUser)" class="mt-1 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
                         <button disabled v-if="testingSSH" class="btn btn-secondary object-right justify-end h-fit">
                                 <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
@@ -43,47 +54,51 @@
                                 Testing...
                         </button>
                     </div> 
-                    <div class="col-span-2">
-                        <p v-if="result" class="text-sm text-success mt-0.5">{{ resultMsg }}</p>
-                        <p v-if="!result" class="text-sm text-danger mt-0.5">{{ resultMsg }}</p>
-                    </div>
                 </div>
-            <div name="destination-host">
-                <label class="mt-1 block text-sm leading-6 text-default">Host</label>
-                <input type="text" v-model="destHost" class="mt-1 block w-full input-textlike bg-default" placeholder="Leave blank for local replication."/> 
+            <div name="destination-host" class="mt-0.5">
+                <label class="block text-sm leading-6 text-default">Host</label>
+                <input type="text" v-model="destHost" class="mt-0.5 block w-full input-textlike bg-default" placeholder="Leave blank for local replication."/> 
             </div>
-            <div name="destination-user">
-                <label class="mt-1 block text-sm leading-6 text-default">User</label>
-                <input type="text" v-model="destUser" class="mt-1 block w-full input-textlike bg-default" placeholder=""/> 
+            <div name="destination-user" class="mt-1">
+                <label class="block text-sm leading-6 text-default">User</label>
+                <input type="text" v-model="destUser" class="mt-0.5 block w-full input-textlike bg-default" placeholder="'root' is default"/> 
             </div>
-            <div name="destination-port">
-                <label class="mt-1 block text-sm leading-6 text-default">Port</label>
-                <input type="number" v-model="destPort" class="mt-1 block w-full input-textlike bg-default" placeholder=""/> 
+            <div name="destination-port" class="mt-1">
+                <label class="block text-sm leading-6 text-default">Port</label>
+                <input type="number" v-model="destPort" class="mt-0.5 block w-full input-textlike bg-default" placeholder="22 is default"/> 
             </div>
-  
+            <div class="col-span-2">
+                <p v-if="result" class="text-sm text-success mt-1">{{ resultMsg }}</p>
+                <p v-if="!result" class="text-sm text-danger mt-1">{{ resultMsg }}</p>
+            </div>
         </div>
         
-     
         <div name="send-options" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
-            <div name="send-opt-raw">
-
+            <label class="my-1 block text-base leading-6 text-default">Send Options</label>
+            <div name="custom-snapshot-name-toggle" class="flex flex-row gap-3">
+                <label class="block text-sm leading-6 text-default">Use Custom Snapshot Name?</label>
+                <input type="checkbox" v-model="useCustomName" class="mt-0.5 h-4 w-4 rounded"/>
             </div>
-            <div name="send-opt-compressed">
-
+            <div name="custom-snapshot-name-field" class="">
+                <input v-if="useCustomName" type="text" v-model="customName" class="mt-1 block w-full input-textlike bg-default" placeholder="Name is CustomName + Timestamp"/>
+                <input v-if="!useCustomName" disabled type="text" v-model="customName" class="mt-1 block w-full input-textlike bg-default" placeholder="Name is Timestamp"/>
             </div>
-            <div name="send-opt-recursive">
-
+            <div name="send-opt-recursive" class="flex flex-row gap-3">
+                <label class="mt-1 block text-sm leading-6 text-default">Send Recursive</label>
+                <input type="checkbox" v-model="sendRecursive" class="mt-0.5 h-4 w-4 rounded"/>
+            </div>
+            <div name="send-opt-compressed" class="flex flex-row gap-3">
+                <label class="mt-1 block text-sm leading-6 text-default">Send Compressed</label>
+                <input type="checkbox" v-model="sendCompressed" class="mt-0.5 h-4 w-4 rounded"/>
+            </div>
+            <div name="send-opt-raw" class="flex flex-row gap-3">
+                <label class="mt-1 block text-sm leading-6 text-default">Send Raw</label>
+                <input type="checkbox" v-model="sendRaw" class="mt-0.5 h-4 w-4 rounded"/>
             </div>
             <div name="send-opt-mbuffer-size">
 
             </div>
             <div name="snapshot-mbuffer-unit">
-
-            </div>
-            <div name="snapshot-retention-source">
-
-            </div>
-            <div name="snapshot-retention-source">
 
             </div>
         </div>
@@ -104,8 +119,6 @@ interface ZfsRepTaskParamsProps {
 
 const props = defineProps<ZfsRepTaskParamsProps>();
 
-const newTaskSourceData = new ZfsDatasetParameter('Source', 'source');
-const newTaskDestinationData = new ZfsDatasetParameter('Destination', 'destination');
 
 const sourcePools = ref([]);
 const sourceDatasets = ref([]);
@@ -127,8 +140,10 @@ const sendCompressed = ref(false);
 const sendRecursive = ref(false);
 const mbufferSize = ref(1);
 const mbufferUnit = ref('G');
-const snapsToKeepSrc = ref(3);
-const snapsToKeepDest = ref(3);
+const useCustomName = ref(false);
+const customName = ref('');
+const snapsToKeepSrc = ref(0);
+const snapsToKeepDest = ref(0);
 
 const testingSSH = ref(false);
 const resultMsg = ref('');
@@ -160,6 +175,7 @@ const handleSourcePoolChange = async (newVal) => {
 
 // Fetch and update destination pools based on host details
 const getRemoteDestinationPools = async () => {
+    // destPools.value = [];
     destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
     console.log('Remote destPools:', destPools.value);
 }
@@ -195,16 +211,17 @@ watch(sourcePool, handleSourcePoolChange);
 async function initializeData() {
     sourcePools.value = await getPoolData();
     console.log('sourcePools:', sourcePools.value);
-    sourceDatasets.value = await getDatasetData(sourcePools.value[0])
-    console.log('sourceDatasets in sourcePool[0]:', sourceDatasets.value);
-    await getLocalDestinationPools();
+    // sourceDatasets.value = await getDatasetData(sourcePools.value[0])
+    // console.log('sourceDatasets in sourcePool[0]:', sourceDatasets.value);
+    // await getLocalDestinationPools();
 }
 
-async function confirmTest(destHost) {
+async function confirmTest(destHost, destUser) {
     testingSSH.value = true;
     resultMsg.value = "";
 
-    result.value = await testSSH(destHost);
+    const sshTarget = destUser + '@' + destHost;
+    result.value = await testSSH(sshTarget);
 
     if (result.value) {
         resultMsg.value = 'Connection Successful!';

@@ -59,7 +59,7 @@
                                                     {{ taskInstance.name }}
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
-                                                    <input type="checkbox" v-model="taskInstance.schedule.enabled"/>
+                                                    <input type="checkbox" v-model="taskInstance.schedule.enabled" class="ml-2 h-4 w-4 rounded "/>
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                                     &lt;status here&gt;
