@@ -53,7 +53,8 @@ export async function getPoolData(host?, port?, user?) {
             }
             
         } catch (error) {
-            console.error('Error parsing JSON or during script execution:', error);
+            // console.error('Error parsing JSON or during script execution:', error);
+            return [];
         }
        
         
@@ -100,7 +101,8 @@ export async function getDatasetData(pool, host?, port?, user?) {
             }
             
         } catch (error) {
-            console.error('Error parsing JSON or during script execution:', error);
+            // console.error('Error parsing JSON or during script execution:', error);
+            return [];
         }
 
     } catch (state) {

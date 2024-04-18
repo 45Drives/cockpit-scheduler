@@ -2,7 +2,7 @@
 	<div>
 		<div class="w-full h-dvh min-h-dvh overflow-visible bg-default text-default">
 			<div class="p-2">
-				<div class="min-w-full max-w-full max-h-full py-2 align-middle sm:px-4 lg:px-6 sm:rounded-lg bg-well rounded-md border border-default">
+				<div class="min-w-full max-w-full max-h-full py-2 align-middle sm:px-4 lg:px-6 sm:rounded-lg bg-accent rounded-md border border-default">
                     <div class="">
                         <div class="flex flex-row justify-between sm:flex sm:items-center">
                             <div class="px-4 sm:px-0 sm:flex-auto">
@@ -32,7 +32,7 @@
                             <div class="-mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
                                 <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
                                     <table class="table-auto min-w-full divide-y divide-default overflow-x-auto">
-                                        <thead class="bg-accent">
+                                        <thead class="bg-well">
                                             <tr class="border border-default grid grid-cols-5">
                                                 <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
                                                 <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">

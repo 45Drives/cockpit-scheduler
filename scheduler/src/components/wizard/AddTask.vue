@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="showWizard = false" :isOpen="showWizard" :margin-top="'mt-28'" :width="'w-3/5'" :min-width="'min-w-3/5'">
+    <Modal @close="showWizard = false" :isOpen="showWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
             Add New Task
         </template>
@@ -12,9 +12,7 @@
 					</select>
 				</div>
                 <div v-if="selectedTemplate">
-                    <!-- <div v-for="param in selectedTemplate.parameterSchema" :key="param.key"> -->
                         <ParameterInput :selectedTemplate="selectedTemplate"/>
-                    <!-- </div> -->
                 </div>
             </div>
         </template>

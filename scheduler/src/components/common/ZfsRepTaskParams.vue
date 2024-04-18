@@ -6,18 +6,22 @@
             <div name="source-pool">
                 <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                 <select v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-for="pool in sourcePools">{{ pool }}</option>
+                    <option v-if="loadingSourcePools" disabled>Loading pools...</option>
+                    <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
+                    <option v-if="!loadingSourcePools && sourcePools.length < 1">None available</option>
                 </select>
             </div>
             <div name="source-dataset">
                 <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                 <select v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-for="dataset in sourceDatasets">{{ dataset }}</option>
+                    <option v-if="loadingSourceDatasets" disabled>Loading datasets...</option>
+                    <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
+                    <option v-if="!loadingSourceDatasets && sourceDatasets.length < 1">None available</option>
                 </select>
             </div>
             <div name="source-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Source)</label>
-                <input type="number" v-model="snapsToKeepSrc" class="mt-1 block w-full input-textlike bg-default" placeholder=""/> 
+                <input type="number" v-model="snapsToKeepSrc" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
             </div>
         </div>
 
@@ -26,18 +30,22 @@
             <div name="destination-pool">
                 <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                 <select v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-for="pool in destPools">{{ pool }}</option>
+                    <option v-if="loadingDestPools" disabled>Loading pools...</option>
+                    <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                    <option v-if="!loadingDestPools && destPools.length < 1">None available</option>
                 </select>
             </div>
             <div name="destination-dataset">
                 <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                 <select v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-for="dataset in destDatasets">{{ dataset }}</option>
+                    <option v-if="loadingDestDatasets" disabled>Loading datasets...</option>
+                    <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
+                    <option v-if="!loadingDestDatasets && destDatasets.length < 1">None available</option>
                 </select>
             </div>
             <div name="destination-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Destination)</label>
-                <input type="number" v-model="snapsToKeepDest" class="mt-1 block w-full input-textlike bg-default" placeholder=""/> 
+                <input type="number" v-model="snapsToKeepDest" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
             </div>
         </div>
 
@@ -57,50 +65,73 @@
                 </div>
             <div name="destination-host" class="mt-0.5">
                 <label class="block text-sm leading-6 text-default">Host</label>
-                <input type="text" v-model="destHost" class="mt-0.5 block w-full input-textlike bg-default" placeholder="Leave blank for local replication."/> 
+                <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local replication."/> 
             </div>
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
-                <input type="text" v-model="destUser" class="mt-0.5 block w-full input-textlike bg-default" placeholder="'root' is default"/> 
+                <input type="text" v-model="destUser" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
             </div>
             <div name="destination-port" class="mt-1">
                 <label class="block text-sm leading-6 text-default">Port</label>
-                <input type="number" v-model="destPort" class="mt-0.5 block w-full input-textlike bg-default" placeholder="22 is default"/> 
+                <input type="number" v-model="destPort" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="22 is default"/> 
             </div>
             <div class="col-span-2">
-                <p v-if="result" class="text-sm text-success mt-1">{{ resultMsg }}</p>
-                <p v-if="!result" class="text-sm text-danger mt-1">{{ resultMsg }}</p>
+                <p v-if="sshTestResult" class="text-sm text-success mt-1">{{ sshTestResultMsg }}</p>
+                <p v-if="!sshTestResult" class="text-sm text-danger mt-1">{{ sshTestResultMsg }}</p>
             </div>
         </div>
         
         <div name="send-options" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
-            <label class="my-1 block text-base leading-6 text-default">Send Options</label>
-            <div name="custom-snapshot-name-toggle" class="flex flex-row gap-3">
-                <label class="block text-sm leading-6 text-default">Use Custom Snapshot Name?</label>
-                <input type="checkbox" v-model="useCustomName" class="mt-0.5 h-4 w-4 rounded"/>
+            <label class="mt-1 block text-base leading-6 text-default">Send Options</label>
+            <div class="grid grid-cols-2 mt-1">
+                <div name="send-opt-raw" class="flex flex-row gap-2 mt-1 col-span-1">
+                    <label class="block text-sm leading-6 text-default">Send Raw</label>
+                    <input type="checkbox" v-model="sendRaw" @change="handleCheckboxChange('sendRaw')" class="mt-0.5 h-4 w-4 rounded"/>
+                </div>
+                <div name="send-opt-compressed" class="flex flex-row gap-2 mt-1 col-span-1">
+                    <label class="block text-sm leading-6 text-default">Send Compressed</label>
+                    <input type="checkbox" v-model="sendCompressed" @change="handleCheckboxChange('sendCompressed')" class="mt-0.5 h-4 w-4 rounded"/>
+                </div>
             </div>
-            <div name="custom-snapshot-name-field" class="">
-                <input v-if="useCustomName" type="text" v-model="customName" class="mt-1 block w-full input-textlike bg-default" placeholder="Name is CustomName + Timestamp"/>
-                <input v-if="!useCustomName" disabled type="text" v-model="customName" class="mt-1 block w-full input-textlike bg-default" placeholder="Name is Timestamp"/>
-            </div>
-            <div name="send-opt-recursive" class="flex flex-row gap-3">
-                <label class="mt-1 block text-sm leading-6 text-default">Send Recursive</label>
+            <div name="send-opt-recursive" class="flex flex-row gap-2 mt-2">
+                <label class="block text-sm leading-6 text-default">Send Recursive</label>
                 <input type="checkbox" v-model="sendRecursive" class="mt-0.5 h-4 w-4 rounded"/>
             </div>
-            <div name="send-opt-compressed" class="flex flex-row gap-3">
-                <label class="mt-1 block text-sm leading-6 text-default">Send Compressed</label>
-                <input type="checkbox" v-model="sendCompressed" class="mt-0.5 h-4 w-4 rounded"/>
+            <div name="send-opt-custom-name mt-2">
+                <div name="custom-snapshot-name-toggle" class="flex flex-row gap-2 mt-2">
+                    <label class="block text-sm leading-6 text-default">Use Custom Snapshot Name?</label>
+                    <input type="checkbox" v-model="useCustomName" class="mt-0.5 h-4 w-4 rounded"/>
+                </div>
+                <div name="custom-snapshot-name-field" class="mt-2">
+                    <input v-if="useCustomName" type="text" v-model="customName" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is CustomName + Timestamp"/>
+                    <input v-if="!useCustomName" disabled type="text" v-model="customName" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is Timestamp"/>
+                </div>
             </div>
-            <div name="send-opt-raw" class="flex flex-row gap-3">
-                <label class="mt-1 block text-sm leading-6 text-default">Send Raw</label>
-                <input type="checkbox" v-model="sendRaw" class="mt-0.5 h-4 w-4 rounded"/>
+            <div class="grid grid-cols-2 mt-2">
+                <div name="send-opt-mbuffer" class="col-span-1">
+                    <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
+                    <input v-if="destHost !== ''" type="number" v-model="mbufferSize" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
+                    <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
+                </div>
+                  <div name="send-opt-mbuffer" class="col-span-1">
+                    <div name="send-opt-mbuffer-unit">
+                        <label class="block text-sm leading-6 text-default">mBuffer Unit (Remote)</label>
+                        <select v-if="destHost !== ''" v-model="mbufferUnit" class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
+                                <option value="b">b</option>
+                                <option value="k">k</option>
+                                <option value="M">M</option>
+                                <option value="G">G</option>
+                        </select>
+                        <select v-if="destHost === ''" disabled v-model="mbufferUnit" class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
+                                <option value="b">b</option>
+                                <option value="k">k</option>
+                                <option value="M">M</option>
+                                <option value="G">G</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            <div name="send-opt-mbuffer-size">
-
-            </div>
-            <div name="snapshot-mbuffer-unit">
-
-            </div>
+            
         </div>
     
     </div>
@@ -119,11 +150,15 @@ interface ZfsRepTaskParamsProps {
 
 const props = defineProps<ZfsRepTaskParamsProps>();
 
-
 const sourcePools = ref([]);
 const sourceDatasets = ref([]);
+const loadingSourcePools = ref(false);
+const loadingSourceDatasets = ref(false);
+
 const destPools = ref([]);
 const destDatasets = ref([]);
+const loadingDestPools = ref(false);
+const loadingDestDatasets = ref(false);
 
 const sourcePool = ref('');
 const sourceDataset = ref('');
@@ -146,90 +181,124 @@ const snapsToKeepSrc = ref(0);
 const snapsToKeepDest = ref(0);
 
 const testingSSH = ref(false);
-const resultMsg = ref('');
-const result = ref(false);
+const sshTestResultMsg = ref('');
+const sshTestResult = ref(false);
 
+async function initializeData() {
+    await getSourcePools();
+    await getLocalDestinationPools();
+}
 
-// Function to handle actions when destHost changes
+function handleCheckboxChange(checkbox) {
+    // Ensure only one checkbox (raw, compressed) is selected at a time
+    if (checkbox === 'sendCompressed' && sendCompressed.value) {
+        sendRaw.value = false;
+    } else if (checkbox === 'sendRaw' && sendRaw.value) {
+        sendCompressed.value = false;
+    }
+}
+
 const handleDestHostChange = async (newVal) => {
+    console.log("Handling destination host change:", newVal);
     if (newVal !== "") {
         await getRemoteDestinationPools();
-        await getRemoteDestinationDatasets();
     } else {
         await getLocalDestinationPools();
-        await getLocalDestinationDatasets();
+    }
+}
+
+function debounce(func, delay) {
+    let timerId;
+    return function (newVal) {
+        if (timerId) clearTimeout(timerId);
+        timerId = setTimeout(() => func(newVal), delay);
+    };
+}
+
+const debouncedDestHostChange = debounce(handleDestHostChange, 500);
+
+const handleSourcePoolChange = async (newVal) => {
+    if (newVal) {
+        await getSourceDatasets();
     }
 }
 
 const handleDestPoolChange = async (newVal) => {
-    if (newVal) {
-        await getRemoteDestinationDatasets();
+    if (destHost.value != '') {
+        if (newVal) {
+            await getRemoteDestinationDatasets();
+        }
+    } else {
+        if (newVal) {
+            await getLocalDestinationDatasets();
+        }
     }
 }
 
-const handleSourcePoolChange = async (newVal) => {
-    if (newVal) {
-        await getLocalSourceDatasets();
-    }
+
+const getSourcePools = async () => {
+    loadingSourcePools.value = true;
+    sourcePools.value = await getPoolData();
+    loadingSourcePools.value = false;
+    console.log('sourcePools:', sourcePools.value);
 }
 
-// Fetch and update destination pools based on host details
+const getSourceDatasets = async () => {
+    loadingSourceDatasets.value = true;
+    sourceDatasets.value = await getDatasetData(sourcePool.value);
+    loadingSourceDatasets.value = false;
+    console.log('sourceDatasets:', sourceDatasets.value);
+}
+
+const getLocalDestinationPools = async () => {
+    loadingDestPools.value = true;
+    destPools.value = await getPoolData();
+    loadingDestPools.value = false;
+    console.log('Local destPools:', destPools.value);
+}
+
+const getLocalDestinationDatasets = async () => {
+    loadingDestDatasets.value = true;
+    destDatasets.value = await getDatasetData(destPool.value);
+    loadingDestDatasets.value = false;
+    console.log('Local destDatasets:', destDatasets.value);
+}
+
 const getRemoteDestinationPools = async () => {
-    // destPools.value = [];
+    loadingDestPools.value = true;
     destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
+    loadingDestPools.value = false;
     console.log('Remote destPools:', destPools.value);
 }
 
 
 const getRemoteDestinationDatasets = async () => {
+    loadingDestDatasets.value = true;
     destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+    loadingDestDatasets.value = false;
     console.log('Remote destDataset:', destDatasets.value);
 }
 
 
-const getLocalDestinationPools = async () => {
-    destPools.value = await getPoolData();
-    console.log('Local destPools:', destPools.value);
-}
-
-const getLocalDestinationDatasets = async () => {
-    destDatasets.value = await getDatasetData(destPool.value);
-    console.log('Local destDatasets:', destDatasets.value);
-}
-
-const getLocalSourceDatasets = async () => {
-    sourceDatasets.value = await getDatasetData(sourcePool.value);
-    console.log('Local sourceDatasets:', sourceDatasets.value);
-}
-
-// Watch the destHost for changes
-watch(destHost, handleDestHostChange);
-watch(destPool, handleDestPoolChange);
-watch(sourcePool, handleSourcePoolChange);
-
-
-async function initializeData() {
-    sourcePools.value = await getPoolData();
-    console.log('sourcePools:', sourcePools.value);
-    // sourceDatasets.value = await getDatasetData(sourcePools.value[0])
-    // console.log('sourceDatasets in sourcePool[0]:', sourceDatasets.value);
-    // await getLocalDestinationPools();
-}
-
 async function confirmTest(destHost, destUser) {
     testingSSH.value = true;
-    resultMsg.value = "";
+    sshTestResultMsg.value = "";
 
     const sshTarget = destUser + '@' + destHost;
-    result.value = await testSSH(sshTarget);
+    sshTestResult.value = await testSSH(sshTarget);
 
-    if (result.value) {
-        resultMsg.value = 'Connection Successful!';
+    if (sshTestResult.value) {
+        sshTestResultMsg.value = 'Connection Successful!';
     } else {
-        resultMsg.value = `Connection Failed: Could not resolve hostname "${destHost}": Name or service not known.`;
+        sshTestResultMsg.value = `Connection Failed: Could not resolve hostname "${destHost}": Name or service not known.`;
     }
     testingSSH.value = false;
 }
+
+// Watch the destHost for changes
+// watch(destHost, handleDestHostChange);
+watch(destPool, handleDestPoolChange);
+watch(sourcePool, handleSourcePoolChange);
 
 onMounted(async () => {
     await initializeData();
