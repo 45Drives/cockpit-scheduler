@@ -24,7 +24,6 @@ interface AppProps {
 
 const props = defineProps<AppProps>();
 const notifications = ref<any>(null);
-// const templateList = ref<TaskTemplateType[]>([]);
 
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();

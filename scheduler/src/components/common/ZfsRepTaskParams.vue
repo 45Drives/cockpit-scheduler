@@ -50,35 +50,35 @@
         </div>
 
         <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
-            <div class="grid grid-cols-2 mt-1">
-                <label class="col-span-1 block text-base leading-6 text-default">Remote Target</label>
-                <div class="col-span-1 items-end text-end justify-end -mt-3">
-                        <button v-if="!testingSSH" @click="confirmTest(destHost, destUser)" class="mt-1 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
-                        <button disabled v-if="testingSSH" class="btn btn-secondary object-right justify-end h-fit">
-                                <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
-                                    <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="text-success"/>
-                                </svg>
-                                Testing...
-                        </button>
-                    </div> 
-                </div>
-            <div name="destination-host" class="mt-0.5">
+            <div class="grid grid-cols-2">
+                <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
+                <div class="col-span-1 items-end text-end justify-end">
+                    <button v-if="!testingSSH" @click="confirmTest(destHost, destUser)" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                    <button disabled v-if="testingSSH" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                            <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
+                                <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="text-success"/>
+                            </svg>
+                            Testing...
+                    </button>
+                </div> 
+            </div>
+            <div name="destination-host" class="mt-1">
                 <label class="block text-sm leading-6 text-default">Host</label>
-                <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local replication."/> 
+                <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local replication."/> 
             </div>
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
-                <input type="text" v-model="destUser" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
+                <input type="text" v-model="destUser" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
             </div>
             <div name="destination-port" class="mt-1">
                 <label class="block text-sm leading-6 text-default">Port</label>
-                <input type="number" v-model="destPort" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="22 is default"/> 
+                <input type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/> 
             </div>
-            <div class="col-span-2">
+            <!-- <div class="col-span-2">
                 <p v-if="sshTestResult" class="text-sm text-success mt-1">{{ sshTestResultMsg }}</p>
                 <p v-if="!sshTestResult" class="text-sm text-danger mt-1">{{ sshTestResultMsg }}</p>
-            </div>
+            </div> -->
         </div>
         
         <div name="send-options" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
@@ -139,7 +139,7 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, Ref, reactive, computed, onMounted, watch, inject } from 'vue';
 import { ZFSReplicationTaskTemplate, TaskTemplate, ParameterNode, ZfsDatasetParameter, SelectionOption, SelectionParameter, IntParameter, StringParameter, BoolParameter, TaskInstance } from '../../models/Classes';
 import { getTaskData, getPoolData, getDatasetData } from '../../composables/getData';
 import { testSSH } from '../../composables/helpers';
@@ -181,8 +181,11 @@ const snapsToKeepSrc = ref(0);
 const snapsToKeepDest = ref(0);
 
 const testingSSH = ref(false);
-const sshTestResultMsg = ref('');
+// const sshTestResultMsg = ref('');
 const sshTestResult = ref(false);
+const notifications = inject<Ref<any>>('notifications')!;
+
+const errorList = inject<Ref<string[]>>('errors')!;
 
 async function initializeData() {
     await getSourcePools();
@@ -280,23 +283,69 @@ const getRemoteDestinationDatasets = async () => {
 }
 
 
+function validateHost() {
+    if (destHost.value !== "") {
+        // Check overall length constraints
+        if (destHost.value.length < 1 || destHost.value.length > 253) {
+            // return "Hostname must be between 1 and 253 characters in length.";
+            errorList.value.push("Hostname must be between 1 and 253 characters in length.");
+        }
+
+        // Regular expression to validate the hostname structure and characters
+        const hostRegex = /^(?!-)(?:(?:[a-zA-Z0-9]-*)*[a-zA-Z0-9]\.?)+$/;
+        if (!hostRegex.test(destHost.value)) {
+            // return "Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.";
+            errorList.value.push("Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.");
+        }
+
+        // If all checks pass
+        // return "Hostname is valid.";
+    }
+}
+
+function validateCustomName() {
+    if (useCustomName.value) {
+        if (customName.value !== '') {
+            const snapNameRegex = /^[a-zA-Z0-9_.-]+$/;
+            if (!snapNameRegex.test(customName.value)) {
+                // return "Snapshot name must only contain valid characters (alphanumerics, dots, underscores, and hyphens).";
+                errorList.value.push("Snapshot name must only contain valid characters (alphanumerics, dots, underscores, and hyphens).");
+            }
+        }
+        
+        // return "Snapshot custom name is valid.";
+    }
+}
+
+function validateParams() {
+    validateHost();
+    validateCustomName();
+    // console.log('ZfsRepTaskParams Validation ErrorList:', errorList.value);
+}
+
 async function confirmTest(destHost, destUser) {
     testingSSH.value = true;
-    sshTestResultMsg.value = "";
+    // sshTestResultMsg.value = "";
 
     const sshTarget = destUser + '@' + destHost;
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        sshTestResultMsg.value = 'Connection Successful!';
+        // sshTestResultMsg.value = 'Connection Successful!';
+        notifications.value.constructNotification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 10000);
     } else {
-        sshTestResultMsg.value = `Connection Failed: Could not resolve hostname "${destHost}": Name or service not known.`;
+        // sshTestResultMsg.value = `Connection Failed: Could not resolve hostname "${destHost}": Name or service not known.`;
+        notifications.value.constructNotification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 10000);
     }
     testingSSH.value = false;
 }
 
-// Watch the destHost for changes
-// watch(destHost, handleDestHostChange);
+// if (errorList.value.length > 0) {
+//         notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n")}`, 'error', 10000);
+//     } else {
+//         notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 10000);
+//     }
+
 watch(destPool, handleDestPoolChange);
 watch(sourcePool, handleSourcePoolChange);
 
@@ -304,4 +353,7 @@ onMounted(async () => {
     await initializeData();
 });
 
+defineExpose({
+    validateParams,
+});
 </script>

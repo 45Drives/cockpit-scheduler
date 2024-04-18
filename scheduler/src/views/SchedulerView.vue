@@ -1,5 +1,9 @@
 <template>
 	<div>
+        <Notifications
+                :notificationFIFO="notificationFIFO"
+                ref="notifications" class="z-100"
+            />
 		<div class="w-full h-dvh min-h-dvh overflow-visible bg-default text-default">
 			<div class="p-2">
 				<div class="min-w-full max-w-full max-h-full py-2 align-middle sm:px-4 lg:px-6 sm:rounded-lg bg-accent rounded-md border border-default">
@@ -172,9 +176,13 @@ import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRi
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import LoadingSpinner from '../components/common/LoadingSpinner.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/Classes';
+import { FIFO } from '@45drives/cockpit-helpers';
+import Notifications from "../components/common/Notifications.vue";
 import { boolToYesNo } from '../composables/helpers'
 import AddTask from "../components/wizard/AddTask.vue";
 
+const notifications = inject<Ref<any>>('notifications')!;
+const notificationFIFO = inject<Ref<FIFO>>('notification-fifo')!;
 // const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
