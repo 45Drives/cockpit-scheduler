@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
+    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
             Add New Task
         </template>
@@ -51,7 +51,7 @@
         <component :is="confirmationComponent" @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to schedule this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/>
     </div>
 
-    <div v-if="showScheduleModal">
+    <div v-if="showScheduleWizard">
         <component :is="scheduleComponent" @close=""/>
     </div>
 </template>
@@ -76,7 +76,7 @@ const newTask = ref<TaskInstanceType>();
 const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
 
-const showWizard = inject<Ref<boolean>>('show-wizard')!;
+const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
 const adding = ref(false);
 
 const errorList = ref<string[]>([]);
@@ -87,7 +87,7 @@ const parameterInputComponent = ref();
 
 const showSchedulePrompt = ref(false);
 const isStandaloneTask = ref(false);
-const showScheduleModal = ref(false);
+const showScheduleWizard = ref(false);
 
 const scheduleComponent = ref();
 const loadScheduleComponent = async () => {
@@ -113,7 +113,7 @@ const makeScheduleLater : ConfirmationCallback = () => {
 const makeScheduleNow : ConfirmationCallback = () => {
     isStandaloneTask.value = false;
     console.log('Yes, isStandalone:', isStandaloneTask.value);
-    showScheduleModal.value = true;
+    showScheduleWizard.value = true;
     showScheduleComponent();
 }
 
@@ -143,7 +143,7 @@ async function showScheduleConfirmationDialog() {
 }
 
 const closeModal = () => {
-    showWizard.value = false;
+    showTaskWizard.value = false;
     emit('close');
 }
 

@@ -1,11 +1,11 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
+    <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
             <!-- Have this component be multi-function:
-                Add New Schedule (standalone) 
-                Add New Schedule (with Task Creation)
-                Edit Schedule
-                Remove Schedule
+                    Add New Schedule (standalone) 
+                    Add New Schedule (with Task Creation)
+                    Edit Schedule
+                    Remove Schedule
             -->
             Add New Schedule
         </template>
@@ -73,15 +73,14 @@ interface ManageScheduleProps {
 const props = defineProps<ManageScheduleProps>();
 const emit = defineEmits(['close']);
 const notifications = inject<Ref<any>>('notifications')!;
-const newschedule = ref<TaskInstanceType>();
+const newSchedule = ref<TaskScheduleType>();
 
-const scheduleTemplates = inject<Ref<TaskTemplateType[]>>('schedule-templates')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
 
-const showWizard = inject<Ref<boolean>>('show-wizard')!;
+const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
 
 const closeModal = () => {
-    showWizard.value = false;
+    showScheduleWizard.value = false;
     emit('close');
 }
 

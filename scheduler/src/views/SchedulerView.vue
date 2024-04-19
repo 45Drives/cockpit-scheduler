@@ -159,7 +159,7 @@
                     </div>
                 </div>
 			</div>
-            <div v-if="showWizard">
+            <div v-if="showTaskWizard">
                 <AddTask :id-key="'add-task-modal'" />
             </div>
 		</div>
@@ -183,7 +183,8 @@ const notifications = inject<Ref<any>>('notifications')!;
 const notificationFIFO = inject<Ref<FIFO>>('notification-fifo')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
-const showWizard = ref(false);
+const showTaskWizard = ref(false);
+const showScheduleWizard = ref(false);
 // const showDetails = ref(false);
 const showDetails = ref({});
 
@@ -192,7 +193,7 @@ function taskDetailsBtn(idx) {
 }
 
 function addTaskButton() {
-    showWizard.value = true;
+    showTaskWizard.value = true;
 }
 
 function findValue(obj, targetKey, valueKey) {
@@ -228,5 +229,6 @@ function getLastRunTimestamp() {
 
 
 
-provide('show-wizard', showWizard);
+provide('show-task-wizard', showTaskWizard);
+provide('show-schedule-wizard', showScheduleWizard);
 </script> 
