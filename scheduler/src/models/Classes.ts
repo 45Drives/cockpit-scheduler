@@ -36,21 +36,8 @@ export class Scheduler implements SchedulerType {
     }
         
 
-    // Helper function to flatten the ParameterNode schema into a dictionary for easy lookup
-    flattenSchema(node: ParameterNode, prefix = ''): { [key: string]: ParameterNode } {
-        let dict: { [key: string]: ParameterNode } = {};
-        const currentPrefix = prefix ? prefix + '_' : '';
-        dict[currentPrefix + node.key] = node;
-        node.children.forEach(child => {
-            Object.assign(dict, this.flattenSchema(child, currentPrefix + node.key));
-        });
-        return dict;
-    }
-
     // Main function to create a ParameterNode from JSON parameters based on a schema
     createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
-        // Flatten the schema to easily match keys from JSON
-        const flatSchema = this.flattenSchema(schema);
         // Create a deep clone of the schema to fill in values without modifying the original schema
         function cloneSchema(node: ParameterNode): ParameterNode {
             let newNode: ParameterNode;
@@ -61,6 +48,8 @@ export class Scheduler implements SchedulerType {
                 newNode = new IntParameter(node.label, node.key);
             } else if (node instanceof BoolParameter) {
                 newNode = new BoolParameter(node.label, node.key);
+            } else if (node instanceof SelectionParameter){
+                newNode = new SelectionParameter(node.label, node.key)
             } else {
                 newNode = new ParameterNode(node.label, node.key);
             }
