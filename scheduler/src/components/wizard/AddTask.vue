@@ -50,6 +50,10 @@
         <!-- <ConfirmationDialog @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to configure a schedule for this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/> -->
         <component :is="confirmationComponent" @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to schedule this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/>
     </div>
+
+    <div v-if="showScheduleModal">
+        <component :is="scheduleComponent" @close=""/>
+    </div>
 </template>
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
@@ -58,7 +62,6 @@ import ParameterInput from '../common/ParameterInput.vue';
 import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
-
 
 interface AddTaskProps {
 	idKey: string;
@@ -86,16 +89,20 @@ const showSchedulePrompt = ref(false);
 const isStandaloneTask = ref(false);
 const showScheduleModal = ref(false);
 
-const confirmationComponent = ref();
-const loadConfirmationComponent = async () => {
-    const module = await import('../common/ConfirmationDialog.vue');
-    confirmationComponent.value = module.default;
+const scheduleComponent = ref();
+const loadScheduleComponent = async () => {
+    const module = await import('./ManageSchedule.vue');
+    scheduleComponent.value = module.default;
 }
 
-async function showScheduleConfirmationDialog() {
-    await loadConfirmationComponent();
+async function showScheduleComponent() {
+    await loadScheduleComponent();
+    // updateShowSchedulePrompt;
+    // closeModal();
+
+    // Figure out what to do here to replace modal without stacking preferably
     showSchedulePrompt.value = true;
-    console.log('Showing confirmation dialog...');
+    console.log('Showing schedule component...');
 }
 
 const makeScheduleLater : ConfirmationCallback = () => {
@@ -107,8 +114,7 @@ const makeScheduleNow : ConfirmationCallback = () => {
     isStandaloneTask.value = false;
     console.log('Yes, isStandalone:', isStandaloneTask.value);
     showScheduleModal.value = true;
-    console.log('Showing schedule configurator...');
-    // SCHEDULE TRIGGERED ^
+    showScheduleComponent();
 }
 
 const updateShowSchedulePrompt = (newVal) => {
@@ -122,6 +128,19 @@ watch(isStandaloneTask, async (newVal, oldVal) => {
         closeModal();
     }
 });
+
+const confirmationComponent = ref();
+const loadConfirmationComponent = async () => {
+    const module = await import('../common/ConfirmationDialog.vue');
+    confirmationComponent.value = module.default;
+}
+
+async function showScheduleConfirmationDialog() {
+    await loadConfirmationComponent();
+
+    showSchedulePrompt.value = true;
+    console.log('Showing confirmation dialog...');
+}
 
 const closeModal = () => {
     showWizard.value = false;
