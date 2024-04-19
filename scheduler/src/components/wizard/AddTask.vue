@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="showWizard = false" :isOpen="showWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
+    <Modal @close="closeModal" :isOpen="showWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
             Add New Task
         </template>
@@ -8,13 +8,12 @@
                 <div name="task-template" v-if="taskTemplates.length > 0">
 					<label for="task-template-selection" class="block text-sm font-medium leading-6 text-default">Select Type of Task to Add</label>
 					<select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-						<option v-for="template, idx in taskTemplates" :key="idx" :value="template">{{ template.name }}</option>
+                        <option v-for="template, idx in taskTemplates" :key="idx" :value="template">{{ template.name }}</option>
 					</select>
 				</div>
                 <div name="task-name">
                     <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
                     <input type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default" placeholder="New Task"/> 
-                    <!-- Limit name input to alphanumeric, special chars? (NO UNDERSCORE) -->
                 </div>
                 <div v-if="selectedTemplate">
                     <ParameterInput ref="parameterInputComponent" :selectedTemplate="selectedTemplate"/>
@@ -23,20 +22,13 @@
         </template>
         <template v-slot:footer>
             <div class="w-full">
-            <!-- <div class="w-full grid grid-rows-2"> -->
-				<!-- <div class="w-full row-start-1 justify-center items-center">
-                    <div class="justify-self-start mt-2">
-                        <p class="text-danger" v-if="errorList.length > 0">{{ errorFeedbackMsg }}</p>
-                    </div>
-				</div> -->
-				
 				<div class="button-group-row w-full justify-between">
-                <!-- <div class="button-group-row w-full justify-between row-start-2"> -->
 					<div class="button-group-row mt-2">
-                        <button @click="showWizard = false" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger">Close</button>
+                        <button @click.stop="closeModal" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger">Close</button>
 					</div>
 					<div class="button-group-row mt-2">
-                        <button v-if="!adding" id="add-task-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="addTaskBtn">Add Task</button>
+                        <button disabled v-if="!adding && !selectedTemplate" id="add-task-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="addTaskBtn">Add Task</button>
+                        <button v-if="!adding && selectedTemplate" id="add-task-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="addTaskBtn">Add Task</button>
                         <button disabled v-if="adding" id="finish" type="button" class="btn btn-primary object-right justify-end">
                             <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
@@ -62,6 +54,7 @@ interface AddTaskProps {
 }
 
 const props = defineProps<AddTaskProps>();
+const emit = defineEmits(['close']);
 const notifications = inject<Ref<any>>('notifications')!;
 
 const newTask = ref<TaskInstanceType>();
@@ -77,21 +70,29 @@ const newTaskName = ref('');
 const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
 
+
+const closeModal = () => {
+    showWizard.value = false;
+    emit('close');
+}
+
 function validateTaskName() {
-    if (newTaskName.value.includes('_')) {
-        errorList.value.push("Task name cannot have underscores ('_').");
-        // console.log(errorList.value);
+    if (newTaskName.value === '') {
+        errorList.value.push("Task name cannot be empty.");
+    } else {
+        if (newTaskName.value.includes('_')) {
+            errorList.value.push("Task name cannot have underscores ('_').");
+        }
     }
 }
 
 function validateComponentParams() {
     validateTaskName();
     parameterInputComponent.value.validation();
-    // console.log('AddTask Validation ErrorList:', errorList.value)
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n")}`, 'error', 10000);
+        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
     } else {
-        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 10000);
+        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
     }
 }
 

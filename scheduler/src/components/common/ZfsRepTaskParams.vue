@@ -6,17 +6,19 @@
             <div name="source-pool">
                 <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                 <select v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-if="loadingSourcePools" disabled>Loading pools...</option>
+                    <!-- <option v-if="loadingSourcePools" value="" disabled>Loading Pools...</option> -->
+                    <option value="">Select a Pool</option>
                     <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
-                    <option v-if="!loadingSourcePools && sourcePools.length < 1">None available</option>
+                    <!-- <option v-if="!loadingSourcePools && sourcePools.length == 0">None available</option> -->
                 </select>
             </div>
             <div name="source-dataset">
                 <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                 <select v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-if="loadingSourceDatasets" disabled>Loading datasets...</option>
+                    <!-- <option v-if="loadingSourceDatasets" value="" disabled>Loading Datasets...</option> -->
+                    <option value="">Select a Dataset</option>
                     <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
-                    <option v-if="!loadingSourceDatasets && sourceDatasets.length < 1">None available</option>
+                    <!-- <option v-if="!loadingSourceDatasets && sourceDatasets.length == 0">None available</option> -->
                 </select>
             </div>
             <div name="source-snapshot-retention">
@@ -30,17 +32,19 @@
             <div name="destination-pool">
                 <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                 <select v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-if="loadingDestPools" disabled>Loading pools...</option>
+                    <!-- <option v-if="loadingDestPools" value="" disabled>Loading Pools...</option> -->
+                    <option value="">Select a Pool</option>
                     <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                    <option v-if="!loadingDestPools && destPools.length < 1">None available</option>
+                    <!-- <option v-if="!loadingDestPools && destPools.length == 0">None available</option> -->
                 </select>
             </div>
             <div name="destination-dataset">
                 <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                 <select v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option v-if="loadingDestDatasets" disabled>Loading datasets...</option>
+                    <!-- <option v-if="loadingDestDatasets" value="" disabled>Loading Datasets...</option> -->
+                    <option value="">Select a Dataset</option>
                     <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
-                    <option v-if="!loadingDestDatasets && destDatasets.length < 1">None available</option>
+                    <!-- <option v-if="!loadingDestDatasets && destDatasets.length == 0">None available</option> -->
                 </select>
             </div>
             <div name="destination-snapshot-retention">
@@ -75,10 +79,6 @@
                 <label class="block text-sm leading-6 text-default">Port</label>
                 <input type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/> 
             </div>
-            <!-- <div class="col-span-2">
-                <p v-if="sshTestResult" class="text-sm text-success mt-1">{{ sshTestResultMsg }}</p>
-                <p v-if="!sshTestResult" class="text-sm text-danger mt-1">{{ sshTestResultMsg }}</p>
-            </div> -->
         </div>
         
         <div name="send-options" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
@@ -110,8 +110,8 @@
             <div class="grid grid-cols-2 mt-2">
                 <div name="send-opt-mbuffer" class="col-span-1">
                     <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
-                    <input v-if="destHost !== ''" type="number" v-model="mbufferSize" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
-                    <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
+                    <input v-if="destHost !== ''" type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
+                    <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
                 </div>
                   <div name="send-opt-mbuffer" class="col-span-1">
                     <div name="send-opt-mbuffer-unit">
@@ -181,7 +181,6 @@ const snapsToKeepSrc = ref(0);
 const snapsToKeepDest = ref(0);
 
 const testingSSH = ref(false);
-// const sshTestResultMsg = ref('');
 const sshTestResult = ref(false);
 const notifications = inject<Ref<any>>('notifications')!;
 
@@ -287,19 +286,15 @@ function validateHost() {
     if (destHost.value !== "") {
         // Check overall length constraints
         if (destHost.value.length < 1 || destHost.value.length > 253) {
-            // return "Hostname must be between 1 and 253 characters in length.";
             errorList.value.push("Hostname must be between 1 and 253 characters in length.");
         }
 
         // Regular expression to validate the hostname structure and characters
         const hostRegex = /^(?!-)(?:(?:[a-zA-Z0-9]-*)*[a-zA-Z0-9]\.?)+$/;
         if (!hostRegex.test(destHost.value)) {
-            // return "Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.";
             errorList.value.push("Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.");
         }
 
-        // If all checks pass
-        // return "Hostname is valid.";
     }
 }
 
@@ -308,43 +303,51 @@ function validateCustomName() {
         if (customName.value !== '') {
             const snapNameRegex = /^[a-zA-Z0-9_.-]+$/;
             if (!snapNameRegex.test(customName.value)) {
-                // return "Snapshot name must only contain valid characters (alphanumerics, dots, underscores, and hyphens).";
                 errorList.value.push("Snapshot name must only contain valid characters (alphanumerics, dots, underscores, and hyphens).");
             }
         }
         
-        // return "Snapshot custom name is valid.";
+    }
+}
+
+function validateSource() {
+    if (sourcePool.value === '') {
+        errorList.value.push("Source pool is needed.");
+    }
+    if (sourceDataset.value === '') {
+        errorList.value.push("Source dataset is needed.");
+    }
+}
+
+function validateDestination() {
+    if (destPool.value === '') {
+        errorList.value.push("Destination pool is needed.");
+    }
+    if (destDataset.value === '') {
+        errorList.value.push("Destination dataset is needed.");
     }
 }
 
 function validateParams() {
+    validateSource();
     validateHost();
+    validateDestination();
     validateCustomName();
-    // console.log('ZfsRepTaskParams Validation ErrorList:', errorList.value);
 }
 
 async function confirmTest(destHost, destUser) {
     testingSSH.value = true;
-    // sshTestResultMsg.value = "";
 
     const sshTarget = destUser + '@' + destHost;
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        // sshTestResultMsg.value = 'Connection Successful!';
-        notifications.value.constructNotification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 10000);
+        notifications.value.constructNotification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000);
     } else {
-        // sshTestResultMsg.value = `Connection Failed: Could not resolve hostname "${destHost}": Name or service not known.`;
-        notifications.value.constructNotification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 10000);
+        notifications.value.constructNotification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000);
     }
     testingSSH.value = false;
 }
-
-// if (errorList.value.length > 0) {
-//         notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n")}`, 'error', 10000);
-//     } else {
-//         notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 10000);
-//     }
 
 watch(destPool, handleDestPoolChange);
 watch(sourcePool, handleSourcePoolChange);

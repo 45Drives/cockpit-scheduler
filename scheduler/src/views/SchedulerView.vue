@@ -27,7 +27,7 @@
                                 </div> -->
                                 <div class="mt-5 py-0.5 px-3">
                                     <!-- <router-link :to="'/forms/new'"> -->
-                                        <button @click="showWizard = true" class="btn btn-primary">Add New Task</button>
+                                        <button @click="addTaskButton()" class="btn btn-primary">Add New Task</button>
                                     <!-- </router-link> -->
                                 </div>
                             </div>
@@ -72,12 +72,11 @@
                                                     &lt;timestamp here&gt;
                                                 </td>
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-default">
-                                                    <!-- <ChevronRightIcon class="w-6 h-6"/>  -->
-                                                    <!-- Need to account for multiple tasks in list, currently one button controls all task details -->
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
                                                 <td v-if="showDetails[index]" class="col-span-5 h-full border border-default p-2 m-2">
+
                                                     <!-- Details for ZFS Replication Task -->
                                                     <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">
                                                         <div class="col-span-1">
@@ -89,7 +88,6 @@
                                                                 <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
                                                                 <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b> 
                                                             </p>
-                                                           
                                                         </div>
                                                         <div class="col-span-1">
                                                             <p class="my-2">
@@ -162,7 +160,7 @@
                 </div>
 			</div>
             <div v-if="showWizard">
-                <AddTask :id-key="'add-task-modal'"/>
+                <AddTask :id-key="'add-task-modal'" />
             </div>
 		</div>
 	</div>
@@ -172,7 +170,7 @@
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide, onMounted} from 'vue';
-import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronRightIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon } from '@heroicons/vue/24/outline';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import LoadingSpinner from '../components/common/LoadingSpinner.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/Classes';
@@ -183,7 +181,6 @@ import AddTask from "../components/wizard/AddTask.vue";
 
 const notifications = inject<Ref<any>>('notifications')!;
 const notificationFIFO = inject<Ref<FIFO>>('notification-fifo')!;
-// const taskTemplates = inject<Ref<TaskTemplateType[]>>('task-templates')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 const showWizard = ref(false);
@@ -192,6 +189,10 @@ const showDetails = ref({});
 
 function taskDetailsBtn(idx) {
     showDetails.value[idx] = !showDetails.value[idx];
+}
+
+function addTaskButton() {
+    showWizard.value = true;
 }
 
 function findValue(obj, targetKey, valueKey) {
