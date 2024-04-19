@@ -45,11 +45,17 @@
 			</div>
         </template>
     </Modal>
+
+    <div v-if="showSchedulePrompt">
+        <!-- <ConfirmationDialog @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to configure a schedule for this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/> -->
+        <component :is="confirmationComponent" @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to schedule this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/>
+    </div>
 </template>
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../common/ParameterInput.vue';
+import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
 
@@ -76,6 +82,46 @@ const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
 
+const showSchedulePrompt = ref(false);
+const isStandaloneTask = ref(false);
+const showScheduleModal = ref(false);
+
+const confirmationComponent = ref();
+const loadConfirmationComponent = async () => {
+    const module = await import('../common/ConfirmationDialog.vue');
+    confirmationComponent.value = module.default;
+}
+
+async function showScheduleConfirmationDialog() {
+    await loadConfirmationComponent();
+    showSchedulePrompt.value = true;
+    console.log('Showing confirmation dialog...');
+}
+
+const makeScheduleLater : ConfirmationCallback = () => {
+    isStandaloneTask.value = true;
+    console.log('No, isStandalone:', isStandaloneTask.value);
+}
+
+const makeScheduleNow : ConfirmationCallback = () => {
+    isStandaloneTask.value = false;
+    console.log('Yes, isStandalone:', isStandaloneTask.value);
+    showScheduleModal.value = true;
+    console.log('Showing schedule configurator...');
+    // SCHEDULE TRIGGERED ^
+}
+
+const updateShowSchedulePrompt = (newVal) => {
+    showSchedulePrompt.value = newVal;
+}
+
+watch(isStandaloneTask, async (newVal, oldVal) => {
+    if (isStandaloneTask.value == true) {
+        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+        updateShowSchedulePrompt;
+        closeModal();
+    }
+});
 
 const closeModal = () => {
     showWizard.value = false;
@@ -108,7 +154,6 @@ function validateComponentParams() {
         notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
         return false;
     } else {
-        // notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
         return true;
     }
 }
@@ -117,7 +162,13 @@ function addTaskBtn() {
     const taskParamsValid = validateComponentParams();
 
     if (taskParamsValid) {
+        showScheduleConfirmationDialog();
+
+       
         
+        
+    } else {
+
     }
 }
 
@@ -128,5 +179,7 @@ onMounted(() => {
     
 
 provide('errors', errorList);
+provide('show-schedule-prompt', showSchedulePrompt);
+provide('is-standalone-task', isStandaloneTask);
 </script>
 
