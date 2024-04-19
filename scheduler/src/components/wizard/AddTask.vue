@@ -12,8 +12,12 @@
 					</select>
 				</div>
                 <div name="task-name">
-                    <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
-                    <input type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default" placeholder="New Task"/> 
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
+                        <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    </div>
+                    <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default" placeholder="New Task"/> 
+                    <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/> 
                 </div>
                 <div v-if="selectedTemplate">
                     <ParameterInput ref="parameterInputComponent" :selectedTemplate="selectedTemplate"/>
@@ -46,6 +50,7 @@
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../common/ParameterInput.vue';
+import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
 
 
@@ -67,6 +72,7 @@ const adding = ref(false);
 
 const errorList = ref<string[]>([]);
 const newTaskName = ref('');
+const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
 
@@ -79,26 +85,40 @@ const closeModal = () => {
 function validateTaskName() {
     if (newTaskName.value === '') {
         errorList.value.push("Task name cannot be empty.");
+        newTaskNameErrorTag.value = true;
     } else {
         if (newTaskName.value.includes('_')) {
             errorList.value.push("Task name cannot have underscores ('_').");
+        newTaskNameErrorTag.value = true;
         }
     }
 }
 
+function clearAllErrors() {
+    errorList.value = [];
+    newTaskNameErrorTag.value = false;
+    parameterInputComponent.value.clearTaskParamErrorTags();
+}
+
 function validateComponentParams() {
+    clearAllErrors();
     validateTaskName();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
         notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        return false;
     } else {
-        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+        // notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+        return true;
     }
 }
 
 function addTaskBtn() {
-    errorList.value = [];
-    validateComponentParams();
+    const taskParamsValid = validateComponentParams();
+
+    if (taskParamsValid) {
+        
+    }
 }
 
 
