@@ -3,18 +3,26 @@
 		<HoustonHeader moduleName="Houston Scheduler" sourceURL=""
 			issuesURL="" :pluginVersion="Number(pluginVersion)"
 			:infoNudgeScrollbar="true" />
-		<SchedulerView/>
+		<SchedulerView class="z-0"/>
+		<Teleport to="body">
+			<Notifications
+                :notificationFIFO="notificationFIFO"
+                ref="notifications" class="z-9999"
+            />
+		</Teleport>
+		
 	</div>
 </template>
 
 <script setup lang="ts">
 import { useSpawn, errorString } from '@45drives/cockpit-helpers';
-import { reactive, ref, computed, provide, onMounted } from 'vue';
+import { reactive, ref, computed, provide, onMounted, Teleport } from 'vue';
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import { pluginVersion } from "./version";
 import { HoustonHeader } from "@45drives/cockpit-vue-components";
 import { FIFO } from '@45drives/cockpit-helpers';
+import Notifications from "./components/common/Notifications.vue";
 import SchedulerView from './views/SchedulerView.vue';
 import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from './models/Classes';
 
@@ -24,6 +32,7 @@ interface AppProps {
 
 const props = defineProps<AppProps>();
 const notifications = ref<any>(null);
+// const notificationFIFO = ref<FIFO>(props.notificationFIFO);
 
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();

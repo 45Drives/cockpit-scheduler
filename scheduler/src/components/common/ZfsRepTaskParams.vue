@@ -33,7 +33,7 @@
             </div>
             <div name="source-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Source)</label>
-                <input type="number" v-model="snapsToKeepSrc" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                <input type="number" min="0" v-model="snapsToKeepSrc" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
             </div>
         </div>
 
@@ -70,7 +70,7 @@
             </div>
             <div name="destination-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Destination)</label>
-                <input type="number" v-model="snapsToKeepDest" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                <input type="number" min="0" v-model="snapsToKeepDest" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
             </div>
         </div>
 

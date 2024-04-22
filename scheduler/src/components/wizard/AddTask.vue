@@ -27,10 +27,10 @@
         <template v-slot:footer>
             <div class="w-full">
 				<div class="button-group-row w-full justify-between">
-					<div class="button-group-row mt-2">
+					<div class="button-group-row">
                         <button @click.stop="closeModal" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger">Close</button>
 					</div>
-					<div class="button-group-row mt-2">
+					<div class="button-group-row">
                         <button disabled v-if="!adding && !selectedTemplate" id="add-task-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="addTaskBtn">Add Task</button>
                         <button v-if="!adding && selectedTemplate" id="add-task-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="addTaskBtn">Add Task</button>
                         <button disabled v-if="adding" id="finish" type="button" class="btn btn-primary object-right justify-end">
@@ -52,7 +52,7 @@
     </div>
 
     <div v-if="showScheduleWizard">
-        <component :is="scheduleComponent" @close=""/>
+        <!-- <component :is="scheduleComponent" @close=""/> -->
     </div>
 </template>
 <script setup lang="ts">

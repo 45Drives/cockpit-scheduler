@@ -2,8 +2,8 @@
     <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
             <!-- Have this component be multi-function:
-                    Add New Schedule (standalone) 
-                    Add New Schedule (with Task Creation)
+                    Add New Schedule (for existing task) 
+                    Add New Schedule (during new task creation)
                     Edit Schedule
                     Remove Schedule
             -->
@@ -68,6 +68,10 @@ import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParam
 
 interface ManageScheduleProps {
 	idKey: string;
+    // type of schedule management (adding-new-task, adding-existing-task, editing)
+    // if adding to existing-> what task to add schedule to? (or do this outside?)
+    // if editing-> what schedule to edit
+    // 
 }
 
 const props = defineProps<ManageScheduleProps>();
