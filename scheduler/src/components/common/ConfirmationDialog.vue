@@ -11,8 +11,8 @@
         <template v-slot:footer>
             <div class="w-full grid grid-rows-1">
                 <div class="button-group-row justify-around">
-                    <button @click="confirmNo" id="confirmation-no" name="no-button" class="mt-1 btn btn-secondary object-left justify-start h-fit">No</button>
-                    <button @click="confirmYes" id="confirmation-yes" name="yes-button" class="mt-1 btn btn-primary object-right justify-end h-fit">Yes</button>
+                    <button @click="confirmNo" id="confirmation-no" name="no-button" class="mt-1 btn btn-danger object-left justify-start h-fit w-full">No</button>
+                    <button @click="confirmYes" id="confirmation-yes" name="yes-button" class="mt-1 btn btn-secondary object-right justify-end h-fit w-full">Yes</button>
                 </div>
             </div>
         </template>

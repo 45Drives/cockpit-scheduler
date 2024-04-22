@@ -1,10 +1,4 @@
-import { getTaskData, getPoolData, getDatasetData } from '../composables/getData';
-import BoolParam from '../components/parameters/BoolParam.vue';
-import StringParam from '../components/parameters/StringParam.vue';
-import SelectParam from '../components/parameters/SelectParam.vue';
-import IntParam from '../components/parameters/IntParam.vue';
-import ZFSDatasetParam from '../components/parameters/ZFSDatasetParam.vue';
-
+import { getTaskData, getPoolData, getDatasetData, makeEnvFile } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -85,8 +79,25 @@ export class Scheduler implements SchedulerType {
         return parameterRoot;
     }
 
-    registerTaskInstance(taskInstance) {
+    registerTaskInstance(taskInstance : TaskInstance) {
         //generate env file with key/value pairs (Task Parameters)
+        const envKeyValues = taskInstance.parameters.asEnvKeyValues();
+        console.log('envKeyVals:', envKeyValues);
+
+        const envKeyValuesString = envKeyValues.join('\n')
+
+        function formatTemplateName(templateName) {
+            // Split the string into words using space as the delimiter
+            let words = templateName.split(' ');
+            // Capitalize the first letter of each word and lowercase the rest
+            let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+            // Join the words without spaces
+            let formattedTemplateName = formattedWords.join('');
+            return formattedTemplateName;
+        }
+        
+        makeEnvFile(formatTemplateName(taskInstance.template.name), taskInstance.name, `"${envKeyValuesString}"`);
+
         //generate json file with enabled boolean + intervals (Schedule Intervals)
 
         //run script to generate service + timer via template, param env and schedule json
@@ -242,54 +253,6 @@ export class ParameterNode implements ParameterNodeType {
     isValid() {
         // Implementation for validation
     }
-
-    uiComponent(): UIComponent {
-         // Dynamically return Vue component based on parameter type
-        if (this instanceof StringParameter) {
-            return StringParam;
-        } else if (this instanceof IntParameter) {
-            return IntParam;
-        } else if (this instanceof BoolParameter) {
-            return BoolParam;
-        } else if (this instanceof SelectionParameter) {
-            return SelectParam;
-        } else if (this instanceof ZfsDatasetParameter) {
-            return ZFSDatasetParam;
-        } else {
-            // Handle other parameter types or default case
-            return StringParam;
-        }
-    }
-
-    // cloneParameterNode(node) {
-    //     let clonedNode;
-      
-    //     if (node instanceof StringParameter) {
-    //       clonedNode = new StringParameter(node.label, node.key, node.value);
-    //     } else if (node instanceof IntParameter) {
-    //       clonedNode = new IntParameter(node.label, node.key, node.value);
-    //     } else if (node instanceof BoolParameter) {
-    //       clonedNode = new BoolParameter(node.label, node.key, node.value);
-    //     } else if (node instanceof SelectionParameter) {
-    //       clonedNode = new SelectionParameter(node.label, node.key, node.value, [...node.options]);
-    //     } else if (node instanceof ZfsDatasetParameter) {
-    //         const host = node.getChild('host').value;
-    //         const port = node.getChild('port').value;
-    //         const user = node.getChild('user').value;
-    //         const pool = node.getChild('pool').value;
-    //         const dataset = node.getChild('dataset').value;
-    //         clonedNode = new ZfsDatasetParameter(node.label, node.key, host, port, user, pool, dataset);
-    //     } else {
-    //       clonedNode = new ParameterNode(node.label, node.key);
-    //     }
-      
-    //     // Recursively clone children
-    //     node.children.forEach(child => {
-    //       clonedNode.addChild(this.cloneParameterNode(child));
-    //     });
-      
-    //     return clonedNode;
-    //   }
       
 }
 

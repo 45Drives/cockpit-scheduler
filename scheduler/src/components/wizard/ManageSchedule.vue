@@ -1,16 +1,39 @@
 <template>
     <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
-            <!-- Have this component be multi-function:
-                    Add New Schedule (for existing task) 
-                    Add New Schedule (during new task creation)
-                    Edit Schedule
-                    Remove Schedule
+            <!-- 
+                Add New Schedule (for existing task) 
+                Add New Schedule (during new task creation)
+                Edit Schedule
             -->
-            Add New Schedule
+            <h3 v-if="props.mode == 'add'">
+                Add New Schedule
+            </h3>
+            <h3 v-if="props.mode == 'edit'">
+                Edit Schedule
+            </h3>
         </template>
         <template v-slot:content>
             <div>
+                <!--    type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
+                        type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
+
+                        interface TimeComponentType {
+                            value: number | string;
+                        }
+
+                        interface TaskScheduleType {
+                            enabled: boolean;
+                            intervals: TaskScheduleIntervalType[];
+                        }
+
+                        type TaskScheduleIntervalType = {
+                            [K in TimeUnit]?: TimeComponentType; // Make each property optional
+                        } & {
+                            dayOfWeek?: (DayOfWeek)[]; // Additional properties can be added like this
+                        };
+                -->
+
                 <!-- INTERVAL PRESET - Select (hourly, daily, weekly, monthly, yearly) -->
                 <!-- <div name="task-template" v-if="taskTemplates.length > 0">
 					<label for="task-template-selection" class="block text-sm font-medium leading-6 text-default">Select Type of Task to Add</label>
@@ -61,23 +84,21 @@
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from '../common/ParameterInput.vue';
+import ParameterInput from '../parameters/ParameterInput.vue';
 import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
+import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance } from '../../models/Classes';
 
 interface ManageScheduleProps {
 	idKey: string;
-    // type of schedule management (adding-new-task, adding-existing-task, editing)
-    // if adding to existing-> what task to add schedule to? (or do this outside?)
-    // if editing-> what schedule to edit
-    // 
+    mode: 'add' | 'edit';
+    task: TaskInstanceType;
+    isNewTask: boolean;
 }
 
 const props = defineProps<ManageScheduleProps>();
 const emit = defineEmits(['close']);
 const notifications = inject<Ref<any>>('notifications')!;
-const newSchedule = ref<TaskScheduleType>();
 
 const myScheduler = inject<Scheduler>('scheduler')!;
 

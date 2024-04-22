@@ -67,11 +67,11 @@
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                                     &lt;timestamp here&gt;
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-default">
+                                                <td class="whitespace-nowrap text-sm font-medium text-default border-default mb-1">
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="col-span-5 h-full border border-default p-2 m-2">
+                                                <td v-if="showDetails[index]" class="col-span-5 h-full border border-default p-2 m-2 pt-1">
 
                                                     <!-- Details for ZFS Replication Task -->
                                                     <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">

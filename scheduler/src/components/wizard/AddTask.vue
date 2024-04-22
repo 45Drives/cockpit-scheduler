@@ -56,12 +56,13 @@
     </div>
 </template>
 <script setup lang="ts">
+import { systemdUnitEscape } from '@45drives/cockpit-helpers'
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from '../common/ParameterInput.vue';
+import ParameterInput from '../parameters/ParameterInput.vue';
 import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter } from '../../models/Classes';
+import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
 
 interface AddTaskProps {
 	idKey: string;
@@ -84,6 +85,44 @@ const newTaskName = ref('');
 const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
+const parameters = ref();
+
+
+const closeModal = () => {
+    showTaskWizard.value = false;
+    emit('close');
+}
+
+function validateTaskName() {
+    if (newTaskName.value === '') {
+        errorList.value.push("Task name cannot be empty.");
+        newTaskNameErrorTag.value = true;
+    } else {
+        if (newTaskName.value.includes('_')) {
+            errorList.value.push("Task name cannot have underscores ('_').");
+        newTaskNameErrorTag.value = true;
+        }
+    }
+}
+
+function clearAllErrors() {
+    errorList.value = [];
+    newTaskNameErrorTag.value = false;
+    parameterInputComponent.value.clearTaskParamErrorTags();
+}
+
+function validateComponentParams() {
+    clearAllErrors();
+    validateTaskName();
+    parameterInputComponent.value.validation();
+    if (errorList.value.length > 0) {
+        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        return false;
+    } else {
+        return true;
+    }
+}
+
 
 const showSchedulePrompt = ref(false);
 const isStandaloneTask = ref(false);
@@ -123,9 +162,26 @@ const updateShowSchedulePrompt = (newVal) => {
 
 watch(isStandaloneTask, async (newVal, oldVal) => {
     if (isStandaloneTask.value == true) {
+        if (selectedTemplate.value?.name == 'ZFS Replication Task') {
+            const template = new ZFSReplicationTaskTemplate();
+            const schedule = new TaskSchedule(false, []);
+
+            let sanitizedName = newTaskName.value.replace(/[^a-zA-Z0-9-]/g, '');
+            if (sanitizedName.startsWith('-')) {
+                sanitizedName = 'task' + sanitizedName;
+            }
+
+            const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
+            console.log('task:', task);
+
+            myScheduler.registerTaskInstance(task);
+        }
+       
         notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
         updateShowSchedulePrompt;
         closeModal();
+    } else {
+        
     }
 });
 
@@ -142,48 +198,14 @@ async function showScheduleConfirmationDialog() {
     console.log('Showing confirmation dialog...');
 }
 
-const closeModal = () => {
-    showTaskWizard.value = false;
-    emit('close');
-}
-
-function validateTaskName() {
-    if (newTaskName.value === '') {
-        errorList.value.push("Task name cannot be empty.");
-        newTaskNameErrorTag.value = true;
-    } else {
-        if (newTaskName.value.includes('_')) {
-            errorList.value.push("Task name cannot have underscores ('_').");
-        newTaskNameErrorTag.value = true;
-        }
-    }
-}
-
-function clearAllErrors() {
-    errorList.value = [];
-    newTaskNameErrorTag.value = false;
-    parameterInputComponent.value.clearTaskParamErrorTags();
-}
-
-function validateComponentParams() {
-    clearAllErrors();
-    validateTaskName();
-    parameterInputComponent.value.validation();
-    if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
-        return false;
-    } else {
-        return true;
-    }
-}
-
 function addTaskBtn() {
     const taskParamsValid = validateComponentParams();
 
     if (taskParamsValid) {
+
         showScheduleConfirmationDialog();
 
-       
+        
         
         
     } else {
@@ -193,10 +215,11 @@ function addTaskBtn() {
 
 
 onMounted(() => {
-
+    
 });
     
-
+provide('new-task', newTask);
+provide('parameters', parameters);
 provide('errors', errorList);
 provide('show-schedule-prompt', showSchedulePrompt);
 provide('is-standalone-task', isStandaloneTask);

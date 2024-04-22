@@ -99,11 +99,13 @@
             </div>
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
-                <input type="text" v-model="destUser" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
+                <input v-if="destHost !== ''" type="text" v-model="destUser" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
+                <input v-if="destHost === ''" disabled type="text" v-model="destUser" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
             </div>
             <div name="destination-port" class="mt-1">
                 <label class="block text-sm leading-6 text-default">Port</label>
-                <input type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/> 
+                <input v-if="destHost !== ''" type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/> 
+                <input v-if="destHost === ''" disabled type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/>
             </div>
         </div>
         
@@ -173,15 +175,14 @@
 import { ref, Ref, reactive, computed, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { ZFSReplicationTaskTemplate, TaskTemplate, ParameterNode, ZfsDatasetParameter, SelectionOption, SelectionParameter, IntParameter, StringParameter, BoolParameter, TaskInstance } from '../../models/Classes';
-import { getTaskData, getPoolData, getDatasetData } from '../../composables/getData';
-import { testSSH } from '../../composables/helpers';
+import { getTaskData, getPoolData, getDatasetData, testSSH } from '../../composables/utility';
 
 interface ZfsRepTaskParamsProps {
    parameterSchema: ParameterNodeType;
 }
 
 const props = defineProps<ZfsRepTaskParamsProps>();
-
+const parameters = inject<Ref<any>>('parameters')!;
 const sourcePools = ref([]);
 const sourceDatasets = ref([]);
 const loadingSourcePools = ref(false);
@@ -391,6 +392,34 @@ function validateParams() {
     validateHost();
     validateDestination();
     validateCustomName();
+
+    if (errorList.value.length == 0) {
+        setParams();
+    }
+
+}
+
+function setParams() {
+    const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
+        .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
+            .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', destPool.value, destDataset.value))
+            .addChild(new ParameterNode('Send Options', 'sendOptions')
+                .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
+                .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
+                .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
+                .addChild(new IntParameter('MBuffer Size', 'mbufferSize', mbufferSize.value))
+                .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
+                .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
+                .addChild(new StringParameter('Custom Name', 'customName', customName.value))
+            )
+            .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
+                .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
+                .addChild(new IntParameter('Destination', 'destination', snapsToKeepDest.value)
+            )
+        );
+
+        parameters.value = newParams;
+        console.log('newParams:', newParams);
 }
 
 async function confirmTest(destHost, destUser) {

@@ -1,7 +1,5 @@
 import { useSpawn, errorString } from '@45drives/cockpit-helpers';
 import { ref, Ref } from 'vue';
-// @ts-ignore
-import test_ssh_script from"../scripts/test-ssh.py?raw";
 
 //change true to 'on' and false to 'off'
 export function isBoolOnOff(bool : boolean) {
@@ -149,24 +147,6 @@ export function convertSecondsToString(seconds) {
     return result.trim();
 }
 
-export async function testSSH(sshTarget) {
-    try {
-        console.log(`target: ${sshTarget}`);
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', test_ssh_script, sshTarget], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('testSSH output:', output);
-
-        if (output.stdout.includes('True')) {
-			return true;
-		} else {
-			return false;
-		}
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
 
 export function truncateName(name : string, threshold : number) {
     return (name.length > threshold ? name.slice(0, threshold) + '...' : name)
