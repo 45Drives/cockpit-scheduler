@@ -174,7 +174,7 @@ watch(isStandaloneTask, async (newVal, oldVal) => {
             const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
             console.log('task:', task);
 
-            myScheduler.registerTaskInstance(task);
+            await myScheduler.registerTaskInstance(task);
         }
        
         notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);

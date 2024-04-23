@@ -7,8 +7,8 @@ import get_datasets_script from '../scripts/get-datasets-in-pool.py?raw';
 import get_pools_script from '../scripts/get-pools.py?raw';
 // @ts-ignore
 import test_ssh_script from '../scripts/test-ssh.py?raw';
-//@ts-ignore
-import generate_env_script from '../scripts/parameter-file-generation.py?raw';
+// //@ts-ignore
+// import generate_env_script from '../scripts/parameter-file-generation.py?raw';
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
 
@@ -135,7 +135,7 @@ export async function testSSH(sshTarget) {
     }
 }
 
-export async function makeEnvFile(taskTemplateName, taskName, parameters) {
+/* export async function makeEnvFile(taskTemplateName, taskName, parameters) {
     try {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_env_script, '-t', taskTemplateName, '-n', taskName, '-p', parameters], { superuser: 'try', stderr: 'out' });
 
@@ -145,4 +145,4 @@ export async function makeEnvFile(taskTemplateName, taskName, parameters) {
         console.error(errorString(error));
         return null;
     }
-}
+} */

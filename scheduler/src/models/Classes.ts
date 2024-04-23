@@ -1,4 +1,5 @@
-import { getTaskData, getPoolData, getDatasetData, makeEnvFile } from '../composables/utility';
+import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
+import { getTaskData, getPoolData, getDatasetData } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -79,7 +80,7 @@ export class Scheduler implements SchedulerType {
         return parameterRoot;
     }
 
-    registerTaskInstance(taskInstance : TaskInstance) {
+    async registerTaskInstance(taskInstance : TaskInstance) {
         //generate env file with key/value pairs (Task Parameters)
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         console.log('envKeyVals:', envKeyValues);
@@ -96,7 +97,23 @@ export class Scheduler implements SchedulerType {
             return formattedTemplateName;
         }
         
-        makeEnvFile(formatTemplateName(taskInstance.template.name), taskInstance.name, `"${envKeyValuesString}"`);
+        // makeEnvFile(formatTemplateName(taskInstance.template.name), taskInstance.name, `"${envKeyValuesString}"`);
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}.env`;
+
+        console.log('envFilePath:', envFilePath);
+
+        const file = new BetterCockpitFile(envFilePath, {
+            superuser: 'try',
+        });
+
+        file.replace(envKeyValuesString).then(() => {
+            console.log('env file created and content written successfully');
+            file.close();
+        }).catch(error => {
+            console.error("Error writing content to the file:", error);
+            file.close();
+        });
 
         //generate json file with enabled boolean + intervals (Schedule Intervals)
 
