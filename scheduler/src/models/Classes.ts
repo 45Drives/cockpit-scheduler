@@ -115,9 +115,24 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
-        //generate json file with enabled boolean + intervals (Schedule Intervals)
-
+        if (taskInstance.schedule.intervals.length < 1) {
+            //ignore schedule for now
+            console.log('No schedules found, parameter file generated.');
+            return;
+        } else {
+            //generate json file with enabled boolean + intervals (Schedule Intervals)
+            // requires schedule data object
+        }
+       
         //run script to generate service + timer via template, param env and schedule json
+        if (taskInstance.schedule.intervals.length < 1) {
+            //ignore schedule for now
+            console.log('No schedules found, making service file only.');
+        } else {
+            // requires schedule data object
+        }
+
+       
 
     }   
     
@@ -136,7 +151,7 @@ export class Scheduler implements SchedulerType {
     }
     
     loadSchedulesFor(taskInstance) {
-        // return TaskSchedule[];
+        return TaskSchedule;
     }
     
     enableSchedule(taskInstance) {

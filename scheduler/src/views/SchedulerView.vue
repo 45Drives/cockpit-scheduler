@@ -132,7 +132,7 @@
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                        <button @click="showScheduleWizardComponent" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             Manage
                                                             <CalendarDaysIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
@@ -158,6 +158,13 @@
             <div v-if="showTaskWizard" class="z-0">
                 <AddTask :id-key="'add-task-modal'" />
             </div>
+
+            <!-- <div v-if="showScheduleWizard" class="z-0">
+                <ManageSchedule :id-key="'add-schedule-modal'" :mode="'add'" :task="newTask" :isNewTask="true"/>
+            </div> -->
+        <div v-if="showScheduleWizard">
+                <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="null" :isNewTask="true"/>
+            </div>
 		</div>
 	</div>
 </template>
@@ -173,6 +180,7 @@ import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/C
 
 import { boolToYesNo } from '../composables/helpers'
 import AddTask from "../components/wizard/AddTask.vue";
+import ManageSchedule from "../components/wizard/ManageSchedule.vue";
 
 // const notifications = inject<Ref<any>>('notifications')!;
 // const notificationFIFO = inject<Ref<FIFO>>('notification-fifo')!;
@@ -222,6 +230,31 @@ function getLastRunTimestamp() {
 
 }
 
+
+
+// Show Schedule Wizard
+const scheduleWizardComponent = ref();
+const loadScheduleWizardComponent = async () => {
+    console.log('loadScheduleWizard triggered');
+    const module = await import('../components/wizard/ManageSchedule.vue');
+    scheduleWizardComponent.value = module.default;
+}
+
+async function showScheduleWizardComponent() {
+    console.log('Attempting to load Schedule Wizard Component...');
+    try {
+        await loadScheduleWizardComponent();
+        console.log('Component loaded, setting showScheduleWizard to true.');
+        showScheduleWizard.value = true;
+    } catch (error) {
+        console.error('Failed to load Schedule Wizard Component:', error);
+    }
+}
+
+const updateShowScheduleWizardComponent = (newVal) => {
+    console.log('updateShowScheduleWizard triggered');
+    showScheduleWizard.value = newVal;
+}
 
 
 provide('show-task-wizard', showTaskWizard);

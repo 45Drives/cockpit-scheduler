@@ -14,7 +14,8 @@
             </h3>
         </template>
         <template v-slot:content>
-            <div>
+            <div name="new-schedule-interval" class="">
+
                 <!--    type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
                         type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
 
@@ -57,7 +58,86 @@
 
                 <!-- Button to Save Schedule -->
 
-            </div>
+
+            <!-- Example of input field with error feedback (from AddTask.name) 
+                        <div class="flex flex-row justify-between items-center">
+                            <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
+                            <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                        </div>
+                        <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default" placeholder="New Task"/> 
+                        <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/>  -->
+
+                <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+                     <!-- LEFT SIDE -->
+                    <div class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-2 bg-accent grid grid-cols-1">
+                        <div name="schedule-preset" class="col-span-1">
+                            <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
+                            <select id="task-template-selection" v-model="selectedPreset" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                                <option value="none">None</option>
+                                <option value="hourly">Hourly</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+
+                        <div name="schedule-fields" class="col-span-1 grid grid-cols-2 gap-2 mt-2">
+                            <div name="hour">  
+                                <label class="block text-sm leading-6 text-default">Hour</label>
+                                <input v-model="hour" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                            </div>
+                            <div name="minute">
+                                <label class="block text-sm leading-6 text-default">Minute</label>
+                                <input v-model="minute" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                            </div>
+                            <div name="day">
+                                <label class="block text-sm leading-6 text-default">Day</label>
+                                <input v-model="day" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                            </div>
+                            <div name="month">
+                                <label class="block text-sm leading-6 text-default">Month</label>
+                                <input v-model="month" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                            </div>
+                            <div name="year">
+                                <label class="block text-sm leading-6 text-default">Year</label>
+                                <input v-model="year" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                            </div>
+                            <div name="dayOfWeek" class="col-span-2">
+                                <label class="block text-sm leading-6 text-default">Days of Week</label>
+                                <table class="w-full">
+                                    <tr class="grid grid-cols-7">
+                                        <td v-for="day in daysOfWeek" class="px-1 col-span-1">
+                                            <button class="flex items-center w-full h-full border border-default rounded-lg"
+                                            :class="checkboxClass(day)">
+                                                <label :for="`${day}`" class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5">
+                                                    <p class="w-full mt-1 text-sm text-default">{{ day }}</p>
+                                                    <input :id="`${day}`" v-model="selectedDays" type="checkbox" :value="`${day}`" :name="`${day}`" 
+                                                    class="w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"/>	
+                                                </label>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div name="buttons">
+                                
+                            </div>
+                        </div>
+                    </div>
+                    <!-- TOP RIGHT -->
+                    <div name="" class="border border-default rounded-md p-2 col-span-1 bg-accent">
+                    
+                    </div>
+                    
+                    <!-- BOTTOM RIGHT -->
+                    <div name="" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
+                    
+                    </div>
+                </div>
+            </div> 
+ 
+
         </template>
         <template v-slot:footer>
             <div class="w-full">
@@ -90,7 +170,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance } from '../../models/Classes';
 
 interface ManageScheduleProps {
-	idKey: string;
+    idKey: string;
     mode: 'add' | 'edit';
     task: TaskInstanceType;
     isNewTask: boolean;
@@ -99,14 +179,89 @@ interface ManageScheduleProps {
 const props = defineProps<ManageScheduleProps>();
 const emit = defineEmits(['close']);
 const notifications = inject<Ref<any>>('notifications')!;
-
 const myScheduler = inject<Scheduler>('scheduler')!;
-
 const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
 
 const closeModal = () => {
     showScheduleWizard.value = false;
     emit('close');
 }
+
+const schedule = ref<TaskScheduleType>();
+const selectedPreset = ref('none');
+const scheduleEnabled = ref(true);
+const intervals = ref<TaskScheduleIntervalType[]>([]);
+
+const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const selectedDays = ref<string[]>([]);
+
+const newInterval: TaskScheduleIntervalType = {
+    minute: { value: '*' },
+    hour: { value: '*' },
+    day: { value: '*' },
+    month: { value: '*' },
+    year: { value: '*' },
+    dayOfWeek: []
+};
+
+const hour = ref('');
+const minute = ref('');
+const day = ref('');
+const month = ref('');
+const year = ref('');
+
+function clearFields() {
+    hour.value = '';
+    minute.value = '';
+    day.value = '';
+    month.value = '';
+    year.value = '';
+    selectedDays.value = [];
+}
+
+function setFields(min, hr, d, mon, y) {
+    minute.value = min;
+    hour.value = hr;
+    day.value = d;
+    month.value = mon;
+    year.value = y;
+}
+
+watch(selectedPreset, (newVal, oldVal) => {
+    switch (selectedPreset.value) {
+        case 'none':
+            clearFields();
+            break;
+        case 'hourly':
+            setFields('0', '*', '*', '*', '*');
+            break;
+        case 'daily':  
+            setFields('0', '0', '*', '*', '*');
+            break;
+        case 'weekly':
+            setFields('0', '0', '*', '*', '*');
+            break;
+        case 'monthly':   
+            setFields('0', '0', '1', '*', '*');
+            break;
+        case 'yearly':
+            setFields('0', '0', '1', '1', '*');
+            break;
+        default:
+            break;
+    }
+});
+
+
+const checkboxClass = (dayOfWeek) => {
+    const isSelected = selectedDays.value.includes(dayOfWeek);
+    return isSelected ? 'bg-green-30 dark:bg-green-700' : '';
+}
+
+onMounted(() => {
+    if (!props.isNewTask) {
+        // schedule.value = myScheduler.loadSchedulesFor(props.task);
+    }
+})
 
 </script>

@@ -47,20 +47,17 @@
     </Modal>
 
     <div v-if="showSchedulePrompt">
-        <!-- <ConfirmationDialog @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to configure a schedule for this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/> -->
         <component :is="confirmationComponent" @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to schedule this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater"/>
     </div>
 
     <div v-if="showScheduleWizard">
-        <!-- <component :is="scheduleComponent" @close=""/> -->
+        <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="newTask" :isNewTask="true"/>
     </div>
 </template>
 <script setup lang="ts">
-import { systemdUnitEscape } from '@45drives/cockpit-helpers'
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
-import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
 
@@ -93,6 +90,14 @@ const closeModal = () => {
     emit('close');
 }
 
+
+// Validation
+function clearAllErrors() {
+    errorList.value = [];
+    newTaskNameErrorTag.value = false;
+    parameterInputComponent.value.clearTaskParamErrorTags();
+}
+
 function validateTaskName() {
     if (newTaskName.value === '') {
         errorList.value.push("Task name cannot be empty.");
@@ -103,12 +108,6 @@ function validateTaskName() {
         newTaskNameErrorTag.value = true;
         }
     }
-}
-
-function clearAllErrors() {
-    errorList.value = [];
-    newTaskNameErrorTag.value = false;
-    parameterInputComponent.value.clearTaskParamErrorTags();
 }
 
 function validateComponentParams() {
@@ -124,66 +123,9 @@ function validateComponentParams() {
 }
 
 
+// Schedule Prompt
 const showSchedulePrompt = ref(false);
 const isStandaloneTask = ref(false);
-const showScheduleWizard = ref(false);
-
-const scheduleComponent = ref();
-const loadScheduleComponent = async () => {
-    const module = await import('./ManageSchedule.vue');
-    scheduleComponent.value = module.default;
-}
-
-async function showScheduleComponent() {
-    await loadScheduleComponent();
-    // updateShowSchedulePrompt;
-    // closeModal();
-
-    // Figure out what to do here to replace modal without stacking preferably
-    showSchedulePrompt.value = true;
-    console.log('Showing schedule component...');
-}
-
-const makeScheduleLater : ConfirmationCallback = () => {
-    isStandaloneTask.value = true;
-    console.log('No, isStandalone:', isStandaloneTask.value);
-}
-
-const makeScheduleNow : ConfirmationCallback = () => {
-    isStandaloneTask.value = false;
-    console.log('Yes, isStandalone:', isStandaloneTask.value);
-    showScheduleWizard.value = true;
-    showScheduleComponent();
-}
-
-const updateShowSchedulePrompt = (newVal) => {
-    showSchedulePrompt.value = newVal;
-}
-
-watch(isStandaloneTask, async (newVal, oldVal) => {
-    if (isStandaloneTask.value == true) {
-        if (selectedTemplate.value?.name == 'ZFS Replication Task') {
-            const template = new ZFSReplicationTaskTemplate();
-            const schedule = new TaskSchedule(false, []);
-
-            let sanitizedName = newTaskName.value.replace(/[^a-zA-Z0-9-]/g, '');
-            if (sanitizedName.startsWith('-')) {
-                sanitizedName = 'task' + sanitizedName;
-            }
-
-            const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
-            console.log('task:', task);
-
-            await myScheduler.registerTaskInstance(task);
-        }
-       
-        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
-        updateShowSchedulePrompt;
-        closeModal();
-    } else {
-        
-    }
-});
 
 const confirmationComponent = ref();
 const loadConfirmationComponent = async () => {
@@ -191,33 +133,86 @@ const loadConfirmationComponent = async () => {
     confirmationComponent.value = module.default;
 }
 
-async function showScheduleConfirmationDialog() {
+async function showSchedulePromptDialog() {
     await loadConfirmationComponent();
 
     showSchedulePrompt.value = true;
     console.log('Showing confirmation dialog...');
 }
 
-function addTaskBtn() {
-    const taskParamsValid = validateComponentParams();
+const makeScheduleLater : ConfirmationCallback = async () => {
+    isStandaloneTask.value = true;
+    console.log('Make Schedule Later. isStandalone Task:', isStandaloneTask.value);
+    await saveStandaloneTask();
+    updateShowSchedulePrompt(false);
+    closeModal();
+}
 
-    if (taskParamsValid) {
+const makeScheduleNow : ConfirmationCallback = async () => {
+    isStandaloneTask.value = false;
+    console.log('Make Schedule Now. isStandalone:', isStandaloneTask.value);
+    updateShowSchedulePrompt(false);
+    showScheduleWizardComponent();
+    // closeModal();
+}
 
-        showScheduleConfirmationDialog();
-
-        
-        
-        
-    } else {
-
-    }
+const updateShowSchedulePrompt = (newVal) => {
+    showSchedulePrompt.value = newVal;
 }
 
 
-onMounted(() => {
+// Show Schedule Wizard
+const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
+
+const scheduleWizardComponent = ref();
+const loadScheduleWizardComponent = async () => {
+    console.log('loadScheduleWizard triggered');
+    const module = await import('./ManageSchedule.vue');
+    scheduleWizardComponent.value = module.default;
+}
+
+async function showScheduleWizardComponent() {
+    console.log('Attempting to load Schedule Wizard Component...');
+    try {
+        await loadScheduleWizardComponent();
+        console.log('Component loaded, setting showScheduleWizard to true.');
+        showScheduleWizard.value = true;
+    } catch (error) {
+        console.error('Failed to load Schedule Wizard Component:', error);
+    }
+}
+
+const updateShowScheduleWizardComponent = (newVal) => {
+    console.log('updateShowScheduleWizard triggered');
+    showScheduleWizard.value = newVal;
+}
+
+async function saveStandaloneTask() {
+    console.log('saveTask triggered');
+    if (selectedTemplate.value?.name == 'ZFS Replication Task') {
+        const template = new ZFSReplicationTaskTemplate();
+        const schedule = new TaskSchedule(false, []);
+
+        let sanitizedName = newTaskName.value.replace(/[^a-zA-Z0-9-]/g, '');
+        if (sanitizedName.startsWith('-')) {
+            sanitizedName = 'task' + sanitizedName;
+        }
+
+        const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
+        console.log('task:', task);
+
+        await myScheduler.registerTaskInstance(task);
+    }
     
-});
-    
+    notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+}
+
+function addTaskBtn() {
+    if (validateComponentParams()) {
+        showSchedulePromptDialog();
+    }
+}
+
 provide('new-task', newTask);
 provide('parameters', parameters);
 provide('errors', errorList);
