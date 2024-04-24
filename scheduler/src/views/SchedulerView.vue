@@ -23,7 +23,7 @@
                                 </div> -->
                                 <div class="mt-5 py-0.5 px-3">
                                     <!-- <router-link :to="'/forms/new'"> -->
-                                        <button @click="addTaskButton()" class="btn btn-primary">Add New Task</button>
+                                        <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                                     <!-- </router-link> -->
                                 </div>
                             </div>
@@ -132,7 +132,7 @@
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button @click="showScheduleWizardComponent" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                        <button @click="manageScheduleBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             Manage
                                                             <CalendarDaysIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
@@ -162,8 +162,8 @@
             <!-- <div v-if="showScheduleWizard" class="z-0">
                 <ManageSchedule :id-key="'add-schedule-modal'" :mode="'add'" :task="newTask" :isNewTask="true"/>
             </div> -->
-        <div v-if="showScheduleWizard">
-                <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="null" :isNewTask="true"/>
+            <div v-if="showScheduleWizard">
+                <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="selectedTask" :isNewTask="true"/>
             </div>
 		</div>
 	</div>
@@ -190,13 +190,19 @@ const showTaskWizard = ref(false);
 const showScheduleWizard = ref(false);
 // const showDetails = ref(false);
 const showDetails = ref({});
+const selectedTask = ref<TaskInstanceType>();
 
 function taskDetailsBtn(idx) {
     showDetails.value[idx] = !showDetails.value[idx];
 }
 
-function addTaskButton() {
+function addTaskBtn() {
     showTaskWizard.value = true;
+}
+
+function manageScheduleBtn(task) {
+    selectedTask.value = task;
+    showScheduleWizardComponent();
 }
 
 function findValue(obj, targetKey, valueKey) {
