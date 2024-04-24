@@ -68,8 +68,8 @@
                         <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/>  -->
 
                 <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
-                     <!-- LEFT SIDE -->
-                    <div name="schedule-input" class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-2 bg-accent grid grid-cols-1">
+                     <!-- TOP LEFT -->
+                    <div name="schedule-input" class="border border-default rounded-md p-2 col-span-1 bg-accent grid grid-cols-1">
                         <div name="schedule-preset" class="col-span-1">
                             <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
                             <select id="task-template-selection" v-model="selectedPreset" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
@@ -108,9 +108,9 @@
                                 <table class="w-full">
                                     <tr class="grid grid-cols-7">
                                         <td v-for="day in daysOfWeek" class="px-0.5 col-span-1">
-                                            <button class="flex items-center w-full h-full border border-default rounded-lg"
+                                            <button class="flex items-center w-full h-full border border-default rounded-lg bg-default"
                                             :class="checkboxClass(day)">
-                                                <label :for="`${day}`" class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5">
+                                                <label :for="`${day}`" class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5 bg-default rounded-lg" :class="checkboxClass(day)">
                                                     <p class="w-full mt-0.5 text-sm text-default">{{ day }}</p>
                                                     <input :id="`${day}`" v-model="selectedDays" type="checkbox" :value="`${day}`" :name="`${day}`" 
                                                     class="mb-0.5 w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"/>	
@@ -131,9 +131,12 @@
                             <CalendarComponent :schedule="props.task.schedule" />
                         </div>
                     </div>
+                    <!-- BOTTOM LEFT -->
+                    <div name="" class="border border-default rounded-md p-2 col-span-1 row-start-2 bg-accent">
                     
+                    </div>
                     <!-- BOTTOM RIGHT -->
-                    <div name="" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
+                    <div name="" class="border border-default rounded-md p-2 col-span-1 row-start-2 bg-accent">
                     
                     </div>
                 </div>
