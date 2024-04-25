@@ -1,10 +1,10 @@
 <template>
-	<div class="flex flex-col items-center p-4">
+	<div class="flex flex-col items-center p-2">
 		<div class="flex justify-between w-full mb-4">
 			<button @click="changeMonth(-1)" class="btn btn-secondary">
 				Prev
 			</button>
-			<span class="text-lg font-semibold text-default">{{ monthNames[currentMonth] }} {{ currentYear }}</span>
+			<span class="text-lg font-semibold text-default mt-2">{{ monthNames[currentMonth] }} {{ currentYear }}</span>
 			<button @click="changeMonth(1)" class="btn btn-secondary">
 				Next
 			</button>

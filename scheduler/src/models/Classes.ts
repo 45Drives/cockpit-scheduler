@@ -170,6 +170,62 @@ export class Scheduler implements SchedulerType {
         
     }
 
+    parseIntervalIntoString(interval: TaskScheduleIntervalType): string {
+        const elements: string[] = [];
+
+        function getMonthName(number) {
+            switch (number) {
+                case 1:
+                    return 'January';
+                case 2:
+                    return 'February';
+                case 3:
+                    return 'March';
+                case 4:
+                    return 'April';
+                case 5:
+                    return 'May';
+                case 6:
+                    return 'June';
+                case 7:
+                    return 'July';
+                case 8:
+                    return 'August';
+                case 9:
+                    return 'September';
+                case 10:
+                    return 'October';
+                case 11:
+                    return 'November';
+                case 12:
+                    return 'December';
+                default:
+                    break;
+            }
+        }
+        // For each time unit, build the string
+        if (interval.minute) {
+            elements.push(interval.minute.value === '*' ? 'every minute' : `at ${interval.minute.value} minute${interval.minute.value === 1 ? '' : 's'}`);
+        }
+        if (interval.hour) {
+            elements.push(interval.hour.value === '*' ? 'every hour' : `at ${interval.hour.value} o'clock`);
+        }
+        if (interval.day) {
+            elements.push(interval.day.value === '*' ? 'every day' : `on day ${interval.day.value}`);
+        }
+        if (interval.month) {
+            elements.push(interval.month.value === '*' ? 'every month' : `in ${getMonthName(interval.month.value)}`);
+        }
+        if (interval.year) {
+            elements.push(interval.year.value === '*' ? 'every year' : `in the year ${interval.year.value}`);
+        }
+        if (interval.dayOfWeek) {
+            elements.push(`on ${interval.dayOfWeek.join(', ')}`);
+        }
+
+        return elements.join(' ');
+    }
+
 }
 
 export class TaskTemplate implements TaskTemplateType {

@@ -1,76 +1,14 @@
 <template>
     <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'">
         <template v-slot:title>
-            <!-- 
-                Add New Schedule (for existing task) 
-                Add New Schedule (during new task creation)
-                Edit Schedule
-            -->
-            <h3 v-if="props.mode == 'add'">
-                Add New Schedule
-            </h3>
-            <h3 v-if="props.mode == 'edit'">
-                Edit Schedule
-            </h3>
+            Manage Schedule
         </template>
         <template v-slot:content>
             <div name="new-schedule-interval" class="">
-
-                <!--    type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
-                        type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
-
-                        interface TimeComponentType {
-                            value: number | string;
-                        }
-
-                        interface TaskScheduleType {
-                            enabled: boolean;
-                            intervals: TaskScheduleIntervalType[];
-                        }
-
-                        type TaskScheduleIntervalType = {
-                            [K in TimeUnit]?: TimeComponentType; // Make each property optional
-                        } & {
-                            dayOfWeek?: (DayOfWeek)[]; // Additional properties can be added like this
-                        };
-                -->
-
-                <!-- INTERVAL PRESET - Select (hourly, daily, weekly, monthly, yearly) -->
-                <!-- <div name="task-template" v-if="taskTemplates.length > 0">
-					<label for="task-template-selection" class="block text-sm font-medium leading-6 text-default">Select Type of Task to Add</label>
-					<select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option v-for="template, idx in taskTemplates" :key="idx" :value="template">{{ template.name }}</option>
-					</select>
-				</div> -->
-
-                <!-- Date Details -->
-                <!-- Day _____ Month _____ Year _____ -->
-
-                <!-- Time Details -->
-                <!-- Hour _____ Min _____ Sec? _____ -->
-
-                <!-- Day of Week Selection - Checkboxes for each DoW (Sun - Sat) -->
-
-                <!-- CalendarView to show preview of the currently selected schedule? -->
-
-                <!-- Buttons to Add Interval & Remove Interval from this Schedule -->
-                <!-- List of currently configured intervals -->
-
-                <!-- Button to Save Schedule -->
-
-
-            <!-- Example of input field with error feedback (from AddTask.name) 
-                        <div class="flex flex-row justify-between items-center">
-                            <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
-                            <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
-                        </div>
-                        <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default" placeholder="New Task"/> 
-                        <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/>  -->
-
                 <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
-                     <!-- TOP LEFT -->
-                    <div name="schedule-input" class="border border-default rounded-md p-2 col-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
-                        <div name="schedule-preset" class="col-span-1 row-span-1">
+                     <!-- LEFT -->
+                    <div name="schedule-input" class="border border-default rounded-md p-2 col-span-2 row-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
+                        <div name="schedule-preset" class="col-span-1">
                             <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
                             <select id="task-template-selection" v-model="selectedPreset" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                                 <option value="none">None</option>
@@ -103,14 +41,20 @@
                                 <label class="block text-sm leading-6 text-default">Year</label>
                                 <input v-model="year" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
+                            <div name="info" class="mt-5">
+                                <label class="block text-base leading-6 text-default px-3">
+                                    Use asterisk (*) for all values, hyphen (-) for ranges, and commas for lists:
+                                    eg. 2-7 (range) or 2,4,7 (list).
+                                </label>
+                            </div>
                             <div name="dayOfWeek" class="col-span-2">
                                 <label class="block text-sm leading-6 text-default">Day of Week</label>
                                 <table class="w-full">
                                     <tr class="grid grid-cols-7">
                                         <td v-for="day in daysOfWeek" class="px-0.5 col-span-1">
                                             <button class="flex items-center w-full h-full border border-default rounded-lg bg-default"
-                                            :class="checkboxClass(day)">
-                                                <label :for="`${day}`" class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5 bg-default rounded-lg" :class="checkboxClass(day)">
+                                            :class="daySelectedClass(day)">
+                                                <label :for="`${day}`" class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5 bg-default rounded-lg" :class="daySelectedClass(day)">
                                                     <p class="w-full mt-0.5 text-sm text-default">{{ day }}</p>
                                                     <input :id="`${day}`" v-model="selectedDays" type="checkbox" :value="`${day}`" :name="`${day}`" 
                                                     class="mb-0.5 w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"/>	
@@ -120,38 +64,40 @@
                                     </tr>
                                 </table>
                             </div>
-                            <div name="buttons" class="button-group-row justify-between mt-2">
+                            <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
                                 <button name="clearFields" @click="clearFields()" class="btn btn-danger whitespace-nowrap h-min">Clear Interval</button>
                                 <button name="saveInterval" @click="" class="btn btn-secondary whitespace-nowrap h-min">Save Interval</button>
                             </div>
                         </div>
                     </div>
-                    <!-- BOTTOM LEFT -->
-                    <div name="" class="border border-default rounded-md p-2 col-span-1 row-start-2 bg-accent">
+
+
                     
-                    </div> 
-                    <!-- TOP RIGHT -->
-                    <div name="schedule-preview" class="col-start-2 row-start-1 border border-default rounded-md p-2 col-span-1 bg-accent">
+                    <div name="schedule-preview" class="col-start-1 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
                         <label class="block text-sm font-medium leading-6 text-default">Interval Preview</label>
                         <div class="mt-1">
                             <CalendarComponent :schedule="props.task.schedule" />
                         </div>
                     </div>
-                    <!-- BOTTOM RIGHT -->
-                    <div name="schedule-interval-list" class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
-                        <div>
+
+
+                    <div name="schedule-interval-list"  @click="clearSelectedInterval()" class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
+                        <div @click="clearSelectedInterval()">
                             <label class="block text-sm font-medium leading-6 text-default">Currently Scheduled Intervals</label>
-                            <ul role="list" class="divide-y divide-default">
-                                <li v-for="interval, idx in task.schedule.intervals" :key="idx" class="py-4">
-                                    {{ interval }}
+                            <ul role="list" class="divide-y divide-default rounded-lg bg-default mt-2 ">
+                                <li v-for="interval, idx in task.schedule.intervals" :key="idx" class="py-4 text-default rounded-lg"  :class="intervalSelectedClass(interval)">
+                                    <button class="h-full whitespace-nowrap w-full rounded-lg" @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)">{{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
                             </ul>
+                        </div>
+                        <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
+                            <button name="remove-interval" @click="" class="btn btn-danger h-min whitespace-nowrap">Remove Selected Interval</button>
+                            <button name="edit-interval" @click="editSelectedInterval(selectedInterval)" class="btn btn-secondary h-min whitespace-nowrap">Edit Selected Interval</button>
                         </div>
                     </div>
                 </div>
             </div> 
  
-
         </template>
         <template v-slot:footer>
             <div class="w-full">
@@ -219,11 +165,11 @@ const newInterval: TaskScheduleIntervalType = {
     dayOfWeek: []
 };
 
-const hour = ref('');
-const minute = ref('');
-const day = ref('');
-const month = ref('');
-const year = ref('');
+const hour = ref();
+const minute = ref();
+const day = ref();
+const month = ref();
+const year = ref();
 
 function clearFields() {
     hour.value = '';
@@ -240,6 +186,36 @@ function setFields(min, hr, d, mon, y) {
     day.value = d;
     month.value = mon;
     year.value = y;
+}
+
+const selectedInterval = ref<TaskScheduleIntervalType>();
+function selectIntervalToManage(interval : TaskScheduleIntervalType) {
+    selectedInterval.value = interval;
+}
+
+function clearSelectedInterval() {
+    selectedInterval.value = undefined;
+}
+
+function removeSelectedInterval(interval : TaskScheduleIntervalType) {
+    if (selectedInterval.value == interval) {
+
+    }
+}
+
+function editSelectedInterval(interval : TaskScheduleIntervalType) {
+     // Assuming '*' is your default value for each time component
+     const defaultTimeComponent = '*';
+
+    // Set each field value, falling back to default if not present
+    hour.value = interval.hour?.value ?? defaultTimeComponent;
+    minute.value = interval.minute?.value ?? defaultTimeComponent;
+    day.value = interval.day?.value ?? defaultTimeComponent;
+    month.value = interval.month?.value ?? defaultTimeComponent;
+    year.value = interval.year?.value ?? defaultTimeComponent;
+
+    // Set selectedDays to the days from the interval or to an empty array if not present
+    selectedDays.value = interval.dayOfWeek ?? [];
 }
 
 watch(selectedPreset, (newVal, oldVal) => {
@@ -270,9 +246,15 @@ watch(selectedPreset, (newVal, oldVal) => {
 });
 
 
-const checkboxClass = (dayOfWeek) => {
+const daySelectedClass = (dayOfWeek) => {
     const isSelected = selectedDays.value.includes(dayOfWeek);
     return isSelected ? 'bg-green-30 dark:bg-green-700' : '';
+}
+
+const intervalSelectedClass = (interval) => {
+    if (selectedInterval.value == interval) {
+        return 'bg-green-30 dark:bg-green-700';
+    }
 }
 
 onMounted(() => {
