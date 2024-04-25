@@ -69,8 +69,8 @@
 
                 <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
                      <!-- TOP LEFT -->
-                    <div name="schedule-input" class="border border-default rounded-md p-2 col-span-1 bg-accent grid grid-cols-1">
-                        <div name="schedule-preset" class="col-span-1">
+                    <div name="schedule-input" class="border border-default rounded-md p-2 col-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
+                        <div name="schedule-preset" class="col-span-1 row-span-1">
                             <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
                             <select id="task-template-selection" v-model="selectedPreset" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                                 <option value="none">None</option>
@@ -85,23 +85,23 @@
                         <div name="schedule-fields" class="col-span-1 grid grid-cols-2 gap-2 mt-2">
                             <div name="hour">  
                                 <label class="block text-sm leading-6 text-default">Hour</label>
-                                <input v-model="hour" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                                <input v-model="hour" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="minute">
                                 <label class="block text-sm leading-6 text-default">Minute</label>
-                                <input v-model="minute" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                                <input v-model="minute" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="day">
                                 <label class="block text-sm leading-6 text-default">Day</label>
-                                <input v-model="day" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                                <input v-model="day" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="month">
                                 <label class="block text-sm leading-6 text-default">Month</label>
-                                <input v-model="month" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                                <input v-model="month" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="year">
                                 <label class="block text-sm leading-6 text-default">Year</label>
-                                <input v-model="year" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Accepts * for all values, ranges (eg. 2-7), and lists (eg. 2,4,7)"/>
+                                <input v-model="year" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="dayOfWeek" class="col-span-2">
                                 <label class="block text-sm leading-6 text-default">Day of Week</label>
@@ -120,24 +120,33 @@
                                     </tr>
                                 </table>
                             </div>
-                            <div name="buttons">
-
+                            <div name="buttons" class="button-group-row justify-between mt-2">
+                                <button name="clearFields" @click="clearFields()" class="btn btn-danger whitespace-nowrap h-min">Clear Interval</button>
+                                <button name="saveInterval" @click="" class="btn btn-secondary whitespace-nowrap h-min">Save Interval</button>
                             </div>
-                        </div>
-                    </div>
-                    <!-- TOP RIGHT -->
-                    <div name="schedule-preview" class="border border-default rounded-md p-2 col-span-1 bg-accent">
-                        <div>
-                            <CalendarComponent :schedule="props.task.schedule" />
                         </div>
                     </div>
                     <!-- BOTTOM LEFT -->
                     <div name="" class="border border-default rounded-md p-2 col-span-1 row-start-2 bg-accent">
                     
+                    </div> 
+                    <!-- TOP RIGHT -->
+                    <div name="schedule-preview" class="col-start-2 row-start-1 border border-default rounded-md p-2 col-span-1 bg-accent">
+                        <label class="block text-sm font-medium leading-6 text-default">Interval Preview</label>
+                        <div class="mt-1">
+                            <CalendarComponent :schedule="props.task.schedule" />
+                        </div>
                     </div>
                     <!-- BOTTOM RIGHT -->
-                    <div name="" class="border border-default rounded-md p-2 col-span-1 row-start-2 bg-accent">
-                    
+                    <div name="schedule-interval-list" class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
+                        <div>
+                            <label class="block text-sm font-medium leading-6 text-default">Currently Scheduled Intervals</label>
+                            <ul role="list" class="divide-y divide-default">
+                                <li v-for="interval, idx in task.schedule.intervals" :key="idx" class="py-4">
+                                    {{ interval }}
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div> 
