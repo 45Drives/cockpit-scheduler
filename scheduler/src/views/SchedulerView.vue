@@ -111,14 +111,15 @@
                                                         </div>
                                                        
                                                         <div class="col-span-2">
-                                                            <p class="my-2">Schedules:</p>
+                                                            <p class="my-2">Current Schedules:</p>
                                                             <div v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
                                                                 <p class="mx-1" v-if="interval.day">Day: {{interval.day.value}}</p>
                                                                 <p class="mx-1" v-if="interval.month">Month: {{interval.month.value}}</p>
                                                                 <p class="mx-1" v-if="interval.year">Year: {{interval.year.value}}</p>
                                                                 <p class="mx-1" v-if="interval.hour">Hour: {{interval.hour.value}}</p>
                                                                 <p class="mx-1" v-if="interval.minute">Minute: {{interval.minute.value}}</p>
-                                                                <p class="mx-1" v-if="interval.dayOfWeek">Day(s) of Week:{{interval.dayOfWeek.values}}</p>
+                                                                <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length > 0 && interval.dayOfWeek.length !== 1">Days of Week: {{interval.dayOfWeek.join(', ')}}</p>
+                                                                <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length == 1">Day of Week: {{interval.dayOfWeek[0]}}</p>
                                                             </div>
                                                         </div>                                        
                                                     </div>

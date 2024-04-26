@@ -18,8 +18,14 @@ export class Scheduler implements SchedulerType {
                 const newTaskTemplate = new ZFSReplicationTaskTemplate;
                 const parameters = task.parameters;
                 const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.parameterSchema, parameters);
+                const taskIntervals : TaskScheduleInterval[] = [];
 
-                const newSchedule = new TaskSchedule(task.schedule.enabled, task.schedule.intervals);
+                task.schedule.intervals.forEach(interval => {
+                    const thisInterval = new TaskScheduleInterval(interval);
+                    taskIntervals.push(thisInterval);
+                });
+
+                const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
                 const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
                 this.taskInstances.push(newTaskInstance);
             }
@@ -168,60 +174,46 @@ export class Scheduler implements SchedulerType {
     }
 
     parseIntervalIntoString(interval: TaskScheduleIntervalType): string {
-        const elements: string[] = [];
+    const elements: string[] = [];
 
-        function getMonthName(number) {
-            switch (number) {
-                case 1:
-                    return 'January';
-                case 2:
-                    return 'February';
-                case 3:
-                    return 'March';
-                case 4:
-                    return 'April';
-                case 5:
-                    return 'May';
-                case 6:
-                    return 'June';
-                case 7:
-                    return 'July';
-                case 8:
-                    return 'August';
-                case 9:
-                    return 'September';
-                case 10:
-                    return 'October';
-                case 11:
-                    return 'November';
-                case 12:
-                    return 'December';
-                default:
-                    break;
-            }
+    function getMonthName(number) {
+        switch (Number(number)) {
+            case 1: return 'January';
+            case 2: return 'February';
+            case 3: return 'March';
+            case 4: return 'April';
+            case 5: return 'May';
+            case 6: return 'June';
+            case 7: return 'July';
+            case 8: return 'August';
+            case 9: return 'September';
+            case 10: return 'October';
+            case 11: return 'November';
+            case 12: return 'December';
+            default: return 'undefined';  // Returning 'undefined' or a similar placeholder
         }
-        // For each time unit, build the string
-        if (interval.minute) {
-            elements.push(interval.minute.value === '*' ? 'every minute' : `at ${interval.minute.value} minute${interval.minute.value === 1 ? '' : 's'}`);
-        }
-        if (interval.hour) {
-            elements.push(interval.hour.value === '*' ? 'every hour' : `at ${interval.hour.value} o'clock`);
-        }
-        if (interval.day) {
-            elements.push(interval.day.value === '*' ? 'every day' : `on day ${interval.day.value}`);
-        }
-        if (interval.month) {
-            elements.push(interval.month.value === '*' ? 'every month' : `in ${getMonthName(interval.month.value)}`);
-        }
-        if (interval.year) {
-            elements.push(interval.year.value === '*' ? 'every year' : `in the year ${interval.year.value}`);
-        }
-        if (interval.dayOfWeek) {
-            elements.push(`on ${interval.dayOfWeek.join(', ')}`);
-        }
-
-        return elements.join(' ');
     }
+
+    // Convert the value to string and check if it's a wildcard or specific number
+    const minuteString = interval.minute?.value.toString() || '*';
+    const hourString = interval.hour?.value.toString() || '*';
+    const dayString = interval.day?.value.toString() || '*';
+    const monthString = interval.month?.value.toString() || '*';
+    const yearString = interval.year?.value.toString() || '*';
+
+    // For each time unit, build the string
+    elements.push(minuteString === '*' ? 'every minute' : `at ${minuteString} minute${minuteString === '1' ? '' : 's'}`);
+    elements.push(hourString === '*' ? 'every hour' : `at ${hourString} hour${hourString === '1' ? '' : 's'}`);
+    elements.push(dayString === '*' ? 'every day' : `on day ${dayString}`);
+    elements.push(monthString === '*' ? 'every month' : `in ${getMonthName(monthString)}`);
+    elements.push(yearString === '*' ? 'every year' : `in the year ${yearString}`);
+
+    if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
+        elements.push(`on ${interval.dayOfWeek.join(', ')}`);
+    }
+
+    return elements.join(' ');
+}
 
 }
 
@@ -264,7 +256,7 @@ export class TaskSchedule implements TaskScheduleType{
     
 }
 
-class TaskScheduleInterval implements TaskScheduleIntervalType {
+export class TaskScheduleInterval implements TaskScheduleIntervalType {
     [key: string]: any; // Use a more specific type if possible
     dayOfWeek?: DayOfWeek[];
 

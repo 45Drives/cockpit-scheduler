@@ -66,7 +66,7 @@
                             </div>
                             <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
                                 <button name="clearFields" @click="clearFields()" class="btn btn-danger whitespace-nowrap h-min">Clear Interval</button>
-                                <button name="saveInterval" @click="" class="btn btn-secondary whitespace-nowrap h-min">Save Interval</button>
+                                <button name="saveInterval" @click="saveInterval(newInterval)" class="btn btn-secondary whitespace-nowrap h-min">Save Interval</button>
                             </div>
                         </div>
                     </div>
@@ -86,7 +86,7 @@
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current Intervals</label>
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg bg-default mt-2 ">
-                                <li  v-for="interval, idx in task.schedule.intervals" :key="idx" class="py-4 text-default rounded-lg"  :class="intervalSelectedClass(interval)">
+                                <li v-for="interval, idx in intervals" :key="idx" class="py-4 text-default rounded-lg"  :class="intervalSelectedClass(interval)">
                                     <button class="h-full w-full rounded-lg" @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
                             </ul>
@@ -128,7 +128,7 @@ import CalendarComponent from '../common/CalendarComponent.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance } from '../../models/Classes';
+import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, TaskSchedule, TaskScheduleInterval } from '../../models/Classes';
 
 interface ManageScheduleProps {
     idKey: string;
@@ -180,6 +180,15 @@ const newInterval = reactive<TaskScheduleIntervalType>({
     dayOfWeek: []
 });
 
+function resetIntervalDefaults(interval) {
+    interval.hour.value = '*';
+    interval.minute.value = '*';
+    interval.day.value = '*';
+    interval.month.value = '*';
+    interval.year.value = '*';
+    interval.dayOfWeek = [];
+}
+
 
 function clearFields() {
     newInterval.hour!.value = '';
@@ -205,17 +214,18 @@ function selectIntervalToManage(interval : TaskScheduleIntervalType) {
 }
 
 function saveInterval(interval) {
-    intervals.value.push(interval);
+    const newInterval = new TaskScheduleInterval(interval);
+    intervals.value.push(newInterval);
+    // resetIntervalDefaults(interval);
+    console.log('newInterval saved:', newInterval);
 }
 
 function clearSelectedInterval() {
     selectedInterval.value = undefined;
 }
 
-function removeSelectedInterval(interval : TaskScheduleIntervalType) {
-    if (selectedInterval.value == interval) {
-
-    }
+function removeSelectedInterval(interval) {
+    intervals.value.pop
 }
 
 function editSelectedInterval(interval : TaskScheduleIntervalType) {
@@ -246,7 +256,7 @@ function saveScheduleBtn() {
 watch(selectedPreset, (newVal, oldVal) => {
     switch (selectedPreset.value) {
         case 'none':
-            clearFields();
+            setFields('*', '*', '*', '*', '*', []);
             break;
         case 'hourly':
             setFields('0', '*', '*', '*', '*', []);
