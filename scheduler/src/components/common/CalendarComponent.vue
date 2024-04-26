@@ -15,7 +15,7 @@
 			</div>
 		</div>
 		<div class="grid grid-cols-7 gap-2 w-full">
-			<div v-for="day in days" :key="day.id" :class="{'bg-accent text-muted border-default': day.isPadding, 'bg-green-600 dark:bg-green-800': day.isMarked && !day.isPadding}" class="p-2 text-default text-center border border-default rounded">
+			<div v-for="day in days" :key="day.id" :class="{'bg-accent text-muted border-default': day.isPadding, 'bg-green-600 dark:bg-green-800': day.isMarked && !day.isPadding, 'bg-default' : !day.isMarked && !day.isPadding}" class="p-2 text-default text-center border border-default rounded">
 				{{ day.date }}
 			</div>
 		</div>

@@ -85,7 +85,7 @@
                             <div class="flex flex-row justify-between">
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current Intervals</label>
                             </div>
-                            <ul role="list" class="divide-y divide-default rounded-lg bg-default mt-2">
+                            <ul role="list" class="divide-y divide-default rounded-lg mt-2">
                                 <li v-for="interval, idx in intervals" :key="idx" class="py-4 text-default rounded-lg"  :class="intervalSelectedClass(interval)">
                                     <button class="h-full w-full rounded-lg" @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
@@ -161,7 +161,7 @@ const newInterval = reactive<TaskScheduleIntervalType>({
     hour: { value: '0' },
     day: { value: '0' },
     month: { value: '0' },
-    year: { value: '0' },
+    year: { value: '*' },
     dayOfWeek: []
 });
 
@@ -170,7 +170,7 @@ function resetIntervalDefaults(interval) {
     interval.minute.value = '0';
     interval.day.value = '0';
     interval.month.value = '0';
-    interval.year.value = '0';
+    interval.year.value = '*';
     interval.dayOfWeek = [];
 }
 
@@ -242,7 +242,7 @@ function saveScheduleBtn() {
 watch(selectedPreset, (newVal, oldVal) => {
     switch (selectedPreset.value) {
         case 'none':
-            setFields('0', '0', '0', '0', '0', []);
+            setFields('0', '0', '0', '0', '*', []);
             break;
         case 'hourly':
             setFields('0', '*', '*', '*', '*', []);
@@ -271,9 +271,7 @@ const daySelectedClass = (dayOfWeek) => {
 }
 
 const intervalSelectedClass = (interval) => {
-    if (selectedInterval.value == interval) {
-        return 'bg-green-30 dark:bg-green-700';
-    }
+    return selectedInterval.value == interval ? 'bg-green-30 dark:bg-green-700' : 'bg-default'
 }
 
 watch(newInterval, (newVal, oldVal) => {
