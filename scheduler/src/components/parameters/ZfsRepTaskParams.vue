@@ -11,6 +11,7 @@
                 <select v-if="!sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                     <option value="">Select a Pool</option>
                     <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
+                    <option v-if="loadingSourcePools">Loading...</option>
                 </select>
                 <select v-if="sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                     <option value="">Select a Pool</option>
@@ -25,6 +26,7 @@
                 <select v-if="!sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                     <option value="">Select a Dataset</option>
                     <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
+                    <option v-if="loadingSourceDatasets">Loading...</option>
                 </select>
                 <select v-if="sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                    <option value="">Select a Dataset</option>
@@ -48,6 +50,7 @@
                 <select v-if="!destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                     <option value="">Select a Pool</option>
                     <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                    <option v-if="loadingDestPools">Loading...</option>
                 </select>
                 <select v-if="destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                     <option value="">Select a Pool</option>
@@ -62,6 +65,7 @@
                 <select v-if="!destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                     <option value="">Select a Dataset</option>
                     <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
+                    <option v-if="loadingDestDatasets">Loading...</option>
                 </select>
                 <select v-if="destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                     <option value="">Select a Dataset</option>

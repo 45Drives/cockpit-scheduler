@@ -6,8 +6,9 @@
         <template v-slot:content>
             <div>
                 <div name="task-template" v-if="taskTemplates.length > 0">
-					<label for="task-template-selection" class="block text-sm font-medium leading-6 text-default">Select Type of Task to Add</label>
+					<label for="task-template-selection" class="block text-sm leading-6 text-default">Task Template</label>
 					<select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option :value="undefined">Select Type of Task to Add</option>
                         <option v-for="template, idx in taskTemplates" :key="idx" :value="template">{{ template.name }}</option>
 					</select>
 				</div>
@@ -51,7 +52,7 @@
     </div>
 
     <div v-if="showScheduleWizard">
-        <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="newTask" :isNewTask="true"/>
+        <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="newTask"/>
     </div>
 </template>
 <script setup lang="ts">
@@ -143,7 +144,7 @@ async function showSchedulePromptDialog() {
 const makeScheduleLater : ConfirmationCallback = async () => {
     isStandaloneTask.value = true;
     console.log('Make Schedule Later. isStandalone Task:', isStandaloneTask.value);
-    await saveStandaloneTask();
+    await saveTask();
     updateShowSchedulePrompt(false);
     closeModal();
 }
@@ -151,6 +152,7 @@ const makeScheduleLater : ConfirmationCallback = async () => {
 const makeScheduleNow : ConfirmationCallback = async () => {
     isStandaloneTask.value = false;
     console.log('Make Schedule Now. isStandalone:', isStandaloneTask.value);
+    await saveTask()
     updateShowSchedulePrompt(false);
     showScheduleWizardComponent();
     // closeModal();
@@ -162,7 +164,7 @@ const updateShowSchedulePrompt = (newVal) => {
 
 
 // Show Schedule Wizard
-const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
+const showScheduleWizard = ref(false);
 
 const scheduleWizardComponent = ref();
 const loadScheduleWizardComponent = async () => {
@@ -175,7 +177,7 @@ async function showScheduleWizardComponent() {
     console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-        console.log('Component loaded, setting showScheduleWizard to true.');
+        console.log('addTask: setting showScheduleWizard to true.');
         showScheduleWizard.value = true;
     } catch (error) {
         console.error('Failed to load Schedule Wizard Component:', error);
@@ -187,7 +189,7 @@ const updateShowScheduleWizardComponent = (newVal) => {
     showScheduleWizard.value = newVal;
 }
 
-async function saveStandaloneTask() {
+async function saveTask() {
     console.log('saveTask triggered');
     if (selectedTemplate.value?.name == 'ZFS Replication Task') {
         const template = new ZFSReplicationTaskTemplate();
@@ -201,10 +203,15 @@ async function saveStandaloneTask() {
         const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
         console.log('task:', task);
 
-        await myScheduler.registerTaskInstance(task);
+        if (isStandaloneTask.value) {
+            await myScheduler.registerTaskInstance(task);
+            notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+        } else {
+            newTask.value = task;
+        }
+       
     }
-    
-    notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+   
 }
 
 function addTaskBtn() {
@@ -218,5 +225,6 @@ provide('parameters', parameters);
 provide('errors', errorList);
 provide('show-schedule-prompt', showSchedulePrompt);
 provide('is-standalone-task', isStandaloneTask);
+provide('show-schedule-wizard', showScheduleWizard);
 </script>
 

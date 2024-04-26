@@ -11,7 +11,6 @@ export class Scheduler implements SchedulerType {
     }
 
     async loadTaskInstances() {
-     
         const tasksData = await getTaskData();
 
         tasksData.forEach(task => {
@@ -27,10 +26,8 @@ export class Scheduler implements SchedulerType {
         });
 
         console.log('this.taskInstances:', this.taskInstances);
-
     }
         
-
     // Main function to create a ParameterNode from JSON parameters based on a schema
     createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
         // Create a deep clone of the schema to fill in values without modifying the original schema

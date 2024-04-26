@@ -159,11 +159,11 @@
                 <AddTask :id-key="'add-task-modal'" />
             </div>
 
-            <!-- <div v-if="showScheduleWizard" class="z-0">
-                <ManageSchedule :id-key="'add-schedule-modal'" :mode="'add'" :task="newTask" :isNewTask="true"/>
+            <!-- <div v-if="showStandaloneScheduleWizard" class="z-0">
+                <ManageSchedule :id-key="'add-schedule-modal'"  @close="updateShowStandaloneScheduleWizardComponent" :mode="'add'" :task="selectedTask!"/>
             </div> -->
-            <div v-if="showScheduleWizard">
-                <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="selectedTask" :isNewTask="true"/>
+            <div v-if="showStandaloneScheduleWizard">
+                <component :is="scheduleWizardComponent" @close="updateShowStandaloneScheduleWizardComponent" :mode="'add'" :task="selectedTask"/>
             </div>
 		</div>
 	</div>
@@ -187,7 +187,7 @@ import ManageSchedule from "../components/wizard/ManageSchedule.vue";
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 const showTaskWizard = ref(false);
-const showScheduleWizard = ref(false);
+const showStandaloneScheduleWizard = ref(false);
 // const showDetails = ref(false);
 const showDetails = ref({});
 const selectedTask = ref<TaskInstanceType>();
@@ -202,7 +202,7 @@ function addTaskBtn() {
 
 function manageScheduleBtn(task) {
     selectedTask.value = task;
-    showScheduleWizardComponent();
+    showStandaloneScheduleWizardComponent();
 }
 
 function findValue(obj, targetKey, valueKey) {
@@ -246,23 +246,23 @@ const loadScheduleWizardComponent = async () => {
     scheduleWizardComponent.value = module.default;
 }
 
-async function showScheduleWizardComponent() {
+async function showStandaloneScheduleWizardComponent() {
     console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-        console.log('Component loaded, setting showScheduleWizard to true.');
-        showScheduleWizard.value = true;
+        console.log('schedulerView: Component loaded, setting showStandaloneScheduleWizard to true.');
+        // console.log('schedulerView: setting showStandaloneScheduleWizard to true.');
+        showStandaloneScheduleWizard.value = true;
     } catch (error) {
         console.error('Failed to load Schedule Wizard Component:', error);
     }
 }
 
-const updateShowScheduleWizardComponent = (newVal) => {
-    console.log('updateShowScheduleWizard triggered');
-    showScheduleWizard.value = newVal;
+const updateShowStandaloneScheduleWizardComponent = (newVal) => {
+    console.log('updateShowStandaloneScheduleWizard triggered');
+    showStandaloneScheduleWizard.value = newVal;
 }
 
-
 provide('show-task-wizard', showTaskWizard);
-provide('show-schedule-wizard', showScheduleWizard);
+provide('show-schedule-wizard', showStandaloneScheduleWizard);
 </script> 
