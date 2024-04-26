@@ -125,6 +125,7 @@ export class Scheduler implements SchedulerType {
         } else {
             //generate json file with enabled boolean + intervals (Schedule Intervals)
             // requires schedule data object
+            console.log(taskInstance.schedule);
         }
        
         //run script to generate service + timer via template, param env and schedule json
@@ -153,9 +154,11 @@ export class Scheduler implements SchedulerType {
         // return TaskExecutionResult;
     }
     
-    loadSchedulesFor(taskInstance) {
-        return TaskSchedule;
-    }
+    // loadSchedulesFor(taskInstance) {
+    //     const schedules = new TaskSchedule()
+        
+    //     return TaskSchedule;
+    // }
     
     enableSchedule(taskInstance) {
         //activate timer file

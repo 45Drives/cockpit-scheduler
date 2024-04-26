@@ -22,7 +22,6 @@
 	</div>
 </template>
 
-
 <script setup lang="ts">
 import { ref, computed, watchEffect } from 'vue';
 
@@ -42,20 +41,11 @@ const days = computed(() => {
 	const firstDayOfMonth = new Date(currentYear.value, currentMonth.value, 1).getDay();
 	const numDays = new Date(currentYear.value, currentMonth.value + 1, 0).getDate();
 
-	// const daysArray = Array.from({ length: numDays }, (_, i) => {
-	// 	const date = new Date(currentYear.value, currentMonth.value, i + 1);
-	// 	const id = date.toISOString().split('T')[0]; // YYYY-MM-DD format
-
-	// 	// Use the provided interval to check if this date should be marked
-	// 	const isMarked = checkSchedule(date, props.interval);
-
-	// 	return { id, date: i + 1, isMarked, isPadding: false };
-	// });
 	const daysArray = Array.from({ length: numDays }, (_, i) => {
 		const date = new Date(currentYear.value, currentMonth.value, i + 1);
 		const id = date.toISOString().split('T')[0]; // YYYY-MM-DD format
 		const isMarked = checkSchedule(date, props.interval);
-		console.log(`Day ${date.getDate()} is marked: ${isMarked}`);
+		// console.log(`Day ${date.getDate()} is marked: ${isMarked}`);
 		return { id, date: i + 1, isMarked, isPadding: false };
 	});
 
@@ -77,10 +67,10 @@ const days = computed(() => {
 	return [...startPaddingDays, ...daysArray, ...endPaddingDays];
 });
 
-watchEffect(() => {
-  	console.log('Interval prop in CalendarComponent', props.interval);
-});
-/* 
+// watchEffect(() => {
+//   	console.log('Interval prop in CalendarComponent', props.interval);
+// });
+
 function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
 	const dayOfWeekMap = {
 		'Sun': 0,
@@ -92,92 +82,8 @@ function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean 
 		'Sat': 6,
 	};
 
-	// Helper function to check if the value matches the date component
-	// const matches = (value: string | number, dateComponent: number) => {
-	// 	// If the value is a wildcard, it matches any date component
-	// 	if (value == '*') return true;
-	// 	// Otherwise, convert value to a number and compare
-	// 	return Number(value) == dateComponent;
-	// };
 	const matches = (value: string | number, dateComponent: number) => {
-		console.log(`Checking if value '${value}' matches dateComponent '${dateComponent}'`);
-		if (value == '*') {
-			console.log(`Value is wildcard '*'.`);
-			return true;
-		}
-		const valueAsNumber = Number(value);
-		const doesMatch = valueAsNumber == dateComponent;
-		console.log(`Converted value to number: ${valueAsNumber}, does it match? ${doesMatch}`);
-		return doesMatch;
-	};
-
-
-	// console.log(`Checking date: ${date.toISOString()}`);
-  	// console.log(`Against interval: ${JSON.stringify(interval)}`);
-
-	// Check day of week
-	if (interval.dayOfWeek && !interval.dayOfWeek.some(day => matches(dayOfWeekMap[day], date.getDay()))) {
-		return false;
-	}
-
-	// Check year
-	if (interval.year && !matches(interval.year.value, date.getFullYear())) {
-		return false;
-	}
-
-	// Check month
-	if (interval.month) {
-		const monthMatch = matches(interval.month.value, date.getMonth() + 1);
-		console.log(`Month Check - Interval Value: ${interval.month.value}, Date Month: ${date.getMonth() + 1}, Match: ${monthMatch}`);
-		if (!monthMatch) return false;
-	}
-
-	// Check day
-	if (interval.day) {
-		const dayMatch = matches(interval.day.value, date.getDate());
-		console.log(`Day Check - Interval Value: ${interval.day.value}, Date Day: ${date.getDate()}, Match: ${dayMatch}`);
-		if (!dayMatch) return false;
-	}
-
-	// Check hour
-	// if (interval.hour && !matches(interval.hour.value, date.getHours())) {
-	// 	return false;
-	// }
-
-	// // Check minute
-	// if (interval.minute && !matches(interval.minute.value, date.getMinutes())) {
-	// 	return false;
-	// }
-
-	console.log(`Date: ${date.toISOString()}`);
-	console.log(`Interval: `, interval);
-	console.log(`Result of checks for ${date.toISOString()}: `, {
-		dayOfWeekCheck: interval.dayOfWeek ? 'not empty' : 'empty',
-		yearCheck: interval.year ? interval.year.value : 'empty',
-		monthCheck: interval.month ? interval.month.value : 'empty',
-		dayCheck: interval.day ? interval.day.value : 'empty',
-		// hourCheck: interval.hour ? interval.hour.value : 'empty',
-		// minuteCheck: interval.minute ? interval.minute.value : 'empty',
-	});
-
-	// If all checks passed, this date matches the interval
-	return true;
-}
- */
-
- function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
-	const dayOfWeekMap = {
-		'Sun': 0,
-		'Mon': 1,
-		'Tue': 2,
-		'Wed': 3,
-		'Thu': 4,
-		'Fri': 5,
-		'Sat': 6,
-	};
-
-	const matches = (value: string | number, dateComponent: number) => {
-		console.log(`matches: Checking ${value} against ${dateComponent}`);
+		// console.log(`matches: Checking ${value} against ${dateComponent}`);
 		if (value === '*') {
 			return true;
 		}
@@ -185,7 +91,7 @@ function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean 
 	};
 
 	// Log each component to ensure they are evaluated correctly
-	console.log(`Checking date: ${date.toISOString()} against interval`, interval);
+	// console.log(`Checking date: ${date.toISOString()} against interval`, interval);
 
 	if (interval.dayOfWeek && interval.dayOfWeek.length > 0 && !interval.dayOfWeek.some(day => matches(dayOfWeekMap[day], date.getDay()))) {
 		return false;
@@ -206,10 +112,9 @@ function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean 
 		return false;
 	}
 
-	console.log(`Date ${date.toISOString()} passes all checks.`);
+	// console.log(`Date ${date.toISOString()} passes all checks.`);
 	return true;
 }
-
 
 
 function changeMonth(delta) {

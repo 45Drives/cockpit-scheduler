@@ -53,7 +53,7 @@
                                             </tr>
                                         </thead>
                                         <tbody class="bg-default">
-                                            <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm py-1" v-for="taskInstance, index in taskInstances" :key="index">
+                                            <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm p-1" v-for="taskInstance, index in taskInstances" :key="index">
                                                 <!-- Table Cells -> TaskName, Checkbox, Status, LastRunTimestamp, ChevronButton -->
                                                 <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
                                                     {{ taskInstance.name }}
@@ -71,7 +71,7 @@
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="col-span-5 h-full border border-default p-2 m-2 pt-1">
+                                                <td v-if="showDetails[index]" class="col-span-5 h-full border border-default px-2 mx-2 py-1">
 
                                                     <!-- Details for ZFS Replication Task -->
                                                     <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">

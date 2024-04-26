@@ -17,8 +17,8 @@
                         <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
                         <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                     </div>
-                    <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default" placeholder="New Task"/> 
-                    <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/> 
+                    <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default" placeholder="New Task"/> 
+                    <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/> 
                 </div>
                 <div v-if="selectedTemplate">
                     <ParameterInput ref="parameterInputComponent" :selectedTemplate="selectedTemplate"/>

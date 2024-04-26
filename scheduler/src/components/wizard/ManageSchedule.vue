@@ -6,7 +6,7 @@
         <template v-slot:content>
             <div name="new-schedule-interval" class="">
                 <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
-                     <!-- LEFT -->
+
                     <div name="schedule-input" class="border border-default rounded-md p-2 col-span-2 row-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
                         <div name="schedule-preset" class="col-span-1">
                             <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
@@ -65,8 +65,8 @@
                                 </table>
                             </div>
                             <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
-                                <button name="clearFields" @click="clearFields()" class="btn btn-danger whitespace-nowrap h-min">Clear Interval</button>
-                                <button name="saveInterval" @click="saveInterval(newInterval)" class="btn btn-secondary whitespace-nowrap h-min">Save Interval</button>
+                                <button name="clearFields" @click="clearFields()" class="btn btn-danger h-min">Clear Interval</button>
+                                <button name="saveInterval" @click="saveInterval(newInterval)" class="btn btn-secondary h-min">Save Interval</button>
                             </div>
                         </div>
                     </div>
@@ -85,15 +85,15 @@
                             <div class="flex flex-row justify-between">
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current Intervals</label>
                             </div>
-                            <ul role="list" class="divide-y divide-default rounded-lg bg-default mt-2 ">
+                            <ul role="list" class="divide-y divide-default rounded-lg bg-default mt-2">
                                 <li v-for="interval, idx in intervals" :key="idx" class="py-4 text-default rounded-lg"  :class="intervalSelectedClass(interval)">
                                     <button class="h-full w-full rounded-lg" @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
                             </ul>
                         </div>
                         <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
-                            <button name="remove-interval" @click="" class="btn btn-danger h-min whitespace-nowrap">Remove Selected Interval</button>
-                            <button name="edit-interval" @click="editSelectedInterval(selectedInterval)" class="btn btn-secondary h-min whitespace-nowrap">Edit Selected Interval</button>
+                            <button name="remove-interval" @click="" class="btn btn-danger h-min w-full">Remove Interval</button>
+                            <button name="edit-interval" @click="editSelectedInterval(selectedInterval)" class="btn btn-secondary h-min w-full">Edit Interval</button>
                         </div>
                     </div>
                 </div>
@@ -133,7 +133,7 @@ import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParam
 interface ManageScheduleProps {
     idKey: string;
     mode: 'add' | 'edit';
-    task: TaskInstanceType;
+    task: TaskInstance;
 }
 
 const props = defineProps<ManageScheduleProps>();
@@ -155,49 +155,37 @@ const scheduleEnabled = ref(true);
 const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 const daysOfWeek : DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// const selectedDays = ref<DayOfWeek[]>([]);
-// const hour = ref();
-// const minute = ref();
-// const day = ref();
-// const month = ref();
-// const year = ref();
-
-// const newInterval = reactive<TaskScheduleIntervalType>({
-//     minute: { value: hour.value },
-//     hour: { value: minute.value },
-//     day: { value: day.value },
-//     month: { value: month.value },
-//     year: { value: year.value },
-//     dayOfWeek: selectedDays.value
-// });
 
 const newInterval = reactive<TaskScheduleIntervalType>({
-    minute: { value: '*' },
-    hour: { value: '*' },
-    day: { value: '*' },
-    month: { value: '*' },
-    year: { value: '*' },
+    minute: { value: '0' },
+    hour: { value: '0' },
+    day: { value: '0' },
+    month: { value: '0' },
+    year: { value: '0' },
     dayOfWeek: []
 });
 
 function resetIntervalDefaults(interval) {
-    interval.hour.value = '*';
-    interval.minute.value = '*';
-    interval.day.value = '*';
-    interval.month.value = '*';
-    interval.year.value = '*';
+    interval.hour.value = '0';
+    interval.minute.value = '0';
+    interval.day.value = '0';
+    interval.month.value = '0';
+    interval.year.value = '0';
     interval.dayOfWeek = [];
 }
 
-
 function clearFields() {
-    newInterval.hour!.value = '';
-    newInterval.minute!.value = '';
-    newInterval.day!.value = '';
-    newInterval.month!.value = '';
-    newInterval.year!.value = '';
-    newInterval.dayOfWeek! = [];
+    Object.assign(newInterval, {
+        minute: { value: '' },
+        hour: { value: '' },
+        day: { value: '' },
+        month: { value: '' },
+        year: { value: '' },
+        dayOfWeek: []
+    });
+    forceUpdateCalendar();
 }
+
 
 function setFields(min, hr, d, mon, y, dow) {
     newInterval.hour!.value = hr;
@@ -214,23 +202,23 @@ function selectIntervalToManage(interval : TaskScheduleIntervalType) {
 }
 
 function saveInterval(interval) {
-    const newInterval = new TaskScheduleInterval(interval);
-    intervals.value.push(newInterval);
-    // resetIntervalDefaults(interval);
-    console.log('newInterval saved:', newInterval);
+    // Deep clone the interval object to ensure no references are shared
+    const clonedInterval = JSON.parse(JSON.stringify(interval));
+    intervals.value.push(clonedInterval);
+    console.log('newInterval saved:', clonedInterval);
 }
+
 
 function clearSelectedInterval() {
     selectedInterval.value = undefined;
 }
 
 function removeSelectedInterval(interval) {
-    intervals.value.pop
+    // intervals.value.pop
 }
 
 function editSelectedInterval(interval : TaskScheduleIntervalType) {
-     // Assuming '*' is your default value for each time component
-     const defaultTimeComponent = '*';
+    const defaultTimeComponent = '0';
 
     // Set each field value, falling back to default if not present
     newInterval.hour!.value = interval.hour?.value ?? defaultTimeComponent;
@@ -238,25 +226,23 @@ function editSelectedInterval(interval : TaskScheduleIntervalType) {
     newInterval.day!.value = interval.day?.value ?? defaultTimeComponent;
     newInterval.month!.value = interval.month?.value ?? defaultTimeComponent;
     newInterval.year!.value = interval.year?.value ?? defaultTimeComponent;
-    // hour.value = interval.hour?.value ?? defaultTimeComponent;
-    // minute.value = interval.minute?.value ?? defaultTimeComponent;
-    // day.value = interval.day?.value ?? defaultTimeComponent;
-    // month.value = interval.month?.value ?? defaultTimeComponent;
-    // year.value = interval.year?.value ?? defaultTimeComponent;
 
-    // // Set selectedDays to the days from the interval or to an empty array if not present
+    // Set selectedDays to the days from the interval or to an empty array if not present
     newInterval.dayOfWeek! = interval.dayOfWeek ?? [];
-    // selectedDays.value = interval.dayOfWeek ?? [];
 }
 
 function saveScheduleBtn() {
-
+    // myScheduler.registerTaskInstance(props.task);
+    // myScheduler.updateTaskInstance(props.task);
+    
+    // myScheduler.updateSchedule(props.task);
+    console.log('saving task:', props.task);
 }
 
 watch(selectedPreset, (newVal, oldVal) => {
     switch (selectedPreset.value) {
         case 'none':
-            setFields('*', '*', '*', '*', '*', []);
+            setFields('0', '0', '0', '0', '0', []);
             break;
         case 'hourly':
             setFields('0', '*', '*', '*', '*', []);

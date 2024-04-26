@@ -18,9 +18,6 @@ export async function getTaskData() {
         const tasksOutput = (await state.promise()).stdout;
         // console.log('Raw tasksOutput:', tasksOutput);
         const tasksData = JSON.parse(tasksOutput);
-        // tasksData.forEach(task => {
-            
-        // });
         return tasksData;
     } catch (state) {
         console.error(errorString(state));
