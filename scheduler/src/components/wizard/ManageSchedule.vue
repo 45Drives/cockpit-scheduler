@@ -118,8 +118,8 @@
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current Intervals</label>
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
-                                <li v-for="interval, idx in intervals" :key="idx" class="py-4 text-default rounded-lg"  :class="intervalSelectedClass(interval)">
-                                    <button class="h-full w-full rounded-lg" @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
+                                <li v-for="interval, idx in intervals" :key="idx" class="text-default rounded-lg"  :class="intervalSelectedClass(interval)">
+                                    <button class="h-full w-full rounded-lg py-4 text-left " @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
                             </ul>
                         </div>

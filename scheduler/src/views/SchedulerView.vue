@@ -6,15 +6,14 @@
                     <div class="">
                         <div class="flex flex-row justify-between sm:flex sm:items-center">
                             <div class="px-4 sm:px-0 sm:flex-auto">
-                                <!-- <h2 class="block text-medium font-medium leading-6 text-default">Tasks</h2> -->
                                 <p class="mt-2 text-medium text-default">List of all task instances. Click on View Details button to view details.</p>
                             </div>
                             <div class="flex flex-row justify-between">
-                                <!-- <div class="px-3">
+                                <div class="px-3">
                                     <label class="block text-medium font-medium leading-6 text-default">Search Tasks</label>
                                     <input type="text" @keydown.enter="" v-model="searchItem" class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
                                 </div>
-                                <div class="px-3">
+                                <!-- <div class="px-3">
                                     <label class="block text-medium font-medium leading-6 text-default">Filter</label>
                                     <select v-model="filterItem" class="text-default bg-defaultblock w-fit input-textlike sm:text-sm">
                                         <option value="no_filter">No Filter</option>
@@ -22,9 +21,7 @@
                                     </select>
                                 </div> -->
                                 <div class="mt-5 py-0.5 px-3">
-                                    <!-- <router-link :to="'/forms/new'"> -->
-                                        <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
-                                    <!-- </router-link> -->
+                                    <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                                 </div>
                             </div>
                         </div>
@@ -33,46 +30,50 @@
                                 <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
                                     <table class="table-auto min-w-full divide-y divide-default overflow-x-auto">
                                         <thead class="bg-well">
-                                            <tr class="border border-default grid grid-cols-5">
+                                            <tr class="border border-default grid grid-cols-8">
                                                 <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
-                                                <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
-                                                    Name
+                                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default col-span-2">
+                                                    <button @click="sortBy('name')" class="flex w-full justify-between whitespace-nowrap">
+                                                        Name
+                                                        <BarsArrowDownIcon class="ml-1 aspect-square w-5 h-5 text-muted" v-if="sort.field === 'name' && sortMode == 'desc'"/>
+                                                        <BarsArrowUpIcon class="ml-1 aspect-square w-5 h-5 text-muted" v-else-if="sort.field === 'name' && sortMode == 'asc'"/>
+                                                        <Bars3Icon class="ml-1 aspect-square w-5 h-5 text-muted" v-else/>
+                                                    </button>
                                                 </th>
-                                                <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
-                                                    Scheduled
-                                                </th>
-                                                <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
+                                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default col-span-2">
                                                     Status
                                                 </th>
-                                                <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
+                                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default col-span-2">
                                                     Last Run
                                                 </th>
-                                                <th scope="col" class="py-2 text-center text-sm font-semibold text-default border border-default">
+                                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default col-span-1">
+                                                    Scheduled
+                                                </th>
+                                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default col-span-1">
                                                     Details
                                                 </th>
                                             </tr>
                                         </thead>
                                         <tbody class="bg-default">
-                                            <tr class="border border-default grid grid-cols-5 grid-flow-cols w-full text-center items-center rounded-sm p-1" v-for="taskInstance, index in taskInstances" :key="index">
-                                                <!-- Table Cells -> TaskName, Checkbox, Status, LastRunTimestamp, ChevronButton -->
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
+                                            <tr class="border border-default grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1" v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
+                                                <!-- Table Cells -->
+                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     {{ taskInstance.name }}
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
-                                                    <input type="checkbox" v-model="taskInstance.schedule.enabled" class="ml-2 h-4 w-4 rounded "/>
-                                                </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
+                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     &lt;status here&gt;
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default">
+                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     &lt;timestamp here&gt;
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-default mb-1">
+                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-1">
+                                                    <input type="checkbox" v-model="taskInstance.schedule.enabled" class="ml-2 h-4 w-4 rounded "/>
+                                                </td>
+                                                <td class="whitespace-nowrap text-sm font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="col-span-5 h-full border border-default px-2 mx-2 py-1">
-
+                                                <td v-if="showDetails[index]" class="col-span-8 h-full border border-default px-2 mx-2 py-1">
                                                     <!-- Details for ZFS Replication Task -->
                                                     <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">
                                                         <div class="col-span-1">
@@ -129,13 +130,17 @@
                                                             Run Now
                                                             <PlayIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
+                                                        <button @click="manageScheduleBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                            Schedule
+                                                            <CalendarDaysIcon class="h-5 ml-2 mt-0.5"/>
+                                                        </button>
                                                         <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button @click="manageScheduleBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                                            Manage
-                                                            <CalendarDaysIcon class="h-5 ml-2 mt-0.5"/>
+                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                            Duplicate
+                                                            <DocumentDuplicateIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
                                                         <button class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
                                                             Remove
@@ -174,21 +179,16 @@
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide, onMounted} from 'vue';
-import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon } from '@heroicons/vue/24/outline';
-import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
-import LoadingSpinner from '../components/common/LoadingSpinner.vue';
-import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate } from '../models/Classes';
+import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, DocumentDuplicateIcon } from '@heroicons/vue/24/outline';
 
 import { boolToYesNo } from '../composables/helpers'
 import AddTask from "../components/wizard/AddTask.vue";
-import ManageSchedule from "../components/wizard/ManageSchedule.vue";
 
-// const notifications = inject<Ref<any>>('notifications')!;
-// const notificationFIFO = inject<Ref<FIFO>>('notification-fifo')!;
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
 const showTaskWizard = ref(false);
 const showStandaloneScheduleWizard = ref(false);
+const showEditTaskWizard = ref(false)
 // const showDetails = ref(false);
 const showDetails = ref({});
 const selectedTask = ref<TaskInstanceType>();
@@ -264,6 +264,84 @@ const updateShowStandaloneScheduleWizardComponent = (newVal) => {
     showStandaloneScheduleWizard.value = newVal;
 }
 
+const searchItem = ref('');
+const filterItem = ref('no_filter');
+const sortMode = ref<string | null>(null);
+
+const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
+	field: null,
+	order: 1,
+});
+
+const filteredAndSortedTasks = computed(() => {
+    let filteredTasks = taskInstances.value;
+
+    if (searchItem.value) {
+        const searchQuery = searchItem.value.toLowerCase();
+        filteredTasks = filteredTasks.filter(task => {
+            for (const key in task) {
+                const value = task[key];
+                if (value && value.toString().toLowerCase().includes(searchQuery)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    if (filterItem.value && filterItem.value !== 'no_filter') {
+        // filter based on status (need to figure out and program what status is first)
+        // filteredTasks = filteredTasks.filter(task => formatStatus(task.active) === filterItem.value);
+    }
+
+    return sortTasks(filteredTasks);
+});
+
+const sortTasks = (tasksToSort: TaskInstanceType[]) => {
+    if (!sort.value.field) return tasksToSort;
+
+    const field = sort.value.field as keyof TaskInstanceType;
+
+    return [...tasksToSort].sort((a, b) => {
+        const factor = sort.value.order === 1 ? 1 : -1;
+        const valueA = a[field] as string | number | null;
+        const valueB = b[field] as string | number | null;
+
+        if (valueA === null || valueB === null) {
+            return valueA === null ? 1 : -1;
+        }
+
+        if (typeof valueA === 'string' && typeof valueB === 'string') {
+            return factor * valueA.localeCompare(valueB);
+        }
+
+        return factor * ((valueA as number) - (valueB as number));
+    });
+};
+
+const sortBy = (field: keyof TaskInstanceType) => {
+	if (sort.value.field === field) {
+		sort.value.order = -sort.value.order;
+	} else {
+		sort.value.field = field;
+		sort.value.order = 1;
+	}
+	sortIconFlip();
+};
+
+function sortIconFlip() {
+	if (sort.value.order == 1) {
+		sortMode.value = 'asc';
+	} else if (sort.value.order == -1) {
+		sortMode.value = 'desc';
+	} else {
+		sortMode.value = null;
+	}
+}
+
+
+
 provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showStandaloneScheduleWizard);
+provide('show-edit-task-wizard', showEditTaskWizard);
 </script> 
