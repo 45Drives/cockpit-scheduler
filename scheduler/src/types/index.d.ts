@@ -19,7 +19,8 @@ type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
 type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
 
 interface TimeComponentType {
-	value: number | string;
+	// value: number | string;
+	value: string;
 }
 
 interface TaskScheduleType {

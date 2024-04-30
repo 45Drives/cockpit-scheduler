@@ -179,44 +179,44 @@ export class Scheduler implements SchedulerType {
     parseIntervalIntoString(interval: TaskScheduleIntervalType): string {
     const elements: string[] = [];
 
-    function getMonthName(number) {
-        switch (Number(number)) {
-            case 1: return 'January';
-            case 2: return 'February';
-            case 3: return 'March';
-            case 4: return 'April';
-            case 5: return 'May';
-            case 6: return 'June';
-            case 7: return 'July';
-            case 8: return 'August';
-            case 9: return 'September';
-            case 10: return 'October';
-            case 11: return 'November';
-            case 12: return 'December';
-            default: return 'undefined';  // Returning 'undefined' or a similar placeholder
+        function getMonthName(number) {
+            switch (Number(number)) {
+                case 1: return 'January';
+                case 2: return 'February';
+                case 3: return 'March';
+                case 4: return 'April';
+                case 5: return 'May';
+                case 6: return 'June';
+                case 7: return 'July';
+                case 8: return 'August';
+                case 9: return 'September';
+                case 10: return 'October';
+                case 11: return 'November';
+                case 12: return 'December';
+                default: return 'undefined';  // Returning 'undefined' or a similar placeholder
+            }
         }
+
+        // Convert the value to string and check if it's a wildcard or specific number
+        const minuteString = interval.minute?.value.toString() || '*';
+        const hourString = interval.hour?.value.toString() || '*';
+        const dayString = interval.day?.value.toString() || '*';
+        const monthString = interval.month?.value.toString() || '*';
+        const yearString = interval.year?.value.toString() || '*';
+
+        // For each time unit, build the string
+        elements.push(minuteString === '*' ? 'every minute' : `at ${minuteString} minute${minuteString === '1' ? '' : 's'}`);
+        elements.push(hourString === '*' ? 'every hour' : `at ${hourString} hour${hourString === '1' ? '' : 's'}`);
+        elements.push(dayString === '*' ? 'every day' : `on day ${dayString}`);
+        elements.push(monthString === '*' ? 'every month' : `in ${getMonthName(monthString)}`);
+        elements.push(yearString === '*' ? 'every year' : `in the year ${yearString}`);
+
+        if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
+            elements.push(`on ${interval.dayOfWeek.join(', ')}`);
+        }
+
+        return elements.join(' ');
     }
-
-    // Convert the value to string and check if it's a wildcard or specific number
-    const minuteString = interval.minute?.value.toString() || '*';
-    const hourString = interval.hour?.value.toString() || '*';
-    const dayString = interval.day?.value.toString() || '*';
-    const monthString = interval.month?.value.toString() || '*';
-    const yearString = interval.year?.value.toString() || '*';
-
-    // For each time unit, build the string
-    elements.push(minuteString === '*' ? 'every minute' : `at ${minuteString} minute${minuteString === '1' ? '' : 's'}`);
-    elements.push(hourString === '*' ? 'every hour' : `at ${hourString} hour${hourString === '1' ? '' : 's'}`);
-    elements.push(dayString === '*' ? 'every day' : `on day ${dayString}`);
-    elements.push(monthString === '*' ? 'every month' : `in ${getMonthName(monthString)}`);
-    elements.push(yearString === '*' ? 'every year' : `in the year ${yearString}`);
-
-    if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
-        elements.push(`on ${interval.dayOfWeek.join(', ')}`);
-    }
-
-    return elements.join(' ');
-}
 
 }
 

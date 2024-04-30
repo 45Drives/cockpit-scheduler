@@ -21,30 +21,61 @@
                         </div>
 
                         <div name="schedule-fields" class="col-span-1 grid grid-cols-2 gap-2 mt-2">
-                            <div name="hour">  
-                                <label class="block text-sm leading-6 text-default">Hour</label>
-                                <input v-model="newInterval.hour!.value" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                            <div name="hour">
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="block text-sm leading-6 text-default">Hour</label>
+                                    <ExclamationCircleIcon v-if="hourErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                </div>
+                                <input v-if="!hourErrorTag" v-model="newInterval.hour!.value" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <input v-if="hourErrorTag" v-model="newInterval.hour!.value" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="minute">
-                                <label class="block text-sm leading-6 text-default">Minute</label>
-                                <input v-model="newInterval.minute!.value" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="block text-sm leading-6 text-default">Minute</label>
+                                    <ExclamationCircleIcon v-if="minuteErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                </div>
+                                <input v-if="!minuteErrorTag" v-model="newInterval.minute!.value" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <input v-if="minuteErrorTag" v-model="newInterval.minute!.value" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="day">
-                                <label class="block text-sm leading-6 text-default">Day</label>
-                                <input v-model="newInterval.day!.value" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="block text-sm leading-6 text-default">Day</label>
+                                    <ExclamationCircleIcon v-if="dayErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                </div>
+                                <input v-if="!dayErrorTag" v-model="newInterval.day!.value" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <input v-if="dayErrorTag" v-model="newInterval.day!.value" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="month">
-                                <label class="block text-sm leading-6 text-default">Month</label>
-                                <input v-model="newInterval.month!.value" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="block text-sm leading-6 text-default">Month</label>
+                                    <ExclamationCircleIcon v-if="monthErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                </div>
+                                <input v-if="!monthErrorTag" v-model="newInterval.month!.value" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/> 
+                                <input v-if="monthErrorTag" v-model="newInterval.month!.value" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
                             <div name="year">
-                                <label class="block text-sm leading-6 text-default">Year</label>
-                                <input v-model="newInterval.year!.value" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="block text-sm leading-6 text-default">Year</label>
+                                    <ExclamationCircleIcon v-if="yearErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                </div>
+                                <input v-if="!yearErrorTag" v-model="newInterval.year!.value" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/> 
+                                <input v-if="yearErrorTag" v-model="newInterval.year!.value" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
                             </div>
-                            <div name="info" class="mt-5">
-                                <label class="block text-base leading-6 text-default mt-0.5 px-3">
-                                    Use asterisk (*) for all values, hyphen (-) for ranges, and commas for lists:
-                                    eg. 2-7 (range) or 2,4,7 (list).
+                            <div name="info" class="mt-1 px-1">
+                                <label class="block text-sm text-default mt-0.5">
+                                    Every value: Use asterisk (*).
+                                </label>
+                                <label class="block text-sm text-default mt-0.5">
+                                    Step values (all fields except for Month & Year): Use asterisk + slash (eg. */2).
+                                </label>
+                                <label class="block text-sm text-default mt-0.5">
+                                    List of values: Use commas (eg. 1,4,9).
+                                </label>
+                                <label class="block text-sm text-default mt-0.5">
+                                    Range of time values (Hour, Minute): Use hyphen (eg. 10-20).
+                                </label>
+                                <label class="block text-sm text-default mt-0.5">
+                                    Range of dates (Day, Month, Year): Use two periods (eg. 1..4).
                                 </label>
                             </div>
                             <div name="dayOfWeek" class="col-span-2">
@@ -60,6 +91,7 @@
                                                     class="mb-0.5 w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"/>	
                                                 </label>
                                             </button>
+                                            <!-- <input v-if="newInterval.dayOfWeek!.includes(day)" type="number" v-model="newInterval.dayOfWeekSteps[day]" min="1" placeholder="Step (optional)" class="text-sm"/> -->
                                         </td>
                                     </tr>
                                 </table>
@@ -159,8 +191,8 @@ const daysOfWeek : DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat
 const newInterval = reactive<TaskScheduleIntervalType>({
     minute: { value: '0' },
     hour: { value: '0' },
-    day: { value: '0' },
-    month: { value: '0' },
+    day: { value: '1' },
+    month: { value: '*' },
     year: { value: '*' },
     dayOfWeek: []
 });
@@ -168,8 +200,8 @@ const newInterval = reactive<TaskScheduleIntervalType>({
 function resetIntervalDefaults(interval) {
     interval.hour.value = '0';
     interval.minute.value = '0';
-    interval.day.value = '0';
-    interval.month.value = '0';
+    interval.day.value = '1';
+    interval.month.value = '*';
     interval.year.value = '*';
     interval.dayOfWeek = [];
 }
@@ -186,7 +218,6 @@ function clearFields() {
     forceUpdateCalendar();
 }
 
-
 function setFields(min, hr, d, mon, y, dow) {
     newInterval.hour!.value = hr;
     newInterval.minute!.value = min;
@@ -196,16 +227,221 @@ function setFields(min, hr, d, mon, y, dow) {
     newInterval.dayOfWeek! = dow;
 }
 
+const errorList = ref<string[]>([]);
+const hourErrorTag = ref(false);
+const minuteErrorTag = ref(false);
+const dayErrorTag = ref(false);
+const monthErrorTag = ref(false);
+const yearErrorTag = ref(false);
+
+function clearAllErrors() {
+    errorList.value = [];
+    hourErrorTag.value = false;
+    minuteErrorTag.value = false;
+    dayErrorTag.value = false;
+    monthErrorTag.value = false;
+    yearErrorTag.value = false;
+}
+
+// function isOnCalendarExpression(value, type) {
+//     // Check for empty value
+//     if (value.trim() === '') {
+//         return false;
+//     }
+
+//     // Function to validate the format with steps (e.g., "*/2")
+//     const validateStepFormat = (stepValue) => {
+//         const stepNumber = Number(stepValue);
+//         return !isNaN(stepNumber) && stepNumber > 0;
+//     };
+
+//     // Check for asterisk, steps like "*/3", or named day steps like "Mon/2"
+//     if (value === '*') {
+//         return true;
+//     } else if (value.includes('/')) {
+//         const parts = value.split('/');
+//         if (parts.length === 2 && parts[0] === '*') {
+//             return validateStepFormat(parts[1]);
+//         } 
+//         return false;
+//     }
+
+//     // Check for lists like "1,2,3"
+//     if (value.includes(',')) {
+//         const listValues = value.split(',').map(v => v.trim());
+//         return listValues.every(val => {
+//             // Determine the min and max based on the type
+//             let min = 0, max = 59;  // Default for minutes
+//             if (type === 'hour') {
+//                 min = 0;
+//                 max = 23;
+//             } else if (type === 'day') {
+//                 min = 1;
+//                 max = 31;
+//             } else if (type === 'month') {
+//                 min = 1;
+//                 max = 12;
+//             }
+
+//             // Ensure each value is numeric and in the correct range
+//             const num = Number(val);
+//             return !isNaN(num) && num >= 1 && num <= 31;
+//         });
+//     }
+
+//     // Check for ranges like "1-5"
+//     if (value.includes('-')) {
+//         const rangeParts = value.split('-').map(v => v.trim());
+//         if (rangeParts.length !== 2 || rangeParts.some(rp => isNaN(Number(rp)))) {
+//             return false;
+//         }
+//         const range = rangeParts.map(Number);
+//         // Adjust these ranges based on the type
+//         let [min, max] = [0, 59]; // Defaults for minutes
+//         if (type === 'hour') [min, max] = [0, 23];
+//         if (type === 'day') [min, max] = [1, 31];
+//         if (type === 'month') [min, max] = [1, 12];
+//         return range[0] >= min && range[0] <= max && range[1] >= min && range[1] <= max && range[0] < range[1];
+//     }
+
+//     // Check for single numbers or named days (for dayOfWeek)
+//     if (type !== 'dayOfWeek') {
+//         const number = Number(value);
+//         if (!isNaN(number)) {
+//             // Adjust these ranges based on the type
+//             let [min, max] = [0, 59]; // Defaults for minutes
+//             if (type === 'hour') [min, max] = [0, 23];
+//             if (type === 'day') [min, max] = [1, 31];
+//             // Month validation is not needed here because months do not support numeric steps
+//             return number >= min && number <= max;
+//         }
+//     }
+
+//     return false;
+// }
+
+function isOnCalendarExpression(value, type) {
+    // Check for empty value
+    if (value.trim() === '') {
+        return false;
+    }
+
+    // Function to validate the format with steps (e.g., "*/2")
+    const validateStepFormat = (stepValue) => {
+        const stepNumber = Number(stepValue);
+        return !isNaN(stepNumber) && stepNumber > 0;
+    };
+
+    // Check for asterisk, steps like "*/3", or named day steps like "Mon/2"
+    if (value === '*') {
+        return true;
+    } else if (value.includes('/') && type !== 'year' && type !== 'month') {
+        const parts = value.split('/');
+        if (parts.length === 2 && parts[0] === '*') {
+            return validateStepFormat(parts[1]);
+        }
+        return false;
+    }
+
+    // Check for lists like "1,2,3"
+    if (value.includes(',')) {
+        const listValues = value.split(',').map(v => v.trim());
+        return listValues.every(val => isOnCalendarExpression(val, type)); // Recursive call to handle each value in list
+    }
+
+    // Check for ranges like "1-5" or "1..5"
+    const rangeDelimiter = value.includes('..') ? '..' : '-';
+    if (value.includes(rangeDelimiter)) {
+        const rangeParts = value.split(rangeDelimiter).map(v => v.trim());
+        if (rangeParts.length !== 2 || rangeParts.some(rp => isNaN(Number(rp)))) {
+            return false;
+        }
+        const range = rangeParts.map(Number);
+        // Adjust these ranges based on the type
+        let [min, max] = [0, 59]; // Defaults for minutes
+        if (type === 'hour') [min, max] = [0, 23];
+        else if (type === 'day') [min, max] = [1, 31];
+        else if (type === 'month') [min, max] = [1, 12];
+        else if (type === 'year') [min, max] = [1970, 9999];
+        return range[0] >= min && range[0] <= max && range[1] >= min && range[1] <= max && range[0] < range[1];
+    }
+
+    // Check for single numbers or named days (for dayOfWeek)
+    if (type !== 'dayOfWeek') {
+        const number = Number(value);
+        if (!isNaN(number)) {
+            // Adjust these ranges based on the type
+            let [min, max] = [0, 59]; // Defaults for minutes
+            if (type === 'hour') [min, max] = [0, 23];
+            else if (type === 'day') [min, max] = [1, 31];
+            else if (type === 'month') [min, max] = [1, 12];
+            return number >= min && number <= max;
+        }
+    }
+
+    return false;
+}
+
+
+
+function validateFields(interval) {
+    clearAllErrors();
+    // Assuming `interval` is an object with properties like {hour: {value: '1-23'}, minute: {value: '*'}, ...}
+
+    // Validate hour
+    if (!isOnCalendarExpression(interval.hour.value, 'hour')) {
+        hourErrorTag.value = true;
+        errorList.value.push("Hour value is invalid.");
+    }
+
+    // Validate minute
+    if (!isOnCalendarExpression(interval.minute.value, 'minute')) {
+        minuteErrorTag.value = true;
+        errorList.value.push("Minute value is invalid.");
+    }
+
+    // Validate day
+    if (!isOnCalendarExpression(interval.day.value, 'day')) {
+        dayErrorTag.value = true;
+        errorList.value.push("Day value is invalid.");
+    }
+
+    // Validate month
+    if (!isOnCalendarExpression(interval.month.value, 'month')) {
+        monthErrorTag.value = true;
+        errorList.value.push("Month value is invalid.");
+    }
+
+    // Validate year
+    if (!isOnCalendarExpression(interval.year.value, 'year')) {
+        yearErrorTag.value = true;
+        errorList.value.push("Year value is invalid.");
+    }
+
+    // Print out errorList or do whatever you need with it
+    if (errorList.value.length > 0) {
+        // Handle errors
+        console.log('Validation errors:', errorList);
+        notifications.value.constructNotification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        return false;
+    } else {
+        // No errors, continue with processing
+        return true;
+    }
+}
+
 const selectedInterval = ref<TaskScheduleIntervalType>();
 function selectIntervalToManage(interval : TaskScheduleIntervalType) {
     selectedInterval.value = interval;
 }
 
 function saveInterval(interval) {
-    // Deep clone the interval object to ensure no references are shared
-    const clonedInterval = JSON.parse(JSON.stringify(interval));
-    intervals.value.push(clonedInterval);
-    console.log('newInterval saved:', clonedInterval);
+    if (validateFields(interval)) {
+        // Deep clone the interval object to ensure no references are shared
+        const clonedInterval = JSON.parse(JSON.stringify(interval));
+        intervals.value.push(clonedInterval);
+        console.log('newInterval saved:', clonedInterval);
+    } 
 }
 
 
@@ -242,7 +478,7 @@ function saveScheduleBtn() {
 watch(selectedPreset, (newVal, oldVal) => {
     switch (selectedPreset.value) {
         case 'none':
-            setFields('0', '0', '0', '0', '*', []);
+            setFields('0', '0', '1', '*', '*', []);
             break;
         case 'hourly':
             setFields('0', '*', '*', '*', '*', []);
