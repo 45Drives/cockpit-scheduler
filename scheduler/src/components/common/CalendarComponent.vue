@@ -71,7 +71,7 @@ const days = computed(() => {
 //   	console.log('Interval prop in CalendarComponent', props.interval);
 // });
 
-function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
+/* function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
 	const dayOfWeekMap = {
 		'Sun': 0,
 		'Mon': 1,
@@ -105,15 +105,53 @@ function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean 
 	if (interval.day && !matches(interval.day.value, date.getDate())) {
 		return false;
 	}
-	if (interval.hour && !matches(interval.hour.value, date.getHours())) {
-		return false;
-	}
-	if (interval.minute && !matches(interval.minute.value, date.getMinutes())) {
-		return false;
-	}
 
 	// console.log(`Date ${date.toISOString()} passes all checks.`);
 	return true;
+}
+ */
+
+ function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
+    const dayOfWeekMap = {
+        'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+    };
+
+    const matches = (value: string, dateComponent: number) => {
+        if (value === '*') {
+            return true;
+        } else if (value.includes('/')) {
+            const [base, step] = value.split('/');
+            const start = base === '*' ? 0 : parseInt(base);
+            const interval = parseInt(step);
+            return (dateComponent - start) % interval === 0;
+        } else if (value.includes('-')) {
+            const [start, end] = value.split('-').map(Number);
+            return dateComponent >= start && dateComponent <= end;
+        } else if (value.includes('..')) {
+            const [start, end] = value.split('..').map(Number);
+            return dateComponent >= start && dateComponent <= end;
+        } else if (value.includes(',')) {
+            const values = value.split(',').map(Number);
+            return values.includes(dateComponent);
+        } else {
+            return parseInt(value) === dateComponent;
+        }
+    };
+
+    if (interval.dayOfWeek && interval.dayOfWeek.length > 0 && !interval.dayOfWeek.some(day => matches(day, date.getDay()))) {
+        return false;
+    }
+    if (interval.year && !matches(interval.year.value.toString(), date.getFullYear())) {
+        return false;
+    }
+    if (interval.month && !matches(interval.month.value.toString(), date.getMonth() + 1)) {
+        return false;
+    }
+    if (interval.day && !matches(interval.day.value.toString(), date.getDate())) {
+        return false;
+    }
+
+    return true;
 }
 
 

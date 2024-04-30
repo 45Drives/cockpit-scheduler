@@ -284,6 +284,7 @@ export class Scheduler implements SchedulerType {
         //     }
         //     return `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`;
         // }
+        /* 
         function formatUnit(value, type) {
             if (value === '*') {
                 return type === 'day' ? 'every day' : `every ${type}`;
@@ -305,7 +306,61 @@ export class Scheduler implements SchedulerType {
             }
             return type === 'year' ? `in the year ${value}` :
                    `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`;
+        } */
+
+       /*  function formatUnit(value, type) {
+            if (value === '*') {
+                return type === 'day' ? 'every day' : `every ${type}`;
+            } else if (value.includes(',')) {
+                const items = value.split(',').map(item => item.trim());
+                return (type === 'month' ? `in ${items.map(getMonthName).join(', ')}` :
+                    (type === 'day' && items.length === 1) ? `on ${items.join(', ')}` :
+                    `at ${items.join(', ')}`);
+            } else if (value.includes('-') && (type === 'hour' || type === 'minute')) {
+                const [start, end] = value.split('-');
+                return `from ${start} to ${end} ${type}s`;
+            } else if (value.includes('..')) {
+                const [start, end] = value.split('..').map(item => item.trim());
+                const description = type === 'month' ? getMonthName : x => x;
+                return `from ${description(start)} to ${description(end)}` + (type === 'month' ? '' : ` ${type}s`);
+            } else if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                if (base === '*') {
+                    // Assumes starting from the minimum possible value for the type
+                    const start = (type === 'day' ? 1 : 0);
+                    return `every ${step} ${type}s starting from ${start}`;
+                }
+                return `every ${step} ${type}s starting at ${base}`;
+            }
+            return type === 'year' ? `in the year ${value}` :
+                   `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`;
+        } */
+        function formatUnit(value, type) {
+            if (value === '*') {
+                return type === 'day' ? 'every day' : `every ${type}`;
+            } else if (value.includes(',')) {
+                const items = value.split(',').map(item => item.trim());
+                return (type === 'month' ? `in ${items.map(getMonthName).join(', ')}` :
+                       (type === 'day' && items.length === 1) ? `on ${items.join(', ')}` :
+                       `at ${items.join(', ')}`);
+            } else if (value.includes('-')) {
+                const [start, end] = value.split('-');
+                return `from ${start} to ${end} ${type}s`;
+            } else if (value.includes('..')) {
+                const [start, end] = value.split('..').map(item => item.trim());
+                if (type === 'month') {
+                    return `from ${getMonthName(start)} to ${getMonthName(end)}`;
+                } else {
+                    return `from ${start} to ${end} ${type}s`;
+                }
+            } else if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                return `every ${step} ${type}s`;
+            }
+            return type === 'year' ? `in the year ${value}` :
+                (type === 'month' ? `in ${getMonthName(value)}` : `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`);
         }
+        
     
     
         const minute = formatUnit(interval.minute?.value.toString() || '*', 'minute');
