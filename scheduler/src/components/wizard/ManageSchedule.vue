@@ -139,7 +139,7 @@
                         <button @click.stop="closeModal" id="close-add-schedule-btn" name="close-add-schedule-btn" class="mt-1 btn btn-danger">Close</button>
 					</div>
 					<div class="button-group-row mt-2">
-                        <button v-if="!savingSchedule" id="add-schedule-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="saveScheduleBtn()">Save schedule</button>
+                        <button v-if="!savingSchedule" id="add-schedule-btn" class="btn btn-primary object-right justify-end h-fit w-full" @click="saveScheduleBtn()">Save Schedule</button>
                         <button disabled v-if="savingSchedule" id="finish" type="button" class="btn btn-primary object-right justify-end">
                             <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
@@ -152,6 +152,10 @@
 			</div>
         </template>
     </Modal>
+
+    <div v-if="showSaveConfirmation">
+        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Create Task'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask"/>
+    </div>
 </template>
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
@@ -173,6 +177,7 @@ const emit = defineEmits(['close']);
 const notifications = inject<Ref<any>>('notifications')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
 const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
+const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
 
 const savingSchedule = ref(false);
 
@@ -181,7 +186,12 @@ const closeModal = () => {
     emit('close');
 }
 
-const schedule = ref<TaskScheduleType>();
+const thisTask = ref(props.task);
+const newSchedule = reactive<TaskScheduleType>({
+    enabled: true,
+    intervals: [],
+});
+
 const selectedPreset = ref('none');
 const scheduleEnabled = ref(true);
 const intervals = ref<TaskScheduleIntervalType[]>([]);
@@ -196,15 +206,6 @@ const newInterval = reactive<TaskScheduleIntervalType>({
     year: { value: '*' },
     dayOfWeek: []
 });
-
-// function resetIntervalDefaults(interval) {
-//     interval.hour.value = '0';
-//     interval.minute.value = '0';
-//     interval.day.value = '1';
-//     interval.month.value = '*';
-//     interval.year.value = '*';
-//     interval.dayOfWeek = [];
-// }
 
 function clearFields() {
     Object.assign(newInterval, {
@@ -390,12 +391,50 @@ function editSelectedInterval(interval : TaskScheduleIntervalType) {
     newInterval.dayOfWeek! = interval.dayOfWeek ?? [];
 }
 
-function saveScheduleBtn() {
-    // myScheduler.registerTaskInstance(props.task);
-    // myScheduler.updateTaskInstance(props.task);
-    
-    // myScheduler.updateSchedule(props.task);
-    console.log('saving task:', props.task);
+const showSaveConfirmation = ref(false);
+const confirmationComponent = ref();
+const loadConfirmationComponent = async () => {
+    const module = await import('../common/ConfirmationDialog.vue');
+    confirmationComponent.value = module.default;
+}
+
+async function showConfirmationDialog() {
+    await loadConfirmationComponent();
+    showSaveConfirmation.value = true;
+    console.log('Showing confirmation dialog...');
+}
+
+const confirmScheduleTask : ConfirmationCallback = async () => {
+    console.log('Saving and scheduling task now...');
+    savingSchedule.value = true;
+    await myScheduler.registerTaskInstance(thisTask.value);
+    notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000);
+    savingSchedule.value = false;
+    updateShowSaveConfirmation(false);
+    showScheduleWizard.value = false;
+    showTaskWizard.value = false;
+}
+
+const cancelScheduleTask : ConfirmationCallback = async () => {
+    updateShowSaveConfirmation(false);
+}
+
+
+
+const updateShowSaveConfirmation = (newVal) => {
+    showSaveConfirmation.value = newVal;
+}
+
+
+async function saveScheduleBtn() {
+    intervals.value.forEach(interval => {
+        newSchedule.intervals.push(interval);
+    });
+    thisTask.value.schedule = newSchedule;
+    console.log('schedule to save:', newSchedule);
+    console.log('task to save:', thisTask.value);
+
+    await showConfirmationDialog();
 }
 
 watch(selectedPreset, (newVal, oldVal) => {

@@ -152,7 +152,7 @@ const makeScheduleLater : ConfirmationCallback = async () => {
 const makeScheduleNow : ConfirmationCallback = async () => {
     isStandaloneTask.value = false;
     console.log('Make Schedule Now. isStandalone:', isStandaloneTask.value);
-    await saveTask()
+    await saveTask();
     updateShowSchedulePrompt(false);
     showScheduleWizardComponent();
     // closeModal();

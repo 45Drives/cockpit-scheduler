@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -100,10 +100,12 @@ export class Scheduler implements SchedulerType {
             return formattedTemplateName;
         }
         
-        // makeEnvFile(formatTemplateName(taskInstance.template.name), taskInstance.name, `"${envKeyValuesString}"`);
+        const templateServicePath = `/opt/45drives/houston/scheduler/templates/${formatTemplateName(taskInstance.template.name)}.service`;
+        const templateTimerPath = `/opt/45drives/houston/scheduler/templates/Schedule.timer`;
+
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}.env`;
-
+        
         console.log('envFilePath:', envFilePath);
 
         const file = new BetterCockpitFile(envFilePath, {
@@ -118,6 +120,10 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
+        const jsonFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}.json`;
+        console.log('jsonFilePath:', jsonFilePath);
+
+        //run script to generate service + timer via template, param env and schedule json
         if (taskInstance.schedule.intervals.length < 1) {
             //ignore schedule for now
             console.log('No schedules found, parameter file generated.');
@@ -125,18 +131,24 @@ export class Scheduler implements SchedulerType {
         } else {
             //generate json file with enabled boolean + intervals (Schedule Intervals)
             // requires schedule data object
-            console.log(taskInstance.schedule);
-        }
-       
-        //run script to generate service + timer via template, param env and schedule json
-        if (taskInstance.schedule.intervals.length < 1) {
-            //ignore schedule for now
-            console.log('No schedules found, making service file only.');
-        } else {
-            // requires schedule data object
+            console.log('schedule:', taskInstance.schedule);
+
+            const file2 = new BetterCockpitFile(jsonFilePath, {
+                superuser: 'try',
+            });
+            
+            const jsonString = JSON.stringify(taskInstance.schedule, null, 2); // The second argument (null) and third (2) ensures pretty-printing of JSON
+
+            file2.replace(jsonString).then(() => {
+                console.log('json file created and content written successfully');
+                file2.close();
+            }).catch(error => {
+                console.error("Error writing content to the file:", error);
+                file2.close();
+            });
         }
 
-       
+        await createTaskFiles(templateServicePath, envFilePath, templateTimerPath, jsonFilePath);
 
     }   
     
