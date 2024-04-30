@@ -197,14 +197,14 @@ const newInterval = reactive<TaskScheduleIntervalType>({
     dayOfWeek: []
 });
 
-function resetIntervalDefaults(interval) {
-    interval.hour.value = '0';
-    interval.minute.value = '0';
-    interval.day.value = '1';
-    interval.month.value = '*';
-    interval.year.value = '*';
-    interval.dayOfWeek = [];
-}
+// function resetIntervalDefaults(interval) {
+//     interval.hour.value = '0';
+//     interval.minute.value = '0';
+//     interval.day.value = '1';
+//     interval.month.value = '*';
+//     interval.year.value = '*';
+//     interval.dayOfWeek = [];
+// }
 
 function clearFields() {
     Object.assign(newInterval, {
@@ -243,82 +243,6 @@ function clearAllErrors() {
     yearErrorTag.value = false;
 }
 
-// function isOnCalendarExpression(value, type) {
-//     // Check for empty value
-//     if (value.trim() === '') {
-//         return false;
-//     }
-
-//     // Function to validate the format with steps (e.g., "*/2")
-//     const validateStepFormat = (stepValue) => {
-//         const stepNumber = Number(stepValue);
-//         return !isNaN(stepNumber) && stepNumber > 0;
-//     };
-
-//     // Check for asterisk, steps like "*/3", or named day steps like "Mon/2"
-//     if (value === '*') {
-//         return true;
-//     } else if (value.includes('/')) {
-//         const parts = value.split('/');
-//         if (parts.length === 2 && parts[0] === '*') {
-//             return validateStepFormat(parts[1]);
-//         } 
-//         return false;
-//     }
-
-//     // Check for lists like "1,2,3"
-//     if (value.includes(',')) {
-//         const listValues = value.split(',').map(v => v.trim());
-//         return listValues.every(val => {
-//             // Determine the min and max based on the type
-//             let min = 0, max = 59;  // Default for minutes
-//             if (type === 'hour') {
-//                 min = 0;
-//                 max = 23;
-//             } else if (type === 'day') {
-//                 min = 1;
-//                 max = 31;
-//             } else if (type === 'month') {
-//                 min = 1;
-//                 max = 12;
-//             }
-
-//             // Ensure each value is numeric and in the correct range
-//             const num = Number(val);
-//             return !isNaN(num) && num >= 1 && num <= 31;
-//         });
-//     }
-
-//     // Check for ranges like "1-5"
-//     if (value.includes('-')) {
-//         const rangeParts = value.split('-').map(v => v.trim());
-//         if (rangeParts.length !== 2 || rangeParts.some(rp => isNaN(Number(rp)))) {
-//             return false;
-//         }
-//         const range = rangeParts.map(Number);
-//         // Adjust these ranges based on the type
-//         let [min, max] = [0, 59]; // Defaults for minutes
-//         if (type === 'hour') [min, max] = [0, 23];
-//         if (type === 'day') [min, max] = [1, 31];
-//         if (type === 'month') [min, max] = [1, 12];
-//         return range[0] >= min && range[0] <= max && range[1] >= min && range[1] <= max && range[0] < range[1];
-//     }
-
-//     // Check for single numbers or named days (for dayOfWeek)
-//     if (type !== 'dayOfWeek') {
-//         const number = Number(value);
-//         if (!isNaN(number)) {
-//             // Adjust these ranges based on the type
-//             let [min, max] = [0, 59]; // Defaults for minutes
-//             if (type === 'hour') [min, max] = [0, 23];
-//             if (type === 'day') [min, max] = [1, 31];
-//             // Month validation is not needed here because months do not support numeric steps
-//             return number >= min && number <= max;
-//         }
-//     }
-
-//     return false;
-// }
 
 function isOnCalendarExpression(value, type) {
     // Check for empty value
@@ -383,10 +307,8 @@ function isOnCalendarExpression(value, type) {
 }
 
 
-
 function validateFields(interval) {
     clearAllErrors();
-    // Assuming `interval` is an object with properties like {hour: {value: '1-23'}, minute: {value: '*'}, ...}
 
     // Validate hour
     if (!isOnCalendarExpression(interval.hour.value, 'hour')) {
@@ -441,6 +363,7 @@ function saveInterval(interval) {
         const clonedInterval = JSON.parse(JSON.stringify(interval));
         intervals.value.push(clonedInterval);
         console.log('newInterval saved:', clonedInterval);
+        console.log('all intervals:', intervals.value);
     } 
 }
 

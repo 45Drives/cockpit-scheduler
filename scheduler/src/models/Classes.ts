@@ -176,7 +176,7 @@ export class Scheduler implements SchedulerType {
         
     }
 
-    parseIntervalIntoString(interval: TaskScheduleIntervalType): string {
+ /*    parseIntervalIntoString(interval: TaskScheduleIntervalType): string {
     const elements: string[] = [];
 
         function getMonthName(number) {
@@ -217,7 +217,116 @@ export class Scheduler implements SchedulerType {
 
         return elements.join(' ');
     }
+ */
 
+    parseIntervalIntoString(interval) {
+        const elements : string[] = [];
+    
+        function getMonthName(number) {
+            const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
+            return months[number - 1] || 'undefined';
+        }
+    
+        // function formatUnit(value, type) {
+        //     if (value === '*') {
+        //         return `every ${type}`;
+        //     } else if (value.includes(',')) {
+        //         return `at ${value.split(',').join(', ')} ${type}s`;
+        //     } else if (value.includes('-')) {
+        //         const range = value.split('-');
+        //         return `from ${range[0]} to ${range[1]} ${type}s`;
+        //     } else if (value.includes('..')) {
+        //         const range = value.split('..');
+        //         return `from ${range[0]} to ${range[1]} ${type}s`;
+        //     } else if (value.includes('/')) {
+        //         const step = value.split('/')[1];
+        //         return `every ${step} ${type}s starting at ${type === 'day' ? 'day' : type}`;
+        //     } else {
+        //         return `at ${value} ${type}${value === '1' ? '' : 's'}`;
+        //     }
+        // }
+    
+        // elements.push(formatUnit(interval.minute?.value.toString() || '*', 'minute'));
+        // elements.push(formatUnit(interval.hour?.value.toString() || '*', 'hour'));
+        // elements.push(formatUnit(interval.day?.value.toString() || '*', 'day'));
+        // if (interval.month?.value) {
+        //     elements.push(interval.month.value === '*' ? 'every month' : `in ${getMonthName(interval.month.value)}`);
+        // }
+        // elements.push(formatUnit(interval.year?.value.toString() || '*', 'year'));
+    
+        // if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
+        //     elements.push(`on ${interval.dayOfWeek.join(', ')}`);
+        // }
+
+        // function formatUnit(value, type) {
+        //     if (value === '*') {
+        //         return type === 'day' ? 'every day' : `every ${type}`;
+        //     } else if (value.includes(',')) {
+        //         const items = value.split(',').map(item => item.trim());
+        //         if (type === 'month') {
+        //             const monthNames = items.map(num => getMonthName(num));
+        //             return `in ${monthNames.join(', ')}`;
+        //         }
+        //         return type === 'day' ? `on ${items.join(', ')}` : `at ${items.join(', ')}`;
+        //     } else if (value.includes('-') && type !== 'month') {
+        //         const [start, end] = value.split('-');
+        //         return `from ${start} to ${end} ${type}s`;
+        //     } else if (value.includes('..') && type === 'month') {
+        //         const [start, end] = value.split('..').map(getMonthName);
+        //         return `from ${start} to ${end}`;
+        //     } else if (value.includes('/')) {
+        //         const [base, step] = value.split('/');
+        //         if (base === '*') {
+        //             return `every ${step} ${type}s`;
+        //         }
+        //         return `every ${step} days starting from ${base}`;  // Specific to day steps
+        //     }
+        //     return `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`;
+        // }
+        function formatUnit(value, type) {
+            if (value === '*') {
+                return type === 'day' ? 'every day' : `every ${type}`;
+            } else if (value.includes(',')) {
+                const items = value.split(',').map(item => item.trim());
+                return (type === 'month' ? `in ${items.map(getMonthName).join(', ')}` :
+                    (type === 'day' && items.length === 1) ? `on ${items.join(', ')}` :
+                    `at ${items.join(', ')}`);
+            } else if (value.includes('-') && (type === 'hour' || type === 'minute')) {
+                const [start, end] = value.split('-');
+                return `from ${start} to ${end} ${type}s`;
+            } else if (value.includes('..')) {
+                const [start, end] = value.split('..').map(item => item.trim());
+                const description = type === 'month' ? getMonthName : x => x;
+                return `from ${description(start)} to ${description(end)}` + (type === 'month' ? '' : ` ${type}s`);
+            } else if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                return `every ${step} ${type}s starting at ${type === 'day' ? base : type}`;
+            }
+            return type === 'year' ? `in the year ${value}` :
+                   `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`;
+        }
+    
+    
+        const minute = formatUnit(interval.minute?.value.toString() || '*', 'minute');
+        const hour = formatUnit(interval.hour?.value.toString() || '*', 'hour');
+        const day = formatUnit(interval.day?.value.toString() || '*', 'day');
+        const month = formatUnit(interval.month?.value.toString() || '*', 'month');
+        const year = formatUnit(interval.year?.value.toString() || '*', 'year');
+    
+        if (minute.startsWith('at') && hour.startsWith('at') && !day.startsWith('every')) {
+            elements.push(`at ${minute.split(' ')[1]} minutes past hour ${hour.split(' ')[1]} on ${day} in ${month} in the year ${year}`);
+        } else {
+            elements.push(minute, hour, day, month, year);
+        }
+    
+        if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
+            elements.push(`on ${interval.dayOfWeek.join(', ')}`);
+        }
+    
+        return elements.join(' ');
+    }
+    
 }
 
 export class TaskTemplate implements TaskTemplateType {
