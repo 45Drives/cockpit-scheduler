@@ -71,49 +71,9 @@ const days = computed(() => {
 //   	console.log('Interval prop in CalendarComponent', props.interval);
 // });
 
-/* function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
-	const dayOfWeekMap = {
-		'Sun': 0,
-		'Mon': 1,
-		'Tue': 2,
-		'Wed': 3,
-		'Thu': 4,
-		'Fri': 5,
-		'Sat': 6,
-	};
-
-	const matches = (value: string | number, dateComponent: number) => {
-		// console.log(`matches: Checking ${value} against ${dateComponent}`);
-		if (value === '*') {
-			return true;
-		}
-		return Number(value) === dateComponent;
-	};
-
-	// Log each component to ensure they are evaluated correctly
-	// console.log(`Checking date: ${date.toISOString()} against interval`, interval);
-
-	if (interval.dayOfWeek && interval.dayOfWeek.length > 0 && !interval.dayOfWeek.some(day => matches(dayOfWeekMap[day], date.getDay()))) {
-		return false;
-	}
-	if (interval.year && !matches(interval.year.value, date.getFullYear())) {
-		return false;
-	}
-	if (interval.month && !matches(interval.month.value, date.getMonth() + 1)) {
-		return false;
-	}
-	if (interval.day && !matches(interval.day.value, date.getDate())) {
-		return false;
-	}
-
-	// console.log(`Date ${date.toISOString()} passes all checks.`);
-	return true;
-}
- */
-
  function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
     const dayOfWeekMap = {
-        'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+        'Sun': '0', 'Mon': '1', 'Tue': '2', 'Wed': '3', 'Thu': '4', 'Fri': '5', 'Sat': '6',
     };
 
     const matches = (value: string, dateComponent: number) => {
@@ -138,9 +98,9 @@ const days = computed(() => {
         }
     };
 
-    if (interval.dayOfWeek && interval.dayOfWeek.length > 0 && !interval.dayOfWeek.some(day => matches(day, date.getDay()))) {
-        return false;
-    }
+	if (interval.dayOfWeek && interval.dayOfWeek.length > 0 && !interval.dayOfWeek.some(day => matches(dayOfWeekMap[day], date.getDay()))) {
+		return false;
+	}
     if (interval.year && !matches(interval.year.value.toString(), date.getFullYear())) {
         return false;
     }
