@@ -124,25 +124,25 @@
                                                             </div>
                                                         </div>                                        
                                                     </div>
-                                                    <div class="button-group-row justify-between col-span-5 mt-2 ">
+                                                    <div class="button-group-row justify-center col-span-5 mt-2 ">
 
-                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
+                                                        <button @click="runTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
                                                             Run Now
                                                             <PlayIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
                                                         <button @click="manageScheduleBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                                            Schedule
+                                                            Manage Schedule
                                                             <CalendarDaysIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                        <button @click="editTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                        <button @click="duplicateTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             Duplicate
                                                             <DocumentDuplicateIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+                                                        <button @click="removeTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
                                                             Remove
                                                             <TrashIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
@@ -165,11 +165,12 @@
                 <AddTask :id-key="'add-task-modal'" />
             </div>
 
-            <!-- <div v-if="showStandaloneScheduleWizard" class="z-0">
-                <ManageSchedule :id-key="'add-schedule-modal'"  @close="updateShowStandaloneScheduleWizardComponent" :mode="'add'" :task="selectedTask!"/>
-            </div> -->
+            <div v-if="showEditTaskWizard" class="z-0">
+                <EditTask :id-key="'edit-task-modal'" :task="selectedTask!"/>
+            </div>
+
             <div v-if="showStandaloneScheduleWizard">
-                <component :is="scheduleWizardComponent" @close="updateShowStandaloneScheduleWizardComponent" :mode="'add'" :task="selectedTask"/>
+                <component :is="scheduleWizardComponent" @close="updateShowStandaloneScheduleWizardComponent" :task="selectedTask"/>
             </div>
 		</div>
 	</div>
@@ -180,9 +181,9 @@ import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide, onMounted} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, DocumentDuplicateIcon } from '@heroicons/vue/24/outline';
-
 import { boolToYesNo } from '../composables/helpers'
 import AddTask from "../components/wizard/AddTask.vue";
+import EditTask from "../components/wizard/EditTask.vue";
 
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 
@@ -201,9 +202,26 @@ function addTaskBtn() {
     showTaskWizard.value = true;
 }
 
+function editTaskBtn(task) {
+    selectedTask.value = task;
+    showEditTaskWizard.value = true;
+}
+ 
 function manageScheduleBtn(task) {
     selectedTask.value = task;
     showStandaloneScheduleWizardComponent();
+}
+
+function runTaskBtn(task) {
+
+}
+
+function duplicateTaskBtn(task) {
+    
+}
+
+function removeTaskBtn(task) {
+    
 }
 
 function findValue(obj, targetKey, valueKey) {
@@ -264,6 +282,8 @@ const updateShowStandaloneScheduleWizardComponent = (newVal) => {
     showStandaloneScheduleWizard.value = newVal;
 }
 
+
+// Searching + Sorting
 const searchItem = ref('');
 const filterItem = ref('no_filter');
 const sortMode = ref<string | null>(null);
@@ -338,7 +358,6 @@ function sortIconFlip() {
 		sortMode.value = null;
 	}
 }
-
 
 
 provide('show-task-wizard', showTaskWizard);

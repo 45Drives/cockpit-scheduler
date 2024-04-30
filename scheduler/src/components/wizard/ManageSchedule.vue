@@ -168,7 +168,6 @@ import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParam
 
 interface ManageScheduleProps {
     idKey: string;
-    mode: 'add' | 'edit';
     task: TaskInstance;
 }
 

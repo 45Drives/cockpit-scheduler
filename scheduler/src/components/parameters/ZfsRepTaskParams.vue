@@ -183,6 +183,7 @@ import { getTaskData, getPoolData, getDatasetData, testSSH } from '../../composa
 
 interface ZfsRepTaskParamsProps {
    parameterSchema: ParameterNodeType;
+   task?: TaskInstanceType;
 }
 
 const props = defineProps<ZfsRepTaskParamsProps>();
@@ -232,6 +233,33 @@ const errorList = inject<Ref<string[]>>('errors')!;
 async function initializeData() {
     await getSourcePools();
     await getLocalDestinationPools();
+
+    if (props.task) {
+        const params = props.task.parameters.children;
+
+        const sourceDatasetParams = params.find(p => p.key === 'sourceDataset')!.children;
+        sourcePool.value = sourceDatasetParams.find(p => p.key === 'pool')!.value;
+        sourceDataset.value = sourceDatasetParams.find(p => p.key === 'dataset')!.value;
+
+        const destDatasetParams = params.find(p => p.key === 'destDataset')!.children;
+        destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
+        destHost.value = destDatasetParams.find(p => p.key === 'host')!.value;
+        destPort.value = destDatasetParams.find(p => p.key === 'port')!.value;
+        destUser.value = destDatasetParams.find(p => p.key === 'user')!.value;
+
+        const sendOptionsParams = params.find(p => p.key === 'sendOptions')!.children;
+        sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
+        sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
+        sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
+        mbufferSize.value = sendOptionsParams.find(p => p.key === 'mbufferSize')!.value;
+        mbufferUnit.value = sendOptionsParams.find(p => p.key === 'mbufferUnit')!.value;
+        useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
+        customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
+
+        const snapshotRetentionParams = params.find(p => p.key === 'snapRetention')!.children;
+        snapsToKeepSrc.value = snapshotRetentionParams.find(p => p.key === 'source')!.value;
+        snapsToKeepDest.value = snapshotRetentionParams.find(p => p.key === 'destination')!.value;
+    }
 }
 
 function handleCheckboxChange(checkbox) {
