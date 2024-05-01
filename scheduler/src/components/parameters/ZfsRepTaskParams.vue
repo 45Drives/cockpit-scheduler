@@ -31,8 +31,8 @@
                     </select>
                 </div>
                 <div v-if="useCustomSource">
-                    <input v-if="!customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Pool"/> 
-                    <input v-if="customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Pool"/> 
+                    <input v-if="!customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Pool"/> 
+                    <input v-if="customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Pool"/> 
                 </div>
             </div>
             <div name="source-dataset">
@@ -52,13 +52,13 @@
                     </select>
                 </div>
                 <div v-if="useCustomSource">
-                    <input v-if="!customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Dataset"/> 
-                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Dataset"/> 
+                    <input v-if="!customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Dataset"/> 
+                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Dataset"/> 
                 </div>
             </div>
             <div name="source-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Source)</label>
-                <input type="number" min="0" v-model="snapsToKeepSrc" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                <input type="number" min="0" v-model="snapsToKeepSrc" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
             </div>
         </div>
 
@@ -88,8 +88,8 @@
                     </select>
                 </div>
                 <div v-if="useCustomTarget">
-                    <input v-if="!customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Pool"/> 
-                    <input v-if="customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Pool"/> 
+                    <input v-if="!customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Pool"/> 
+                    <input v-if="customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Pool"/> 
                 </div>
             </div>
             <div name="destination-dataset">
@@ -109,14 +109,14 @@
                     </select>
                 </div>
                 <div v-if="useCustomTarget">
-                    <input v-if="!customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/> 
-                    <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/> 
+                    <input v-if="!customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/> 
+                    <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/> 
                 </div>
                
             </div>
             <div name="destination-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Destination)</label>
-                <input type="number" min="0" v-model="snapsToKeepDest" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                <input type="number" min="0" v-model="snapsToKeepDest" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
             </div>
         </div>
 
@@ -140,18 +140,18 @@
                     <label class="block text-sm leading-6 text-default">Host</label>
                     <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <input v-if="!destHostErrorTag" type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local replication."/> 
-                <input v-if="destHostErrorTag" type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Leave blank for local replication."/> 
+                <input v-if="!destHostErrorTag" type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local replication."/> 
+                <input v-if="destHostErrorTag" type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Leave blank for local replication."/> 
             </div>
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
-                <input v-if="destHost !== ''" type="text" v-model="destUser" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
-                <input v-if="destHost === ''" disabled type="text" v-model="destUser" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
+                <input v-if="destHost !== ''" type="text" v-model="destUser" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
+                <input v-if="destHost === ''" disabled type="text" v-model="destUser" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="'root' is default"/> 
             </div>
             <div name="destination-port" class="mt-1">
                 <label class="block text-sm leading-6 text-default">Port</label>
-                <input v-if="destHost !== ''" type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/> 
-                <input v-if="destHost === ''" disabled type="number" v-model="destPort" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/>
+                <input v-if="destHost !== ''" type="number" v-model="destPort" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/> 
+                <input v-if="destHost === ''" disabled type="number" v-model="destPort" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0" max="65535" placeholder="22 is default"/>
             </div>
         </div>
         
@@ -181,9 +181,9 @@
                     <ExclamationCircleIcon v-if="customNameErrorTag" class="mt-2 w-5 h-5 text-danger"/>
                 </div>
                 <div name="custom-snapshot-name-field" class="mt-1">
-                    <input v-if="useCustomName && !customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is CustomName + Timestamp"/>
-                    <input v-if="useCustomName && customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Name is CustomName + Timestamp"/>
-                    <input v-if="!useCustomName" disabled type="text" v-model="customName" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is Timestamp"/>
+                    <input v-if="useCustomName && !customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is CustomName + Timestamp"/>
+                    <input v-if="useCustomName && customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Name is CustomName + Timestamp"/>
+                    <input v-if="!useCustomName" disabled type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is Timestamp"/>
                 </div>
             </div>
             <div class="grid grid-cols-2 mt-2">
@@ -468,25 +468,14 @@ function validateCustomName() {
 
 function validateSource() {
     if (useCustomSource.value) {
-        if (sourcePool.value === '') {
-            errorList.value.push("Source pool is needed.");
-            customSrcPoolErrorTag.value = true;
-        }
-        if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(sourcePool.value) || /^[0-9._: -]/.test(sourcePool.value) || !/^[a-zA-Z0-9_.:-]*$/.test(sourcePool.value) || sourcePool.value.match(/[ ]$/)) {
+        if (!isValidPoolName(sourcePool.value)) {
             errorList.value.push("Source pool is invalid.");
             customSrcPoolErrorTag.value = true;
         }
-
-        if (sourceDataset.value === '') {
-            errorList.value.push("Source dataset is needed.");
-            customSrcDatasetErrorTag.value = true;
-        }
-        if (sourceDataset.value.match(/^[a-zA-Z0-9]/) || sourceDataset.value.match(/^[ ]/) || sourceDataset.value.match(/[ ]$/) || sourceDataset.value.match(/^[a-zA-Z0-9_.:-]*$/)) {
+        if (!isValidDatasetName(sourceDataset.value)) {
             errorList.value.push("Source dataset is invalid.");
             customSrcDatasetErrorTag.value = true;
         }
-
-
     } else {
         if (sourcePool.value === '') {
             errorList.value.push("Source pool is needed.");
@@ -501,26 +490,14 @@ function validateSource() {
 
 function validateDestination() {
     if (useCustomTarget.value) {
-        if (destPool.value === '') {
-            errorList.value.push("Destination pool is needed.");
-            customDestPoolErrorTag.value = true;
-        }
-        if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(destPool.value) || /^[0-9._: -]/.test(destPool.value) || !/^[a-zA-Z0-9_.:-]*$/.test(destPool.value) || destPool.value.match(/[ ]$/)) {
+        if (!isValidPoolName(destPool.value)) {
             errorList.value.push("Destination pool is invalid.");
             customDestPoolErrorTag.value = true;
         }
-
-        if (destDataset.value === '') {
-            errorList.value.push("Destination dataset is needed.");
-            customDestDatasetErrorTag.value = true;
-        }
-        if (destDataset.value.match(/^[a-zA-Z0-9]/) || destDataset.value.match(/^[ ]/) || destDataset.value.match(/[ ]$/) || destDataset.value.match(/^[a-zA-Z0-9_.:-]*$/)) {
+        if (!isValidDatasetName(destDataset.value)) {
             errorList.value.push("Destination dataset is invalid.");
             customDestDatasetErrorTag.value = true;
         }
-
-
-
     } else {
         if (destPool.value === '') {
             errorList.value.push("Destination pool is needed.");
@@ -533,6 +510,44 @@ function validateDestination() {
     }
 }
 
+
+function isValidPoolName(poolName) {
+    if (poolName === '') {
+        return false;
+    }
+    if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(poolName)) {
+        return false;
+    }
+    if (/^[0-9._: -]/.test(poolName)) {
+        return false;
+    }
+    if (!/^[a-zA-Z0-9_.:-]*$/.test(poolName)) {
+        return false;
+    }
+    if (poolName.match(/[ ]$/)) {
+        return false;
+    }
+    return true;
+}
+
+function isValidDatasetName(datasetName) {
+    if (datasetName === '') {
+        return false;
+    }
+    // Check if it starts with alphanumeric characters (not a slash)
+    if (!/^[a-zA-Z0-9]/.test(datasetName)) {
+        return false;
+    }
+    // Check if it ends with whitespace or a slash
+    if (/[ \/]$/.test(datasetName)) {
+        return false;
+    }
+    // Check for valid characters throughout the string, allowing internal slashes
+    if (!/^[a-zA-Z0-9_.:\/-]*$/.test(datasetName)) {
+        return false;
+    }
+    return true;
+}
 
 function clearErrorTags() {
     destHostErrorTag.value = false;
