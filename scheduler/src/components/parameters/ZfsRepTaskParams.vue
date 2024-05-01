@@ -7,36 +7,54 @@
     <div v-if="!loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <!-- TOP LEFT -->
         <div name="source-data" class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
-            <label class="mt-1 block text-base leading-6 text-default">Source Location</label>
+            <div class="flex flex-row justify-between items-center text-center">
+                <label class="mt-1 block text-base leading-6 text-default">Source Location</label>
+                <div class="mt-1 flex flex-col items-center text-center">
+                    <label class="block text-xs text-default">Custom</label>
+                    <input type="checkbox" v-model="useCustomSource" class="h-4 w-4 rounded"/>
+                </div>
+            </div>   
             <div name="source-pool">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
-                    <ExclamationCircleIcon v-if="sourcePoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <select v-if="!sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option value="">Select a Pool</option>
-                    <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
-                    <option v-if="loadingSourcePools">Loading...</option>
-                </select>
-                <select v-if="sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
-                    <option value="">Select a Pool</option>
-                    <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
-                </select>
+                <div v-if="!useCustomSource">
+                    <select v-if="!sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Pool</option>
+                        <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
+                        <option v-if="loadingSourcePools">Loading...</option>
+                    </select>
+                    <select v-if="sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                        <option value="">Select a Pool</option>
+                        <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
+                    </select>
+                </div>
+                <div v-if="useCustomSource">
+                    <input v-if="!customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Pool"/> 
+                    <input v-if="customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Pool"/> 
+                </div>
             </div>
             <div name="source-dataset">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
-                    <ExclamationCircleIcon v-if="sourceDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    <ExclamationCircleIcon v-if="sourceDatasetErrorTag || customSrcDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <select v-if="!sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                <div v-if="!useCustomSource">
+                    <select v-if="!sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Dataset</option>
+                        <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
+                        <option v-if="loadingSourceDatasets">Loading...</option>
+                    </select>
+                    <select v-if="sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                     <option value="">Select a Dataset</option>
-                    <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
-                    <option v-if="loadingSourceDatasets">Loading...</option>
-                </select>
-                <select v-if="sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
-                   <option value="">Select a Dataset</option>
-                    <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
-                </select>
+                        <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
+                    </select>
+                </div>
+                <div v-if="useCustomSource">
+                    <input v-if="!customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Dataset"/> 
+                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Dataset"/> 
+                </div>
             </div>
             <div name="source-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Source)</label>
@@ -46,36 +64,55 @@
 
         <!-- BOTTOM LEFT -->
         <div name="destination-data" class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
-            <label class="mt-1 block text-base leading-6 text-default">Target Location</label>
+            <div class="flex flex-row justify-between items-center">
+                <label class="mt-1 block text-base leading-6 text-default">Target Location</label>
+                <div class="mt-1 flex flex-col items-center text-center">
+                    <label class="block text-xs text-default">Custom</label>
+                    <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded"/>
+                </div>
+            </div>
             <div name="destination-pool">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
-                    <ExclamationCircleIcon v-if="destPoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <select v-if="!destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option value="">Select a Pool</option>
-                    <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                    <option v-if="loadingDestPools">Loading...</option>
-                </select>
-                <select v-if="destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
-                    <option value="">Select a Pool</option>
-                    <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                </select>
+                <div v-if="!useCustomTarget">
+                    <select v-if="!destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Pool</option>
+                        <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                        <option v-if="loadingDestPools">Loading...</option>
+                    </select>
+                    <select v-if="destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                        <option value="">Select a Pool</option>
+                        <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                    </select>
+                </div>
+                <div v-if="useCustomTarget">
+                    <input v-if="!customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Pool"/> 
+                    <input v-if="customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Pool"/> 
+                </div>
             </div>
             <div name="destination-dataset">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
-                    <ExclamationCircleIcon v-if="destDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <select v-if="!destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option value="">Select a Dataset</option>
-                    <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
-                    <option v-if="loadingDestDatasets">Loading...</option>
-                </select>
-                <select v-if="destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
-                    <option value="">Select a Dataset</option>
-                    <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
-                </select>
+                <div v-if="!useCustomTarget">
+                    <select v-if="!destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Dataset</option>
+                        <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
+                        <option v-if="loadingDestDatasets">Loading...</option>
+                    </select>
+                    <select v-if="destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                        <option value="">Select a Dataset</option>
+                        <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
+                    </select>
+                </div>
+                <div v-if="useCustomTarget">
+                    <input v-if="!customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/> 
+                    <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/> 
+                </div>
+               
             </div>
             <div name="destination-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep (Destination)</label>
@@ -195,6 +232,7 @@ interface ZfsRepTaskParamsProps {
 const props = defineProps<ZfsRepTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+
 const sourcePools = ref([]);
 const sourceDatasets = ref([]);
 const loadingSourcePools = ref(false);
@@ -230,6 +268,13 @@ const customName = ref('');
 const customNameErrorTag = ref(false);
 const snapsToKeepSrc = ref(0);
 const snapsToKeepDest = ref(0);
+
+const useCustomTarget = ref(false);
+const useCustomSource = ref(false);
+const customSrcPoolErrorTag = ref(false);
+const customSrcDatasetErrorTag = ref(false);
+const customDestPoolErrorTag = ref(false);
+const customDestDatasetErrorTag = ref(false);
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
@@ -422,26 +467,72 @@ function validateCustomName() {
 }
 
 function validateSource() {
-    if (sourcePool.value === '') {
-        errorList.value.push("Source pool is needed.");
-        sourcePoolErrorTag.value = true;
-    }
-    if (sourceDataset.value === '') {
-        errorList.value.push("Source dataset is needed.");
-        sourceDatasetErrorTag.value = true;
+    if (useCustomSource.value) {
+        if (sourcePool.value === '') {
+            errorList.value.push("Source pool is needed.");
+            customSrcPoolErrorTag.value = true;
+        }
+        if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(sourcePool.value) || /^[0-9._: -]/.test(sourcePool.value) || !/^[a-zA-Z0-9_.:-]*$/.test(sourcePool.value) || sourcePool.value.match(/[ ]$/)) {
+            errorList.value.push("Source pool is invalid.");
+            customSrcPoolErrorTag.value = true;
+        }
+
+        if (sourceDataset.value === '') {
+            errorList.value.push("Source dataset is needed.");
+            customSrcDatasetErrorTag.value = true;
+        }
+        if (sourceDataset.value.match(/^[a-zA-Z0-9]/) || sourceDataset.value.match(/^[ ]/) || sourceDataset.value.match(/[ ]$/) || sourceDataset.value.match(/^[a-zA-Z0-9_.:-]*$/)) {
+            errorList.value.push("Source dataset is invalid.");
+            customSrcDatasetErrorTag.value = true;
+        }
+
+
+    } else {
+        if (sourcePool.value === '') {
+            errorList.value.push("Source pool is needed.");
+            sourcePoolErrorTag.value = true;
+        }
+        if (sourceDataset.value === '') {
+            errorList.value.push("Source dataset is needed.");
+            sourceDatasetErrorTag.value = true;
+        }
     }
 }
 
 function validateDestination() {
-    if (destPool.value === '') {
-        errorList.value.push("Destination pool is needed.");
-        destPoolErrorTag.value = true;
-    }
-    if (destDataset.value === '') {
-        errorList.value.push("Destination dataset is needed.");
-        destDatasetErrorTag.value = true;
+    if (useCustomTarget.value) {
+        if (destPool.value === '') {
+            errorList.value.push("Destination pool is needed.");
+            customDestPoolErrorTag.value = true;
+        }
+        if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(destPool.value) || /^[0-9._: -]/.test(destPool.value) || !/^[a-zA-Z0-9_.:-]*$/.test(destPool.value) || destPool.value.match(/[ ]$/)) {
+            errorList.value.push("Destination pool is invalid.");
+            customDestPoolErrorTag.value = true;
+        }
+
+        if (destDataset.value === '') {
+            errorList.value.push("Destination dataset is needed.");
+            customDestDatasetErrorTag.value = true;
+        }
+        if (destDataset.value.match(/^[a-zA-Z0-9]/) || destDataset.value.match(/^[ ]/) || destDataset.value.match(/[ ]$/) || destDataset.value.match(/^[a-zA-Z0-9_.:-]*$/)) {
+            errorList.value.push("Destination dataset is invalid.");
+            customDestDatasetErrorTag.value = true;
+        }
+
+
+
+    } else {
+        if (destPool.value === '') {
+            errorList.value.push("Destination pool is needed.");
+            destPoolErrorTag.value = true;
+        }
+        if (destDataset.value === '') {
+            errorList.value.push("Destination dataset is needed.");
+            destDatasetErrorTag.value = true;
+        }
     }
 }
+
 
 function clearErrorTags() {
     destHostErrorTag.value = false;
@@ -450,6 +541,10 @@ function clearErrorTags() {
     sourceDatasetErrorTag.value = false;
     destPoolErrorTag.value = false;
     destDatasetErrorTag.value = false;
+    customSrcPoolErrorTag.value = false;
+    customSrcDatasetErrorTag.value = false;
+    customDestPoolErrorTag.value = false;
+    customDestDatasetErrorTag.value = false;
 }
 
 function validateParams() {
