@@ -69,7 +69,7 @@ function validateComponentParams() {
     parameterInputComponent.value.clearTaskParamErrorTags();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        notifications.value.constructNotification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 10000);
         return false;
     } else {
         return true;
@@ -93,7 +93,7 @@ const confirmScheduleTask : ConfirmationCallback = async () => {
     console.log('Saving and scheduling task now...');
     saving.value = true;
     // await myScheduler.registerTaskInstance(taskInstance.value);
-    // notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000);
+    // notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 10000);
     saving.value = false;
     updateShowSaveConfirmation(false);
     showEditTaskWizard.value = false;

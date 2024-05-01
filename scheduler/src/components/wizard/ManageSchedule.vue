@@ -12,6 +12,7 @@
                             <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
                             <select id="task-template-selection" v-model="selectedPreset" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                                 <option value="none">None</option>
+                                <option value="minutely">Minutely</option>
                                 <option value="hourly">Hourly</option>
                                 <option value="daily">Daily</option>
                                 <option value="weekly">Weekly</option>
@@ -119,7 +120,7 @@
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
                                 <li v-for="interval, idx in intervals" :key="idx" class="text-default rounded-lg"  :class="intervalSelectedClass(interval)">
-                                    <button class="h-full w-full rounded-lg py-4 text-left " @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
+                                    <button class="h-full w-full rounded-lg p-4 text-left " @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
                             </ul>
                         </div>
@@ -344,7 +345,7 @@ function validateFields(interval) {
     if (errorList.value.length > 0) {
         // Handle errors
         console.log('Validation errors:', errorList);
-        notifications.value.constructNotification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        notifications.value.constructNotification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 10000);
         return false;
     } else {
         // No errors, continue with processing
@@ -405,11 +406,12 @@ async function showConfirmationDialog() {
 
 const confirmScheduleTask : ConfirmationCallback = async () => {
     console.log('Saving and scheduling task now...');
+    updateShowSaveConfirmation(false);
     savingSchedule.value = true;
     await myScheduler.registerTaskInstance(thisTask.value);
-    notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000);
+    notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 10000);
+    await myScheduler.loadTaskInstances();
     savingSchedule.value = false;
-    updateShowSaveConfirmation(false);
     showScheduleWizard.value = false;
     showTaskWizard.value = false;
 }
@@ -426,20 +428,27 @@ const updateShowSaveConfirmation = (newVal) => {
 
 
 async function saveScheduleBtn() {
-    intervals.value.forEach(interval => {
-        newSchedule.intervals.push(interval);
-    });
-    thisTask.value.schedule = newSchedule;
-    console.log('schedule to save:', newSchedule);
-    console.log('task to save:', thisTask.value);
+    if (intervals.value.length < 1) {
+        notifications.value.constructNotification('Save Failed', `At least one interval is required.`, 'error', 10000);
+    } else {
+        intervals.value.forEach(interval => {
+            newSchedule.intervals.push(interval);
+        });
+        thisTask.value.schedule = newSchedule;
+        console.log('schedule to save:', newSchedule);
+        console.log('task to save:', thisTask.value);
 
-    await showConfirmationDialog();
+        await showConfirmationDialog();
+    }
 }
 
 watch(selectedPreset, (newVal, oldVal) => {
     switch (selectedPreset.value) {
         case 'none':
             setFields('0', '0', '1', '*', '*', []);
+            break;
+        case 'minutely':
+            setFields('*', '*', '*', '*', '*', []);
             break;
         case 'hourly':
             setFields('0', '*', '*', '*', '*', []);

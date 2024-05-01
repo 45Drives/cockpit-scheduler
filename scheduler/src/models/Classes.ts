@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -11,6 +11,8 @@ export class Scheduler implements SchedulerType {
     }
 
     async loadTaskInstances() {
+        this.taskInstances.splice(0, this.taskInstances.length);
+
         const tasksData = await getTaskData();
 
         tasksData.forEach(task => {
@@ -127,7 +129,9 @@ export class Scheduler implements SchedulerType {
         if (taskInstance.schedule.intervals.length < 1) {
             //ignore schedule for now
             console.log('No schedules found, parameter file generated.');
-            return;
+            
+            await createStandaloneTask(templateServicePath, envFilePath);
+            
         } else {
             //generate json file with enabled boolean + intervals (Schedule Intervals)
             // requires schedule data object
@@ -146,9 +150,9 @@ export class Scheduler implements SchedulerType {
                 console.error("Error writing content to the file:", error);
                 file2.close();
             });
-        }
 
-        await createTaskFiles(templateServicePath, envFilePath, templateTimerPath, jsonFilePath);
+            await createTaskFiles(templateServicePath, envFilePath, templateTimerPath, jsonFilePath);
+        }
 
     }   
     

@@ -21,6 +21,9 @@
                                     </select>
                                 </div> -->
                                 <div class="mt-5 py-0.5 px-3">
+                                    <button @click="refreshBtn()" class="btn btn-secondary"><ArrowPathIcon class="w-5 h-5 m-0.5"/></button>
+                                </div>
+                                <div class="mt-5 py-0.5 px-3">
                                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                                 </div>
                             </div>
@@ -28,7 +31,10 @@
                         <div class="my-4 flow-root">
                             <div class="-mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
                                 <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                                    <table class="table-auto min-w-full divide-y divide-default overflow-x-auto">
+                                    <div v-if="!loading && taskInstances.length < 1" class="min-w-full min-h-full items-center text-center bg-well">
+                                        <h2>No Tasks Found</h2>
+                                    </div>
+                                    <table v-if="!loading && taskInstances.length > 0" class="table-auto min-w-full divide-y divide-default overflow-x-auto">
                                         <thead class="bg-well">
                                             <tr class="border border-default grid grid-cols-8">
                                                 <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
@@ -57,19 +63,19 @@
                                         <tbody class="bg-default">
                                             <tr class="border border-default grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1" v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
                                                 <!-- Table Cells -->
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                                <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     {{ taskInstance.name }}
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                                <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     &lt;status here&gt;
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                                <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     &lt;timestamp here&gt;
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-r border-default text-left ml-4 col-span-1">
+                                                <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
                                                     <input type="checkbox" v-model="taskInstance.schedule.enabled" class="ml-2 h-4 w-4 rounded "/>
                                                 </td>
-                                                <td class="whitespace-nowrap text-sm font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
+                                                <td class="whitespace-nowrap text-base font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
                                                 </td>
@@ -152,10 +158,10 @@
                                             </tr>
                                         </tbody>
                                     </table>
+                                    <div v-if="loading" class="flex items-center justify-center">
+                                        <LoadingSpinner :width="'w-40'" :height="'h-40'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                                    </div>
                                 </div>
-                                <!-- <div v-if="!formsLoaded" class="flex items-center justify-center">
-                                    <LoadingSpinner :width="'w-52'" :height="'h-52'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
-                                </div> -->
                             </div>
                         </div>
                     </div>
@@ -182,17 +188,26 @@ import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide, onMounted} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, DocumentDuplicateIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo } from '../composables/helpers'
+import LoadingSpinner from "../components/common/LoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
 import EditTask from "../components/wizard/EditTask.vue";
+import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from '../models/Classes';
 
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
-
+const loading = inject<Ref<boolean>>('loading')!;
+const myScheduler = inject<Scheduler>('scheduler')!;
 const showTaskWizard = ref(false);
 const showStandaloneScheduleWizard = ref(false);
 const showEditTaskWizard = ref(false)
-// const showDetails = ref(false);
+
 const showDetails = ref({});
 const selectedTask = ref<TaskInstanceType>();
+
+async function refreshBtn() {
+    loading.value = true;
+    await myScheduler.loadTaskInstances();
+    loading.value = false;
+}
 
 function taskDetailsBtn(idx) {
     showDetails.value[idx] = !showDetails.value[idx];

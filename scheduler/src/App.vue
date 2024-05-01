@@ -45,17 +45,20 @@ function initializeTaskTemplates(): TaskTemplate[] {
 // Instantiate task templates
 const taskTemplates = initializeTaskTemplates();
 const taskInstances = ref<TaskInstance[]>([]);
-const myScheduler = new Scheduler(taskTemplates, taskInstances.value)
-
+const myScheduler = new Scheduler(taskTemplates, taskInstances.value);
+const loading = ref(false);
 
 const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
 
-onMounted(() => {
+onMounted(async () => {
+	loading.value = true;
 	initializeTaskTemplates();
-	myScheduler.loadTaskInstances();
+	await myScheduler.loadTaskInstances();
+	loading.value = false;
 });
 
+provide('loading', loading);
 provide('scheduler', myScheduler);
 provide('task-instances', taskInstances);
 provide('task-templates', taskTemplates);

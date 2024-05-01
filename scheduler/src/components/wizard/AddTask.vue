@@ -116,7 +116,7 @@ function validateComponentParams() {
     validateTaskName();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 10000);
         return false;
     } else {
         return true;
@@ -155,7 +155,6 @@ const makeScheduleNow : ConfirmationCallback = async () => {
     await saveTask();
     updateShowSchedulePrompt(false);
     showScheduleWizardComponent();
-    // closeModal();
 }
 
 const updateShowSchedulePrompt = (newVal) => {
@@ -193,25 +192,28 @@ async function saveTask() {
     console.log('saveTask triggered');
     if (selectedTemplate.value?.name == 'ZFS Replication Task') {
         const template = new ZFSReplicationTaskTemplate();
-        const schedule = new TaskSchedule(false, []);
-
+        
         let sanitizedName = newTaskName.value.replace(/[^a-zA-Z0-9-]/g, '');
         if (sanitizedName.startsWith('-')) {
             sanitizedName = 'task' + sanitizedName;
         }
 
-        const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
-        console.log('task:', task);
-
         if (isStandaloneTask.value) {
+            const schedule = new TaskSchedule(false, []);
+            const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
+            console.log('task (no schedule):', task);
+
             await myScheduler.registerTaskInstance(task);
-            notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+            notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 10000);
+            await myScheduler.loadTaskInstances();
         } else {
+            const schedule = new TaskSchedule(true, []);
+            const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
+            console.log('task (for scheduling):', task);
+
             newTask.value = task;
         }
-       
     }
-   
 }
 
 function addTaskBtn() {

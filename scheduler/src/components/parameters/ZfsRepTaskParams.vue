@@ -1,5 +1,10 @@
 <template>
-    <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+    <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+        <div class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
+            <LoadingSpinner :width="'w-40'" :height="'h-40'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+        </div>
+    </div>
+    <div v-if="!loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <!-- TOP LEFT -->
         <div name="source-data" class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
             <label class="mt-1 block text-base leading-6 text-default">Source Location</label>
@@ -178,6 +183,7 @@
 
 import { ref, Ref, reactive, computed, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import LoadingSpinner from '../common/LoadingSpinner.vue';
 import { ZFSReplicationTaskTemplate, TaskTemplate, ParameterNode, ZfsDatasetParameter, SelectionOption, SelectionParameter, IntParameter, StringParameter, BoolParameter, TaskInstance } from '../../models/Classes';
 import { getTaskData, getPoolData, getDatasetData, testSSH } from '../../composables/utility';
 
@@ -187,6 +193,7 @@ interface ZfsRepTaskParamsProps {
 }
 
 const props = defineProps<ZfsRepTaskParamsProps>();
+const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
 const sourcePools = ref([]);
 const sourceDatasets = ref([]);
@@ -231,22 +238,44 @@ const notifications = inject<Ref<any>>('notifications')!;
 const errorList = inject<Ref<string[]>>('errors')!;
 
 async function initializeData() {
-    await getSourcePools();
-    await getLocalDestinationPools();
-
     if (props.task) {
+        loading.value = true;
+        await getSourcePools();
+        const isRemoteAccessible = ref(false);
         const params = props.task.parameters.children;
 
         const sourceDatasetParams = params.find(p => p.key === 'sourceDataset')!.children;
         sourcePool.value = sourceDatasetParams.find(p => p.key === 'pool')!.value;
+        await getSourceDatasets();
         sourceDataset.value = sourceDatasetParams.find(p => p.key === 'dataset')!.value;
 
         const destDatasetParams = params.find(p => p.key === 'destDataset')!.children;
-        destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
         destHost.value = destDatasetParams.find(p => p.key === 'host')!.value;
         destPort.value = destDatasetParams.find(p => p.key === 'port')!.value;
         destUser.value = destDatasetParams.find(p => p.key === 'user')!.value;
-
+        if (destHost.value !== '') {
+            const sshTarget = destUser.value + '@' + destHost.value;
+            isRemoteAccessible.value = await testSSH(sshTarget);
+            if (isRemoteAccessible.value) {
+                notifications.value.constructNotification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 10000);
+                await getRemoteDestinationPools();
+                destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
+                await getRemoteDestinationDatasets();
+                destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
+            } else {
+                notifications.value.constructNotification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 10000);
+                await getLocalDestinationPools();
+                destPool.value = '';
+                await getLocalDestinationDatasets();
+                destDataset.value = '';
+            }
+        } else {
+            await getLocalDestinationPools();
+            destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
+            await getLocalDestinationDatasets();
+            destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
+        }
+        
         const sendOptionsParams = params.find(p => p.key === 'sendOptions')!.children;
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
@@ -259,6 +288,11 @@ async function initializeData() {
         const snapshotRetentionParams = params.find(p => p.key === 'snapRetention')!.children;
         snapsToKeepSrc.value = snapshotRetentionParams.find(p => p.key === 'source')!.value;
         snapsToKeepDest.value = snapshotRetentionParams.find(p => p.key === 'destination')!.value;
+
+        loading.value = false;
+    } else {
+        await getSourcePools();
+        await getLocalDestinationPools();
     }
 }
 
@@ -461,9 +495,9 @@ async function confirmTest(destHost, destUser) {
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        notifications.value.constructNotification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 200000);
+        notifications.value.constructNotification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 10000);
     } else {
-        notifications.value.constructNotification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 200000);
+        notifications.value.constructNotification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 10000);
     }
     testingSSH.value = false;
 }

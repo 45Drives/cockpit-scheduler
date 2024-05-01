@@ -9,6 +9,13 @@ import get_pools_script from '../scripts/get-pools.py?raw';
 import test_ssh_script from '../scripts/test-ssh.py?raw';
 //@ts-ignore
 import generate_task_files_script from '../scripts/make-and-start-task.py?raw';
+//@ts-ignore
+import generate_standalone_task_script from '../scripts/make-standalone-task.py?raw';
+//@ts-ignore
+import generate_schedule_script from '../scripts/make-schedule.py?raw';
+//@ts-ignore
+import enable_disable_task from '../scripts/enable-disable-task.py?raw';
+
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
 
@@ -139,6 +146,45 @@ export async function testSSH(sshTarget) {
 export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
     try {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_task_files_script, '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('task creation output:', output);
+
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+export async function createStandaloneTask(serviceTemplate, envFile) {
+    try {
+        // const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_standalone_task_script, '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
+
+        // const output = await state.promise();
+        // console.log('task creation output:', output);
+
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+export async function createScheduleForTask(envFile, timerTemplate, scheduleFile) {
+    try {
+        // const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_schedule_script, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
+
+        // const output = await state.promise();
+        // console.log('task creation output:', output);
+
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task,], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
         console.log('task creation output:', output);

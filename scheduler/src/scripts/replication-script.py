@@ -6,10 +6,10 @@ import os
 import datetime
 
 class Snapshot:
-    def __init__(self, name, guid, creation):
-        self.name = name
-        self.guid = guid
-        self.creation = creation
+	def __init__(self, name, guid, creation):
+		self.name = name
+		self.guid = guid
+		self.creation = creation
 	 
 def create_snapshot(filesystem, is_recursive, custom_name=None):
 	command = [ 'zfs', 'snapshot' ]
@@ -35,7 +35,7 @@ def get_local_snapshots(filesystem):
 		output = subprocess.check_output(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 		snapshots = []
 		for line in output.splitlines():
-			match = re.match(r'^([\w\/@-]+(?:-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2})?)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
+			match = re.match(r'^([\w\/@-]+@(?:[\w-]*-)?(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}))\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
 			if match:
 				snapshot_name = match.group(1)
 				snapshot_guid = match.group(2)
@@ -48,144 +48,149 @@ def get_local_snapshots(filesystem):
 		return []
 
 def get_remote_snapshots(user, host, port, filesystem):
-    try:
-        ssh_cmd = ['ssh']
-        if port != '22':
-            ssh_cmd.extend(['-p', port])
-        ssh_cmd.append(user + '@' + host)
-        
-        ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
-        
-        # print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
-        
-        output = subprocess.check_output(ssh_cmd)
-        
-        snapshots = []
-        for line in output.splitlines():
-            match = re.match(r'^([\w\/@-]+(?:-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2})?)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
-            if match:
-                snapshot_name = match.group(1)
-                snapshot_guid = match.group(2)
-                snapshot_creation = match.group(3)
-                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
-                snapshots.append(snapshot)
+	try:
+		ssh_cmd = ['ssh']
+		if port != '22':
+			ssh_cmd.extend(['-p', port])
+		ssh_cmd.append(user + '@' + host)
+		
+		ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
+		
+		# print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
+		
+		output = subprocess.check_output(ssh_cmd)
+		
+		snapshots = []
+		for line in output.splitlines():
+			match = re.match(r'^([\w\/@-]+@(?:[\w-]*-)?(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}))\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
+			if match:
+				snapshot_name = match.group(1)
+				snapshot_guid = match.group(2)
+				snapshot_creation = match.group(3)
+				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
+				snapshots.append(snapshot)
 
-        return snapshots
+		return snapshots
 
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing SSH command: {e}")  # Error handling
-        return []
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")  # Error handling
-        return []
+	except subprocess.CalledProcessError as e:
+		print(f"Error executing SSH command: {e}")  # Error handling
+		return []
+	except Exception as e:
+		print(f"An unexpected error occurred: {e}")  # Error handling
+		return []
 
-        	
+			
 def get_most_recent_snapshot(snapshots):
-    if snapshots:
-        # snapshots.sort(key=lambda x: x.creation, reverse=True)
-        return snapshots[0]
-    else:
-        return None
-    
-def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G"):
-    try:
-        # Initial local send command
-        send_cmd = ['zfs', 'send']
-        
-        # send_cmd.append('-v')
-        
-        if compressed:
-            send_cmd.append('-Lce')
+	if snapshots:
+		# snapshots.sort(key=lambda x: x.creation, reverse=True)
+		return snapshots[0]
+	else:
+		return None
+	
+def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G", forceOverwrite=False):
+	try:
+		# Initial local send command
+		send_cmd = ['zfs', 'send']
+		
+		# send_cmd.append('-v')
+		
+		if compressed:
+			send_cmd.append('-Lce')
 
-        if raw:
-            send_cmd.append('-w')
+		if raw:
+			send_cmd.append('-w')
 
-        if sendName2 != "":
-            send_cmd.extend(['-i', sendName2])
+		if sendName2 != "":
+			send_cmd.extend(['-i', sendName2])
 
-        send_cmd.append(sendName)
+		send_cmd.append(sendName)
 
-        print(f"SEND_CMD: {send_cmd}")
+		print(f"SEND_CMD: {send_cmd}")
 
-        process_send = subprocess.Popen(
-            send_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+		process_send = subprocess.Popen(
+			send_cmd,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE,
+		)
+		
 
-        # If sending locally
-        if recvHost == "":
-            recv_cmd = ['zfs', 'recv']
-            
-            # recv_cmd.append('-v')
+		# If sending locally
+		if recvHost == "" or recvHost is None:
+			recv_cmd = ['zfs', 'recv']
+			
+			# recv_cmd.append('-v')
+			if forceOverwrite:
+				recv_cmd.append('-F')
 
-            recv_cmd.append(recvName)
+			recv_cmd.append(recvName)
 
-            print(f"RECV_CMD: {recv_cmd}")
+			print(f"RECV_CMD: {recv_cmd}")
 
-            process_recv = subprocess.Popen(
-                recv_cmd,
-                stdin=process_send.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
-           
-            stdout, stderr = process_recv.communicate()
+			process_recv = subprocess.Popen(
+				recv_cmd,
+				stdin=process_send.stdout,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
+		   
+			stdout, stderr = process_recv.communicate()
 
-            if process_recv.returncode != 0:
-                raise Exception(f"Error: {stderr}")
-            else:
-                print(stdout)
+			if process_recv.returncode != 0:
+				raise Exception(f"Error: {stderr}")
+			else:
+				print(stdout)
 
-        # If sending remotely via SSH
-        if recvHost != "":
+		# If sending remotely via SSH
+		if recvHost != "" and recvHost is not None:
 
-            m_buff_cmd = ['mbuffer', '-s', '256k']
-            m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+			m_buff_cmd = ['mbuffer', '-s', '256k']
+			m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
 
-            process_m_buff = subprocess.Popen(
-                m_buff_cmd,
-                stdin=process_send.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
+			process_m_buff = subprocess.Popen(
+				m_buff_cmd,
+				stdin=process_send.stdout,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
 
-            ssh_cmd = ['ssh']
+			ssh_cmd = ['ssh']
 
-            if recvPort != '22':
-                ssh_cmd.extend(['-p', recvPort])
+			if recvPort != '22':
+				ssh_cmd.extend(['-p', recvPort])
 
-            ssh_cmd.append(recvHostUser + '@' + recvHost)
+			ssh_cmd.append(recvHostUser + '@' + recvHost)
 
-            ssh_cmd.extend(['zfs', 'recv'])
-            
-            # ssh_cmd.append('-v')
+			ssh_cmd.extend(['zfs', 'recv'])
+			
+			# ssh_cmd.append('-v')
+			if forceOverwrite:
+				ssh_cmd.append('-F')
 
-            ssh_cmd.append(recvName)
+			ssh_cmd.append(recvName)
 
-            print(f"SSH_CMD: {ssh_cmd}")
+			print(f"SSH_CMD: {ssh_cmd}")
 
-            process_ssh_recv = subprocess.Popen(
-                ssh_cmd,
-                stdin=process_m_buff.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
+			process_ssh_recv = subprocess.Popen(
+				ssh_cmd,
+				stdin=process_m_buff.stdout,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
 
-            stdout, stderr = process_ssh_recv.communicate()
+			stdout, stderr = process_ssh_recv.communicate()
 
-            print(f"SSH_STDERR: {stderr}")
+			print(f"SSH_STDERR: {stderr}")
 
-            if process_ssh_recv.returncode != 0:
-                raise Exception(f"Error: {stderr}")
-            else:
-                print(stdout)
+			if process_ssh_recv.returncode != 0:
+				raise Exception(f"Error: {stderr}")
+			else:
+				print(stdout)
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
+	except Exception as e:
+		print(f"An error occurred: {e}")
 
 
 def main():
@@ -199,7 +204,7 @@ def main():
 	parser.add_argument('--root', type=str, help='root of send destination')
 	parser.add_argument('--path', type=str, help='path of send destination')
 	parser.add_argument('--user', type=str, nargs='?', default='root', help='user of ssh connection (root)')
-	parser.add_argument('--host', type=str, nargs='?', default="", help='hostname or ip of ssh connection')
+	parser.add_argument('--host', type=str, nargs='?', default='', help='hostname or ip of ssh connection')
 	parser.add_argument('--port', type=str, default='22', help='port to connect via ssh (22)')
 	parser.add_argument('--mbuffsize', type=str, default='1', help='size value of mbuffer')
 	parser.add_argument('--mbuffunit', type=str, default='G', help='unit to use for mbuffer size')
@@ -219,7 +224,10 @@ def main():
 	mBufferSize = args.mbuffsize
 	mBufferUnit = args.mbuffunit
 
-	receivingFilesystem = (f"{destinationRoot}/{destinationPath}")
+	forceOverwrite = False
+	
+	receivingFilesystem = (f"{destinationPath}")
+	# receivingFilesystem = (f"{destinationRoot}/{destinationPath}")
 
 	sourceSnapshots = get_local_snapshots(sourceFilesystem)
 	sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)
@@ -232,6 +240,7 @@ def main():
 		destinationSnapshots = get_local_snapshots(receivingFilesystem)
   
 	if destinationSnapshots is not None:
+		forceOverwrite = False
 		destinationSnapshots.sort(key=lambda x: x.creation, reverse=True)
 		# print("sourceSnapshots:")
 		# for snap in sourceSnapshots:
@@ -248,7 +257,7 @@ def main():
 			for source_snap in sourceSnapshots:
 				if source_snap.guid == mostRecentDestinationSnap.guid:
 					incrementalSnapName = source_snap.name
-					print("Setting incrementalSnap to:", incrementalSnapName)
+					# print("Setting incrementalSnap to:", incrementalSnapName)
 					break  # Exit loop once a matching snapshot is found
 				else:
 					incrementalSnapName = ""  # If no match is found, set to empty string
@@ -260,10 +269,12 @@ def main():
 				common_ancestor = max(common_snapshots)
 				if common_ancestor in destinationSnapshots:
 					incrementalSnapName = common_ancestor
-	
+	else:
+		forceOverwrite = True
+  
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
-	print(f"\n-----------PARAMETER CHECK------------\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\n------------------END-----------------\n")
-	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit)
+	print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
+	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit, forceOverwrite)
 
 if __name__ == "__main__":
 	main()

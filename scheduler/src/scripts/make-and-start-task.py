@@ -1,9 +1,6 @@
 import subprocess
 import argparse
-import re
 import json
-import os
-import datetime
 
 def read_template_file(template_file_path):
     with open(template_file_path, 'r') as file:
@@ -96,18 +93,18 @@ def generate_concrete_file(template_content, output_file_path):
         file.write(template_content)
     
 
-def manage_systemd_service(timer_file_name):
+def manage_systemd_service(unit_name):
     # Reload systemd to recognize new or changed units
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
     # Enable the timer
-    subprocess.run(['sudo', 'systemctl', 'enable', f'houston_scheduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
     
     # Start the timer
-    subprocess.run(['sudo', 'systemctl', 'start', f'houston_scheduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}'], check=True)
     
     # Optionally, check the status of the timer
-    subprocess.run(['sudo', 'systemctl', 'status', f'houston_scheduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'status', f'{unit_name}'], check=True)
 
 
 def main():
@@ -169,7 +166,8 @@ def main():
     print("Concrete timer file generated successfully.")
     
     # Restart systemd-daemon and enable & start timer
-    # manage_systemd_service(timer_file_name)
+    systemd_timer_unit = f"houston_scheduler_{task_template_name}_{timer_file_name}"
+    manage_systemd_service(systemd_timer_unit)
     
 if __name__ == "__main__":
 	main()
