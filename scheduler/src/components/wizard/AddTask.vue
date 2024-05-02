@@ -52,7 +52,7 @@
     </div>
 
     <div v-if="showScheduleWizard">
-        <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'add'" :task="newTask"/>
+        <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'new'" :task="newTask"/>
     </div>
 </template>
 <script setup lang="ts">

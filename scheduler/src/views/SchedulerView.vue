@@ -179,8 +179,8 @@
                 <EditTask :id-key="'edit-task-modal'" :task="selectedTask!"/>
             </div>
 
-            <div v-if="showStandaloneScheduleWizard">
-                <component :is="scheduleWizardComponent" @close="updateShowStandaloneScheduleWizardComponent" :task="selectedTask"/>
+            <div v-if="showThisScheduleWizard">
+                <component :is="scheduleWizardComponent" @close="updateShowThisScheduleWizardComponent" :task="selectedTask" :mode="'edit'"/>
             </div>
 		</div>
 	</div>
@@ -201,7 +201,7 @@ const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 const loading = inject<Ref<boolean>>('loading')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
 const showTaskWizard = ref(false);
-const showStandaloneScheduleWizard = ref(false);
+const showThisScheduleWizard = ref(false);
 const showEditTaskWizard = ref(false)
 
 const showDetails = ref({});
@@ -233,7 +233,7 @@ function editTaskBtn(task) {
  
 function manageScheduleBtn(task) {
     selectedTask.value = task;
-    showStandaloneScheduleWizardComponent();
+    showThisScheduleWizardComponent();
 }
 
 function runTaskBtn(task) {
@@ -289,21 +289,21 @@ const loadScheduleWizardComponent = async () => {
     scheduleWizardComponent.value = module.default;
 }
 
-async function showStandaloneScheduleWizardComponent() {
+async function showThisScheduleWizardComponent() {
     console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-        console.log('schedulerView: Component loaded, setting showStandaloneScheduleWizard to true.');
-        // console.log('schedulerView: setting showStandaloneScheduleWizard to true.');
-        showStandaloneScheduleWizard.value = true;
+        console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
+        // console.log('schedulerView: setting showThisScheduleWizard to true.');
+        showThisScheduleWizard.value = true;
     } catch (error) {
         console.error('Failed to load Schedule Wizard Component:', error);
     }
 }
 
-const updateShowStandaloneScheduleWizardComponent = (newVal) => {
-    console.log('updateShowStandaloneScheduleWizard triggered');
-    showStandaloneScheduleWizard.value = newVal;
+const updateShowThisScheduleWizardComponent = (newVal) => {
+    console.log('updateShowThisScheduleWizard triggered');
+    showThisScheduleWizard.value = newVal;
 }
 
 
@@ -385,6 +385,6 @@ function sortIconFlip() {
 
 
 provide('show-task-wizard', showTaskWizard);
-provide('show-schedule-wizard', showStandaloneScheduleWizard);
+provide('show-schedule-wizard', showThisScheduleWizard);
 provide('show-edit-task-wizard', showEditTaskWizard);
 </script> 

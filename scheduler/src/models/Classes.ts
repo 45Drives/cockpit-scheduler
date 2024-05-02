@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -141,7 +141,7 @@ export class Scheduler implements SchedulerType {
                 superuser: 'try',
             });
             
-            const jsonString = JSON.stringify(taskInstance.schedule, null, 2); // The second argument (null) and third (2) ensures pretty-printing of JSON
+            const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
 
             file2.replace(jsonString).then(() => {
                 console.log('json file created and content written successfully');
@@ -188,8 +188,39 @@ export class Scheduler implements SchedulerType {
         //flip checkbox value
     }
     
-    updateSchedule(taskInstance) {
+    async updateSchedule(taskInstance) {
+        function formatTemplateName(templateName) {
+            // Split the string into words using space as the delimiter
+            let words = templateName.split(' ');
+            // Capitalize the first letter of each word and lowercase the rest
+            let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+            // Join the words without spaces
+            let formattedTemplateName = formattedWords.join('');
+            return formattedTemplateName;
+        }
+  
+        const templateTimerPath = `/opt/45drives/houston/scheduler/templates/Schedule.timer`;
+
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const fullTaskName = `${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}`;
+        const jsonFilePath = `/etc/systemd/system/${fullTaskName}.json`;
+        console.log('jsonFilePath:', jsonFilePath);
+
+        const file = new BetterCockpitFile(jsonFilePath, {
+            superuser: 'try',
+        });
         
+        const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
+
+        file.replace(jsonString).then(() => {
+            console.log('json file created and content written successfully');
+            file.close();
+        }).catch(error => {
+            console.error("Error writing content to the file:", error);
+            file.close();
+        });
+
+        await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
     }
 
     parseIntervalIntoString(interval) {
@@ -227,8 +258,6 @@ export class Scheduler implements SchedulerType {
                 (type === 'month' ? `in ${getMonthName(value)}` : `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`);
         }
         
-    
-    
         const minute = formatUnit(interval.minute?.value.toString() || '*', 'minute');
         const hour = formatUnit(interval.hour?.value.toString() || '*', 'hour');
         const day = formatUnit(interval.day?.value.toString() || '*', 'day');

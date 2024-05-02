@@ -148,7 +148,7 @@ export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, s
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_task_files_script, '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('task creation output:', output);
+        console.log('scheduled task creation output:', output);
 
     } catch (error) {
         console.error(errorString(error));
@@ -161,7 +161,7 @@ export async function createStandaloneTask(serviceTemplate, envFile) {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_standalone_task_script, '-st', serviceTemplate, '-e', envFile], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('task creation output:', output);
+        console.log('unscheduled task creation output:', output);
 
     } catch (error) {
         console.error(errorString(error));
@@ -169,12 +169,12 @@ export async function createStandaloneTask(serviceTemplate, envFile) {
     }
 }
 
-export async function createScheduleForTask(envFile, timerTemplate, scheduleFile) {
+export async function createScheduleForTask(taskName, timerTemplate, scheduleFile) {
     try {
-        // const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_schedule_script, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_schedule_script, '-n', taskName, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
 
-        // const output = await state.promise();
-        // console.log('task creation output:', output);
+        const output = await state.promise();
+        console.log('schedule creation output:', output);
 
     } catch (error) {
         console.error(errorString(error));
@@ -187,7 +187,7 @@ export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task,], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('task creation output:', output);
+        console.log('task enable output:', output);
 
     } catch (error) {
         console.error(errorString(error));

@@ -170,6 +170,7 @@ import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParam
 interface ManageScheduleProps {
     idKey: string;
     task: TaskInstance;
+    mode: 'new' | 'edit';
 }
 
 const props = defineProps<ManageScheduleProps>();
@@ -180,6 +181,7 @@ const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
 const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
 
 const savingSchedule = ref(false);
+const scheduleEnabled = ref(false);
 
 const closeModal = () => {
     showScheduleWizard.value = false;
@@ -188,12 +190,11 @@ const closeModal = () => {
 
 const thisTask = ref(props.task);
 const newSchedule = reactive<TaskScheduleType>({
-    enabled: true,
+    enabled: scheduleEnabled.value,
     intervals: [],
 });
 
 const selectedPreset = ref('none');
-const scheduleEnabled = ref(true);
 const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 const daysOfWeek : DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -408,8 +409,15 @@ const confirmScheduleTask : ConfirmationCallback = async () => {
     console.log('Saving and scheduling task now...');
     updateShowSaveConfirmation(false);
     savingSchedule.value = true;
-    await myScheduler.registerTaskInstance(thisTask.value);
-    notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 10000);
+
+    if (props.mode == 'new') {
+        await myScheduler.registerTaskInstance(thisTask.value);
+        notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 10000);
+    } else {
+        await myScheduler.updateSchedule(thisTask.value);
+        notifications.value.constructNotification('Schedule Save Successful', `Schedule has been updated.`, 'success', 10000);
+    }
+    
     await myScheduler.loadTaskInstances();
     savingSchedule.value = false;
     showScheduleWizard.value = false;
@@ -495,6 +503,7 @@ onMounted(() => {
    console.log('task data', props.task);
    intervals.value = props.task.schedule.intervals;
    console.log('intervals', intervals.value);
+   console.log('mode:', props.mode);
 })
 
 </script>
