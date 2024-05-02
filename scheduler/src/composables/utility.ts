@@ -158,10 +158,10 @@ export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, s
 
 export async function createStandaloneTask(serviceTemplate, envFile) {
     try {
-        // const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_standalone_task_script, '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_standalone_task_script, '-st', serviceTemplate, '-e', envFile], { superuser: 'try', stderr: 'out' });
 
-        // const output = await state.promise();
-        // console.log('task creation output:', output);
+        const output = await state.promise();
+        console.log('task creation output:', output);
 
     } catch (error) {
         console.error(errorString(error));

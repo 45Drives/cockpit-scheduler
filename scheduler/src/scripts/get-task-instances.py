@@ -73,34 +73,6 @@ def find_valid_task_data_files(system_dir, template_basenames):
     # print(f"Valid files found: {valid_files}")
     return valid_files
 
-# def find_valid_task_data_files(system_dir, template_basenames):
-#     valid_files = {}
-    
-#     # First, collect all relevant files by their base task name (excluding extensions)
-#     for file in os.listdir(system_dir):
-#         if file.startswith("houston_scheduler_"):
-#             base_name, ext = os.path.splitext(file)
-#             if ext in ['.service', '.timer', '.env', '.json']:
-#                 parts = base_name.split('_', 3)  # Expected format: houston_scheduler_TemplateName_TaskName
-#                 if len(parts) > 3:
-#                     template_name, task_name = parts[1], parts[3]
-#                     if template_name in template_basenames:
-#                         if template_name not in valid_files:
-#                             valid_files[template_name] = {}
-#                         if task_name not in valid_files[template_name]:
-#                             valid_files[template_name][task_name] = {}
-#                         valid_files[template_name][task_name][ext] = file
-
-#     # Filter tasks to include only those with both .service (and optionally .timer) files
-#     filtered_files = {}
-#     for template_name, tasks in valid_files.items():
-#         for task_name, files in tasks.items():
-#             if '.service' in files and '.env' in files and '.json' in files and (not '.timer' or '.timer' in files):
-#                 if template_name not in filtered_files:
-#                     filtered_files[template_name] = []
-#                 filtered_files[template_name].append(files)
-    
-#     return filtered_files
 
 def create_task_instances(system_dir, valid_files):
     task_instances = []
@@ -126,20 +98,19 @@ def create_task_instances(system_dir, valid_files):
 
         # Process each pair of files
         for base_name, file_dict in paired_files.items():
-            if '.env' in file_dict and '.json' in file_dict:
+            if '.env' in file_dict:
                 env_file_name = file_dict['.env']
-                json_file_name = file_dict['.json']
-
-                # Read parameters and schedule data
                 parameters = read_env_parameters(os.path.join(system_dir, env_file_name))
-                schedule_data = read_json_schedule(os.path.join(system_dir, json_file_name))
-
-                # Create schedule object
-                schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'])
-
-                # Create task instance object
-                task_instance = TaskInstance(base_name, template, parameters, schedule)
-                task_instances.append(task_instance)
+                
+                if '.json' in file_dict:
+                    json_file_name = file_dict['.json']
+                    schedule_data = read_json_schedule(os.path.join(system_dir, json_file_name))
+                    schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'])
+                else:
+                    schedule = TaskSchedule(False, [])
+                
+            task_instance = TaskInstance(base_name, template, parameters, schedule)
+            task_instances.append(task_instance)
 
     # Convert task_instances to JSON serializable format
     task_instances_json = [instance.__dict__ for instance in task_instances]

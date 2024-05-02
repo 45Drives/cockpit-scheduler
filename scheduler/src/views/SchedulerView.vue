@@ -73,6 +73,10 @@
                                                     &lt;timestamp here&gt;
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
+                                                    <!-- <div v-if="!taskInstance.schedule.enabled && taskInstance.schedule.intervals.length < 1">
+                                                       
+                                                    </div> -->
+                                                
                                                     <input type="checkbox" v-model="taskInstance.schedule.enabled" class="ml-2 h-4 w-4 rounded "/>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
