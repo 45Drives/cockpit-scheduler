@@ -85,12 +85,10 @@ const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
 const parameters = ref();
 
-
 const closeModal = () => {
     showTaskWizard.value = false;
     emit('close');
 }
-
 
 // Validation
 function clearAllErrors() {
@@ -197,7 +195,7 @@ async function saveTask() {
         if (sanitizedName.startsWith('-')) {
             sanitizedName = 'task' + sanitizedName;
         }
-
+        
         if (isStandaloneTask.value) {
             const schedule = new TaskSchedule(false, []);
             const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);

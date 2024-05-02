@@ -283,6 +283,7 @@ const notifications = inject<Ref<any>>('notifications')!;
 const errorList = inject<Ref<string[]>>('errors')!;
 
 async function initializeData() {
+    // if props.task, then edit mode active (retrieve data)
     if (props.task) {
         loading.value = true;
         await getSourcePools();
@@ -336,6 +337,7 @@ async function initializeData() {
 
         loading.value = false;
     } else {
+        //if no props.task, new task configuration (default values)
         await getSourcePools();
         await getLocalDestinationPools();
     }

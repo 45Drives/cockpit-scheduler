@@ -64,7 +64,6 @@ const closeModal = () => {
     emit('close');
 }
 
-
 function validateComponentParams() {
     parameterInputComponent.value.clearTaskParamErrorTags();
     parameterInputComponent.value.validation();

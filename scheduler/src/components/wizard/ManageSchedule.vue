@@ -119,14 +119,14 @@
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current Intervals</label>
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
-                                <li v-for="interval, idx in intervals" :key="idx" class="text-default rounded-lg"  :class="intervalSelectedClass(interval)">
-                                    <button class="h-full w-full rounded-lg p-4 text-left " @click.stop="selectIntervalToManage(interval)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
+                                <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"  :class="intervalSelectedClass(interval)">
+                                    <button class="h-full w-full rounded-lg p-4 text-left " @click.stop="selectionMethod(interval, idx)" :class="intervalSelectedClass(interval)"> {{ myScheduler.parseIntervalIntoString(interval) }}</button>
                                 </li>
                             </ul>
-                        </div>
-                        <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
-                            <button name="remove-interval" @click="" class="btn btn-danger h-min w-full">Remove Interval</button>
-                            <button name="edit-interval" @click="editSelectedInterval(selectedInterval)" class="btn btn-secondary h-min w-full">Edit Interval</button>
+                            <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
+                                <button name="remove-interval" @click="removeSelectedInterval(selectedIndex)" class="btn btn-danger h-min w-full">Remove Interval</button>
+                                <button name="edit-interval" @click="editSelectedInterval(selectedInterval)" class="btn btn-secondary h-min w-full">Edit Interval</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -159,13 +159,11 @@
     </div>
 </template>
 <script setup lang="ts">
-import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
+import { inject, reactive, ref, Ref, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import CalendarComponent from '../common/CalendarComponent.vue';
-import ParameterInput from '../parameters/ParameterInput.vue';
-import ConfirmationDialog from '../common/ConfirmationDialog.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, TaskSchedule, TaskScheduleInterval } from '../../models/Classes';
+import { Scheduler, TaskInstance } from '../../models/Classes';
 
 interface ManageScheduleProps {
     idKey: string;
@@ -195,7 +193,7 @@ const newSchedule = reactive<TaskScheduleType>({
 });
 
 const selectedPreset = ref('none');
-const intervals = ref<TaskScheduleIntervalType[]>([]);
+const localIntervals = ref<TaskScheduleIntervalType[]>([]);
 
 const daysOfWeek : DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -244,7 +242,6 @@ function clearAllErrors() {
     monthErrorTag.value = false;
     yearErrorTag.value = false;
 }
-
 
 function isOnCalendarExpression(value, type) {
     // Check for empty value
@@ -304,10 +301,8 @@ function isOnCalendarExpression(value, type) {
             return number >= min && number <= max;
         }
     }
-
     return false;
 }
-
 
 function validateFields(interval) {
     clearAllErrors();
@@ -355,17 +350,35 @@ function validateFields(interval) {
 }
 
 const selectedInterval = ref<TaskScheduleIntervalType>();
-function selectIntervalToManage(interval : TaskScheduleIntervalType) {
+const selectedIndex = ref<number>();
+function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
     selectedInterval.value = interval;
+    // Object.assign(newInterval, JSON.parse(JSON.stringify(interval)));
+    selectedIndex.value = index;
+    console.log('selectedInterval (selectionMethod):', selectedInterval.value);
+    // console.log('selected interval for editing:', interval);
+    console.log('selectedIndex (selectionMethod):', selectedIndex.value);
 }
 
 function saveInterval(interval) {
     if (validateFields(interval)) {
-        // Deep clone the interval object to ensure no references are shared
-        const clonedInterval = JSON.parse(JSON.stringify(interval));
-        intervals.value.push(clonedInterval);
-        console.log('newInterval saved:', clonedInterval);
-        console.log('all intervals:', intervals.value);
+        console.log('selectedIndex in saveInterval:', selectedIndex.value);
+        if (selectedIndex.value !== undefined) {
+            // Deep clone the interval object to ensure no references are shared
+            const updatedInterval = JSON.parse(JSON.stringify(interval));
+            
+            localIntervals.value[selectedIndex.value] = updatedInterval;
+            console.log('updatedInterval saved (saveInterval):', updatedInterval);
+        } else {
+            const newInterval = JSON.parse(JSON.stringify(interval));
+            localIntervals.value.push(newInterval);
+            console.log('newInterval saved (saveInterval):', newInterval);
+        }
+       
+        console.log('all intervals (saveInterval):', localIntervals.value);
+        clearSelectedInterval();
+        clearSelectedIndex();
+        clearFields();
     } 
 }
 
@@ -374,11 +387,21 @@ function clearSelectedInterval() {
     selectedInterval.value = undefined;
 }
 
-function removeSelectedInterval(interval) {
-    // intervals.value.pop
+function clearSelectedIndex() {
+    selectedIndex.value = undefined;
+}
+
+function removeSelectedInterval(index) {
+    console.log('interval to remove (removeSelectedInterval):', localIntervals.value[index])
+    localIntervals.value.splice(index, 1);
+    console.log('intervals after splice (removeSelectedInterval):', localIntervals.value);
+    clearSelectedInterval();
+    clearSelectedIndex();
 }
 
 function editSelectedInterval(interval : TaskScheduleIntervalType) {
+    console.log('triggered editSelectedInterval', interval);
+
     const defaultTimeComponent = '0';
 
     // Set each field value, falling back to default if not present
@@ -428,22 +451,27 @@ const cancelScheduleTask : ConfirmationCallback = async () => {
     updateShowSaveConfirmation(false);
 }
 
-
 const updateShowSaveConfirmation = (newVal) => {
     showSaveConfirmation.value = newVal;
 }
 
+const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 async function saveScheduleBtn() {
-    if (intervals.value.length < 1) {
+    if (localIntervals.value.length < 1) {
         notifications.value.constructNotification('Save Failed', `At least one interval is required.`, 'error', 10000);
     } else {
+        console.log('intervals before (saveBtn):', intervals.value);
+        console.log('localIntervals (saveBtn):', localIntervals.value);
+        
+        intervals.value = [...localIntervals.value];
         intervals.value.forEach(interval => {
             newSchedule.intervals.push(interval);
         });
+        console.log('intervals after (saveBtn):', intervals.value);
         thisTask.value.schedule = newSchedule;
-        console.log('schedule to save:', newSchedule);
-        console.log('task to save:', thisTask.value);
+        console.log('schedule to save (saveBtn):', newSchedule);
+        console.log('task to save (saveBtn):', thisTask.value);
 
         await showConfirmationDialog();
     }
@@ -477,7 +505,6 @@ watch(selectedPreset, (newVal, oldVal) => {
     }
 });
 
-
 const daySelectedClass = (dayOfWeek) => {
     const isSelected = newInterval.dayOfWeek!.includes(dayOfWeek);
     return isSelected ? 'bg-green-30 dark:bg-green-700' : '';
@@ -488,7 +515,7 @@ const intervalSelectedClass = (interval) => {
 }
 
 watch(newInterval, (newVal, oldVal) => {
-    console.log('newInterval changed:', newVal);
+    console.log('newInterval changed (watch):', newVal);
     forceUpdateCalendar();
 }, { deep: true });
 
@@ -499,10 +526,17 @@ function forceUpdateCalendar() {
 }
 
 onMounted(() => {
-   console.log('task data', props.task);
-   intervals.value = props.task.schedule.intervals;
-   console.log('intervals', intervals.value);
-   console.log('mode:', props.mode);
-})
+    console.log('mode (onMounted):', props.mode);
+
+    console.log('task data (onMounted)', props.task);
+    if (props.mode == 'new') {
+        selectedInterval.value = undefined;
+        selectedIndex.value = undefined;
+        localIntervals.value = [];
+    } else {
+        localIntervals.value = [...props.task.schedule.intervals];
+        console.log('localIntervals (onMounted)', localIntervals.value);
+   }
+});
 
 </script>
