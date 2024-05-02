@@ -61,7 +61,7 @@
                                             </tr>
                                         </thead>
                                         <tbody class="bg-default">
-                                            <tr class="border border-default grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1" v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
+                                            <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index" :class="showDetails[index] ? 'outline outline-2 outline-red-700 dark:outline-red-800' : ''" class="border border-default grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
                                                 <!-- Table Cells -->
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     {{ taskInstance.name }}
@@ -77,9 +77,9 @@
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
-                                                    <button v-if="showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">Close Details</button>
+                                                    <button v-if="showDetails[index]" @click="closeDetailsBtn(index)" class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="col-span-8 h-full border border-default px-2 mx-2 py-1">
+                                                <td v-if="showDetails[index]" class="col-span-8 h-full px-2 mx-2 py-1">
                                                     <!-- Details for ZFS Replication Task -->
                                                     <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">
                                                         <div class="col-span-1">
@@ -210,6 +210,11 @@ async function refreshBtn() {
 }
 
 function taskDetailsBtn(idx) {
+    showDetails.value = {};
+    showDetails.value[idx] = !showDetails.value[idx];
+}
+
+function closeDetailsBtn(idx) {
     showDetails.value[idx] = !showDetails.value[idx];
 }
 

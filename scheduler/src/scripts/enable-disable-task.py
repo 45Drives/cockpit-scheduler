@@ -13,17 +13,27 @@ class TaskInstance:
 
 
 
+# full_schedule_filename = houston_scheduler_<TEMPLATE_NAME>_<TASK_NAME>.timer
 
-def manage_systemd_service(timer_file_name):
+def enable_task_timer(full_schedule_filename):
     # Reload systemd to recognize new or changed units
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
     # Enable the timer
-    subprocess.run(['sudo', 'systemctl', 'enable', f'houston_scheduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', f'{full_schedule_filename}'], check=True)
     
     # Start the timer
-    subprocess.run(['sudo', 'systemctl', 'start', f'houston_scheduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'start', f'{full_schedule_filename}'], check=True)
     
     # Optionally, check the status of the timer
-    subprocess.run(['sudo', 'systemctl', 'status', f'houston_scheduler_{timer_file_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'status', f'{full_schedule_filename}'], check=True)
 
+def disable_task_timer(full_schedule_filename):
+    # Stop the timer
+    subprocess.run(['sudo', 'systemctl', 'stop', f'{full_schedule_filename}'], check=True)
+    
+    # Disable the timer
+    subprocess.run(['sudo', 'systemctl', 'disable', f'{full_schedule_filename}'], check=True)
+    
+    # Reload systemd to recognize new or changed units
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)

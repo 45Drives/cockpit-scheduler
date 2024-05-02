@@ -105,7 +105,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 		send_cmd.append(sendName)
 
-		print(f"SEND_CMD: {send_cmd}")
+		# print(f"SEND_CMD: {send_cmd}")
 
 		process_send = subprocess.Popen(
 			send_cmd,
@@ -124,7 +124,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			recv_cmd.append(recvName)
 
-			print(f"RECV_CMD: {recv_cmd}")
+			# print(f"RECV_CMD: {recv_cmd}")
 
 			process_recv = subprocess.Popen(
 				recv_cmd,
@@ -170,7 +170,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			ssh_cmd.append(recvName)
 
-			print(f"SSH_CMD: {ssh_cmd}")
+			# print(f"SSH_CMD: {ssh_cmd}")
 
 			process_ssh_recv = subprocess.Popen(
 				ssh_cmd,
@@ -182,7 +182,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			stdout, stderr = process_ssh_recv.communicate()
 
-			print(f"SSH_STDERR: {stderr}")
+			# print(f"SSH_STDERR: {stderr}")
 
 			if process_ssh_recv.returncode != 0:
 				raise Exception(f"Error: {stderr}")
@@ -273,7 +273,7 @@ def main():
 		forceOverwrite = True
   
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
-	print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
+	# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
 	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit, forceOverwrite)
 
 if __name__ == "__main__":
