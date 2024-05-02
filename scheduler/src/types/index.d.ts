@@ -94,4 +94,4 @@ interface TaskExecutionResultType {
 // }
 
 
-type ConfirmationCallback = () => void;
+type ConfirmationCallback = (param?: any) => void;

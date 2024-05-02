@@ -59,6 +59,12 @@ def generate_concrete_file(template_content, output_file_path):
     with open(output_file_path, 'w') as file:
         file.write(template_content)
     
+def restart_timer(unit_name):
+	subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+	subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
+	subprocess.run(['sudo', 'systemctl', 'restart', f'{unit_name}'], check=True)
+	print(f'{unit_name} has been restarted')
+
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Timer File from Template + JSON Files')
@@ -91,6 +97,8 @@ def main():
     generate_concrete_file(timer_template_content, output_path_timer)
     print(timer_template_content)
     print("Concrete timer file generated successfully.")
+    
+    restart_timer(timer_file_name)
     
 if __name__ == "__main__":
 	main()

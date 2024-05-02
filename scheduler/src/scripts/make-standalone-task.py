@@ -1,6 +1,4 @@
-import subprocess
 import argparse
-import json
 
 def read_template_file(template_file_path):
     with open(template_file_path, 'r') as file:

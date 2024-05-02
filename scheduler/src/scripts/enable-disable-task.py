@@ -9,7 +9,11 @@ class TaskInstance:
         self.parameters = parameters
         self.schedule = schedule.__dict__
 
-
+def restart_timer(unit_name):
+	subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+	subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
+	subprocess.run(['sudo', 'systemctl', 'restart', f'{unit_name}'], check=True)
+	print(f'{unit_name} has been restarted')
 
 
 

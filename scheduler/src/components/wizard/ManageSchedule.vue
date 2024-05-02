@@ -429,7 +429,6 @@ const cancelScheduleTask : ConfirmationCallback = async () => {
 }
 
 
-
 const updateShowSaveConfirmation = (newVal) => {
     showSaveConfirmation.value = newVal;
 }

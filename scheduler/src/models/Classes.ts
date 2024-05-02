@@ -92,21 +92,13 @@ export class Scheduler implements SchedulerType {
 
         const envKeyValuesString = envKeyValues.join('\n')
 
-        function formatTemplateName(templateName) {
-            // Split the string into words using space as the delimiter
-            let words = templateName.split(' ');
-            // Capitalize the first letter of each word and lowercase the rest
-            let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
-            // Join the words without spaces
-            let formattedTemplateName = formattedWords.join('');
-            return formattedTemplateName;
-        }
+        const templateName = this.formatTemplateName(taskInstance.template.name);
         
-        const templateServicePath = `/opt/45drives/houston/scheduler/templates/${formatTemplateName(taskInstance.template.name)}.service`;
+        const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
         const templateTimerPath = `/opt/45drives/houston/scheduler/templates/Schedule.timer`;
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}.env`;
+        const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
         
         console.log('envFilePath:', envFilePath);
 
@@ -122,7 +114,7 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
-        const jsonFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}.json`;
+        const jsonFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.json`;
         console.log('jsonFilePath:', jsonFilePath);
 
         //run script to generate service + timer via template, param env and schedule json
@@ -160,8 +152,39 @@ export class Scheduler implements SchedulerType {
         //delete task + associated files
     }
     
-    updateTaskInstance(taskInstance) {
+    async updateTaskInstance(taskInstance) {
         //populate data from env file and then delete + recreate task files
+        const envKeyValues = taskInstance.parameters.asEnvKeyValues();
+        console.log('envKeyVals:', envKeyValues);
+
+        const envKeyValuesString = envKeyValues.join('\n')
+
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        
+        const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
+
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
+        
+        console.log('envFilePath:', envFilePath);
+
+        const file = new BetterCockpitFile(envFilePath, {
+            superuser: 'try',
+        });
+
+        file.replace(envKeyValuesString).then(() => {
+            console.log('env file updated successfully');
+            file.close();
+        }).catch(error => {
+            console.error("Error updating file:", error);
+            file.close();
+        });
+
+        await createStandaloneTask(templateServicePath, envFilePath);
+    }
+
+    async duplicateTask(taskInstance) {
+        
     }
     
     runTaskNow(taskInstance) {
@@ -180,6 +203,8 @@ export class Scheduler implements SchedulerType {
         //activate timer file
         //run systemctl daemon-reload
         //flip checkbox value
+
+
     }
     
     disableSchedule(taskInstance) {
@@ -189,20 +214,12 @@ export class Scheduler implements SchedulerType {
     }
     
     async updateSchedule(taskInstance) {
-        function formatTemplateName(templateName) {
-            // Split the string into words using space as the delimiter
-            let words = templateName.split(' ');
-            // Capitalize the first letter of each word and lowercase the rest
-            let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
-            // Join the words without spaces
-            let formattedTemplateName = formattedWords.join('');
-            return formattedTemplateName;
-        }
+        const templateName = this.formatTemplateName(taskInstance.template.name);
   
         const templateTimerPath = `/opt/45drives/houston/scheduler/templates/Schedule.timer`;
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const fullTaskName = `${houstonSchedulerPrefix}${formatTemplateName(taskInstance.template.name)}_${taskInstance.name}`;
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
         const jsonFilePath = `/etc/systemd/system/${fullTaskName}.json`;
         console.log('jsonFilePath:', jsonFilePath);
 
@@ -275,6 +292,16 @@ export class Scheduler implements SchedulerType {
         }
     
         return elements.join(' ');
+    }
+
+    formatTemplateName(templateName) {
+        // Split the string into words using space as the delimiter
+        let words = templateName.split(' ');
+        // Capitalize the first letter of each word and lowercase the rest
+        let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+        // Join the words without spaces
+        let formattedTemplateName = formattedWords.join('');
+        return formattedTemplateName;
     }
     
 }

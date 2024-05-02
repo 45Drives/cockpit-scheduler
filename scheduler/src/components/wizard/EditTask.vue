@@ -31,7 +31,7 @@
 
 
     <div v-if="showSaveConfirmation">
-        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Create Task'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask"/>
+        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Save Task'" :message="'Save your edits?'" :confirmYes="confirmSaveChanges" :confirmNo="cancelEdit"/>
     </div>
 </template>
 <script setup lang="ts">
@@ -89,34 +89,51 @@ async function showConfirmationDialog() {
     console.log('Showing confirmation dialog...');
 }
 
-const confirmScheduleTask : ConfirmationCallback = async () => {
+const confirmSaveChanges : ConfirmationCallback = async () => {
     console.log('Saving and scheduling task now...');
     saving.value = true;
-    // await myScheduler.registerTaskInstance(taskInstance.value);
-    // notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 10000);
+    await saveEditedTask();
     saving.value = false;
     updateShowSaveConfirmation(false);
+    myScheduler.loadTaskInstances();
     showEditTaskWizard.value = false;
 }
 
-const cancelScheduleTask : ConfirmationCallback = async () => {
+const cancelEdit : ConfirmationCallback = async () => {
     updateShowSaveConfirmation(false);
 }
 
+async function saveEditedTask() {
+    console.log('save changes triggered');
+    if (taskInstance.value!.template.name == 'ZFS Replication Task') {
+        const template = new ZFSReplicationTaskTemplate();
+        
+        let sanitizedName = taskInstance.value.name.replace(/[^a-zA-Z0-9-]/g, '');
+        if (sanitizedName.startsWith('-')) {
+            sanitizedName = 'task' + sanitizedName;
+        }
 
+        const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
+        const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
+        console.log('edited task: ', task);
+
+        await myScheduler.updateTaskInstance(task);
+
+        notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 10000);
+    }
+}
 
 const updateShowSaveConfirmation = (newVal) => {
     showSaveConfirmation.value = newVal;
 }
 
 async function saveChangesBtn() {
-    console.log('save changes triggered');
-
     if (validateComponentParams()) {
         showConfirmationDialog();
     }
    
 }
+
 
 provide('task-for-editing', taskInstance);
 provide('parameters', parameters);

@@ -73,11 +73,7 @@
                                                     &lt;timestamp here&gt;
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-                                                    <!-- <div v-if="!taskInstance.schedule.enabled && taskInstance.schedule.intervals.length < 1">
-                                                       
-                                                    </div> -->
-                                                
-                                                    <input type="checkbox" v-model="taskInstance.schedule.enabled" class="ml-2 h-4 w-4 rounded "/>
+                                                    <input type="checkbox" :checked="taskInstance.schedule.enabled" @change="handleScheduleCheckboxChange(taskInstance)" class="ml-2 h-4 w-4 rounded "/>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
@@ -182,6 +178,27 @@
             <div v-if="showThisScheduleWizard">
                 <component :is="scheduleWizardComponent" @close="updateShowThisScheduleWizardComponent" :task="selectedTask" :mode="'edit'"/>
             </div>
+
+            <div v-if="showDuplicatePrompt">
+                <component :is="duplicateDialog" @close="updateShowDuplicatePrompt" :showFlag="showDuplicatePrompt" :title="'Duplicate Task'" :message="'Do you wish to duplicate this task?'" :confirmYes="duplicateYes" :confirmNo="duplicateNo"/>
+            </div>
+
+            <div v-if="showEnablePrompt">
+                <component :is="enableDialog" @close="updateShowEnablePrompt" :showFlag="showEnablePrompt" :title="'Enable Schedule'" :message="'Do you wish to enable the schedule for this task?'" :confirmYes="enableYes" :confirmNo="enableNo"/>
+            </div>
+            <div v-if="showDisablePrompt">
+                <component :is="disableDialog" @close="updateShowDisablePrompt" :showFlag="showDisablePrompt" :title="'Disable Schedule'" :message="'Do you wish to disable the schedule for this task?'" :confirmYes="disableYes" :confirmNo="disableNo"/>
+            </div>
+
+            <div v-if="showRunNowPrompt">
+                <component :is="runNowDialog" @close="updateShowRunNowPrompt" :showFlag="showRunNowPrompt" :title="'Run Task'" :message="'Do you wish to run this task now?'" :confirmYes="runNowYes" :confirmNo="runNowNo"/>
+            </div>
+
+            <div v-if="showRemoveTaskPrompt">
+                <component :is="removeTaskDialog" @close="updateShowRemoveTaskPrompt" :showFlag="showRemoveTaskPrompt" :title="'Remove Task'" :message="'Do you wish to remove this task?'" :confirmYes="removeTaskYes" :confirmNo="removeTaskNo"/>
+            </div>
+
+
 		</div>
 	</div>
 </template>
@@ -206,6 +223,74 @@ const showEditTaskWizard = ref(false)
 
 const showDetails = ref({});
 const selectedTask = ref<TaskInstanceType>();
+
+async function loadConfirmationDialog(dialogRef) {
+    const module = await import('../components/common/ConfirmationDialog.vue');
+    dialogRef.value = module.default;
+}
+
+const showEnablePrompt = ref(false);
+const enableDialog = ref();
+const showDisablePrompt = ref(false);
+const disableDialog = ref();
+
+
+function handleScheduleCheckboxChange(task: TaskInstanceType) {
+    task.schedule.enabled = !task.schedule.enabled;
+
+    selectedTask.value = task;
+
+    if (selectedTask.value.schedule.enabled) {
+        showDisableDialog();
+    } else {
+        showEnableDialog();
+    }
+}
+
+
+async function showEnableDialog() {
+    await loadConfirmationDialog(enableDialog);
+    showEnablePrompt.value = true;
+}
+const enableYes : ConfirmationCallback = async () => {
+    console.log('enabling task schedule');
+    selectedTask.value!.schedule.enabled = true;
+    updateShowEnablePrompt(false);
+    
+}
+const enableNo : ConfirmationCallback = async () => {
+    // task.schedule.enabled = false;
+    console.log('leaving task schedule as is');
+
+    selectedTask.value!.schedule.enabled = selectedTask.value!.schedule.enabled;
+    updateShowEnablePrompt(false);
+}
+const updateShowEnablePrompt = (newVal) => {
+    showEnablePrompt.value = newVal;
+}
+
+
+async function showDisableDialog() {
+    await loadConfirmationDialog(disableDialog);
+    showDisablePrompt.value = true;
+}
+const disableYes : ConfirmationCallback = async () => {
+    // task.schedule.enabled = false;
+    console.log('disabling task schedule');
+    updateShowDisablePrompt(false);
+}
+const disableNo : ConfirmationCallback = async () => {
+    // task.schedule.enabled = true;
+    console.log('leaving task schedule as is');
+    updateShowDisablePrompt(false);
+}
+const updateShowDisablePrompt = (newVal) => {
+    showDisablePrompt.value = newVal;
+}
+
+
+
+
 
 async function refreshBtn() {
     loading.value = true;
@@ -237,16 +322,81 @@ function manageScheduleBtn(task) {
 }
 
 function runTaskBtn(task) {
+    selectedTask.value = task;
+    showRunNowDialog();
+}
+const showRunNowPrompt = ref(false);
+const runNowDialog = ref();
+// const loadRunNowDialog = async () => {
+//     const module = await import('../components/common/ConfirmationDialog.vue');
+//     runNowDialog.value = module.default;
+// }
+async function showRunNowDialog() {
+    await loadConfirmationDialog(runNowDialog);
+    showRunNowPrompt.value = true;
+}
+const runNowYes : ConfirmationCallback = async () => {
 
 }
+const runNowNo : ConfirmationCallback = async () => {
+    updateShowRunNowPrompt(false);
+}
+const updateShowRunNowPrompt = (newVal) => {
+    showRunNowPrompt.value = newVal;
+}
+
 
 function duplicateTaskBtn(task) {
-    
+    selectedTask.value = task;
+    showDuplicateDialog();
+}
+const showDuplicatePrompt = ref(false);
+const duplicateDialog = ref();
+// const loadDuplicateDialog = async () => {
+//     const module = await import('../components/common/ConfirmationDialog.vue');
+//     duplicateDialog.value = module.default;
+// }
+async function showDuplicateDialog() {
+    await loadConfirmationDialog(duplicateDialog);
+    showDuplicatePrompt.value = true;
+}
+const duplicateYes : ConfirmationCallback = async () => {
+
+}
+const duplicateNo : ConfirmationCallback = async () => {
+    updateShowDuplicatePrompt(false);
+}
+const updateShowDuplicatePrompt = (newVal) => {
+    showDuplicatePrompt.value = newVal;
 }
 
+
+
 function removeTaskBtn(task) {
-    
+    selectedTask.value = task;
+    showRemoveTaskDialog();
 }
+const showRemoveTaskPrompt = ref(false);
+const removeTaskDialog = ref();
+// const loadRemoveTaskDialog = async () => {
+//     const module = await import('../components/common/ConfirmationDialog.vue');
+//     removeTaskDialog.value = module.default;
+// }
+async function showRemoveTaskDialog() {
+    await loadConfirmationDialog(runNowDialog);
+    showRemoveTaskPrompt.value = true;
+}
+const removeTaskYes : ConfirmationCallback = async () => {
+
+}
+const removeTaskNo : ConfirmationCallback = async () => {
+    updateShowRemoveTaskPrompt(false);
+}
+const updateShowRemoveTaskPrompt = (newVal) => {
+    showDuplicatePrompt.value = newVal;
+}
+
+
 
 function findValue(obj, targetKey, valueKey) {
     if (!obj || typeof obj !== 'object') return null;
