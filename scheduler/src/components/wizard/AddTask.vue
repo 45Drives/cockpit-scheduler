@@ -114,7 +114,7 @@ function validateComponentParams() {
     validateTaskName();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 10000);
+        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
         return false;
     } else {
         return true;
@@ -202,7 +202,7 @@ async function saveTask() {
             console.log('task (no schedule):', task);
 
             await myScheduler.registerTaskInstance(task);
-            notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 10000);
+            notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
             await myScheduler.loadTaskInstances();
         } else {
             const schedule = new TaskSchedule(true, []);

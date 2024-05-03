@@ -68,7 +68,7 @@ function validateComponentParams() {
     parameterInputComponent.value.clearTaskParamErrorTags();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 10000);
+        notifications.value.constructNotification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
         return false;
     } else {
         return true;
@@ -118,7 +118,7 @@ async function saveEditedTask() {
 
         await myScheduler.updateTaskInstance(task);
 
-        notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 10000);
+        notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);
     }
 }
 
