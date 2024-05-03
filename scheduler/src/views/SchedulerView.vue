@@ -119,14 +119,18 @@
                                                        
                                                         <div class="col-span-2">
                                                             <p class="my-2">Current Schedules:</p>
-                                                            <div v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
-                                                                <p class="mx-1" v-if="interval.day">Day: {{interval.day.value}}</p>
+                                                            <div v-if="taskInstance.schedule.intervals.length > 0" v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
+                                                                <!-- <p class="mx-1" v-if="interval.day">Day: {{interval.day.value}}</p>
                                                                 <p class="mx-1" v-if="interval.month">Month: {{interval.month.value}}</p>
                                                                 <p class="mx-1" v-if="interval.year">Year: {{interval.year.value}}</p>
                                                                 <p class="mx-1" v-if="interval.hour">Hour: {{interval.hour.value}}</p>
                                                                 <p class="mx-1" v-if="interval.minute">Minute: {{interval.minute.value}}</p>
                                                                 <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length > 0 && interval.dayOfWeek.length !== 1">Days of Week: {{interval.dayOfWeek.join(', ')}}</p>
-                                                                <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length == 1">Day of Week: {{interval.dayOfWeek[0]}}</p>
+                                                                <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length == 1">Day of Week: {{interval.dayOfWeek[0]}}</p> -->
+                                                                <p>{{ myScheduler.parseIntervalIntoString(interval) }}</p>
+                                                            </div>
+                                                            <div v-else>
+                                                                <p>No Intervals Currently Scheduled</p>
                                                             </div>
                                                         </div>                                        
                                                     </div>
@@ -179,10 +183,6 @@
                 <component :is="scheduleWizardComponent" @close="updateShowThisScheduleWizardComponent" :task="selectedTask" :mode="'edit'"/>
             </div>
 
-           <!--  <div v-if="showDuplicatePrompt">
-                <component :is="duplicateDialog" @close="updateShowDuplicatePrompt" :showFlag="showDuplicatePrompt" :title="'Duplicate Task'" :message="'Do you wish to duplicate this task?'" :confirmYes="duplicateYes" :confirmNo="duplicateNo"/>
-            </div> -->
-
             <div v-if="showEnablePrompt">
                 <component :is="enableDialog" @close="updateShowEnablePrompt" :showFlag="showEnablePrompt" :title="'Enable Schedule'" :message="'Do you wish to enable the schedule for this task?'" :confirmYes="enableYes" :confirmNo="enableNo" :operating="enabling" :operation="'enabling'"/>
             </div>
@@ -205,13 +205,13 @@
 <script setup lang="ts">
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-import {computed, Ref, inject, ref, provide, onMounted} from 'vue';
+import {computed, Ref, inject, ref, provide} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, DocumentDuplicateIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo } from '../composables/helpers'
 import LoadingSpinner from "../components/common/LoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
 import EditTask from "../components/wizard/EditTask.vue";
-import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from '../models/Classes';
+import { Scheduler } from '../models/Classes';
 
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 const loading = inject<Ref<boolean>>('loading')!;
@@ -240,9 +240,6 @@ const disabling = ref(false);
 const showRunNowPrompt = ref(false);
 const runNowDialog = ref();
 const running = ref(false);
-
-/* const showDuplicatePrompt = ref(false);
-const duplicateDialog = ref(); */
 
 const showRemoveTaskPrompt = ref(false);
 const removeTaskDialog = ref();
@@ -354,26 +351,6 @@ const runNowNo : ConfirmationCallback = async () => {
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
-
-
-/* function duplicateTaskBtn(task) {
-    selectedTask.value = task;
-    showDuplicateDialog();
-}
-async function showDuplicateDialog() {
-    await loadConfirmationDialog(duplicateDialog);
-    showDuplicatePrompt.value = true;
-}
-const duplicateYes : ConfirmationCallback = async () => {
-
-}
-const duplicateNo : ConfirmationCallback = async () => {
-    updateShowDuplicatePrompt(false);
-}
-const updateShowDuplicatePrompt = (newVal) => {
-    showDuplicatePrompt.value = newVal;
-} */
-
 
 
 function removeTaskBtn(task, index) {

@@ -124,10 +124,6 @@ def main():
     
     task_template_name = template_service_path.split('/')[-1].split('.')[0]
     
-    # task name based on template name and id number
-    # id_number = param_env_filename.split('_')[-1].split('.')[0]
-    # task_instance_name = task_template_name + '_' + id_number
-    
     # env file will always be saved as 'houston_scheduler_{taskName}.env'
     task_instance_name = param_env_filename.split('_')[3].split('.')[0]
     
@@ -145,6 +141,7 @@ def main():
 
     # Replace placeholders in service file template with environment variables
     service_template_content = replace_service_placeholders(service_template_content, parameters)
+    service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
 
     # Generate concrete service file

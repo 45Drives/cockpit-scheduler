@@ -68,6 +68,7 @@ def main():
 
     # Replace placeholders in service file template with environment variables
     service_template_content = replace_service_placeholders(service_template_content, parameters)
+    service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
 
     # Generate concrete service file
