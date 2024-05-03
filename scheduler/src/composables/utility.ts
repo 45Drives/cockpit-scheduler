@@ -14,7 +14,9 @@ import generate_standalone_task_script from '../scripts/make-standalone-task.py?
 //@ts-ignore
 import generate_schedule_script from '../scripts/make-schedule.py?raw';
 //@ts-ignore
-import enable_disable_task from '../scripts/enable-disable-task.py?raw';
+import enable_disable_task_script from '../scripts/enable-disable-task.py?raw';
+//@ts-ignore
+import remove_task_script from '../scripts/remove-task-files.py?raw';
 
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
@@ -182,9 +184,22 @@ export async function createScheduleForTask(taskName, timerTemplate, scheduleFil
     }
 }
 
+export async function removeTask(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', remove_task_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('remove task output:', output);
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+
 export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean) {
     try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task,], { superuser: 'try', stderr: 'out' });
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task_script,], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
         console.log('task enable output:', output);
@@ -194,3 +209,4 @@ export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean
         return false;
     }
 }
+
