@@ -73,9 +73,10 @@
                                                     &lt;timestamp here&gt;
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-                                                    <input type="checkbox" :checked="taskInstance.schedule.enabled" @change="handleScheduleCheckboxChange(taskInstance, index)" class="ml-2 h-4 w-4 rounded "/>
+                                                    <input v-if="taskInstance.schedule.intervals.length > 0" :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox" :checked="taskInstance.schedule.enabled" @change="handleScheduleCheckboxChange(taskInstance, index)" class="ml-2 h-4 w-4 rounded "/>
+                                                    <input v-else disabled type="checkbox" :title="'No Schedule Found'" class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400"/>
                                                 </td>
-                                                <td class="whitespace-nowrap text-base font-medium text-default border-default mb-1 text-left ml-4 col-span-1">
+                                                <td class="whitespace-nowrap text-base font-medium text-default border-default m-1 col-span-1">
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="closeDetailsBtn(index)" class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close Details</button>
                                                 </td>
@@ -148,10 +149,6 @@
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                       <!--  <button @click="duplicateTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                                            Duplicate
-                                                            <DocumentDuplicateIcon class="h-5 ml-2 mt-0.5"/>
-                                                        </button> -->
                                                         <button @click="removeTaskBtn(taskInstance, index)" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
                                                             Remove
                                                             <TrashIcon class="h-5 ml-2 mt-0.5"/>
@@ -207,7 +204,7 @@ import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, DocumentDuplicateIcon } from '@heroicons/vue/24/outline';
-import { boolToYesNo } from '../composables/helpers'
+import { boolToYesNo, upperCaseWord } from '../composables/helpers'
 import LoadingSpinner from "../components/common/LoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
 import EditTask from "../components/wizard/EditTask.vue";
