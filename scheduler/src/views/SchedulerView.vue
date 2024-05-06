@@ -121,13 +121,6 @@
                                                         <div class="col-span-2">
                                                             <p class="my-2">Current Schedules:</p>
                                                             <div v-if="taskInstance.schedule.intervals.length > 0" v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
-                                                                <!-- <p class="mx-1" v-if="interval.day">Day: {{interval.day.value}}</p>
-                                                                <p class="mx-1" v-if="interval.month">Month: {{interval.month.value}}</p>
-                                                                <p class="mx-1" v-if="interval.year">Year: {{interval.year.value}}</p>
-                                                                <p class="mx-1" v-if="interval.hour">Hour: {{interval.hour.value}}</p>
-                                                                <p class="mx-1" v-if="interval.minute">Minute: {{interval.minute.value}}</p>
-                                                                <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length > 0 && interval.dayOfWeek.length !== 1">Days of Week: {{interval.dayOfWeek.join(', ')}}</p>
-                                                                <p class="mx-1" v-if="interval.dayOfWeek && interval.dayOfWeek.length == 1">Day of Week: {{interval.dayOfWeek[0]}}</p> -->
                                                                 <p>{{ myScheduler.parseIntervalIntoString(interval) }}</p>
                                                             </div>
                                                             <div v-else>
@@ -213,36 +206,75 @@ import { Scheduler } from '../models/Classes';
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 const loading = inject<Ref<boolean>>('loading')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
-const showTaskWizard = ref(false);
-const showThisScheduleWizard = ref(false);
-const showEditTaskWizard = ref(false)
-
-const showDetails = ref({});
 const selectedTask = ref<TaskInstanceType>();
 const selectedTaskIdx = ref<number>();
+
+// check based on params for rendering task list UI 
+function findValue(obj, targetKey, valueKey) {
+    if (!obj || typeof obj !== 'object') return null;
+
+    // Checking the current level
+    if (obj.key === targetKey) {
+        let foundChild = obj.children?.find(child => child.key === valueKey);
+        return foundChild ? (foundChild.value !== undefined ? foundChild.value : 'Not found') : 'Not found';
+    }
+
+    // Recursively checking in children
+    if (Array.isArray(obj.children)) {
+        for (let child of obj.children) {
+            const result = findValue(child, targetKey, valueKey);
+            if (result !== null) {  // Ensure '0', 'false', or empty string are valid returns
+                return result;
+            }
+        }
+    }
+    
+    return null;  // Return null if nothing is found
+}
+
+function getTaskStatus() {
+
+}
+
+function getLastRunTimestamp() {
+
+}
+
+const showDetails = ref({});
+function taskDetailsBtn(idx) {
+    showDetails.value = {};
+    showDetails.value[idx] = !showDetails.value[idx];
+}
+
+function closeDetailsBtn(idx) {
+    showDetails.value[idx] = !showDetails.value[idx];
+}
+
+const showTaskWizard = ref(false);
+function addTaskBtn() {
+    showTaskWizard.value = true;
+}
+
+const showEditTaskWizard = ref(false)
+function editTaskBtn(task) {
+    selectedTask.value = task;
+    showEditTaskWizard.value = true;
+}
+
+async function refreshBtn() {
+    loading.value = true;
+    await myScheduler.loadTaskInstances();
+    loading.value = false;
+}
 
 async function loadConfirmationDialog(dialogRef) {
     const module = await import('../components/common/ConfirmationDialog.vue');
     dialogRef.value = module.default;
 }
 
-const showEnablePrompt = ref(false);
-const enableDialog = ref();
-const enabling = ref(false);
-
-const showDisablePrompt = ref(false);
-const disableDialog = ref();
-const disabling = ref(false);
-
-const showRunNowPrompt = ref(false);
-const runNowDialog = ref();
-const running = ref(false);
-
-const showRemoveTaskPrompt = ref(false);
-const removeTaskDialog = ref();
-const removing = ref(false);
 
 // FIX ENABLING/DISABLING
+// handle checkbox for toggling task schedule enabled/disabled
 function handleScheduleCheckboxChange(task: TaskInstanceType, index: number) {
     // task.schedule.enabled = !task.schedule.enabled;
 
@@ -256,6 +288,11 @@ function handleScheduleCheckboxChange(task: TaskInstanceType, index: number) {
     }
 }
 
+
+/* Enable Task */
+const showEnablePrompt = ref(false);
+const enableDialog = ref();
+const enabling = ref(false);
 
 async function showEnableDialog() {
     await loadConfirmationDialog(enableDialog);
@@ -281,6 +318,11 @@ const updateShowEnablePrompt = (newVal) => {
 }
 
 
+/* Disable Task */
+const showDisablePrompt = ref(false);
+const disableDialog = ref();
+const disabling = ref(false);
+
 async function showDisableDialog() {
     await loadConfirmationDialog(disableDialog);
     showDisablePrompt.value = true;
@@ -300,36 +342,10 @@ const updateShowDisablePrompt = (newVal) => {
 }
 
 
-
-async function refreshBtn() {
-    loading.value = true;
-    await myScheduler.loadTaskInstances();
-    loading.value = false;
-}
-
-function taskDetailsBtn(idx) {
-    showDetails.value = {};
-    showDetails.value[idx] = !showDetails.value[idx];
-}
-
-function closeDetailsBtn(idx) {
-    showDetails.value[idx] = !showDetails.value[idx];
-}
-
-function addTaskBtn() {
-    showTaskWizard.value = true;
-}
-
-function editTaskBtn(task) {
-    selectedTask.value = task;
-    showEditTaskWizard.value = true;
-}
- 
-function manageScheduleBtn(task) {
-    selectedTask.value = task;
-    showThisScheduleWizardComponent();
-}
-
+/* Run Task Ad Hoc */
+const showRunNowPrompt = ref(false);
+const runNowDialog = ref();
+const running = ref(false);
 
 function runTaskBtn(task) {
     selectedTask.value = task;
@@ -340,7 +356,10 @@ async function showRunNowDialog() {
     showRunNowPrompt.value = true;
 }
 const runNowYes : ConfirmationCallback = async () => {
-
+    running.value = true;
+    await myScheduler.runTaskNow(selectedTask.value!);
+    updateShowRunNowPrompt(false);
+    running.value = false;
 }
 const runNowNo : ConfirmationCallback = async () => {
     updateShowRunNowPrompt(false);
@@ -349,6 +368,11 @@ const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
 
+
+/* Remove Task */
+const showRemoveTaskPrompt = ref(false);
+const removeTaskDialog = ref();
+const removing = ref(false);
 
 function removeTaskBtn(task, index) {
     console.log('removeTaskBtn triggered');
@@ -377,40 +401,13 @@ const updateShowRemoveTaskPrompt = (newVal) => {
 }
 
 
-function findValue(obj, targetKey, valueKey) {
-    if (!obj || typeof obj !== 'object') return null;
-
-    // Checking the current level
-    if (obj.key === targetKey) {
-        let foundChild = obj.children?.find(child => child.key === valueKey);
-        return foundChild ? (foundChild.value !== undefined ? foundChild.value : 'Not found') : 'Not found';
-    }
-
-    // Recursively checking in children
-    if (Array.isArray(obj.children)) {
-        for (let child of obj.children) {
-            const result = findValue(child, targetKey, valueKey);
-            if (result !== null) {  // Ensure '0', 'false', or empty string are valid returns
-                return result;
-            }
-        }
-    }
-    
-    return null;  // Return null if nothing is found
+/* Schedule Management */
+const showThisScheduleWizard = ref(false);
+function manageScheduleBtn(task) {
+    selectedTask.value = task;
+    showThisScheduleWizardComponent();
 }
 
-
-function getTaskStatus() {
-
-}
-
-function getLastRunTimestamp() {
-
-}
-
-
-
-// Show Schedule Wizard
 const scheduleWizardComponent = ref();
 const loadScheduleWizardComponent = async () => {
     console.log('loadScheduleWizard triggered');
@@ -436,7 +433,7 @@ const updateShowThisScheduleWizardComponent = (newVal) => {
 }
 
 
-// Searching + Sorting
+/* Searching + Sorting List */
 const searchItem = ref('');
 const filterItem = ref('no_filter');
 const sortMode = ref<string | null>(null);
@@ -511,7 +508,6 @@ function sortIconFlip() {
 		sortMode.value = null;
 	}
 }
-
 
 provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showThisScheduleWizard);

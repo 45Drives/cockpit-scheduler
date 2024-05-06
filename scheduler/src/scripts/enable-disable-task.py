@@ -30,7 +30,7 @@ def enable_task_timer(full_schedule_filename):
     subprocess.run(['sudo', 'systemctl', 'start', f'{full_schedule_filename}'], check=True)
     
     # Optionally, check the status of the timer
-    subprocess.run(['sudo', 'systemctl', 'status', f'{full_schedule_filename}'], check=True)
+    # subprocess.run(['sudo', 'systemctl', 'status', f'{full_schedule_filename}'], check=True)
 
 def disable_task_timer(full_schedule_filename):
     # Stop the timer

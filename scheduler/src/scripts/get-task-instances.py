@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import subprocess
 
 class TaskScheduleInterval:
     def __init__(self, interval_data):
@@ -17,6 +18,12 @@ class TaskInstance:
         self.template = template
         self.parameters = parameters
         self.schedule = schedule.__dict__
+        
+
+def check_task_status(full_unit_name):
+    # check the status of the timer
+    subprocess.run(['sudo', 'systemctl', 'status', f'{full_unit_name}.timer'], check=True)
+
 
 def read_env_parameters(env_path):
     parameters = {}

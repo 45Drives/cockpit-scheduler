@@ -42,9 +42,11 @@ def get_local_snapshots(filesystem):
 				snapshot_creation = match.group(3)
 				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
 				snapshots.append(snapshot)
-
 		return snapshots
-	except subprocess.CalledProcessError:
+
+	except subprocess.CalledProcessError as e:
+		if 'dataset does not exist' in e.output.decode():
+			print(f"Dataset {filesystem} does not exist.")
 		return []
 
 def get_remote_snapshots(user, host, port, filesystem):
@@ -105,7 +107,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 		send_cmd.append(sendName)
 
-		# print(f"SEND_CMD: {send_cmd}")
+		print(f"SEND_CMD: {send_cmd}")
 
 		process_send = subprocess.Popen(
 			send_cmd,
@@ -124,7 +126,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			recv_cmd.append(recvName)
 
-			# print(f"RECV_CMD: {recv_cmd}")
+			print(f"RECV_CMD: {recv_cmd}")
 
 			process_recv = subprocess.Popen(
 				recv_cmd,
@@ -170,7 +172,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			ssh_cmd.append(recvName)
 
-			# print(f"SSH_CMD: {ssh_cmd}")
+			print(f"SSH_CMD: {ssh_cmd}")
 
 			process_ssh_recv = subprocess.Popen(
 				ssh_cmd,
@@ -182,7 +184,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			stdout, stderr = process_ssh_recv.communicate()
 
-			# print(f"SSH_STDERR: {stderr}")
+			print(f"SSH_STDERR: {stderr}")
 
 			if process_ssh_recv.returncode != 0:
 				raise Exception(f"Error: {stderr}")
@@ -230,6 +232,10 @@ def main():
 	# receivingFilesystem = (f"{destinationRoot}/{destinationPath}")
 
 	sourceSnapshots = get_local_snapshots(sourceFilesystem)
+	# if not sourceSnapshots:
+	# 	print(f"Error: No snapshots could be retrieved for {sourceFilesystem}. Exiting.")
+	# 	return
+	# else:
 	sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)
 
 	incrementalSnapName = ""
@@ -238,8 +244,13 @@ def main():
 		destinationSnapshots = get_remote_snapshots(sshUser, sshHost, sshPort, receivingFilesystem)
 	else:
 		destinationSnapshots = get_local_snapshots(receivingFilesystem)
+		
   
-	if destinationSnapshots is not None:
+	if not destinationSnapshots:  # This will be True if the list is empty or None
+    	# Find out if this is a good idea or not - setting force overwrite flag
+		forceOverwrite = True
+		print("No snapshots found on the destination. Setting forceOverwrite to True.")
+	else:
 		forceOverwrite = False
 		destinationSnapshots.sort(key=lambda x: x.creation, reverse=True)
 		# print("sourceSnapshots:")
@@ -257,7 +268,7 @@ def main():
 			for source_snap in sourceSnapshots:
 				if source_snap.guid == mostRecentDestinationSnap.guid:
 					incrementalSnapName = source_snap.name
-					# print("Setting incrementalSnap to:", incrementalSnapName)
+					print("Setting incrementalSnap to:", incrementalSnapName)
 					break  # Exit loop once a matching snapshot is found
 				else:
 					incrementalSnapName = ""  # If no match is found, set to empty string
@@ -269,8 +280,6 @@ def main():
 				common_ancestor = max(common_snapshots)
 				if common_ancestor in destinationSnapshots:
 					incrementalSnapName = common_ancestor
-	else:
-		forceOverwrite = True
   
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
 	# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")

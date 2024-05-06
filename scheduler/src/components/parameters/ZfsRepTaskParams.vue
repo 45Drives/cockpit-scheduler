@@ -54,6 +54,8 @@
                 <div v-if="useCustomSource">
                     <input v-if="!customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Dataset"/> 
                     <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Dataset"/> 
+                    <!-- <input v-if="!customSrcDatasetErrorTag" type="text" v-model="computedSourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Dataset"/> 
+                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="computedSourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Dataset"/>  -->
                 </div>
             </div>
             <div name="source-snapshot-retention">
@@ -93,6 +95,13 @@
                 </div>
             </div>
             <div name="destination-dataset">
+                <!--    <div class="flex flex-row justify-between items-center">
+                            <label class="mt-1 block text-base leading-6 text-default">Target Location</label>
+                            <div class="mt-1 flex flex-col items-center text-center">
+                                <label class="block text-xs text-default">Custom</label>
+                                <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded"/>
+                            </div>
+                        </div> -->
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                     <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
@@ -109,8 +118,18 @@
                     </select>
                 </div>
                 <div v-if="useCustomTarget">
-                    <input v-if="!customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/> 
-                    <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/> 
+                    <div class="flex flex-row justify-between items-center w-full flex-grow">
+                        <input v-if="!customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/>
+                        <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/> 
+                        <!-- <input v-if="!customDestDatasetErrorTag" type="text" v-model="computedDestDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/>
+                        <input v-if="customDestDatasetErrorTag" type="text" v-model="computedDestDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/>  -->
+                        <div v-if="useCustomTarget" class="-mt-3 m-1 flex flex-col items-center text-center flex-shrink">
+                            <label class="block text-xs text-default">Create</label>
+                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded"/>
+                        </div>
+                    </div>
+                    <!-- <input v-if="!customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/> -->
+                    <!-- <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/>  -->
                 </div>
                
             </div>
@@ -233,13 +252,13 @@ const props = defineProps<ZfsRepTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
 
-const sourcePools = ref([]);
-const sourceDatasets = ref([]);
+const sourcePools = ref<string[]>([]);
+const sourceDatasets = ref<string[]>([]);
 const loadingSourcePools = ref(false);
 const loadingSourceDatasets = ref(false);
 
-const destPools = ref([]);
-const destDatasets = ref([]);
+const destPools = ref<string[]>([]);
+const destDatasets = ref<string[]>([]);
 const loadingDestPools = ref(false);
 const loadingDestDatasets = ref(false);
 
@@ -276,6 +295,8 @@ const customSrcDatasetErrorTag = ref(false);
 const customDestPoolErrorTag = ref(false);
 const customDestDatasetErrorTag = ref(false);
 
+const makeNewDestDataset = ref(false);
+
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
 const notifications = inject<Ref<any>>('notifications')!;
@@ -294,7 +315,9 @@ async function initializeData() {
         sourcePool.value = sourceDatasetParams.find(p => p.key === 'pool')!.value;
         await getSourceDatasets();
         sourceDataset.value = sourceDatasetParams.find(p => p.key === 'dataset')!.value;
-
+        if (!doesItExist(sourcePool.value, sourcePools.value) || !doesItExist(sourceDataset.value, sourceDatasets.value)) {
+            useCustomSource.value = true;
+        }
         const destDatasetParams = params.find(p => p.key === 'destDataset')!.children;
         destHost.value = destDatasetParams.find(p => p.key === 'host')!.value;
         destPort.value = destDatasetParams.find(p => p.key === 'port')!.value;
@@ -321,7 +344,9 @@ async function initializeData() {
             await getLocalDestinationDatasets();
             destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
         }
-        
+        if (!doesItExist(destPool.value, destPools.value) || !doesItExist(destDataset.value, destDatasets.value)) {
+            useCustomTarget.value = true;
+        }
         const sendOptionsParams = params.find(p => p.key === 'sendOptions')!.children;
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
@@ -434,6 +459,37 @@ const getRemoteDestinationDatasets = async () => {
 }
 
 
+/* const computedSourceDataset = computed({
+  get: () => {
+    return useCustomSource.value ? `${sourcePool.value}/` : sourceDataset.value;
+  },
+  set: (newValue) => {
+    if (useCustomSource.value) {
+      // Strip the pool name prefix if it exists and update the actual sourceDataset ref
+      sourceDataset.value = newValue.startsWith(sourcePool.value + '/') ? newValue.slice(sourcePool.value.length + 1) : newValue;
+    } else {
+      sourceDataset.value = newValue;
+    }
+  }
+});
+
+const computedDestDataset = computed({
+  get: () => {
+    return useCustomTarget.value ? `${destPool.value}/` : destDataset.value;
+  },
+  set: (newValue) => {
+    if (useCustomTarget.value) {
+      // Strip the pool name prefix if it exists and update the actual destDataset ref
+      destDataset.value = newValue.startsWith(destPool.value + '/') ? newValue.slice(destPool.value.length + 1) : newValue;
+    } else {
+      destDataset.value = newValue;
+    }
+  }
+}); */
+
+
+
+
 function validateHost() {
     if (destHost.value !== "") {
         // Check overall length constraints
@@ -469,7 +525,7 @@ function validateCustomName() {
 }
 
 function validateSource() {
-    if (useCustomSource.value) {
+    if (useCustomSource.value) { 
         if (!isValidPoolName(sourcePool.value)) {
             errorList.value.push("Source pool is invalid.");
             customSrcPoolErrorTag.value = true;
@@ -478,15 +534,34 @@ function validateSource() {
             errorList.value.push("Source dataset is invalid.");
             customSrcDatasetErrorTag.value = true;
         }
+        if (!doesItExist(sourcePool.value, sourcePools.value)) {
+            errorList.value.push("Source pool does not exist.");
+            customSrcPoolErrorTag.value = true;
+        }
+        if (!doesItExist(sourceDataset.value, sourceDatasets.value)) {
+            errorList.value.push("Source dataset does not exist.");
+            customSrcDatasetErrorTag.value = true;
+        }
     } else {
         if (sourcePool.value === '') {
             errorList.value.push("Source pool is needed.");
             sourcePoolErrorTag.value = true;
+        } else {
+            if (!doesItExist(sourcePool.value, sourcePools.value)) {
+                errorList.value.push("Source pool does not exist.");
+                customSrcPoolErrorTag.value = true;
+            }
         }
         if (sourceDataset.value === '') {
             errorList.value.push("Source dataset is needed.");
             sourceDatasetErrorTag.value = true;
+        } else {
+            if (!doesItExist(sourceDataset.value, sourceDatasets.value)) {
+                errorList.value.push("Source dataset does not exist.");
+                customSrcDatasetErrorTag.value = true;
+            }
         }
+        
     }
 }
 
@@ -500,16 +575,37 @@ function validateDestination() {
             errorList.value.push("Destination dataset is invalid.");
             customDestDatasetErrorTag.value = true;
         }
+        if (!doesItExist(destPool.value, destPools.value)) {
+            errorList.value.push("Destination pool does not exist.");
+            customDestPoolErrorTag.value = true;
+        }
+        if (!makeNewDestDataset.value) {
+            if (!doesItExist(destDataset.value, destDatasets.value)) {
+                errorList.value.push("Destination dataset does not exist.");
+                customDestDatasetErrorTag.value = true;
+            }
+        }
+
     } else {
         if (destPool.value === '') {
             errorList.value.push("Destination pool is needed.");
             destPoolErrorTag.value = true;
+        } else {
+            if (!doesItExist(destPool.value, destPools.value)) {
+                errorList.value.push("Destination pool does not exist.");
+                customDestPoolErrorTag.value = true;
+            }
         }
         if (destDataset.value === '') {
             errorList.value.push("Destination dataset is needed.");
             destDatasetErrorTag.value = true;
+        } else {
+            if (!doesItExist(destDataset.value, destDatasets.value)) {
+                errorList.value.push("Destination dataset does not exist.");
+                customDestDatasetErrorTag.value = true;
+            }
         }
-    }
+    }  
 }
 
 
@@ -531,6 +627,15 @@ function isValidPoolName(poolName) {
     }
     return true;
 }
+
+function doesItExist(thisName: string, list: string[]) {
+    if (list.includes(thisName)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 
 function isValidDatasetName(datasetName) {
     if (datasetName === '') {
@@ -562,6 +667,7 @@ function clearErrorTags() {
     customSrcDatasetErrorTag.value = false;
     customDestPoolErrorTag.value = false;
     customDestDatasetErrorTag.value = false;
+    errorList.value = [];
 }
 
 function validateParams() {

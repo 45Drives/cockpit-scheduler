@@ -127,6 +127,7 @@ const updateShowSaveConfirmation = (newVal) => {
 }
 
 async function saveChangesBtn() {
+    errorList.value = [];
     if (validateComponentParams()) {
         showConfirmationDialog();
     }

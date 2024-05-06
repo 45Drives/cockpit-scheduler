@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -188,16 +188,28 @@ export class Scheduler implements SchedulerType {
 
         await createStandaloneTask(templateServicePath, envFilePath);
     }
-
-    async duplicateTask(taskInstance) {
-        
-    }
     
-    runTaskNow(taskInstance) {
+    async runTaskNow(taskInstance: TaskInstanceType) {
         //execute service file now
-
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+        
+        console.log(`Running ${fullTaskName}...`);
+        await runTask(fullTaskName);
+        console.log(`Task ${fullTaskName} completed.`);
         // return TaskExecutionResult;
     }
+
+    /*  async unregisterTaskInstance(taskInstance: TaskInstanceType) {
+        //delete task + associated files
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        await removeTask(fullTaskName);
+        console.log(`${fullTaskName} removed`);
+    } */
     
     // loadSchedulesFor(taskInstance) {
     //     const schedules = new TaskSchedule()

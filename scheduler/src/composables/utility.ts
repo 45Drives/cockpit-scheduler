@@ -17,6 +17,8 @@ import generate_schedule_script from '../scripts/make-schedule.py?raw';
 import enable_disable_task_script from '../scripts/enable-disable-task.py?raw';
 //@ts-ignore
 import remove_task_script from '../scripts/remove-task-files.py?raw';
+//@ts-ignore
+import run_task_script from '../scripts/run-task-now.py?raw';
 
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
@@ -57,7 +59,7 @@ export async function getPoolData(host?, port?, user?) {
             // console.log('raw script output (pools):', result);
             const parsedResult = JSON.parse(result); // Parse the JSON string into an object
             if (parsedResult.success) {
-                // console.log('Pools array:', parsedResult.data);
+                console.log('Pools array:', parsedResult.data);
                 return parsedResult.data;
             } else if (parsedResult.error) {
                 console.error('Script error:', parsedResult.error);
@@ -105,7 +107,7 @@ export async function getDatasetData(pool, host?, port?, user?) {
             // console.log('raw script output (pools):', result);
             const parsedResult = JSON.parse(result); // Parse the JSON string into an object
             if (parsedResult.success) {
-                // console.log('Pools array:', parsedResult.data);
+                console.log('Datasets array:', parsedResult.data);
                 return parsedResult.data;
             } else if (parsedResult.error) {
                 console.error('Script error:', parsedResult.error);
@@ -203,6 +205,20 @@ export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean
 
         const output = await state.promise();
         console.log('task enable output:', output);
+
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+
+export async function runTask(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', run_task_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('run task output:', output);
 
     } catch (error) {
         console.error(errorString(error));
