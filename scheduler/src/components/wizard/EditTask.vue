@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
         <template v-slot:title>
             Edit <span class="text-base">{{taskInstance.name}}</span> <br/><span class="text-base text-muted italic">{{taskInstance.template.name}}</span>
         </template>
@@ -35,11 +35,10 @@
     </div>
 </template>
 <script setup lang="ts">
-import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
+import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
+import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
 
 interface EditTaskProps {
     idKey: string;
@@ -52,8 +51,9 @@ const notifications = inject<Ref<any>>('notifications')!;
 const showEditTaskWizard = inject<Ref<boolean>>('show-edit-task-wizard')!;
 const saving = ref(false);
 const myScheduler = inject<Scheduler>('scheduler')!;
-
+const loading = inject<Ref<boolean>>('loading')!;
 const taskInstance = ref(props.task);
+const initialTaskData = ref(props.task);
 
 const errorList = ref<string[]>([]);
 const parameterInputComponent = ref();
@@ -94,7 +94,9 @@ const confirmSaveChanges : ConfirmationCallback = async () => {
     await saveEditedTask();
     saving.value = false;
     updateShowSaveConfirmation(false);
-    myScheduler.loadTaskInstances();
+    loading.value = true;
+    await myScheduler.loadTaskInstances();
+    loading.value = false;
     showEditTaskWizard.value = false;
 }
 
@@ -116,6 +118,13 @@ async function saveEditedTask() {
         const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
         console.log('edited task: ', task);
 
+        // if (initialTaskData.value !== task) {
+        //     await myScheduler.updateTaskInstance(task);
+
+        //     notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);
+        // } else {
+        //     notifications.value.constructNotification('No Changes Detected', `Task has not been edited.`, 'success', 8000);
+        // }
         await myScheduler.updateTaskInstance(task);
 
         notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);

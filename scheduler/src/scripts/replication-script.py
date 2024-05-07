@@ -24,7 +24,7 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
 	command.append(new_snap)
 	
 	subprocess.run(command)
-	
+	print(f"new snapshot created: {new_snap}")
 	return new_snap
 
 def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPort=""):
@@ -39,7 +39,7 @@ def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPor
 		snapshots.sort(key=lambda x: x.creation)
 
 		if len(snapshots) <= int(max_retain_count):
-			print("No snapshots need pruning.")
+			print(f"snapshot retention policy delayed for {filesystem} - currently {len(snapshots)} snapshots out of {max_retain_count} allowed")
 			return
 		else:
 			snapshots_to_delete = snapshots[:-int(max_retain_count)]  # Older snapshots beyond the retain limit
@@ -47,12 +47,13 @@ def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPor
 				delete_command = ['zfs', 'destroy', snapshot.name]
 				try:
 					subprocess.run(delete_command, check=True)
-					print(f"Deleted snapshot: {snapshot.name}")
+					# print(f"Deleted snapshot: {snapshot.name}")
 				except subprocess.CalledProcessError as e:
 					print(f"Failed to delete snapshot {snapshot.name}: {e}")
-					sys.exit(1)
+					sys.exit(1)	
+			print(f"snapshot retention policy executed for {filesystem} - keeping {max_retain_count} snapshots (deleted {len(snapshots_to_delete)})")
 	else:
-		print("No snapshots to prune.")
+		# print("No snapshots to prune.")
 		return
 
 def get_local_snapshots(filesystem):
@@ -82,7 +83,7 @@ def get_remote_snapshots(user, host, port, filesystem):
 
 	ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 
-	print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
+	# print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
  
 	try:
 		output = subprocess.check_output(ssh_cmd)
@@ -129,7 +130,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 		send_cmd.append(sendName)
 
-		print(f"SEND_CMD: {send_cmd}")
+		# print(f"SEND_CMD: {send_cmd}")
+		print(f"sending {sendName} to {recvName}")
 
 		process_send = subprocess.Popen(
 			send_cmd,
@@ -148,7 +150,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			recv_cmd.append(recvName)
 
-			print(f"RECV_CMD: {recv_cmd}")
+			# print(f"RECV_CMD: {recv_cmd}")
+			print(f"receiving {sendName} in {recvName}")
 
 			process_recv = subprocess.Popen(
 				recv_cmd,
@@ -161,6 +164,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 			stdout, stderr = process_recv.communicate()
 
 			if process_recv.returncode != 0:
+				print(f"recv error: {stderr}")
 				sys.exit(1)
 			else:
 				print(stdout)
@@ -194,7 +198,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			ssh_cmd.append(recvName)
 
-			print(f"SSH_CMD: {ssh_cmd}")
+			# print(f"SSH_CMD: {ssh_cmd}")	
+			print(f"receiving {sendName} in {recvName} via {recvHostUser}@{recvHost}:{recvPort}")
 
 			process_ssh_recv = subprocess.Popen(
 				ssh_cmd,
@@ -206,15 +211,15 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			stdout, stderr = process_ssh_recv.communicate()
 
-			print(f"SSH_STDERR: {stderr}")
-
 			if process_ssh_recv.returncode != 0:
+				print(f"SSH recv error: {stderr}")
 				sys.exit(1)
 			else:
 				print(stdout)
 
 
 	except Exception as e:
+		print(f"send error: {e}")
 		sys.exit(1)
 
 
@@ -279,7 +284,7 @@ def main():
 
 	if not destinationSnapshots:
 		forceOverwrite = True
-		print("No snapshots found on the destination. Setting forceOverwrite to True.")
+		print("No snapshots found on the destination. Forcefully overwriting dataset.")
 	else:
 		# Identify common snapshots by GUID
 		source_guids = {snap.guid: snap.name for snap in sourceSnapshots}  # Map GUIDs to source snapshot names
@@ -287,6 +292,7 @@ def main():
 
 		if not common_snapshots:
 			# raise Exception("No common snapshots found between source and destination. Operation aborted.")
+			print(f"Snapshots on source + destination but none in common. Aborting send.")
 			sys.exit(1)
 		else:
 			# Find the most recent common snapshot from destinationSnapshots
@@ -294,7 +300,7 @@ def main():
 			mostRecentCommonSnap = common_snapshots[0]
 			# Use the GUID to get the correct source snapshot name
 			incrementalSnapName = source_guids[mostRecentCommonSnap.guid]  # Fetch the source snapshot name using the GUID
-			print("Setting incrementalSnap to:", incrementalSnapName)
+			# print("Setting incrementalSnap to:", incrementalSnapName)
 
   
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)

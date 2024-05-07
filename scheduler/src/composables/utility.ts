@@ -198,21 +198,6 @@ export async function removeTask(taskName) {
     }
 }
 
-
-export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task_script,], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('task enable output:', output);
-
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-
 export async function runTask(taskName) {
     try {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', run_task_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
@@ -226,3 +211,29 @@ export async function runTask(taskName) {
     }
 }
 
+
+
+// // // // // // // // // // // //
+export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task_script,], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('task enable output:', output);
+
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+// // // // // // // // // // // //
+
+
+
+export async function getTaskStatus(taskName) {
+
+}
+
+export async function getTaskExecutionResult(taskName) {
+    
+}

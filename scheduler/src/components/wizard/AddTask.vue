@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-12'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
         <template v-slot:title>
             Add New Task
         </template>
@@ -77,7 +77,7 @@ const myScheduler = inject<Scheduler>('scheduler')!;
 
 const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
 const adding = ref(false);
-
+const loading = inject<Ref<boolean>>('loading')!;
 const errorList = ref<string[]>([]);
 const newTaskName = ref('');
 const newTaskNameErrorTag = ref(false);
@@ -203,7 +203,9 @@ async function saveTask() {
 
             await myScheduler.registerTaskInstance(task);
             notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+            loading.value = true;
             await myScheduler.loadTaskInstances();
+            loading.value = false;
         } else {
             const schedule = new TaskSchedule(true, []);
             const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);

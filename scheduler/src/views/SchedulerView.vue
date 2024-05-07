@@ -80,61 +80,74 @@
                                                     <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)" class="btn btn-secondary">View Details</button>
                                                     <button v-if="showDetails[index]" @click="closeDetailsBtn(index)" class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close Details</button>
                                                 </td>
-                                                <td v-if="showDetails[index]" class="col-span-8 h-full px-2 mx-2 py-1">
-                                                    <!-- Details for ZFS Replication Task -->
-                                                    <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-5 items-left text-left">
-                                                        <div class="col-span-1">
-                                                            <p class="my-2">
-                                                                Task Type: <b>{{ taskInstance.template.name }}</b>
-                                                            </p>
-                                                            <p class="my-2">
-                                                                Send Type:
-                                                                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
-                                                                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b> 
-                                                            </p>
-                                                        </div>
-                                                        <div class="col-span-1">
-                                                            <p class="my-2">
-                                                                Source: <b>
-                                                                    <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                                    {{ findValue(taskInstance.parameters, 'sourceDataset', 'dataset') }}
-                                                                </b>
-                                                            </p>
-                                                            <p class="my-2">
-                                                                Destination: <b>
-                                                                    <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
-                                                                    {{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}
-                                                                </b>
-                                                            </p> 
-                                                            <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
-                                                                Remote SSH Host: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'host') }}</b>
-                                                                <br/>
-                                                                Remote SSH Port: : <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
-                                                            </p>
-                                                        </div>
-                                                        <div class="col-span-1">
-                                                             <p class="my-2">
-                                                                Recursive: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag')) }}</b>
-                                                            </p>
-                                                            <p class="my-2">
-                                                                Raw: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'raw_flag')) }}</b>
-                                                            </p>
-                                                            <p class="my-2">
-                                                                Compressed: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag')) }}</b>
-                                                            </p>
-                                                        </div>
-                                                       
-                                                        <div class="col-span-2">
-                                                            <p class="my-2">Current Schedules:</p>
-                                                            <div v-if="taskInstance.schedule.intervals.length > 0" v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 border border-default border-collapse p-1">
-                                                                <p>{{ myScheduler.parseIntervalIntoString(interval) }}</p>
+                                                <td v-if="showDetails[index]" class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
+                                                    <div>
+                                                        <!-- Details for ZFS Replication Task -->
+                                                        <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-4 items-left text-left">
+                                                            <div class="col-span-1">
+                                                                <p class="my-2">
+                                                                    Task Type: <b>{{ taskInstance.template.name }}</b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                    Send Type:
+                                                                    <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
+                                                                    <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b> 
+                                                                </p>
+                                                                <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
+                                                                    Remote SSH Host: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'host') }}</b>
+                                                                    <br/>
+                                                                    Remote SSH Port: : <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
+                                                                </p>
                                                             </div>
-                                                            <div v-else>
-                                                                <p>No Intervals Currently Scheduled</p>
+                                                            <div class="col-span-1">
+                                                                <p class="my-2">
+                                                                    Compression: <b>{{ findValue(taskInstance.parameters, 'sendOptions', 'raw_flag') ? 'Raw' : findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag') ? 'Compressed' : 'None' }}</b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                    Recursive Send: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag')) }}</b>
+                                                                </p>
                                                             </div>
-                                                        </div>                                        
+                                                            <div class="col-span-2 row-span-2">
+                                                                <p class="my-2 font-bold">Current Schedules:</p>
+                                                                <div v-if="taskInstance.schedule.intervals.length > 0" v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 divide divide-y divide-default p-1">
+                                                                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                                                                </div>
+                                                                <div v-else>
+                                                                    <p>No Intervals Currently Scheduled</p>
+                                                                </div>
+                                                            </div>   
+                                                            <div class="col-span-1">
+                                                                <p class="my-2">
+                                                                    Source: <b>
+                                                                        <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                        {{ findValue(taskInstance.parameters, 'sourceDataset', 'dataset') }}
+                                                                    </b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                    Source Snapshots to Keep: <b>
+                                                                        {{ findValue(taskInstance.parameters, 'snapRetention', 'source') }}
+                                                                    </b>
+                                                                </p>
+                                                            </div>
+                                                            <div class="col-span-1">
+                                                                <p class="my-2">
+                                                                    Destination: <b>
+                                                                        <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
+                                                                        {{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}
+                                                                    </b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                    Destination Snapshots to Keep: <b>
+                                                                        {{ findValue(taskInstance.parameters, 'snapRetention', 'destination') }}
+                                                                    </b>
+                                                                </p>
+                                                            </div>
+                                                            
+                                                                                                 
+                                                        </div>
                                                     </div>
-                                                    <div class="button-group-row justify-center col-span-5 mt-2 ">
+                                                    
+                                                    <div class="button-group-row justify-center col-span-5 mt-2">
 
                                                         <button @click="runTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
                                                             Run Now
@@ -147,6 +160,10 @@
                                                         <button @click="editTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
+                                                        </button>
+                                                        <button @click="" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                            View Logs
+                                                            <TableCellsIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
                                                         <button @click="removeTaskBtn(taskInstance, index)" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
                                                             Remove
@@ -202,7 +219,7 @@
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide} from 'vue';
-import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, DocumentDuplicateIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/helpers'
 import LoadingSpinner from "../components/common/LoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
