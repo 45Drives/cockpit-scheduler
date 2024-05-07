@@ -95,10 +95,16 @@
                                                         </div>
                                                         <div class="col-span-1">
                                                             <p class="my-2">
-                                                                Source: <b>{{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/{{ findValue(taskInstance.parameters, 'sourceDataset', 'dataset') }}</b>
+                                                                Source: <b>
+                                                                    <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                    {{ findValue(taskInstance.parameters, 'sourceDataset', 'dataset') }}
+                                                                </b>
                                                             </p>
                                                             <p class="my-2">
-                                                                Destination: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/{{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}</b>
+                                                                Destination: <b>
+                                                                    <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
+                                                                    {{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}
+                                                                </b>
                                                             </p> 
                                                             <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
                                                                 Remote SSH Host: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'host') }}</b>

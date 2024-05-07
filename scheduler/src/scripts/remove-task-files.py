@@ -42,6 +42,14 @@ def stop_systemd_timer(unit_name):
     # Reload systemd to recognize new or changed units
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
 
+def remove_systemd_service(unit_name):
+    # Stop the service
+    subprocess.run(['sudo', 'systemctl', 'stop', f'{unit_name}.service'], check=True)
+    # Disable the service
+    subprocess.run(['sudo', 'systemctl', 'disable', f'{unit_name}.service'], check=True)
+    # Reload systemd to recognize new or changed units
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+
 def main():
     parser = argparse.ArgumentParser(description='Remove task files from system')
     parser.add_argument('-u', '--unit', type=str, help='name of task to remove')
@@ -50,7 +58,7 @@ def main():
     
     if check_for_timer_file(unit_name):
         stop_systemd_timer(unit_name)
-   
+    remove_systemd_service(unit_name)
     delete_task_files(unit_name)
     
 if __name__ == "__main__":

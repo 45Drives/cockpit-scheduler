@@ -225,6 +225,7 @@ const newInterval = reactive<TaskScheduleIntervalType>({
 });
 
 function clearFields() {
+    selectedPreset.value = 'none';
     Object.assign(newInterval, {
         minute: { value: '' },
         hour: { value: '' },

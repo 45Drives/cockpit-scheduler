@@ -1,8 +1,6 @@
 import subprocess
 import argparse
-import re
-import json
-import os
+import sys
 import datetime
 
 class Snapshot:
@@ -26,65 +24,89 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
 	command.append(new_snap)
 	
 	subprocess.run(command)
- 
+	
 	return new_snap
 
+def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPort=""):
+	snapshots = []
  
-def get_local_snapshots(filesystem):
-	try:
-		output = subprocess.check_output(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
-		snapshots = []
-		for line in output.splitlines():
-			match = re.match(r'^([\w\/@-]+@(?:[\w-]*-)?(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}))\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
-			if match:
-				snapshot_name = match.group(1)
-				snapshot_guid = match.group(2)
-				snapshot_creation = match.group(3)
-				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
-				snapshots.append(snapshot)
-		return snapshots
+	if sshHost:
+		snapshots = get_remote_snapshots(sshUser, sshHost, sshPort, filesystem)
+	else:
+		snapshots = get_local_snapshots(filesystem)
 
-	except subprocess.CalledProcessError as e:
-		if 'dataset does not exist' in e.output.decode():
-			print(f"Dataset {filesystem} does not exist.")
-		return []
+	if len(snapshots) is not 0:
+		snapshots.sort(key=lambda x: x.creation)
+
+		if len(snapshots) <= int(max_retain_count):
+			print("No snapshots need pruning.")
+			return
+		else:
+			snapshots_to_delete = snapshots[:-int(max_retain_count)]  # Older snapshots beyond the retain limit
+			for snapshot in snapshots_to_delete:
+				delete_command = ['zfs', 'destroy', snapshot.name]
+				try:
+					subprocess.run(delete_command, check=True)
+					print(f"Deleted snapshot: {snapshot.name}")
+				except subprocess.CalledProcessError as e:
+					print(f"Failed to delete snapshot {snapshot.name}: {e}")
+					sys.exit(1)
+	else:
+		print("No snapshots to prune.")
+		return
+
+def get_local_snapshots(filesystem):
+    command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+    try:
+        output = subprocess.check_output(command)
+        snapshots = []
+        for line in output.decode().splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                snapshot_name = parts[0]
+                snapshot_guid = parts[1]
+                snapshot_creation = parts[2]
+                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
+                snapshots.append(snapshot)
+        return snapshots
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to fetch local snapshots: {e}")
+        return []
 
 def get_remote_snapshots(user, host, port, filesystem):
+    # ssh_cmd = ['ssh', f"{user}@{host}", '-p', str(port), 'zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+	ssh_cmd = ['ssh']
+	if port != '22':
+		ssh_cmd.extend(['-p', port])
+	ssh_cmd.append(user + '@' + host)
+
+	ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
+
+	print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
+ 
 	try:
-		ssh_cmd = ['ssh']
-		if port != '22':
-			ssh_cmd.extend(['-p', port])
-		ssh_cmd.append(user + '@' + host)
-		
-		ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
-		
-		# print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
-		
 		output = subprocess.check_output(ssh_cmd)
-		
 		snapshots = []
-		for line in output.splitlines():
-			match = re.match(r'^([\w\/@-]+@(?:[\w-]*-)?(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}))\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}\s+\d{4})', line.decode('utf-8'))
-			if match:
-				snapshot_name = match.group(1)
-				snapshot_guid = match.group(2)
-				snapshot_creation = match.group(3)
+		for line in output.decode().splitlines():
+			parts = line.split()
+			if len(parts) >= 3:
+				snapshot_name = parts[0]
+				snapshot_guid = parts[1]
+				snapshot_creation = parts[2]
 				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
 				snapshots.append(snapshot)
-
 		return snapshots
-
 	except subprocess.CalledProcessError as e:
-		print(f"Error executing SSH command: {e}")  # Error handling
-		return []
+		print(f"Failed to fetch remote snapshots: {e}")
+		sys.exit(1)
 	except Exception as e:
-		print(f"An unexpected error occurred: {e}")  # Error handling
-		return []
+		print(f"An unexpected error occurred: {e}")
+		sys.exit(1)
 
 			
 def get_most_recent_snapshot(snapshots):
 	if snapshots:
-		# snapshots.sort(key=lambda x: x.creation, reverse=True)
+		snapshots.sort(key=lambda x: x.creation, reverse=True)
 		return snapshots[0]
 	else:
 		return None
@@ -139,7 +161,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 			stdout, stderr = process_recv.communicate()
 
 			if process_recv.returncode != 0:
-				raise Exception(f"Error: {stderr}")
+				sys.exit(1)
 			else:
 				print(stdout)
 
@@ -187,12 +209,13 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 			print(f"SSH_STDERR: {stderr}")
 
 			if process_ssh_recv.returncode != 0:
-				raise Exception(f"Error: {stderr}")
+				sys.exit(1)
 			else:
 				print(stdout)
 
+
 	except Exception as e:
-		print(f"An error occurred: {e}")
+		sys.exit(1)
 
 
 def main():
@@ -210,6 +233,8 @@ def main():
 	parser.add_argument('--port', type=str, default='22', help='port to connect via ssh (22)')
 	parser.add_argument('--mbuffsize', type=str, default='1', help='size value of mbuffer')
 	parser.add_argument('--mbuffunit', type=str, default='G', help='unit to use for mbuffer size')
+	parser.add_argument('--snapsToKeepSrc', type=str, default='0', help='snaps to keep on source')
+	parser.add_argument('--snapsToKeepDest', type=str, default='0', help='snaps to keep on destination')
 
 	args = parser.parse_args()
  
@@ -225,6 +250,8 @@ def main():
 	sshPort = args.port
 	mBufferSize = args.mbuffsize
 	mBufferUnit = args.mbuffunit
+	snapsToKeepSrc = args.snapsToKeepSrc
+	snapsToKeepDest = args.snapsToKeepDest
 
 	forceOverwrite = False
 	
@@ -232,10 +259,7 @@ def main():
 	# receivingFilesystem = (f"{destinationRoot}/{destinationPath}")
 
 	sourceSnapshots = get_local_snapshots(sourceFilesystem)
-	# if not sourceSnapshots:
-	# 	print(f"Error: No snapshots could be retrieved for {sourceFilesystem}. Exiting.")
-	# 	return
-	# else:
+
 	sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)
 
 	incrementalSnapName = ""
@@ -244,46 +268,39 @@ def main():
 		destinationSnapshots = get_remote_snapshots(sshUser, sshHost, sshPort, receivingFilesystem)
 	else:
 		destinationSnapshots = get_local_snapshots(receivingFilesystem)
-		
-  
-	if not destinationSnapshots:  # This will be True if the list is empty or None
-    	# Find out if this is a good idea or not - setting force overwrite flag
+
+	# print("Fetched source snapshots:", len(sourceSnapshots))
+	# for snap in sourceSnapshots:
+	# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+
+	# print("Fetched destination snapshots:", len(destinationSnapshots))
+	# for snap in destinationSnapshots:
+	# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+
+	if not destinationSnapshots:
 		forceOverwrite = True
 		print("No snapshots found on the destination. Setting forceOverwrite to True.")
 	else:
-		forceOverwrite = False
-		destinationSnapshots.sort(key=lambda x: x.creation, reverse=True)
-		# print("sourceSnapshots:")
-		# for snap in sourceSnapshots:
-		# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+		# Identify common snapshots by GUID
+		source_guids = {snap.guid: snap.name for snap in sourceSnapshots}  # Map GUIDs to source snapshot names
+		common_snapshots = [snap for snap in destinationSnapshots if snap.guid in source_guids]
 
-		# print("destinationSnapshots:")
-		# for snap in destinationSnapshots:
-		# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+		if not common_snapshots:
+			# raise Exception("No common snapshots found between source and destination. Operation aborted.")
+			sys.exit(1)
+		else:
+			# Find the most recent common snapshot from destinationSnapshots
+			common_snapshots.sort(key=lambda x: x.creation, reverse=True)  # Ensure they are sorted by creation time
+			mostRecentCommonSnap = common_snapshots[0]
+			# Use the GUID to get the correct source snapshot name
+			incrementalSnapName = source_guids[mostRecentCommonSnap.guid]  # Fetch the source snapshot name using the GUID
+			print("Setting incrementalSnap to:", incrementalSnapName)
 
-		mostRecentDestinationSnap = get_most_recent_snapshot(destinationSnapshots)
-		if mostRecentDestinationSnap is not None:
-			# print(f"\n********mostRecentDestSnap********\nName: {mostRecentDestinationSnap.name}\nGUID: {mostRecentDestinationSnap.guid}\nCreation: {mostRecentDestinationSnap.creation}\n****************END***************\n")
-
-			for source_snap in sourceSnapshots:
-				if source_snap.guid == mostRecentDestinationSnap.guid:
-					incrementalSnapName = source_snap.name
-					print("Setting incrementalSnap to:", incrementalSnapName)
-					break  # Exit loop once a matching snapshot is found
-				else:
-					incrementalSnapName = ""  # If no match is found, set to empty string
-					# print("Not a match.")
-		
-			common_snapshots = set(sourceSnapshots) & set(destinationSnapshots)
-
-			if common_snapshots:
-				common_ancestor = max(common_snapshots)
-				if common_ancestor in destinationSnapshots:
-					incrementalSnapName = common_ancestor
   
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
 	# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
 	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit, forceOverwrite)
-
+	prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
+	prune_snapshots(receivingFilesystem, snapsToKeepDest, sshUser, sshHost, sshPort)
 if __name__ == "__main__":
 	main()

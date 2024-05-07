@@ -30,7 +30,12 @@ export class Scheduler implements SchedulerType {
                 const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
                 const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
                 this.taskInstances.push(newTaskInstance);
-            }
+            } 
+         /*    else if (task.template == 'ZfsSnapshotTask') {
+
+            } else {
+
+            } */
         });
 
         console.log('this.taskInstances:', this.taskInstances);

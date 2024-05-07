@@ -37,7 +37,7 @@
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from '../parameters/ParameterInput.vue';
+import ParameterInput from './ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
 

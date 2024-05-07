@@ -285,8 +285,8 @@ const mbufferUnit = ref('G');
 const useCustomName = ref(false);
 const customName = ref('');
 const customNameErrorTag = ref(false);
-const snapsToKeepSrc = ref(0);
-const snapsToKeepDest = ref(0);
+const snapsToKeepSrc = ref(5);
+const snapsToKeepDest = ref(5);
 
 const useCustomTarget = ref(false);
 const useCustomSource = ref(false);
@@ -457,37 +457,6 @@ const getRemoteDestinationDatasets = async () => {
     loadingDestDatasets.value = false;
     console.log('Remote destDataset:', destDatasets.value);
 }
-
-
-/* const computedSourceDataset = computed({
-  get: () => {
-    return useCustomSource.value ? `${sourcePool.value}/` : sourceDataset.value;
-  },
-  set: (newValue) => {
-    if (useCustomSource.value) {
-      // Strip the pool name prefix if it exists and update the actual sourceDataset ref
-      sourceDataset.value = newValue.startsWith(sourcePool.value + '/') ? newValue.slice(sourcePool.value.length + 1) : newValue;
-    } else {
-      sourceDataset.value = newValue;
-    }
-  }
-});
-
-const computedDestDataset = computed({
-  get: () => {
-    return useCustomTarget.value ? `${destPool.value}/` : destDataset.value;
-  },
-  set: (newValue) => {
-    if (useCustomTarget.value) {
-      // Strip the pool name prefix if it exists and update the actual destDataset ref
-      destDataset.value = newValue.startsWith(destPool.value + '/') ? newValue.slice(destPool.value.length + 1) : newValue;
-    } else {
-      destDataset.value = newValue;
-    }
-  }
-}); */
-
-
 
 
 function validateHost() {
