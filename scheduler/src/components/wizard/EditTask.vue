@@ -109,10 +109,11 @@ async function saveEditedTask() {
     if (taskInstance.value!.template.name == 'ZFS Replication Task') {
         const template = new ZFSReplicationTaskTemplate();
         
-        let sanitizedName = taskInstance.value.name.replace(/[^a-zA-Z0-9-]/g, '');
-        if (sanitizedName.startsWith('-')) {
+        let sanitizedName = taskInstance.value.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+        if (sanitizedName.startsWith('_')) {
             sanitizedName = 'task' + sanitizedName;
         }
+        console.log('sanitizedName:', sanitizedName);
 
         const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
         const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);

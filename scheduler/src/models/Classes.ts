@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTheseTaskExecutionResults, getAllTaskExecutionResults } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -308,60 +308,6 @@ export class Scheduler implements SchedulerType {
         return elements.join(' ');
     }
 
-    /* function parseIntervalIntoString(interval) {
-    const elements: string[] = [];
-
-    function getMonthName(number) {
-        const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                        'July', 'August', 'September', 'October', 'November', 'December'];
-        return months[number - 1] || 'undefined';
-    }
-
-    function formatUnit(value, type) {
-        if (value === '*') {
-            return type === 'day' ? 'every day' : `every ${type}`;
-        } else if (value.includes(',')) {
-            const items = value.split(',').map(item => item.trim());
-            return (type === 'month' ? `in ${items.map(getMonthName).join(', ')}` :
-                   (type === 'day' && items.length === 1) ? `on ${items.join(', ')}` :
-                   `at ${items.join(', ')}`);
-        } else if (value.includes('-')) {
-            const [start, end] = value.split('-').map(item => item.trim());
-            return (type === 'month' ? `from ${getMonthName(start)} to ${getMonthName(end)}` :
-                    `from ${start} to ${end} ${type}s`);
-        } else if (value.includes('..')) {
-            const [start, end] = value.split('..').map(item => item.trim());
-            return (type === 'month' ? `from ${getMonthName(start)} to ${getMonthName(end)}` :
-                    `from ${start} to ${end} ${type}s`);
-        } else if (value.includes('/')) {
-            const [base, step] = value.split('/');
-            return `every ${step} ${type}s starting at ${base}`;
-        }
-        return (type === 'year' ? `in the year ${value}` :
-                (type === 'month' ? `in ${getMonthName(value)}` : `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`));
-    }
-
-    const minute = formatUnit(interval.minute?.value.toString() || '*', 'minute');
-    const hour = formatUnit(interval.hour?.value.toString() || '*', 'hour');
-    const day = formatUnit(interval.day?.value.toString() || '*', 'day');
-    const month = formatUnit(interval.month?.value.toString() || '*', 'month');
-    const year = formatUnit(interval.year?.value.toString() || '*', 'year');
-
-    // Conditional concatenation with punctuation for clarity.
-    if (minute.startsWith('at') && hour.startsWith('at') && !day.startsWith('every')) {
-        elements.push(`At ${minute.split(' ')[1]} minutes past hour ${hour.split(' ')[1]}, on ${day}, in ${month}, in the year ${year}.`);
-    } else {
-        elements.push(`${minute}, ${hour}, ${day}, ${month}, ${year}.`);
-    }
-
-    if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
-        elements.push(`On ${interval.dayOfWeek.join(', ')}.`);
-    }
-
-    return elements.join(' ');
-}
- */
-
     formatTemplateName(templateName) {
         // Split the string into words using space as the delimiter
         let words = templateName.split(' ');
@@ -372,6 +318,80 @@ export class Scheduler implements SchedulerType {
         return formattedTemplateName;
     }
     
+}
+
+export class TaskExecutionLog {
+    entries: TaskExecutionResult[];
+
+    constructor(entries: TaskExecutionResult[]) {
+        this.entries = entries;
+    }
+
+    async loadEntries() {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        
+        const taskLogData = await getAllTaskExecutionResults();
+
+        console.log(taskLogData);
+
+        
+    }
+
+    async getEntriesFor(taskInstance: TaskInstance) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const taskName = taskInstance.name;
+
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
+        
+        
+        // const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
+
+        // console.log(latestEntry);
+        // const logEntry = new TaskExecutionResult(latestEntry.exitCode, latestEntry.output, latestEntry.startDate, latestEntry.finishDate)
+
+
+        // return logEntry || 'None';
+    }
+
+    async getLatestEntryFor(taskInstance) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const taskName = taskInstance.name;
+
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
+        const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
+
+        console.log(latestEntry);
+        const logEntry = new TaskExecutionResult(latestEntry.exitCode, latestEntry.output, latestEntry.startDate, latestEntry.finishDate)
+
+        return logEntry || 'None';
+    }
+
+    formatTemplateName(templateName) {
+        // Split the string into words using space as the delimiter
+        let words = templateName.split(' ');
+        // Capitalize the first letter of each word and lowercase the rest
+        let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+        // Join the words without spaces
+        let formattedTemplateName = formattedWords.join('');
+        return formattedTemplateName;
+    }
+
+}
+
+export class TaskExecutionResult {
+    exitCode: number;
+    output: string;
+    startDate: Date;
+    finishDate: Date;
+
+    constructor(exitCode: number, output: string, startDate: Date, finishDate: Date) {
+        this.exitCode = exitCode;
+        this.output = output;
+        this.startDate = startDate;
+        this.finishDate = finishDate;
+    }
 }
 
 export class TaskTemplate implements TaskTemplateType {
@@ -639,39 +659,4 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
 //     }
 // }
 
-export class TaskExecutionLog {
-    entries: TaskExecutionResult[];
-
-    constructor(entries: TaskExecutionResult[]) {
-        this.entries = entries;
-    }
-
-    loadEntries() {
-
-    }
-
-    getEntriesFor(taskInstance: TaskInstance) {
-        // return TaskExecutionResult[];
-    }
-
-    getLatestEntryFor(taskInstance: TaskInstance) {
-        
-        return TaskExecutionResult || 'None';
-    }
-
-}
-
-export class TaskExecutionResult {
-    exitCode: number;
-    output: string;
-    startDate: Date;
-    finishDate: Date;
-
-    constructor(exitCode: number, output: string, startDate: Date, finishDate: Date) {
-        this.exitCode = exitCode;
-        this.output = output;
-        this.startDate = startDate;
-        this.finishDate = finishDate;
-    }
-}
 

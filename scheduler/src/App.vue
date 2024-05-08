@@ -55,11 +55,13 @@ onMounted(async () => {
 	loading.value = true;
 	initializeTaskTemplates();
 	await myScheduler.loadTaskInstances();
+	await myTaskLog.loadEntries();
 	loading.value = false;
 });
 
 provide('loading', loading);
 provide('scheduler', myScheduler);
+provide('log', myTaskLog);
 provide('task-instances', taskInstances);
 provide('task-templates', taskTemplates);
 provide('notifications', notifications);

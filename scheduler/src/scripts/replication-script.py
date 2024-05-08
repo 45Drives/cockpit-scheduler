@@ -168,6 +168,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 				sys.exit(1)
 			else:
 				print(stdout)
+    
+			print(f"received local send")
 
 		# If sending remotely via SSH
 		if recvHost != "" and recvHost is not None:
@@ -216,6 +218,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 				sys.exit(1)
 			else:
 				print(stdout)
+    
+			print(f"received remote send")
 
 
 	except Exception as e:

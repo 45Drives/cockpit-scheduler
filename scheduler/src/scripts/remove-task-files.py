@@ -28,10 +28,14 @@ def check_for_timer_file(unit_name):
     
     # Check for timer file presence
     for file in os.listdir(system_dir):
+        print(f"Checking file: {file}")  # Debugging output
         if file.startswith(prefix) and file.endswith(suffix):
             base_name = file[:file.rfind('.')]
+            print(f"Found timer file with base_name: {base_name}")  # Debugging output
             if base_name == unit_name:
+                print(f"Timer file for unit {unit_name} exists.")  # Debugging output
                 return True
+
     return False
 
 def stop_systemd_timer(unit_name):
@@ -40,6 +44,7 @@ def stop_systemd_timer(unit_name):
     # Disable the timer
     subprocess.run(['sudo', 'systemctl', 'disable', f'{unit_name}.timer'], check=True)
     # Reload systemd to recognize new or changed units
+    subprocess.run(['sudo', 'systemctl', 'reset-failed'], check=True)
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
 
 def remove_systemd_service(unit_name):

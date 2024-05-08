@@ -23,6 +23,9 @@
                                 <div class="mt-5 py-0.5 px-3">
                                     <button @click="refreshBtn()" class="btn btn-secondary"><ArrowPathIcon class="w-5 h-5 m-0.5"/></button>
                                 </div>
+                                <!-- <div class="mt-5 py-0.5 px-3">
+                                    <button @click="viewAllLogsBtn()" class="btn btn-secondary">Task Log</button>
+                                </div> -->
                                 <div class="mt-5 py-0.5 px-3">
                                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                                 </div>
@@ -465,6 +468,11 @@ async function viewLogsBtn(task) {
     await loadLogViewComponent();
     showLogView.value = true;
 }
+// async function viewAllLogsBtn() {
+//     selectedTask.value = undefined;
+//     await loadLogViewComponent();
+//     showLogView.value = true;
+// }
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../views/LogView.vue');

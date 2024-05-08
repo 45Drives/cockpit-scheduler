@@ -19,6 +19,12 @@ import enable_disable_task_script from '../scripts/enable-disable-task.py?raw';
 import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
+//@ts-ignore
+import get_latest_task_execution_script from '../scripts/get-this-latest-task-log-result.py?raw';
+//@ts-ignore
+import get_these_task_execution_script from '../scripts/get-these-task-log-results.py?raw';
+//@ts-ignore
+import get_every_task_execution_script from '../scripts/get-all-task-log-results.py?raw';
 
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
@@ -234,6 +240,44 @@ export async function getTaskStatus(taskName) {
 
 }
 
-export async function getTaskExecutionResult(taskName) {
-    
+export async function getLatestTaskExecutionResult(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_latest_task_execution_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        // console.log('get execution result output:', output);
+        const result = JSON.parse(output.stdout);
+        return result;
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+export async function getTheseTaskExecutionResults(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_these_task_execution_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('get these execution results output:', output);
+        const result = JSON.parse(output.stdout);
+        return result;
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+export async function getAllTaskExecutionResults() {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_every_task_execution_script], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('all execution results output:', output);
+        const result = JSON.parse(output.stdout);
+        return result;
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
 }

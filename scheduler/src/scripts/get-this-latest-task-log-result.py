@@ -1,7 +1,7 @@
-import argparse
 import subprocess
-import json
+import argparse
 from datetime import datetime
+import json
 
 class TaskExecutionResult:
     def __init__(self, exit_code, output, start_date, finish_date):
@@ -17,16 +17,25 @@ def run_systemctl_command(service_name):
     if result.returncode != 0:
         raise Exception("Failed to execute systemctl command")
 
-    # Parse the output
-    lines = result.stdout.decode().strip().split('\n')
-    exit_code = lines[2].split('=')[1]
-    start_time = lines[0].split('=')[1]
-    finish_time = lines[1].split('=')[1]
+    # Parse the output using a dictionary
+    properties = {}
+    for line in result.stdout.decode().strip().split('\n'):
+        key, value = line.split('=', 1)
+        properties[key] = value
+
+    exit_code = properties.get('ExecMainStatus', None)
+    start_time = properties.get('ExecMainStartTimestamp', '')
+    finish_time = properties.get('ExecMainExitTimestamp', '')
     
     return exit_code, start_time, finish_time
 
 
 def run_journalctl_command(service_name, start_time):
+    # Handle empty start_time or incorrect format more gracefully
+    if not start_time:
+        print("Error: Start time is empty.")
+        return ""
+
     try:
         # Remove the day name and timezone since strptime does not handle timezones
         start_time_clean = ' '.join(start_time.split()[1:3])

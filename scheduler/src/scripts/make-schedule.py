@@ -91,7 +91,7 @@ def main():
     timer_template_content = read_template_file(template_timer_path)
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
-    timer_template_content = timer_template_content.replace("{description}", "Timer for " + task_name + " (" + template_name + ")").replace("{on_calendar_lines}", on_calendar_lines_str)
+    timer_template_content = timer_template_content.replace("{description}", "Timer for " + template_name + "_" + task_name).replace("{on_calendar_lines}", on_calendar_lines_str)
     
     # Generate concrete timer file
     generate_concrete_file(timer_template_content, output_path_timer)
