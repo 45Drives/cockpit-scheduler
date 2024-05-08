@@ -60,7 +60,7 @@ import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskTemplate, ParameterNode, SelectionParameter, StringParameter, BoolParameter, IntParameter, ZfsDatasetParameter, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
+import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
 
 interface AddTaskProps {
 	idKey: string;
@@ -101,11 +101,10 @@ function validateTaskName() {
     if (newTaskName.value === '') {
         errorList.value.push("Task name cannot be empty.");
         newTaskNameErrorTag.value = true;
-    } else {
-        if (newTaskName.value.includes('_')) {
-            errorList.value.push("Task name cannot have underscores ('_').");
+    } else if (!/^[a-zA-Z0-9_ ]+$/.test(newTaskName.value)) {
+        // Checks if the task name contains only letters, digits, underscores, and spaces
+        errorList.value.push("Task name can only contain letters, numbers, spaces, and underscores.");
         newTaskNameErrorTag.value = true;
-        }
     }
 }
 
@@ -191,11 +190,13 @@ async function saveTask() {
     if (selectedTemplate.value?.name == 'ZFS Replication Task') {
         const template = new ZFSReplicationTaskTemplate();
         
-        let sanitizedName = newTaskName.value.replace(/[^a-zA-Z0-9-]/g, '');
-        if (sanitizedName.startsWith('-')) {
+        let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+        if (sanitizedName.startsWith('_')) {
             sanitizedName = 'task' + sanitizedName;
         }
-        
+        console.log('sanitizedName:', sanitizedName);
+
+
         if (isStandaloneTask.value) {
             const schedule = new TaskSchedule(false, []);
             const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);

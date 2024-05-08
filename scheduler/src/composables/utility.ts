@@ -27,7 +27,7 @@ export async function getTaskData() {
     try {
         const state = useSpawn(['/usr/bin/env','python3', '-c', get_tasks_script], {superuser: 'try'});
         const tasksOutput = (await state.promise()).stdout;
-        // console.log('Raw tasksOutput:', tasksOutput);
+        console.log('Raw tasksOutput:', tasksOutput);
         const tasksData = JSON.parse(tasksOutput);
         return tasksData;
     } catch (state) {
@@ -236,4 +236,14 @@ export async function getTaskStatus(taskName) {
 
 export async function getTaskExecutionResult(taskName) {
     
+}
+
+export function encodeString(inputString) {
+    return encodeURIComponent(inputString).replace(/[!'()*]/g, function(c) {
+        return '%' + c.charCodeAt(0).toString(16);
+    });
+}
+
+export function decodeString(inputString) {
+    return decodeURIComponent(inputString);
 }

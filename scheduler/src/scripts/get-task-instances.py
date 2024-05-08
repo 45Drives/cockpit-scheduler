@@ -54,57 +54,36 @@ def find_template_basenames(template_dir):
 
 def find_valid_task_data_files(system_dir, template_basenames):
     valid_files = {}
+    file_regex = re.compile(r"^houston_scheduler_([^_]+)_(.+)\.(env|json)$")
 
     for file in os.listdir(system_dir):
-        
-        # print(f"Checking file: {file}")  # Debug: Check each file seen by os.listdir
-        
-        if file.startswith("houston_scheduler_"):
-            # Correctly strip the prefix
-            stripped_name = file[len("houston_scheduler"):]
-            # Correctly split to get template name and task name before the last underscore
-            name_parts = stripped_name.rsplit('_', 2)
-            if len(name_parts) >= 3:
-                template_name, remaining = name_parts[1], name_parts[2]
-                # Properly handle the suffix
-                task_name, suffix = os.path.splitext(remaining)
+        match = file_regex.match(file)
+        if match:
+            template_name, task_name, suffix = match.groups()
+            suffix = '.' + suffix  # Prepend '.' to match the expected suffix format
+            if template_name in template_basenames:
+                if template_name not in valid_files:
+                    valid_files[template_name] = []
+                valid_files[template_name].append(file)
 
-                # print(f"Extracted - Template: {template_name}, Task: {task_name}, Suffix: {suffix}")
-
-                # Check if the suffix is either .env or .json
-                if template_name in template_basenames and suffix in ['.env', '.json']:
-                    if template_name not in valid_files:
-                        valid_files[template_name] = []
-                    valid_files[template_name].append(file)
-
-    # print(f"Valid files found: {valid_files}")
     return valid_files
-
 
 def create_task_instances(system_dir, valid_files):
     task_instances = []
 
-    # Iterate through each template and its files
     for template, files in valid_files.items():
         paired_files = {}
 
-        # Organize files by basename without the extension
         for file in files:
             full_base_name, ext = os.path.splitext(file)
-            # Assume the structure is like 'houston_scheduler_TemplateName_TaskNameRest.env'
-            parts = full_base_name.split('_')
-            if len(parts) > 3:
-                # Base name becomes the part after 'TemplateName'
-                task_name = '_'.join(parts[3:])  # Join parts that may include additional underscores
-            else:
-                task_name = parts[-1]  # Fallback to the last part if not enough parts
+            # Skip the 'houston_scheduler_' prefix and split only once on the last underscore
+            task_name = full_base_name[len("houston_scheduler_"):].rsplit('_', 1)[0]
 
             if task_name not in paired_files:
                 paired_files[task_name] = {}
             paired_files[task_name][ext] = file
 
-        # Process each pair of files
-        for base_name, file_dict in paired_files.items():
+        for task_name, file_dict in paired_files.items():
             if '.env' in file_dict:
                 env_file_name = file_dict['.env']
                 parameters = read_env_parameters(os.path.join(system_dir, env_file_name))
@@ -115,18 +94,15 @@ def create_task_instances(system_dir, valid_files):
                     schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'])
                 else:
                     schedule = TaskSchedule(False, [])
-                
-            task_instance = TaskInstance(base_name, template, parameters, schedule)
-            task_instances.append(task_instance)
 
-    # Convert task_instances to JSON serializable format
-    task_instances_json = [instance.__dict__ for instance in task_instances]
-    return json.dumps(task_instances_json, indent=4)
+                task_instance = TaskInstance(task_name, template, parameters, schedule)
+                task_instances.append(task_instance)
+
+    return json.dumps([instance.__dict__ for instance in task_instances], indent=4)
+
 
 
 def main():
-    
-    # Example usage
     template_dir = '/opt/45drives/houston/scheduler/templates/'
     system_dir = '/etc/systemd/system/'
 

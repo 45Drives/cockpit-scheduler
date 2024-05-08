@@ -1,6 +1,7 @@
 import subprocess
 import argparse
 import json
+import os
 
 def read_template_file(template_file_path):
     with open(template_file_path, 'r') as file:
@@ -121,11 +122,19 @@ def main():
     schedule_json_path = args.schedule
     
     param_env_filename = param_env_path.split('/')[-1]
+    full_base_name, env_ext = os.path.splitext(param_env_filename)
     
     task_template_name = template_service_path.split('/')[-1].split('.')[0]
     
     # env file will always be saved as 'houston_scheduler_{taskName}.env'
-    task_instance_name = param_env_filename.split('_')[3].split('.')[0]
+    parts = full_base_name.split('_')
+    if len(parts) > 3:
+        # Base name becomes the part after 'TemplateName'
+        task_instance_name = '_'.join(parts[3:])  # Join parts that may include additional underscores
+    else:
+        task_instance_name = parts[-1]  # Fallback to the last part if not enough parts
+
+    # task_instance_name = param_env_filename.split('_')[3].split('.')[0]
     
     service_file_name = task_instance_name + '.service'
     timer_file_name = task_instance_name + '.timer'
