@@ -54,16 +54,18 @@ def find_template_basenames(template_dir):
 
 def find_valid_task_data_files(system_dir, template_basenames):
     valid_files = {}
-    file_regex = re.compile(r"^houston_scheduler_([^_]+)_(.+)\.(env|json)$")
+    # Adjusted regex to match up to the last dot before extension
+    file_regex = re.compile(r"^houston_scheduler_([^_]+)_(.*)\.(env|json)$")
 
     for file in os.listdir(system_dir):
         match = file_regex.match(file)
         if match:
-            template_name, task_name, suffix = match.groups()
-            suffix = '.' + suffix  # Prepend '.' to match the expected suffix format
+            template_name, task_name_with_suffix, suffix = match.groups()
+            # Extract the task name correctly before appending the file to the list
             if template_name in template_basenames:
                 if template_name not in valid_files:
                     valid_files[template_name] = []
+                # Include the correct file format with the suffix
                 valid_files[template_name].append(file)
 
     return valid_files
@@ -76,8 +78,8 @@ def create_task_instances(system_dir, valid_files):
 
         for file in files:
             full_base_name, ext = os.path.splitext(file)
-            # Skip the 'houston_scheduler_' prefix and split only once on the last underscore
-            task_name = full_base_name[len("houston_scheduler_"):].rsplit('_', 1)[0]
+            # Remove the prefix and then split properly
+            task_name = full_base_name[len("houston_scheduler_" + template + "_"):]  # This strips the prefix and template
 
             if task_name not in paired_files:
                 paired_files[task_name] = {}
@@ -99,8 +101,6 @@ def create_task_instances(system_dir, valid_files):
                 task_instances.append(task_instance)
 
     return json.dumps([instance.__dict__ for instance in task_instances], indent=4)
-
-
 
 def main():
     template_dir = '/opt/45drives/houston/scheduler/templates/'

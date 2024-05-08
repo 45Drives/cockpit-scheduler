@@ -161,7 +161,7 @@
                                                             Edit
                                                             <PencilIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
-                                                        <button @click="" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                        <button @click="viewLogsBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
                                                             View Logs
                                                             <TableCellsIcon class="h-5 ml-2 mt-0.5"/>
                                                         </button>
@@ -211,6 +211,9 @@
                 <component :is="removeTaskDialog" @close="updateShowRemoveTaskPrompt" :showFlag="showRemoveTaskPrompt" :title="'Remove Task'" :message="'Are you sure you want to remove this task?'" :confirmYes="removeTaskYes" :confirmNo="removeTaskNo" :operating="removing" :operation="'removing'"/>
             </div>
 
+            <div v-if="showLogView">
+                <component :is="logViewComponent" @close="updateShowLogViewComponent" :task="selectedTask"/>
+            </div>
 		</div>
 	</div>
 </template>
@@ -455,6 +458,22 @@ const updateShowThisScheduleWizardComponent = (newVal) => {
     showThisScheduleWizard.value = newVal;
 }
 
+/* Task Log View */
+const showLogView = ref(false);
+async function viewLogsBtn(task) {
+    selectedTask.value = task;
+    await loadLogViewComponent();
+    showLogView.value = true;
+}
+const logViewComponent = ref();
+async function loadLogViewComponent() {
+    const module = await import('../views/LogView.vue');
+    logViewComponent.value = module.default;
+}
+const updateShowLogViewComponent = (newVal) => {
+    showLogView.value = newVal;
+}
+
 
 /* Searching + Sorting List */
 const searchItem = ref('');
@@ -535,4 +554,5 @@ function sortIconFlip() {
 provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showThisScheduleWizard);
 provide('show-edit-task-wizard', showEditTaskWizard);
+provide('show-log-view', showLogView);
 </script> 
