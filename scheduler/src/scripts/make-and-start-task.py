@@ -99,13 +99,12 @@ def manage_systemd_service(unit_name):
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
     # Enable the timer
-    subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
-    
+    # subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
     # Start the timer
-    subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}', '--now'], check=True)
     
     # Optionally, check the status of the timer
-    subprocess.run(['sudo', 'systemctl', 'status', f'{unit_name}'], check=True)
+    # subprocess.run(['sudo', 'systemctl', 'status', f'{unit_name}'], check=True)
 
 
 def main():

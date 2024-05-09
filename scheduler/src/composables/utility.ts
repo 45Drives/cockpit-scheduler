@@ -24,8 +24,7 @@ import get_latest_task_execution_script from '../scripts/get-this-latest-task-lo
 //@ts-ignore
 import get_these_task_execution_script from '../scripts/get-these-task-log-results.py?raw';
 //@ts-ignore
-import get_every_task_execution_script from '../scripts/get-all-task-log-results.py?raw';
-
+import get_this_task_status_script from '../scripts/get-task-status.py?raw';
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
 
@@ -235,9 +234,18 @@ export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean
 // // // // // // // // // // // //
 
 
-
 export async function getTaskStatus(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_this_task_status_script, taskName], { superuser: 'try', stderr: 'out' });
 
+        const output = await state.promise();
+        const result = output.stdout;
+        // console.log(`${taskName} status:`, result);
+        return result;
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
 }
 
 export async function getLatestTaskExecutionResult(taskName) {
@@ -268,16 +276,3 @@ export async function getTheseTaskExecutionResults(taskName) {
     }
 }
 
-export async function getAllTaskExecutionResults() {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_every_task_execution_script], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('all execution results output:', output);
-        const result = JSON.parse(output.stdout);
-        return result;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}

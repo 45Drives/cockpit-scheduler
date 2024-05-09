@@ -1,4 +1,5 @@
 import argparse
+import subprocess
 
 def read_template_file(template_file_path):
     with open(template_file_path, 'r') as file:
@@ -40,6 +41,14 @@ def generate_concrete_file(template_content, output_file_path):
     with open(output_file_path, 'w') as file:
         file.write(template_content)
         
+    
+def restart_timer(unit_name):
+    subprocess.run(['sudo', 'systemctl', 'reset-failed'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'restart', f'{unit_name}'], check=True)
+    print(f'{unit_name} has been restarted')
+
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Service File from Template + Env File')
@@ -75,8 +84,7 @@ def main():
     generate_concrete_file(service_template_content, output_path_service)
     print(service_template_content)
     print("Standalone concrete service file generated successfully.")
+    restart_timer(service_file_name)
     
 if __name__ == "__main__":
 	main()
-        
-        

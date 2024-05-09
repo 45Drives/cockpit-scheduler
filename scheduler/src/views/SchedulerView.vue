@@ -70,7 +70,8 @@
                                                     {{ taskInstance.name }}
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    &lt;status here&gt;
+                                                    <!-- &lt;status here&gt; -->
+                                                    <span>{{ taskStatuses[taskInstance.name] || 'Loading status...' }}</span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     &lt;timestamp here&gt;
@@ -224,7 +225,7 @@
 <script setup lang="ts">
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-import {computed, Ref, inject, ref, provide} from 'vue';
+import {computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, watch} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/helpers'
 import LoadingSpinner from "../components/common/LoadingSpinner.vue";
@@ -237,6 +238,8 @@ const loading = inject<Ref<boolean>>('loading')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
 const selectedTask = ref<TaskInstanceType>();
 const selectedTaskIdx = ref<number>();
+
+const taskStatuses = reactive({});
 
 // check based on params for rendering task list UI 
 function findValue(obj, targetKey, valueKey) {
@@ -261,8 +264,54 @@ function findValue(obj, targetKey, valueKey) {
     return null;  // Return null if nothing is found
 }
 
-function getTaskStatus() {
+async function updateTaskStatus(task) {
+    try {
+        const status = await myScheduler.getTaskStatusFor(task);
+        taskStatuses[task.name] = status;
+        console.log(`Status for ${task.name}:`, status);
+    } catch (error) {
+        console.error(`Failed to fetch status for ${task.name}:`, error);
+    }
+}
 
+watch(taskStatuses, (newVal, oldVal) => {
+    console.log('taskStatuses changed:', newVal);
+}, { deep: true });
+
+watchEffect(() => {
+    if (taskInstances.value && taskInstances.value.length > 0) {
+        pollTaskStatus();
+    }
+});
+
+onMounted(async () => {
+    if (taskInstances.value) {
+        pollTaskStatus();
+    } else {
+        console.error('taskInstances is not available');
+    }
+});
+
+const intervalId = ref();
+function startInterval() {
+    if (!intervalId.value) {
+        intervalId.value = setInterval(pollTaskStatus, 3000)
+    }
+}
+
+function stopInterval() {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+        intervalId.value = null;
+    }
+}
+ 
+const pollTaskStatus = async () => {
+    if (taskInstances.value) {
+        for (const task of taskInstances.value) {
+            await updateTaskStatus(task);
+        }
+    }
 }
 
 function getLastRunTimestamp() {
@@ -503,7 +552,8 @@ const filteredAndSortedTasks = computed(() => {
                 const value = task[key];
                 if (value && value.toString().toLowerCase().includes(searchQuery)) {
                     return true;
-                }
+                } // const result = JSON.parse(output.stdout);
+        // return result;
             }
             return false;
         });

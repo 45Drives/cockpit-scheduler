@@ -97,7 +97,7 @@ function clearAllErrors() {
     parameterInputComponent.value.clearTaskParamErrorTags();
 }
 
-function validateTaskName() {
+async function validateTaskName() {
     if (newTaskName.value === '') {
         errorList.value.push("Task name cannot be empty.");
         newTaskNameErrorTag.value = true;
@@ -108,9 +108,9 @@ function validateTaskName() {
     }
 }
 
-function validateComponentParams() {
+async function validateComponentParams() {
     clearAllErrors();
-    validateTaskName();
+    await validateTaskName();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
         notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
@@ -120,6 +120,9 @@ function validateComponentParams() {
     }
 }
 
+watch(errorList, (newVal, oldVal) => {
+    console.log('Error List Changed:', newVal);
+}, { deep: true });
 
 // Schedule Prompt
 const showSchedulePrompt = ref(false);
@@ -217,8 +220,8 @@ async function saveTask() {
     }
 }
 
-function addTaskBtn() {
-    if (validateComponentParams()) {
+async function addTaskBtn() {
+    if (await validateComponentParams()) {
         showSchedulePromptDialog();
     }
 }

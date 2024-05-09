@@ -640,7 +640,7 @@ function clearErrorTags() {
 }
 
 function validateParams() {
-    clearErrorTags();
+    // clearErrorTags();
     validateSource();
     validateHost();
     validateDestination();

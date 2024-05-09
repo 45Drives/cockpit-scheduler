@@ -39,7 +39,7 @@ def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPor
 		snapshots.sort(key=lambda x: x.creation)
 
 		if len(snapshots) <= int(max_retain_count):
-			print(f"snapshot retention policy delayed for {filesystem} - currently {len(snapshots)} snapshots out of {max_retain_count} allowed")
+			print(f"snapshot retention policy delayed on {filesystem} - currently {len(snapshots)} snapshots out of {max_retain_count} allowed")
 			return
 		else:
 			snapshots_to_delete = snapshots[:-int(max_retain_count)]  # Older snapshots beyond the retain limit
@@ -51,7 +51,7 @@ def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPor
 				except subprocess.CalledProcessError as e:
 					print(f"Failed to delete snapshot {snapshot.name}: {e}")
 					sys.exit(1)	
-			print(f"snapshot retention policy executed for {filesystem} - keeping {max_retain_count} snapshots (deleted {len(snapshots_to_delete)})")
+			print(f"snapshot retention policy executed on {filesystem} - keeping {max_retain_count} snapshots (deleted {len(snapshots_to_delete)})")
 	else:
 		# print("No snapshots to prune.")
 		return

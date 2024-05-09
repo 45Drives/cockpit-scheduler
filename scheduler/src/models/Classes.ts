@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTheseTaskExecutionResults, getAllTaskExecutionResults } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTaskStatus, getTheseTaskExecutionResults } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -206,6 +206,14 @@ export class Scheduler implements SchedulerType {
         await removeTask(fullTaskName);
         console.log(`${fullTaskName} removed`);
     }
+
+    async getTaskStatusFor(taskInstance) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+        return await getTaskStatus(fullTaskName);
+    }
     
     // loadSchedulesFor(taskInstance) {
     //     const schedules = new TaskSchedule()
@@ -330,21 +338,22 @@ export class TaskExecutionLog {
     async loadEntries() {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         
-        const taskLogData = await getAllTaskExecutionResults();
+        // const taskLogData = await getTheseTaskExecutionResults();
 
-        console.log(taskLogData);
+        // console.log(taskLogData);
 
-        
+
     }
 
-    async getEntriesFor(taskInstance: TaskInstance) {
+    async getEntriesFor(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = this.formatTemplateName(taskInstance.template.name);
         const taskName = taskInstance.name;
 
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
         
-        
+        const taskLogData = await getTheseTaskExecutionResults(fullTaskName);
+        console.log(taskLogData);
         // const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
 
         // console.log(latestEntry);
