@@ -180,7 +180,7 @@
                                         </tbody>
                                     </table>
                                     <div v-if="loading" class="flex items-center justify-center">
-                                        <LoadingSpinner :width="'w-40'" :height="'h-40'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                                        <LoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
                                     </div>
                                 </div>
                             </div>

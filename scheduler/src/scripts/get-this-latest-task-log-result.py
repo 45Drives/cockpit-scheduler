@@ -10,68 +10,41 @@ class TaskExecutionResult:
         self.start_date = start_date
         self.finish_date = finish_date
 
-def run_systemctl_command(service_name):
-    # Run systemctl command to fetch service information
-    command = ['systemctl', 'show', service_name, '-p', 'ExecMainStatus', '-p', 'ExecMainStartTimestamp', '-p', 'ExecMainExitTimestamp']
+def run_command(command):
+    """Utility function to run a subprocess command."""
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     if result.returncode != 0:
-        raise Exception("Failed to execute systemctl command")
-
-    # Parse the output using a dictionary
-    properties = {}
-    for line in result.stdout.decode().strip().split('\n'):
-        key, value = line.split('=', 1)
-        properties[key] = value
-
-    exit_code = properties.get('ExecMainStatus', None)
-    start_time = properties.get('ExecMainStartTimestamp', '')
-    finish_time = properties.get('ExecMainExitTimestamp', '')
-    
-    return exit_code, start_time, finish_time
-
-
-def run_journalctl_command(service_name, start_time):
-    # Handle empty start_time or incorrect format more gracefully
-    if not start_time:
-        print("Error: Start time is empty.")
-        return ""
-
-    try:
-        # Remove the day name and timezone since strptime does not handle timezones
-        start_time_clean = ' '.join(start_time.split()[1:3])
-        formatted_start_time = datetime.strptime(start_time_clean, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
-    except ValueError as e:
-        print("Date formatting error:", e)
-        return None
-
-    # Run journalctl command to fetch logs since the start time
-    command = ['journalctl', '-u', service_name, '--since', formatted_start_time, '--no-pager']
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    if result.returncode != 0:
-        raise Exception("Failed to execute journalctl command")
-
-    return result.stdout.decode()
-
+        raise Exception(f"Command failed: {result.stderr}")
+    return result.stdout.strip()
 
 def get_task_execution_result(service_name):
-    exit_code, start_time, finish_time = run_systemctl_command(service_name)
-    output = run_journalctl_command(service_name, start_time)
-    return TaskExecutionResult(exit_code, output, start_time, finish_time)
+    # Fetch execution metadata using systemctl
+    exec_info = run_command(['systemctl', 'show', service_name, '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp'])
+    properties = dict(line.split('=', 1) for line in exec_info.decode().splitlines())
+    
+    exit_code = properties.get('ExecMainStatus', '0')
+    start_time = properties.get('ExecMainStartTimestamp', '')
+    finish_time = properties.get('ExecMainExitTimestamp', '')
 
+    # Fetch logs using journalctl
+    if start_time:
+        # start_time_clean = ' '.join(start_time.split()[1:3])
+        # formatted_start_time = datetime.strptime(start_time_clean, "%Y-%m-%d %H:%M:%S").isoformat()
+        output = run_command(['journalctl', '-r', '-u', service_name, '--since', start_time, '--no-pager']).decode()
+    else:
+        output = "No start time available."
+
+    return TaskExecutionResult(exit_code, output, start_time, finish_time)
 
 def main():
     parser = argparse.ArgumentParser(description="Get last task execution result")
-    parser.add_argument('-u', '--unit', type=str, help='Full task filename / service filename')
+    parser.add_argument('-u', '--unit', type=str, required=True, help='Full task filename / service filename')
     args = parser.parse_args()
     
-    if args.unit:
-        service_name = args.unit
-        task_result = get_task_execution_result(service_name)
-        
-        task_result_json = json.dumps(task_result.__dict__, indent=4, default=str)
-        print(task_result_json)
-    else:
-        print("Please provide a unit name with the -u option.")
-
+    try:
+        task_result = get_task_execution_result(args.unit)
+        print(json.dumps(task_result.__dict__, indent=4, default=str))
+    except Exception as e:
+        print("Error:", str(e))
 if __name__ == "__main__":
     main()

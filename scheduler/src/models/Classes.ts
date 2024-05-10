@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTaskStatus, getTheseTaskExecutionResults } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTaskStatus, checkTaskTimer, enableTaskTimer, disableTaskTimer, getTaskExecutionResults } from '../composables/utility';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -212,7 +212,12 @@ export class Scheduler implements SchedulerType {
         const templateName = this.formatTemplateName(taskInstance.template.name);
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
 
-        return await getTaskStatus(fullTaskName);
+        const status = await getTaskStatus(fullTaskName);
+        if (!status) {
+            const state = checkTaskTimer(fullTaskName);
+            
+        }
+        return status;
     }
     
     // loadSchedulesFor(taskInstance) {
@@ -221,20 +226,45 @@ export class Scheduler implements SchedulerType {
     //     return TaskSchedule;
     // }
     
-    enableSchedule(taskInstance) {
+
+    async checkScheduleState(taskInstance) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        return await checkTaskTimer(fullTaskName);
+    }
+
+    async enableSchedule(taskInstance) {
         //activate timer file
         //run systemctl daemon-reload
         //flip checkbox value
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
+        await enableTaskTimer(fullTaskName);
+        taskInstance.schedule.enabled = true;
+        console.log('taskInstance after enable:', taskInstance);
+        await this.updateSchedule(taskInstance);
 
     }
     
-    disableSchedule(taskInstance) {
+    async disableSchedule(taskInstance) {
         //deactivate timer file
         //run systemctl daemon-reload
         //flip checkbox value
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        await disableTaskTimer(fullTaskName);
+        taskInstance.schedule.enabled = false;
+        console.log('taskInstance after disable:', taskInstance);
+        await this.updateSchedule(taskInstance);
     }
     
+
     async updateSchedule(taskInstance) {
         const templateName = this.formatTemplateName(taskInstance.template.name);
   
@@ -345,22 +375,17 @@ export class TaskExecutionLog {
 
     }
 
-    async getEntriesFor(taskInstance) {
+    async getEntriesFor(taskInstance, timestamp) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = this.formatTemplateName(taskInstance.template.name);
         const taskName = taskInstance.name;
 
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
         
-        const taskLogData = await getTheseTaskExecutionResults(fullTaskName);
-        console.log(taskLogData);
-        // const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
-
-        // console.log(latestEntry);
-        // const logEntry = new TaskExecutionResult(latestEntry.exitCode, latestEntry.output, latestEntry.startDate, latestEntry.finishDate)
-
-
-        // return logEntry || 'None';
+        const taskLogData = await getTaskExecutionResults(fullTaskName, timestamp);
+        // console.log('taskLogData:', taskLogData);
+        
+        return taskLogData;
     }
 
     async getLatestEntryFor(taskInstance) {
@@ -371,8 +396,8 @@ export class TaskExecutionLog {
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
         const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
 
-        console.log(latestEntry);
-        const logEntry = new TaskExecutionResult(latestEntry.exitCode, latestEntry.output, latestEntry.startDate, latestEntry.finishDate)
+        console.log('latest entry:', latestEntry);
+        const logEntry = new TaskExecutionResult(latestEntry.exit_code, latestEntry.output, latestEntry.start_date, latestEntry.finish_date)
 
         return logEntry || 'None';
     }
@@ -392,10 +417,13 @@ export class TaskExecutionLog {
 export class TaskExecutionResult {
     exitCode: number;
     output: string;
-    startDate: Date;
-    finishDate: Date;
+    // startDate: Date;
+    // finishDate: Date;
+    startDate: string;
+    finishDate: string;
 
-    constructor(exitCode: number, output: string, startDate: Date, finishDate: Date) {
+    // constructor(exitCode: number, output: string, startDate: Date, finishDate: Date) {
+    constructor(exitCode: number, output: string, startDate: string, finishDate: string) {
         this.exitCode = exitCode;
         this.output = output;
         this.startDate = startDate;

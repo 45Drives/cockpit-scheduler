@@ -85,8 +85,10 @@ interface TaskExecutionLogType {
 interface TaskExecutionResultType {
 	exitCode: number;
 	output: string;
-	startDate: Date;
-	finishDate: Date;
+	// startDate: Date;
+	// finishDate: Date;
+	startDate: string;
+	finishDate: string;
 }
 
 // interface ZFSReplicationTaskTemplate extends TaskTemplate {

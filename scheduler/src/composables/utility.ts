@@ -14,17 +14,24 @@ import generate_standalone_task_script from '../scripts/make-standalone-task.py?
 //@ts-ignore
 import generate_schedule_script from '../scripts/make-schedule.py?raw';
 //@ts-ignore
-import enable_disable_task_script from '../scripts/enable-disable-task.py?raw';
-//@ts-ignore
 import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
 //@ts-ignore
+import get_this_task_status_script from '../scripts/get-task-status.py?raw';
+//@ts-ignore
+import check_timer_script from '../scripts/check-timer.py?raw';
+//@ts-ignore
+import enable_timer_script from '../scripts/enable-timer.py?raw';
+//@ts-ignore
+import disable_timer_script from '../scripts/disable-timer.py?raw';
+
+//@ts-ignore
 import get_latest_task_execution_script from '../scripts/get-this-latest-task-log-result.py?raw';
 //@ts-ignore
-import get_these_task_execution_script from '../scripts/get-these-task-log-results.py?raw';
-//@ts-ignore
-import get_this_task_status_script from '../scripts/get-task-status.py?raw';
+import get_task_execution_log_script from '../scripts/get-task-log-results.py?raw';
+
+
 
 //['/usr/bin/env', 'python3', '-c', script, ...args ]
 
@@ -217,21 +224,56 @@ export async function runTask(taskName) {
 }
 
 
+// export async function toggleTaskEnabled(taskName) {
+//     try {
+//         const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
 
-// // // // // // // // // // // //
-export async function toggleTaskEnabled(task: TaskInstanceType, enabled: boolean) {
+//         const output = await state.promise();
+//         console.log('task enable output:', output);
+
+//     } catch (error) {
+//         console.error(errorString(error));
+//         return false;
+//     }
+// }
+
+export async function checkTaskTimer(taskName) {
     try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_disable_task_script,], { superuser: 'try', stderr: 'out' });
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', check_timer_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('task enable output:', output);
-
+        console.log('check task timer output:', output);
+        const result = output.stdout;
+        return result;
     } catch (error) {
         console.error(errorString(error));
         return false;
     }
 }
-// // // // // // // // // // // //
+
+export async function enableTaskTimer(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_timer_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('enable task output:', output);
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
+
+export async function disableTaskTimer(taskName) {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', disable_timer_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+
+        const output = await state.promise();
+        console.log('disable task output:', output);
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
+}
 
 
 export async function getTaskStatus(taskName) {
@@ -253,7 +295,7 @@ export async function getLatestTaskExecutionResult(taskName) {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_latest_task_execution_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        // console.log('get execution result output:', output);
+        console.log('get execution result output:', output);
         const result = JSON.parse(output.stdout);
         return result;
     } catch (error) {
@@ -262,13 +304,13 @@ export async function getLatestTaskExecutionResult(taskName) {
     }
 }
 
-export async function getTheseTaskExecutionResults(taskName) {
+export async function getTaskExecutionResults(taskName, timestamp) {
     try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_these_task_execution_script, '-u', taskName], { superuser: 'try', stderr: 'out' });
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_task_execution_log_script, '-u', taskName, '-t', timestamp], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('get these execution results output:', output);
-        const result = JSON.parse(output.stdout);
+        console.log('get task execution results output:', output);
+        const result = output.stdout;
         return result;
     } catch (error) {
         console.error(errorString(error));
