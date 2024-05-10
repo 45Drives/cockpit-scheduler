@@ -264,7 +264,7 @@ function findValue(obj, targetKey, valueKey) {
     return null;  // Return null if nothing is found
 }
 
-async function updateTaskStatus(task) {
+/* async function updateTaskStatus(task) {
     try {
         const status = await myScheduler.getTaskStatusFor(task);
         taskStatuses[task.name] = status;
@@ -313,7 +313,7 @@ const pollTaskStatus = async () => {
         }
     }
 }
-
+ */
 function getLastRunTimestamp() {
 
 }
@@ -377,11 +377,18 @@ async function showEnableDialog() {
     showEnablePrompt.value = true;
 }
 const enableYes : ConfirmationCallback = async () => {
-    console.log('enabling task schedule');
+    // console.log('enabling task schedule');
     // enabling.value = true;
-    selectedTask.value!.schedule.enabled = true;
-    updateShowEnablePrompt(false);
+    // // selectedTask.value!.schedule.enabled = true;
+    // await myScheduler.toggleSchedule(selectedTask.value);
+    // updateShowEnablePrompt(false);
+    // selectedTask.value!.schedule.enabled = true;
     // enabling.value = false;
+    enabling.value = true;
+    console.log('enabling schedule for:', selectedTask.value!.name)
+    await myScheduler.enableSchedule(selectedTask!.value);
+    updateShowEnablePrompt(false);
+    enabling.value = false;
     
 }
 const enableNo : ConfirmationCallback = async () => {
@@ -406,9 +413,17 @@ async function showDisableDialog() {
     showDisablePrompt.value = true;
 }
 const disableYes : ConfirmationCallback = async () => {
-    // task.schedule.enabled = false;
-    console.log('disabling task schedule');
+    // disabling.value = true;
+    // console.log('disabling task schedule');
+    // await myScheduler.toggleSchedule(selectedTask.value);
+    // updateShowDisablePrompt(false);
+    // selectedTask.value!.schedule.enabled = false;
+    // disabling.value = true;
+    disabling.value = true;
+    console.log('disabling schedule for:', selectedTask.value!.name)
+    await myScheduler.disableSchedule(selectedTask!.value);
     updateShowDisablePrompt(false);
+    disabling.value = false;
 }
 const disableNo : ConfirmationCallback = async () => {
     // task.schedule.enabled = true;

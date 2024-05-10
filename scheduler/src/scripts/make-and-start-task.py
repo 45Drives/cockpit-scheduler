@@ -99,9 +99,10 @@ def manage_systemd_service(unit_name):
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
     # Enable the timer
-    # subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
+    
     # Start the timer
-    subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}', '--now'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}'], check=True)
     
     # Optionally, check the status of the timer
     # subprocess.run(['sudo', 'systemctl', 'status', f'{unit_name}'], check=True)
@@ -147,9 +148,10 @@ def main():
     # Parse keys/values from environment file
     parameters = parse_env_file(param_env_path)
 
+    description_task_name = task_template_name + '_' + task_instance_name
     # Replace placeholders in service file template with environment variables
     service_template_content = replace_service_placeholders(service_template_content, parameters)
-    service_template_content = service_template_content.replace("{task_name}", task_instance_name)
+    service_template_content = service_template_content.replace("{task_name}", description_task_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
 
     # Generate concrete service file

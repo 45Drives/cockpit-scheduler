@@ -61,14 +61,14 @@ def main():
     
     param_env_filename = param_env_path.split('/')[-1]
     
-    task_template_name = template_service_path.split('/')[-1].split('.')[0]
-    
-    # env file will always be saved as 'houston_scheduler_{taskName}.env'
-    task_instance_name = param_env_filename.split('_')[3].split('.')[0]
-    
-    service_file_name = task_instance_name + '.service'
-        
-    output_path_service = f"/etc/systemd/system/houston_scheduler_{task_template_name}_{service_file_name}"
+    # Correctly split the filename and rejoin parts to form the full task name
+    # This will ignore the first two components ('houston' and 'scheduler') and join the rest.
+    parts = param_env_filename.split('_')
+    task_instance_name = '_'.join(parts[2:])  # Join from the third element to the end
+    task_instance_name = task_instance_name.split('.env')[0]  # Remove the file extension
+
+    service_file_name = f'houston_scheduler_{task_instance_name}.service'
+    output_path_service = f'/etc/systemd/system/{service_file_name}'
     
     service_template_content = read_template_file(template_service_path)
     

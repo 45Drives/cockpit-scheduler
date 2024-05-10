@@ -69,25 +69,23 @@ def restart_timer(unit_name):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Timer File from Template + JSON Files')
-    parser.add_argument('-n', '--name', type=str, help='full task name')
+    parser.add_argument('-n', '--name', type=str, help='full task/unit name')
     parser.add_argument('-tt', '--timerTemplate', type=str, help='template timer file path')
     parser.add_argument('-s', '--schedule', type=str, help='schedule json')
     
     args = parser.parse_args()
 
-    param_name = args.name
+    full_unit_name = args.name
     template_timer_path = args.timerTemplate
     schedule_json_path = args.schedule
     
-    # param_json_filename = schedule_json_path.split('/')[-1]
-    # task_instance_name = param_json_filename.split('_')[3].split('.')[0]
-    name_parts = param_name.split('_')
-    prefix = name_parts[0]
-    template_name = name_parts[1]
-    task_name = name_parts[-1]
     
-    timer_file_name = param_name + '.timer'
-    output_path_timer = f"/etc/systemd/system/{timer_file_name}"
+    name_parts = full_unit_name.split('_')
+    prefix = name_parts[:1]
+    template_name = name_parts[2]
+    task_name = '_'.join(name_parts[3:])
+    
+    output_path_timer = f"/etc/systemd/system/{full_unit_name}.timer"
     schedule_data = read_schedule_json(schedule_json_path)
     timer_template_content = read_template_file(template_timer_path)
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
@@ -99,7 +97,7 @@ def main():
     print(timer_template_content)
     print("Concrete timer file generated successfully.")
     
-    restart_timer(timer_file_name)
+    restart_timer(full_unit_name)
     
 if __name__ == "__main__":
 	main()
