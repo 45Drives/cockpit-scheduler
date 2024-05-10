@@ -70,11 +70,10 @@
                                                     {{ taskInstance.name }}
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    <!-- &lt;status here&gt; -->
-                                                    <span>{{ taskStatuses[taskInstance.name] || 'Loading status...' }}</span>
+                                                    <span>{{ taskStatuses.get(taskInstance.name) || 'Loading status...' }}</span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    &lt;timestamp here&gt;
+                                                    <span>{{ latestTaskExecution.get(taskInstance.name) || 'Loading timestamp...' }}</span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
                                                     <input v-if="taskInstance.schedule.intervals.length > 0" :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox" :checked="taskInstance.schedule.enabled" @change="handleScheduleCheckboxChange(taskInstance, index)" class="ml-2 h-4 w-4 rounded "/>
@@ -225,21 +224,22 @@
 <script setup lang="ts">
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-import {computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, watch} from 'vue';
+import {computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, watch, onUnmounted} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/helpers'
 import LoadingSpinner from "../components/common/LoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
 import EditTask from "../components/wizard/EditTask.vue";
-import { Scheduler } from '../models/Classes';
+import { Scheduler, TaskExecutionLog } from '../models/Classes';
 
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 const loading = inject<Ref<boolean>>('loading')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
+const myTaskLog = inject<TaskExecutionLog>('log')!;
 const selectedTask = ref<TaskInstanceType>();
 const selectedTaskIdx = ref<number>();
-
-const taskStatuses = reactive({});
+const latestTaskExecution = reactive(new Map());
+const taskStatuses = reactive(new Map());
 
 // check based on params for rendering task list UI 
 function findValue(obj, targetKey, valueKey) {
@@ -264,48 +264,31 @@ function findValue(obj, targetKey, valueKey) {
     return null;  // Return null if nothing is found
 }
 
-/* async function updateTaskStatus(task) {
+
+// Polling Interval
+const pollingInterval = ref(10000);
+const intervalId = ref();
+
+async function updateTaskStatus(task) {
     try {
         const status = await myScheduler.getTaskStatusFor(task);
-        taskStatuses[task.name] = status;
-        console.log(`Status for ${task.name}:`, status);
+        taskStatuses.set(task.name, status);
+        // console.log(`Status for ${task.name}:`, status);
     } catch (error) {
         console.error(`Failed to fetch status for ${task.name}:`, error);
     }
 }
 
-watch(taskStatuses, (newVal, oldVal) => {
-    console.log('taskStatuses changed:', newVal);
-}, { deep: true });
-
-watchEffect(() => {
-    if (taskInstances.value && taskInstances.value.length > 0) {
-        pollTaskStatus();
+async function fetchLatestLog(task) {
+    try {
+        const latestLog = await myTaskLog.getLatestEntryFor(task);
+        latestTaskExecution.set(task.name, latestLog.startDate);
+        // console.log(`Last execution of ${task.name}:`, latestLog);
+    } catch (error) {
+        console.error("Failed to fetch logs:", error);
     }
-});
+};
 
-onMounted(async () => {
-    if (taskInstances.value) {
-        pollTaskStatus();
-    } else {
-        console.error('taskInstances is not available');
-    }
-});
-
-const intervalId = ref();
-function startInterval() {
-    if (!intervalId.value) {
-        intervalId.value = setInterval(pollTaskStatus, 3000)
-    }
-}
-
-function stopInterval() {
-    if (intervalId.value) {
-        clearInterval(intervalId.value);
-        intervalId.value = null;
-    }
-}
- 
 const pollTaskStatus = async () => {
     if (taskInstances.value) {
         for (const task of taskInstances.value) {
@@ -313,10 +296,47 @@ const pollTaskStatus = async () => {
         }
     }
 }
- */
-function getLastRunTimestamp() {
 
+const pollTaskLastRun = async () => {
+    if (taskInstances.value) {
+        for (const task of taskInstances.value) {
+            await fetchLatestLog(task);
+        }
+    }
 }
+
+const startPolling = () => {
+    if (!intervalId.value) {
+        intervalId.value = setInterval(() => {
+            pollTaskStatus();
+        }, pollingInterval.value);
+    }
+}
+
+const stopPolling = () => {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+        intervalId.value = null;
+    }
+}
+
+onMounted(() => {
+    startPolling();
+});
+
+onUnmounted(() => {
+    stopPolling();
+});
+
+// Optional: watchEffect to handle changes in taskInstances
+watchEffect(() => {
+    if (taskInstances.value.length > 0) {
+        pollTaskStatus();
+        pollTaskLastRun();
+    }
+});
+
+
 
 const showDetails = ref({});
 function taskDetailsBtn(idx) {
@@ -351,11 +371,8 @@ async function loadConfirmationDialog(dialogRef) {
 }
 
 
-// FIX ENABLING/DISABLING
 // handle checkbox for toggling task schedule enabled/disabled
 function handleScheduleCheckboxChange(task: TaskInstanceType, index: number) {
-    // task.schedule.enabled = !task.schedule.enabled;
-
     selectedTask.value = task;
     selectedTaskIdx.value = index;
 
@@ -377,13 +394,6 @@ async function showEnableDialog() {
     showEnablePrompt.value = true;
 }
 const enableYes : ConfirmationCallback = async () => {
-    // console.log('enabling task schedule');
-    // enabling.value = true;
-    // // selectedTask.value!.schedule.enabled = true;
-    // await myScheduler.toggleSchedule(selectedTask.value);
-    // updateShowEnablePrompt(false);
-    // selectedTask.value!.schedule.enabled = true;
-    // enabling.value = false;
     enabling.value = true;
     console.log('enabling schedule for:', selectedTask.value!.name)
     await myScheduler.enableSchedule(selectedTask!.value);
@@ -392,9 +402,7 @@ const enableYes : ConfirmationCallback = async () => {
     
 }
 const enableNo : ConfirmationCallback = async () => {
-    // task.schedule.enabled = false;
     console.log('leaving task schedule as is');
-
     selectedTask.value!.schedule.enabled = selectedTask.value!.schedule.enabled;
     updateShowEnablePrompt(false);
 }
@@ -413,12 +421,6 @@ async function showDisableDialog() {
     showDisablePrompt.value = true;
 }
 const disableYes : ConfirmationCallback = async () => {
-    // disabling.value = true;
-    // console.log('disabling task schedule');
-    // await myScheduler.toggleSchedule(selectedTask.value);
-    // updateShowDisablePrompt(false);
-    // selectedTask.value!.schedule.enabled = false;
-    // disabling.value = true;
     disabling.value = true;
     console.log('disabling schedule for:', selectedTask.value!.name)
     await myScheduler.disableSchedule(selectedTask!.value);
@@ -426,7 +428,6 @@ const disableYes : ConfirmationCallback = async () => {
     disabling.value = false;
 }
 const disableNo : ConfirmationCallback = async () => {
-    // task.schedule.enabled = true;
     console.log('leaving task schedule as is');
     updateShowDisablePrompt(false);
 }
