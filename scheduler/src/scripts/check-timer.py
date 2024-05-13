@@ -1,5 +1,5 @@
 import subprocess
-import argparse
+import sys
    
 def check_is_enabled(unit_name):
     try:
@@ -15,11 +15,7 @@ def check_is_enabled(unit_name):
         print(f"Error checking status of {unit_name}: {e}")
         
 def main():
-    parser = argparse.ArgumentParser(description='toggle task schedule/timer on or off')
-    parser.add_argument('-u', '--unit', type=str, help='unit name')
-    
-    args = parser.parse_args()
-    unit_name = args.unit
+    unit_name = sys.argv[1]
     timer_name = unit_name + '.timer'
     
     print(check_is_enabled(timer_name))

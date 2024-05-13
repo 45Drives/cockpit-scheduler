@@ -54,8 +54,7 @@ const myTaskLog = new TaskExecutionLog(entries.value);
 onMounted(async () => {
 	loading.value = true;
 	initializeTaskTemplates();
-	await myScheduler.loadTaskInstances();
-	await myTaskLog.loadEntries();
+	await myScheduler.loadTaskInstances();;
 	loading.value = false;
 });
 

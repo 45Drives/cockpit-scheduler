@@ -1,5 +1,5 @@
 import subprocess
-import argparse
+import sys
 import os
 
 def run_task_now(unit_name):
@@ -22,10 +22,7 @@ def check_for_service_file(unit_name):
     return False
 
 def main():
-    parser = argparse.ArgumentParser(description="Run task service file ad hoc")
-    parser.add_argument('-u', '--unit', type=str, help='full task filename / service filename')
-    args = parser.parse_args()
-    unit_name = args.unit
+    unit_name = sys.argv[1]
     
     if check_for_service_file(unit_name):
         run_task_now(unit_name)

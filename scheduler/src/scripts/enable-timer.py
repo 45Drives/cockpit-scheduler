@@ -1,5 +1,5 @@
 import subprocess
-import argparse
+import sys
 
 def enable_task_timer(unit_name):
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
@@ -9,11 +9,7 @@ def enable_task_timer(unit_name):
     print(f"{unit_name} has been enabled")
         
 def main():
-    parser = argparse.ArgumentParser(description='toggle task schedule/timer on or off')
-    parser.add_argument('-u', '--unit', type=str, help='unit name')
-    
-    args = parser.parse_args()
-    unit_name = args.unit
+    unit_name = sys.argv[1]
     timer_name = unit_name + '.timer'
     enable_task_timer(timer_name)
 

@@ -70,10 +70,10 @@
                                                     {{ taskInstance.name }}
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    <span>{{ taskStatuses.get(taskInstance.name) || 'Loading status...' }}</span>
+                                                    <span>{{ taskStatuses.get(taskInstance.name) || 'N/A' }}</span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    <span>{{ latestTaskExecution.get(taskInstance.name) || 'Loading timestamp...' }}</span>
+                                                    <span>{{ latestTaskExecution.get(taskInstance.name) || 'N/A' }}</span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
                                                     <input v-if="taskInstance.schedule.intervals.length > 0" :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox" :checked="taskInstance.schedule.enabled" @change="handleScheduleCheckboxChange(taskInstance, index)" class="ml-2 h-4 w-4 rounded "/>

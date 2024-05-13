@@ -1,6 +1,6 @@
 import os
 import subprocess
-import argparse
+import sys
 
 def delete_task_files(unit_name):
     system_dir = '/etc/systemd/system/'
@@ -56,10 +56,7 @@ def remove_systemd_service(unit_name):
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
 
 def main():
-    parser = argparse.ArgumentParser(description='Remove task files from system')
-    parser.add_argument('-u', '--unit', type=str, help='name of task to remove')
-    args = parser.parse_args()
-    unit_name = args.unit
+    unit_name = sys.argv[1]
     
     if check_for_timer_file(unit_name):
         stop_systemd_timer(unit_name)

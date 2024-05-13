@@ -213,10 +213,10 @@ export class Scheduler implements SchedulerType {
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
 
         const status = await getTaskStatus(fullTaskName);
-        if (!status) {
-            const state = checkTaskTimer(fullTaskName);
+        // if (!status) {
+        //     const state = checkTaskTimer(fullTaskName);
             
-        }
+        // }
         return status;
     }
     
@@ -365,15 +365,8 @@ export class TaskExecutionLog {
         this.entries = entries;
     }
 
-    async loadEntries() {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        
-        // const taskLogData = await getTheseTaskExecutionResults();
+    // async loadEntries() {}
 
-        // console.log(taskLogData);
-
-
-    }
 
     async getEntriesFor(taskInstance, timestamp) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -538,9 +531,7 @@ export class ParameterNode implements ParameterNodeType {
             .map(kv => `${this.key}_${kv}`); // prefix key with parent key and _
     }
 
-    // isValid() {
-    //     // Implementation for validation
-    // }
+    // isValid() { }
       
 }
 

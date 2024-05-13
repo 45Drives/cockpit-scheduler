@@ -1,6 +1,5 @@
 import subprocess
-import argparse
-from datetime import datetime
+import sys
 import json
 
 class TaskExecutionResult:
@@ -28,8 +27,6 @@ def get_task_execution_result(service_name):
 
     # Fetch logs using journalctl
     if start_time:
-        # start_time_clean = ' '.join(start_time.split()[1:3])
-        # formatted_start_time = datetime.strptime(start_time_clean, "%Y-%m-%d %H:%M:%S").isoformat()
         output = run_command(['journalctl', '-r', '-u', service_name, '--since', start_time, '--no-pager']).decode()
     else:
         output = "No start time available."
@@ -37,12 +34,10 @@ def get_task_execution_result(service_name):
     return TaskExecutionResult(exit_code, output, start_time, finish_time)
 
 def main():
-    parser = argparse.ArgumentParser(description="Get last task execution result")
-    parser.add_argument('-u', '--unit', type=str, required=True, help='Full task filename / service filename')
-    args = parser.parse_args()
+    unit_name = sys.argv[1]
     
     try:
-        task_result = get_task_execution_result(args.unit)
+        task_result = get_task_execution_result(unit_name)
         print(json.dumps(task_result.__dict__, indent=4, default=str))
     except Exception as e:
         print("Error:", str(e))

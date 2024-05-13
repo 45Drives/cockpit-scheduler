@@ -1,7 +1,5 @@
 import subprocess
 import argparse
-from datetime import datetime
-import json
 
 class TaskExecutionResult:
     def __init__(self, exit_code, output, start_date, finish_date):
