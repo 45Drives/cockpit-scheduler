@@ -1,5 +1,6 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
 import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTaskStatus, checkTaskTimer, enableTaskTimer, disableTaskTimer, getTaskExecutionResults } from '../composables/utility';
+import { ref } from 'vue';
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -16,26 +17,25 @@ export class Scheduler implements SchedulerType {
         const tasksData = await getTaskData();
 
         tasksData.forEach(task => {
+            const newTaskTemplate = ref();
             if (task.template == 'ZfsReplicationTask') {
-                const newTaskTemplate = new ZFSReplicationTaskTemplate;
-                const parameters = task.parameters;
-                const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.parameterSchema, parameters);
-                const taskIntervals : TaskScheduleInterval[] = [];
+                newTaskTemplate.value = new ZFSReplicationTaskTemplate;
+            } else if (task.template == 'AutomatedSnapshotTask') {
+                newTaskTemplate.value = new AutomatedSnapshotTaskTemplate;
+            }
 
-                task.schedule.intervals.forEach(interval => {
-                    const thisInterval = new TaskScheduleInterval(interval);
-                    taskIntervals.push(thisInterval);
-                });
+            const parameters = task.parameters;
+            const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.value.parameterSchema, parameters);
+            const taskIntervals : TaskScheduleInterval[] = [];
 
-                const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
-                const newTaskInstance = new TaskInstance(task.name, newTaskTemplate, parameterNodeStructure, newSchedule); 
-                this.taskInstances.push(newTaskInstance);
-            } 
-         /*    else if (task.template == 'ZfsSnapshotTask') {
+            task.schedule.intervals.forEach(interval => {
+                const thisInterval = new TaskScheduleInterval(interval);
+                taskIntervals.push(thisInterval);
+            });
 
-            } else {
-
-            } */
+            const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
+            const newTaskInstance = new TaskInstance(task.name, newTaskTemplate.value, parameterNodeStructure, newSchedule); 
+            this.taskInstances.push(newTaskInstance);
         });
 
         console.log('this.taskInstances:', this.taskInstances);
@@ -505,6 +505,26 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
         return TaskInstance;
     }
     
+}
+
+export class AutomatedSnapshotTaskTemplate implements TaskTemplate {
+    name: string;
+    parameterSchema: ParameterNode;
+
+    constructor() {
+        this.name = "Automated Snapshot Task";
+        this.parameterSchema = new ParameterNode("Automated Snapshot Task Config", "autoSnapConfig")
+            .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
+            .addChild(new StringParameter('Custom Name', 'customName', ''))
+            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5));
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: AutomatedSnapshotTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
     
 }
 

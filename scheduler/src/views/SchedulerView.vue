@@ -70,10 +70,14 @@
                                                     {{ taskInstance.name }}
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    <span>{{ taskStatuses.get(taskInstance.name) || 'N/A' }}</span>
+                                                    <span :class="taskStatusClass(taskStatuses.get(taskInstance.name))">
+                                                        {{ taskStatuses.get(taskInstance.name) ? upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a' }}
+                                                    </span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                                    <span>{{ latestTaskExecution.get(taskInstance.name) || 'N/A' }}</span>
+                                                    <span>
+                                                        {{ latestTaskExecution.get(taskInstance.name) || 'N/A' }}
+                                                    </span>
                                                 </td>
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
                                                     <input v-if="taskInstance.schedule.intervals.length > 0" :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox" :checked="taskInstance.schedule.enabled" @change="handleScheduleCheckboxChange(taskInstance, index)" class="ml-2 h-4 w-4 rounded "/>
@@ -144,10 +148,44 @@
                                                                         {{ findValue(taskInstance.parameters, 'snapRetention', 'destination') }}
                                                                     </b>
                                                                 </p>
-                                                            </div>
-                                                            
-                                                                                                 
+                                                            </div>                               
                                                         </div>
+                                                         <!-- Details for Automated Snapshot Task -->
+                                                         <div v-if="taskInstance.template.name === 'Automated Snapshot Task'" class="grid grid-cols-4 items-left text-left">
+                                                            <div class="col-span-1">
+                                                                <p class="my-2">
+                                                                    Task Type: <b>{{ taskInstance.template.name }}</b>
+                                                                </p>
+                                                            </div>
+                                                            <div class="col-span-1">
+                                                               
+                                                                <p class="my-2">
+                                                                    Recursive Snapshots: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'recursive_flag', 'recursive_flag')) }}</b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                    Filesystem: <b>
+                                                                        <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                        {{ findValue(taskInstance.parameters, 'filesystem', 'dataset') }}
+                                                                    </b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                   Snapshots to Keep: <b>
+                                                                        {{ findValue(taskInstance.parameters, 'snapRetention', 'snapRetention') }}
+                                                                    </b>
+                                                                </p>
+                                                                
+                                                            </div> 
+                                                            <div class="col-span-2 row-span-2">
+                                                                <p class="my-2 font-bold">Current Schedules:</p>
+                                                                <div v-if="taskInstance.schedule.intervals.length > 0" v-for="interval, idx in taskInstance.schedule.intervals" :key="idx" class="flex flex-row col-span-2 divide divide-y divide-default p-1">
+                                                                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                                                                </div>
+                                                                <div v-else>
+                                                                    <p>No Intervals Currently Scheduled</p>
+                                                                </div>
+                                                            </div>   
+                                                           
+                                                        </div>          
                                                     </div>
                                                     
                                                     <div class="button-group-row justify-center col-span-5 mt-2">
@@ -241,29 +279,34 @@ const selectedTaskIdx = ref<number>();
 const latestTaskExecution = reactive(new Map());
 const taskStatuses = reactive(new Map());
 
-// check based on params for rendering task list UI 
 function findValue(obj, targetKey, valueKey) {
     if (!obj || typeof obj !== 'object') return null;
 
-    // Checking the current level
+    // Directly check at the current level if this is the targetKey
     if (obj.key === targetKey) {
+        // If looking for the same key as targetKey and it has a value, return it
+        if (targetKey === valueKey && obj.value !== undefined) {
+            return obj.value;
+        }
+        // If there's a different valueKey to find, look for it among children
         let foundChild = obj.children?.find(child => child.key === valueKey);
-        return foundChild ? (foundChild.value !== undefined ? foundChild.value : 'Not found') : 'Not found';
+        if (foundChild && foundChild.value !== undefined) {
+            return foundChild.value;
+        }
     }
 
-    // Recursively checking in children
+    // If no value found at this level, and there are children, search them recursively
     if (Array.isArray(obj.children)) {
         for (let child of obj.children) {
             const result = findValue(child, targetKey, valueKey);
-            if (result !== null) {  // Ensure '0', 'false', or empty string are valid returns
+            if (result !== null) {  // Ensure '0', 'false', or empty string are considered valid returns
                 return result;
             }
         }
     }
-    
-    return null;  // Return null if nothing is found
-}
 
+    return null;  // If the search yields no results, return null
+}
 
 // Polling Interval
 const pollingInterval = ref(10000);
@@ -278,6 +321,19 @@ async function updateTaskStatus(task) {
         console.error(`Failed to fetch status for ${task.name}:`, error);
     }
 }
+
+function taskStatusClass(status) {
+    if (status) {
+        if (status.includes('active')) {
+        return 'text-success';
+        } else if (status.includes('inactive')) {
+            return 'text-warning';
+        } else if (status.includes('failed')) {
+            return 'text-danger';
+        }
+    }
+}
+
 
 async function fetchLatestLog(task) {
     try {

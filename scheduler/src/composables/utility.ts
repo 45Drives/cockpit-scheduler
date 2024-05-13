@@ -38,7 +38,7 @@ export async function executePythonScript(script: string, args: string[]): Promi
         const state = useSpawn(command);
 
         const output = await state.promise();
-        console.log(`output:`, output);
+        // console.log(`output:`, output);
         return output.stdout;
     } catch (error) {
         console.error(errorString(error));
@@ -193,123 +193,6 @@ export async function getTaskExecutionResults(taskName, timestamp) {
         return false;
     }
 }
-
-/* 
-export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_task_files_script, '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('scheduled task creation output:', output);
-
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-export async function createStandaloneTask(serviceTemplate, envFile) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_standalone_task_script, '-st', serviceTemplate, '-e', envFile], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('unscheduled task creation output:', output);
-
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function createScheduleForTask(taskName, timerTemplate, scheduleFile) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', generate_schedule_script, '-n', taskName, '-tt', timerTemplate, '-s', scheduleFile], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('schedule creation output:', output);
-
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function removeTask(taskName) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', remove_task_script, taskName], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('remove task output:', output);
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function runTask(taskName) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', run_task_script, taskName], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('run task output:', output);
-
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function checkTaskTimer(taskName) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', check_timer_script, taskName], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('check task timer output:', output);
-        const result = output.stdout;
-        return result;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function enableTaskTimer(taskName) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', enable_timer_script, taskName], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('enable task output:', output);
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function disableTaskTimer(taskName) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', disable_timer_script, taskName], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        console.log('disable task output:', output);
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-
-export async function getTaskStatus(taskName) {
-    try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_this_task_status_script, taskName], { superuser: 'try', stderr: 'out' });
-
-        const output = await state.promise();
-        const result = output.stdout;
-        // console.log(`${taskName} status:`, result);
-        return result;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-} */
 
 export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
     return executePythonScript(generate_task_files_script, ['-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);

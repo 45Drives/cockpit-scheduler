@@ -56,17 +56,12 @@
     </div>
 </template>
 <script setup lang="ts">
-import { inject, provide, reactive, ref, Ref, computed, watch, onMounted } from 'vue';
+import { inject, provide, ref, Ref, watch } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
+import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
 
-interface AddTaskProps {
-	idKey: string;
-}
-
-const props = defineProps<AddTaskProps>();
 const emit = defineEmits(['close']);
 const notifications = inject<Ref<any>>('notifications')!;
 
@@ -119,10 +114,6 @@ async function validateComponentParams() {
         return true;
     }
 }
-
-watch(errorList, (newVal, oldVal) => {
-    console.log('Error List Changed:', newVal);
-}, { deep: true });
 
 // Schedule Prompt
 const showSchedulePrompt = ref(false);
@@ -190,33 +181,36 @@ const updateShowScheduleWizardComponent = (newVal) => {
 
 async function saveTask() {
     console.log('saveTask triggered');
+    const template = ref();
     if (selectedTemplate.value?.name == 'ZFS Replication Task') {
-        const template = new ZFSReplicationTaskTemplate();
-        
-        let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
-        if (sanitizedName.startsWith('_')) {
-            sanitizedName = 'task' + sanitizedName;
-        }
-        console.log('sanitizedName:', sanitizedName);
+        template.value = new ZFSReplicationTaskTemplate();
+    } else if (selectedTemplate.value?.name == 'Automated Snapshot Task') {
+        template.value = new AutomatedSnapshotTaskTemplate();
+    }
+
+    let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    if (sanitizedName.startsWith('_')) {
+        sanitizedName = 'task' + sanitizedName;
+    }
+    console.log('sanitizedName:', sanitizedName);
 
 
-        if (isStandaloneTask.value) {
-            const schedule = new TaskSchedule(false, []);
-            const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
-            console.log('task (no schedule):', task);
+    if (isStandaloneTask.value) {
+        const schedule = new TaskSchedule(false, []);
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
+        console.log('task (no schedule):', task);
 
-            await myScheduler.registerTaskInstance(task);
-            notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
-            loading.value = true;
-            await myScheduler.loadTaskInstances();
-            loading.value = false;
-        } else {
-            const schedule = new TaskSchedule(true, []);
-            const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
-            console.log('task (for scheduling):', task);
+        await myScheduler.registerTaskInstance(task);
+        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+        loading.value = true;
+        await myScheduler.loadTaskInstances();
+        loading.value = false;
+    } else {
+        const schedule = new TaskSchedule(true, []);
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
+        console.log('task (for scheduling):', task);
 
-            newTask.value = task;
-        }
+        newTask.value = task;
     }
 }
 

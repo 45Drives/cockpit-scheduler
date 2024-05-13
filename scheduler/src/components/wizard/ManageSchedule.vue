@@ -448,7 +448,7 @@ const confirmScheduleTask : ConfirmationCallback = async () => {
     console.log('Saving and scheduling task now...');
    
     savingSchedule.value = true;
-
+    console.log('task:', thisTask.value);
     if (props.mode == 'new') {
         await myScheduler.registerTaskInstance(thisTask.value);
         notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000);

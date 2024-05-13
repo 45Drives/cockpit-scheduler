@@ -14,7 +14,7 @@ def get_unit_status(unit_name):
         # Decode and analyze stderr to provide a meaningful error message
         error_message = result.stderr.decode()
         if "could not be found" in error_message:
-            print("Error: The specified timer does not exist or is disabled.")
+            print("Task is not scheduled.")
         # else:
         #     print("Error running systemctl:", error_message)
         return None
@@ -40,8 +40,6 @@ def main():
     status = get_unit_status(unit_name)
     if status is not None:
         print(status)
-    else:
-        print("Task is not scheduled.")
 
 if __name__ == "__main__":
     main()

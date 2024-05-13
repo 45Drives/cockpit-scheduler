@@ -31,6 +31,16 @@ def parse_env_file(parameter_env_file_path):
                     if flag == 'customName':
                         parameters['zfsRepConfig_sendOptions_customName'] = ""
         
+        if key.split('_')[0] == 'autoSnapConfig':
+            flags = ['recursive', 'customName']
+            for flag in flags:
+                if f'autoSnapConfig_{flag}_flag' in parameters and parameters[f'autoSnapConfig_{flag}_flag'].lower() == 'true':
+                    parameters[f'autoSnapConfig_{flag}_flag'] = f"--{flag}"
+                else:
+                    parameters[f'autoSnapConfig_{flag}_flag'] = ""
+                    if flag == 'customName':
+                        parameters['autoSnapConfig_customName'] = ""
+        
     return parameters
 
 

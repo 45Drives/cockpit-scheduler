@@ -15,8 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import { useSpawn, errorString } from '@45drives/cockpit-helpers';
-import { reactive, ref, computed, provide, onMounted, Teleport } from 'vue';
+import { ref, provide, onMounted, Teleport } from 'vue';
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
 import { pluginVersion } from "./version";
@@ -24,7 +23,7 @@ import { HoustonHeader } from "@45drives/cockpit-vue-components";
 import { FIFO } from '@45drives/cockpit-helpers';
 import Notifications from "./components/common/Notifications.vue";
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from './models/Classes';
+import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from './models/Classes';
 
 interface AppProps {
 	notificationFIFO: FIFO;
@@ -36,9 +35,10 @@ const notifications = ref<any>(null);
 
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();
-
+	const autoSnapTaskTemplate = new AutomatedSnapshotTaskTemplate();
 	return [
 		zfsRepTaskTemplate,
+		autoSnapTaskTemplate,
 	]
 }
 

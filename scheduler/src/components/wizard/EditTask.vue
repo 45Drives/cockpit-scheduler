@@ -38,7 +38,7 @@
 import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
-import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule } from '../../models/Classes';
+import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
 
 interface EditTaskProps {
     idKey: string;
@@ -53,7 +53,6 @@ const saving = ref(false);
 const myScheduler = inject<Scheduler>('scheduler')!;
 const loading = inject<Ref<boolean>>('loading')!;
 const taskInstance = ref(props.task);
-const initialTaskData = ref(props.task);
 
 const errorList = ref<string[]>([]);
 const parameterInputComponent = ref();
@@ -106,30 +105,26 @@ const cancelEdit : ConfirmationCallback = async () => {
 
 async function saveEditedTask() {
     console.log('save changes triggered');
-    if (taskInstance.value!.template.name == 'ZFS Replication Task') {
-        const template = new ZFSReplicationTaskTemplate();
-        
-        let sanitizedName = taskInstance.value.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
-        if (sanitizedName.startsWith('_')) {
-            sanitizedName = 'task' + sanitizedName;
-        }
-        console.log('sanitizedName:', sanitizedName);
-
-        const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
-        const task = new TaskInstance(sanitizedName, template, parameters.value, schedule);
-        console.log('edited task: ', task);
-
-        // if (initialTaskData.value !== task) {
-        //     await myScheduler.updateTaskInstance(task);
-
-        //     notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);
-        // } else {
-        //     notifications.value.constructNotification('No Changes Detected', `Task has not been edited.`, 'success', 8000);
-        // }
-        await myScheduler.updateTaskInstance(task);
-
-        notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);
+    const template = ref();
+    if (taskInstance.value?.template.name == 'ZFS Replication Task') {
+        template.value = new ZFSReplicationTaskTemplate();
+    } else if (taskInstance.value?.template.name == 'Automated Snapshot Task') {
+        template.value = new AutomatedSnapshotTaskTemplate();
     }
+  
+    let sanitizedName = taskInstance.value.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    if (sanitizedName.startsWith('_')) {
+        sanitizedName = 'task' + sanitizedName;
+    }
+    console.log('sanitizedName:', sanitizedName);
+
+    const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
+    const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
+    console.log('edited task: ', task);
+
+    await myScheduler.updateTaskInstance(task);
+
+    notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);
 }
 
 const updateShowSaveConfirmation = (newVal) => {
@@ -141,9 +136,7 @@ async function saveChangesBtn() {
     if (validateComponentParams()) {
         showConfirmationDialog();
     }
-   
 }
-
 
 provide('task-for-editing', taskInstance);
 provide('parameters', parameters);

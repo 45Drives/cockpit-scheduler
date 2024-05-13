@@ -237,11 +237,11 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, reactive, computed, onMounted, watch, inject } from 'vue';
+import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import LoadingSpinner from '../common/LoadingSpinner.vue';
-import { ZFSReplicationTaskTemplate, TaskTemplate, ParameterNode, ZfsDatasetParameter, SelectionOption, SelectionParameter, IntParameter, StringParameter, BoolParameter, TaskInstance } from '../../models/Classes';
-import { getTaskData, getPoolData, getDatasetData, testSSH } from '../../composables/utility';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Classes';
+import { getPoolData, getDatasetData, testSSH } from '../../composables/utility';
 
 interface ZfsRepTaskParamsProps {
    parameterSchema: ParameterNodeType;

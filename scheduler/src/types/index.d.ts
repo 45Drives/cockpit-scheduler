@@ -19,7 +19,6 @@ type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
 type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
 
 interface TimeComponentType {
-	// value: number | string;
 	value: string;
 }
 
@@ -29,9 +28,9 @@ interface TaskScheduleType {
 }
 
 type TaskScheduleIntervalType = {
-    [K in TimeUnit]?: TimeComponentType; // Make each property optional
+    [K in TimeUnit]?: TimeComponentType;
 } & {
-    dayOfWeek?: (DayOfWeek)[]; // Additional properties can be added like this
+    dayOfWeek?: (DayOfWeek)[];
 };
 
 interface LocationType {
@@ -74,10 +73,6 @@ interface IntParameterType extends ParameterNodeType {
 	value: number;
 }
 
-// interface ZfsDatasetParameterType extends ParameterNodeType {
-// 	children: []
-// }
-  
 interface TaskExecutionLogType {
 	entries: TaskExecutionResultType[];
 }
@@ -85,15 +80,8 @@ interface TaskExecutionLogType {
 interface TaskExecutionResultType {
 	exitCode: number;
 	output: string;
-	// startDate: Date;
-	// finishDate: Date;
 	startDate: string;
 	finishDate: string;
 }
-
-// interface ZFSReplicationTaskTemplate extends TaskTemplate {
-
-// }
-
 
 type ConfirmationCallback = (param?: any) => void;

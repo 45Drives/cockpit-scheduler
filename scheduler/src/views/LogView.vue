@@ -102,7 +102,7 @@ const closeModal = () => {
 
 function logColor(line: string) {
     if (line.includes('systemd')) {
-        if (line.includes('Failed') || line.includes('FAILURE') || line.includes('Stopped')) {
+        if (line.includes('Failed') || line.includes('FAILURE') || line.includes('Stopped') || line.includes('error')) {
             return 'text-danger';
         } else if (line.includes('Succeeded') || line.includes('Starting') || line.includes('Started')) {
             return 'text-success';
