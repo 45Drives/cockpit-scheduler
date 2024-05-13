@@ -130,7 +130,7 @@ async function initializeData() {
         loading.value = true;
         await getSourcePools();
         const params = props.task.parameters.children;
-        const filesystemParams = params.find(p => p.key === 'flesystem')!.children;
+        const filesystemParams = params.find(p => p.key === 'filesystem')!.children;
         sourcePool.value = filesystemParams.find(p => p.key === 'pool')!.value;
         await getSourceDatasets();
         sourceDataset.value = filesystemParams.find(p => p.key === 'dataset')!.value;

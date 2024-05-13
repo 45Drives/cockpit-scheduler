@@ -23,9 +23,6 @@
                                 <div class="mt-5 py-0.5 px-3">
                                     <button @click="refreshBtn()" class="btn btn-secondary"><ArrowPathIcon class="w-5 h-5 m-0.5"/></button>
                                 </div>
-                                <!-- <div class="mt-5 py-0.5 px-3">
-                                    <button @click="viewAllLogsBtn()" class="btn btn-secondary">Task Log</button>
-                                </div> -->
                                 <div class="mt-5 py-0.5 px-3">
                                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                                 </div>
@@ -64,7 +61,7 @@
                                             </tr>
                                         </thead>
                                         <tbody class="bg-default">
-                                            <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index" :class="showDetails[index] ? 'outline outline-2 outline-red-700 dark:outline-red-800' : ''" class="border border-default grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+                                            <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index" :class="showDetails[index] ? 'outline outline-2 outline-red-700 dark:outline-red-800 bg-accent' : ''" class="border border-default grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
                                                 <!-- Table Cells -->
                                                 <td class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                                     {{ taskInstance.name }}
@@ -150,17 +147,12 @@
                                                                 </p>
                                                             </div>                               
                                                         </div>
+
                                                          <!-- Details for Automated Snapshot Task -->
-                                                         <div v-if="taskInstance.template.name === 'Automated Snapshot Task'" class="grid grid-cols-4 items-left text-left">
+                                                        <div v-if="taskInstance.template.name === 'Automated Snapshot Task'" class="grid grid-cols-4 items-left text-left">
                                                             <div class="col-span-1">
                                                                 <p class="my-2">
                                                                     Task Type: <b>{{ taskInstance.template.name }}</b>
-                                                                </p>
-                                                            </div>
-                                                            <div class="col-span-1">
-                                                               
-                                                                <p class="my-2">
-                                                                    Recursive Snapshots: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'recursive_flag', 'recursive_flag')) }}</b>
                                                                 </p>
                                                                 <p class="my-2">
                                                                     Filesystem: <b>
@@ -168,12 +160,16 @@
                                                                         {{ findValue(taskInstance.parameters, 'filesystem', 'dataset') }}
                                                                     </b>
                                                                 </p>
+                                                            </div>
+                                                            <div class="col-span-1">
                                                                 <p class="my-2">
-                                                                   Snapshots to Keep: <b>
+                                                                    Recursive Snapshots: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'recursive_flag', 'recursive_flag')) }}</b>
+                                                                </p>
+                                                                <p class="my-2">
+                                                                    Snapshots to Keep: <b>
                                                                         {{ findValue(taskInstance.parameters, 'snapRetention', 'snapRetention') }}
                                                                     </b>
                                                                 </p>
-                                                                
                                                             </div> 
                                                             <div class="col-span-2 row-span-2">
                                                                 <p class="my-2 font-bold">Current Schedules:</p>
@@ -184,12 +180,11 @@
                                                                     <p>No Intervals Currently Scheduled</p>
                                                                 </div>
                                                             </div>   
-                                                           
+                                                            
                                                         </div>          
                                                     </div>
                                                     
                                                     <div class="button-group-row justify-center col-span-5 mt-2">
-
                                                         <button @click="runTaskBtn(taskInstance)" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
                                                             Run Now
                                                             <PlayIcon class="h-5 ml-2 mt-0.5"/>

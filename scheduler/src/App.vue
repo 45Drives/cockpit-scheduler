@@ -10,7 +10,6 @@
                 ref="notifications" class="z-9999"
             />
 		</Teleport>
-		
 	</div>
 </template>
 
@@ -31,7 +30,6 @@ interface AppProps {
 
 const props = defineProps<AppProps>();
 const notifications = ref<any>(null);
-// const notificationFIFO = ref<FIFO>(props.notificationFIFO);
 
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();
