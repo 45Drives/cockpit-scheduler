@@ -212,7 +212,7 @@
                                         </tbody>
                                     </table>
                                     <div v-if="loading" class="flex items-center justify-center">
-                                        <LoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                                        <CustomLoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
                                     </div>
                                 </div>
                             </div>
@@ -260,7 +260,7 @@ import "@45drives/cockpit-vue-components/dist/style.css";
 import {computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, watch, onUnmounted} from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/helpers'
-import LoadingSpinner from "../components/common/LoadingSpinner.vue";
+import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
 import EditTask from "../components/wizard/EditTask.vue";
 import { Scheduler, TaskExecutionLog } from '../models/Classes';

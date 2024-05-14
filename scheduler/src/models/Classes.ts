@@ -300,31 +300,28 @@ export class Scheduler implements SchedulerType {
                             'July', 'August', 'September', 'October', 'November', 'December'];
             return months[number - 1] || 'undefined';
         }
-
+    
         function formatUnit(value, type) {
             if (value === '*') {
-                return type === 'day' ? 'every day' : `every ${type}`;
+                return `every ${type}`;
             } else if (value.includes(',')) {
                 const items = value.split(',').map(item => item.trim());
                 return (type === 'month' ? `in ${items.map(getMonthName).join(', ')}` :
                        (type === 'day' && items.length === 1) ? `on ${items.join(', ')}` :
-                       `at ${items.join(', ')}`);
+                       `${items.join(', ')} ${type}`);
             } else if (value.includes('-')) {
                 const [start, end] = value.split('-');
                 return `from ${start} to ${end} ${type}s`;
             } else if (value.includes('..')) {
                 const [start, end] = value.split('..').map(item => item.trim());
-                if (type === 'month') {
-                    return `from ${getMonthName(start)} to ${getMonthName(end)}`;
-                } else {
-                    return `from ${start} to ${end} ${type}s`;
-                }
+                return type === 'month' ? `from ${getMonthName(start)} to ${getMonthName(end)}` :
+                                          `from ${start} to ${end} ${type}s`;
             } else if (value.includes('/')) {
                 const [base, step] = value.split('/');
-                return `every ${step} ${type}s`;
+                return `every ${step} ${type}s from ${base}`;
             }
             return type === 'year' ? `in the year ${value}` :
-                (type === 'month' ? `in ${getMonthName(value)}` : `at ${value} ${type === 'hour' || type === 'minute' ? type : ''}`);
+                    (type === 'month' ? `in ${getMonthName(value)}` : `${value}`);
         }
         
         const minute = formatUnit(interval.minute?.value.toString() || '*', 'minute');
@@ -333,18 +330,19 @@ export class Scheduler implements SchedulerType {
         const month = formatUnit(interval.month?.value.toString() || '*', 'month');
         const year = formatUnit(interval.year?.value.toString() || '*', 'year');
     
-        if (minute.startsWith('at') && hour.startsWith('at') && !day.startsWith('every')) {
-            elements.push(`at ${minute.split(' ')[1]} minutes past hour ${hour.split(' ')[1]} on ${day} in ${month} in the year ${year}`);
-        } else {
-            elements.push(minute, hour, day, month, year);
+        elements.push(`at ${minute} minutes past hour ${hour}`);
+        if (!day.startsWith('every')) {
+            elements.push(`on day ${day}`);
         }
-    
+        elements.push(`${month}`, `${year}`);
+        
         if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
             elements.push(`on ${interval.dayOfWeek.join(', ')}`);
         }
-    
+        
         return elements.join(' ');
     }
+    
 
     formatTemplateName(templateName) {
         // Split the string into words using space as the delimiter

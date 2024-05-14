@@ -1,7 +1,7 @@
 <template>
     <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <div class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
-            <LoadingSpinner :width="'w-40'" :height="'h-40'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+            <CustomLoadingSpinner :width="'w-40'" :height="'h-40'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
         </div>
     </div>
     <div v-if="!loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2">
@@ -87,7 +87,7 @@
 
 import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import LoadingSpinner from '../common/LoadingSpinner.vue';
+import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Classes';
 import { getPoolData, getDatasetData } from '../../composables/utility';
 

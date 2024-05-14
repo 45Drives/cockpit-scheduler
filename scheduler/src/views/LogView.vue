@@ -46,7 +46,7 @@
                                         {{ line }}
                                     </li>
                                     <li v-if="loadingMoreLogs" class="flex items-center justify-center">
-                                        <LoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                                        <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
                                     </li>
                                 </ul>
                             </div>
@@ -54,7 +54,7 @@
                     </div>
                 </div>
                 <div v-if="loadingLogs" class="flex items-center justify-center">
-                    <LoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                    <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
                 </div>
             </div>
         </template>
@@ -73,7 +73,7 @@ import { inject, provide, reactive, ref, Ref, computed, watch, onMounted, onUnmo
 import { Switch } from '@headlessui/vue';
 import Modal from '../components/common/Modal.vue';
 import { Scheduler, TaskExecutionLog } from '../models/Classes';
-import LoadingSpinner from '../components/common/LoadingSpinner.vue';
+import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 
 interface LogViewProps {
     idKey: string;

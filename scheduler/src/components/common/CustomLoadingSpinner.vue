@@ -9,12 +9,12 @@
 </template>
 
 <script setup lang="ts">
-    interface CustomLoadingSpinnerProps {
+    interface CustomCustomLoadingSpinnerProps {
         baseColor: string;
         fillColor: string;
         width: string;
         height: string;
     }
 
-    const props = defineProps<CustomLoadingSpinnerProps>();
+    const props = defineProps<CustomCustomLoadingSpinnerProps>();
 </script>
