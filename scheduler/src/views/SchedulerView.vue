@@ -307,13 +307,9 @@ const pollingInterval = ref(10000);
 const intervalId = ref();
 
 async function updateTaskStatus(task) {
-    try {
-        const status = await myScheduler.getTaskStatusFor(task);
-        taskStatuses.set(task.name, status);
-        // console.log(`Status for ${task.name}:`, status);
-    } catch (error) {
-        console.error(`Failed to fetch status for ${task.name}:`, error);
-    }
+    const status = await myScheduler.getTaskStatusFor(task);
+    taskStatuses.set(task.name, status);
+    // console.log(`Status for ${task.name}:`, status);
 }
 
 function taskStatusClass(status) {
@@ -324,7 +320,7 @@ function taskStatusClass(status) {
             return 'text-warning';
         } else if (status.includes('failed')) {
             return 'text-danger';
-        } else if (status.includes('No schedule found')) {
+        } else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
             return 'text-muted';
         }
     }
@@ -449,13 +445,16 @@ const enableYes : ConfirmationCallback = async () => {
     enabling.value = true;
     console.log('enabling schedule for:', selectedTask.value!.name)
     await myScheduler.enableSchedule(selectedTask!.value);
+    await updateTaskStatus(selectedTask.value);
     updateShowEnablePrompt(false);
     enabling.value = false;
+    
     
 }
 const enableNo : ConfirmationCallback = async () => {
     console.log('leaving task schedule as is');
     selectedTask.value!.schedule.enabled = selectedTask.value!.schedule.enabled;
+    await updateTaskStatus(selectedTask.value);
     updateShowEnablePrompt(false);
 }
 const updateShowEnablePrompt = (newVal) => {

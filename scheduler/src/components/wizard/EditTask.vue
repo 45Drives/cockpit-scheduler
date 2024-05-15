@@ -39,6 +39,7 @@ import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
+import { pushNotification, Notification } from 'houston-common-ui';
 
 interface EditTaskProps {
     idKey: string;
@@ -47,7 +48,6 @@ interface EditTaskProps {
 
 const props = defineProps<EditTaskProps>();
 const emit = defineEmits(['close']);
-const notifications = inject<Ref<any>>('notifications')!;
 const showEditTaskWizard = inject<Ref<boolean>>('show-edit-task-wizard')!;
 const saving = ref(false);
 const myScheduler = inject<Scheduler>('scheduler')!;
@@ -67,7 +67,7 @@ function validateComponentParams() {
     parameterInputComponent.value.clearTaskParamErrorTags();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
     } else {
         return true;
@@ -124,7 +124,7 @@ async function saveEditedTask() {
 
     await myScheduler.updateTaskInstance(task);
 
-    notifications.value.constructNotification('Changes Saved', `Task has successfully been edited.`, 'success', 8000);
+    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 8000));
 }
 
 const updateShowSaveConfirmation = (newVal) => {

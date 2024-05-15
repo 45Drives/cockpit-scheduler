@@ -182,6 +182,7 @@ import CalendarComponent from '../common/CalendarComponent.vue';
 import InfoTile from '../common/InfoTile.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { Scheduler, TaskInstance } from '../../models/Classes';
+import { pushNotification, Notification } from 'houston-common-ui';
 
 interface ManageScheduleProps {
     idKey: string;
@@ -191,7 +192,6 @@ interface ManageScheduleProps {
 
 const props = defineProps<ManageScheduleProps>();
 const emit = defineEmits(['close']);
-const notifications = inject<Ref<any>>('notifications')!;
 const myScheduler = inject<Scheduler>('scheduler')!;
 const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
 const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
@@ -361,7 +361,7 @@ function validateFields(interval) {
     if (errorList.value.length > 0) {
         // Handle errors
         console.log('Validation errors:', errorList);
-        notifications.value.constructNotification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
     } else {
         // No errors, continue with processing
@@ -451,10 +451,10 @@ const confirmScheduleTask : ConfirmationCallback = async () => {
     console.log('task:', thisTask.value);
     if (props.mode == 'new') {
         await myScheduler.registerTaskInstance(thisTask.value);
-        notifications.value.constructNotification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000);
+        pushNotification(new Notification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000));
     } else {
         await myScheduler.updateSchedule(thisTask.value);
-        notifications.value.constructNotification('Schedule Save Successful', `Schedule has been updated.`, 'success', 8000);
+        pushNotification(new Notification('Schedule Save Successful', `Schedule has been updated.`, 'success', 8000));
     }
     
     updateShowSaveConfirmation(false);
@@ -480,7 +480,7 @@ const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 async function saveScheduleBtn() {
     if (localIntervals.value.length < 1) {
-        notifications.value.constructNotification('Save Failed', `At least one interval is required.`, 'error', 8000);
+        pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 8000));
     } else {
         console.log('intervals before (saveBtn):', intervals.value);
         console.log('localIntervals (saveBtn):', localIntervals.value);

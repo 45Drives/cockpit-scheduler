@@ -18,7 +18,6 @@ PLUGIN_SRCS=
 
 # For installing to a remote machine for testing with `make install-remote`
 REMOTE_TEST_HOST=192.168.13.40
-# Dev Server ^ 
 REMOTE_TEST_USER=root
 
 # Restarts cockpit after install
@@ -54,7 +53,7 @@ BUILD_FLAGS=-- --minify false
 endif
 
 ifndef PLUGIN_SRCS
-PLUGIN_SRCS:=$(patsubst %/package.json,%,$(wildcard */package.json))
+PLUGIN_SRCS:=$(filter-out %-old, $(patsubst %/package.json,%,$(filter-out houston-common%, $(wildcard */package.json))))
 endif
 
 OUTPUTS:=$(addsuffix /dist/index.html, $(PLUGIN_SRCS))

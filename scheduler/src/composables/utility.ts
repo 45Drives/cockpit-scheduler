@@ -18,20 +18,12 @@ import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
 //@ts-ignore
-import check_timer_script from '../scripts/check-timer.py?raw';
-//@ts-ignore
-import enable_timer_script from '../scripts/enable-timer.py?raw';
-//@ts-ignore
-import disable_timer_script from '../scripts/disable-timer.py?raw';
-//@ts-ignore
 import get_latest_task_execution_script from '../scripts/get-this-latest-task-log-result.py?raw';
-//@ts-ignore
-import get_task_execution_log_script from '../scripts/get-task-log-results.py?raw';
 
 export async function executePythonScript(script: string, args: string[]): Promise<any> {
     try {
         const command = ['/usr/bin/env', 'python3', '-c', script, ...args];
-        const state = useSpawn(command);
+        const state = useSpawn(command, { superuser: 'try' });
 
         const output = await state.promise();
         // console.log(`output:`, output);
@@ -176,19 +168,26 @@ export async function getLatestTaskExecutionResult(taskName) {
     }
 }
 
-export async function getTaskExecutionResults(taskName, timestamp) {
+export async function getTaskExecutionResults(serviceName, untilTime) {
     try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_task_execution_log_script, '-u', taskName, '-t', timestamp], { superuser: 'try', stderr: 'out' });
+        let command;
+        if (untilTime) {
+            command = ['journalctl', '-r', '-u', serviceName, '--until', untilTime, '--no-pager'];
+        } else {
+            console.log("No until time provided");
+            return "No until time available.";
+        }
 
-        const output = await state.promise();
-        // console.log('get task execution results output:', output);
-        const result = output.stdout;
-        return result;
+        const state = useSpawn(command, { superuser: 'try' });
+        const result = await state.promise();
+
+        return result.stdout.trim();
     } catch (error) {
         console.error(errorString(error));
         return false;
     }
 }
+
 
 export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
     return executePythonScript(generate_task_files_script, ['-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
@@ -210,50 +209,88 @@ export async function runTask(taskName) {
     return executePythonScript(run_task_script, [taskName]);
 }
 
-export async function checkTaskTimer(taskName) {
-    return executePythonScript(check_timer_script, [taskName]);
+export async function enableTaskTimer(taskName) {
+    const timerName = `${taskName}.timer`;
+    try {
+        // Reload the system daemon
+        let command = ['sudo', 'systemctl', 'daemon-reload'];
+        let state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        // Enable the timer
+        command = ['sudo', 'systemctl', 'enable', timerName];
+        state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        // Start the timer
+        command = ['sudo', 'systemctl', 'start', timerName];
+        state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        console.log(`${timerName} has been enabled and started`);
+        return `${timerName} has been enabled and started`;
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
 }
 
-export async function enableTaskTimer(taskName) {
-    return executePythonScript(enable_timer_script, [taskName]);
-}
 
 export async function disableTaskTimer(taskName) {
-    return executePythonScript(disable_timer_script, [taskName]);
+    const timerName = `${taskName}.timer`;
+    try {
+        // Stop the timer 
+        let command = ['sudo', 'systemctl', 'stop', timerName];
+        let state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        // Disable the timer
+        command = ['sudo', 'systemctl', 'disable', timerName];
+        state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        // Reload the system daemon
+        command = ['sudo', 'systemctl', 'daemon-reload'];
+        state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        console.log(`${timerName} has been stopped and disabled`);
+        return `${timerName} has been stopped and disabled`;
+    } catch (error) {
+        console.error(errorString(error));
+        return false;
+    }
 }
 
+
 export async function getTaskStatus(taskName) {
+    let result, output;
     try {
         const command = ['systemctl', 'status', `${taskName}.timer`, '--no-pager', '--output=cat'];
-        const state = useSpawn(command);
+        const state = useSpawn(command, { superuser: 'try'});
+        result = await state.promise();
+        output = result.stdout;
 
-        const result = await state.promise();
-      
-        const output = result.stdout;
-        // console.log('output:', output);
-        const errorOutput = result.stderr;
+    } catch (error) {
+        // console.error(errorString(error));
+        // return false;
+        return 'Not scheduled';
+    }
 
+    try {
         let status = '';
-
-        if (errorOutput.includes("could not be found")) {
-            status = "No schedule found."
-        } else if (errorOutput !== '') {
-            console.error(`Error running systemctl: ${errorOutput}`);
-            return "Error";
-        }
-        
         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
         const activeStatusMatch = output.match(activeStatusRegex);
 
         if (activeStatusMatch) {
-            status = activeStatusMatch[1].trim()
+            status = activeStatusMatch[1].trim();
         } else {
-            status = "No schedule found."
+            status = "No schedule found.";
         }
-        console.log(status);
+        // console.log(`Status for ${taskName}`, status);
         return status;
     } catch (error) {
-        console.error(`Error executing command: ${error}`);
+        console.error(errorString(error));
         return false;
     }
 }

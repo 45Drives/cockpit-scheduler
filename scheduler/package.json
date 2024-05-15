@@ -13,7 +13,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:app": "vite build",
+    "build": "yarn build:app",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,8 +25,11 @@
     "@heroicons/vue": "^2.0.18",
     "@tailwindcss/forms": "^0.5.2",
     "heroicons": "^2.0.18",
+    "houston-common-css": "workspace:^",
+    "houston-common-lib": "workspace:^",
+    "houston-common-ui": "workspace:^",
     "tsc": "^2.0.4",
-    "vue": "^3.2.37"
+    "vue": "^3.4.27"
   },
   "devDependencies": {
     "@45drives/cockpit-vue-components": "^0.1.0-beta2",

@@ -1,11 +1,9 @@
-import { createApp, reactive} from 'vue';
+import { createApp } from 'vue';
 import './assets/scheduler.css';
 import App from './App.vue';
-import { FIFO } from '@45drives/cockpit-helpers';
-import '@45drives/cockpit-css/src/index.css';
+import 'houston-common-css/src/index.css';
+import "houston-common-ui/style.css";
 
-const notificationFIFO = reactive(new FIFO());
-
-const app = createApp(App, { notificationFIFO });
+const app = createApp(App);
 
 app.mount('#app');

@@ -1,5 +1,5 @@
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTaskStatus, checkTaskTimer, enableTaskTimer, disableTaskTimer, getTaskExecutionResults } from '../composables/utility';
+import { getTaskData, getPoolData, getDatasetData, createTaskFiles, createStandaloneTask, createScheduleForTask, removeTask, runTask, getLatestTaskExecutionResult, getTaskStatus, enableTaskTimer, disableTaskTimer, getTaskExecutionResults } from '../composables/utility';
 import { ref } from 'vue';
 
 export class Scheduler implements SchedulerType {
@@ -214,14 +214,6 @@ export class Scheduler implements SchedulerType {
 
         const status = await getTaskStatus(fullTaskName);
         return status;
-    }
-
-    async checkScheduleState(taskInstance) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = this.formatTemplateName(taskInstance.template.name);
-        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
-        return await checkTaskTimer(fullTaskName);
     }
 
     async enableSchedule(taskInstance) {

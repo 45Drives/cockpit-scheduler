@@ -242,6 +242,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Classes';
 import { getPoolData, getDatasetData, testSSH } from '../../composables/utility';
+import { pushNotification, Notification } from 'houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
    parameterSchema: ParameterNodeType;
@@ -299,7 +300,6 @@ const makeNewDestDataset = ref(false);
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
-const notifications = inject<Ref<any>>('notifications')!;
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
@@ -326,13 +326,13 @@ async function initializeData() {
             const sshTarget = destUser.value + '@' + destHost.value;
             isRemoteAccessible.value = await testSSH(sshTarget);
             if (isRemoteAccessible.value) {
-                notifications.value.constructNotification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000);
+                pushNotification(new Notification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000))
                 await getRemoteDestinationPools();
                 destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
                 await getRemoteDestinationDatasets();
                 destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
             } else {
-                notifications.value.constructNotification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 8000);
+                pushNotification(new Notification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 8000));
                 await getLocalDestinationPools();
                 destPool.value = '';
                 await getLocalDestinationDatasets();
@@ -682,9 +682,9 @@ async function confirmTest(destHost, destUser) {
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        notifications.value.constructNotification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000);
+        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000));
     } else {
-        notifications.value.constructNotification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000);
+        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000));
     }
     testingSSH.value = false;
 }

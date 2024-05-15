@@ -60,12 +60,20 @@ def generate_concrete_file(template_content, output_file_path):
         file.write(template_content)
     
 def restart_timer(unit_name):
-    subprocess.run(['sudo', 'systemctl', 'reset-failed'], check=True)
-    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-    subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
-    subprocess.run(['sudo', 'systemctl', 'restart', f'{unit_name}'], check=True)
-    print(f'{unit_name} has been restarted')
-
+    commands = [
+        ['sudo', 'systemctl', 'reset-failed'],
+        ['sudo', 'systemctl', 'daemon-reload'],
+        ['sudo', 'systemctl', 'enable', f'{unit_name}'],
+        ['sudo', 'systemctl', 'restart', f'{unit_name}']
+    ]
+    try:
+        for command in commands:
+            subprocess.run(command, check=True)
+        print(f'{unit_name} has been restarted')
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to execute '{' '.join(e.cmd)}': {e}")
+        return False
+    return True
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Timer File from Template + JSON Files')

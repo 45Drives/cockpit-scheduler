@@ -69,9 +69,9 @@ import ParameterInput from './ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
+import { pushNotification, Notification } from 'houston-common-ui';
 
 const emit = defineEmits(['close']);
-const notifications = inject<Ref<any>>('notifications')!;
 
 const newTask = ref<TaskInstanceType>();
 
@@ -116,7 +116,7 @@ async function validateComponentParams() {
     await validateTaskName();
     parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        notifications.value.constructNotification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000);
+       pushNotification(new Notification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
     } else {
         return true;
@@ -211,7 +211,7 @@ async function saveTask() {
         console.log('task (no schedule):', task);
 
         await myScheduler.registerTaskInstance(task);
-        notifications.value.constructNotification('Task Save Successful', `Task has been saved.`, 'success', 8000);
+        pushNotification(new Notification('Task Save Successful', `Task has been saved.`, 'success', 8000));
         loading.value = true;
         await myScheduler.loadTaskInstances();
         loading.value = false;
