@@ -18,8 +18,6 @@ import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
 //@ts-ignore
-import get_this_task_status_script from '../scripts/get-task-status.py?raw';
-//@ts-ignore
 import check_timer_script from '../scripts/check-timer.py?raw';
 //@ts-ignore
 import enable_timer_script from '../scripts/enable-timer.py?raw';
@@ -29,8 +27,6 @@ import disable_timer_script from '../scripts/disable-timer.py?raw';
 import get_latest_task_execution_script from '../scripts/get-this-latest-task-log-result.py?raw';
 //@ts-ignore
 import get_task_execution_log_script from '../scripts/get-task-log-results.py?raw';
-
-//['/usr/bin/env', 'python3', '-c', script, ...args ]
 
 export async function executePythonScript(script: string, args: string[]): Promise<any> {
     try {
@@ -171,7 +167,7 @@ export async function getLatestTaskExecutionResult(taskName) {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_latest_task_execution_script, taskName], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('get execution result output:', output);
+        // console.log('get execution result output:', output);
         const result = JSON.parse(output.stdout);
         return result;
     } catch (error) {
@@ -185,7 +181,7 @@ export async function getTaskExecutionResults(taskName, timestamp) {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_task_execution_log_script, '-u', taskName, '-t', timestamp], { superuser: 'try', stderr: 'out' });
 
         const output = await state.promise();
-        console.log('get task execution results output:', output);
+        // console.log('get task execution results output:', output);
         const result = output.stdout;
         return result;
     } catch (error) {
@@ -227,5 +223,37 @@ export async function disableTaskTimer(taskName) {
 }
 
 export async function getTaskStatus(taskName) {
-    return executePythonScript(get_this_task_status_script, [taskName]);
+    try {
+        const command = ['systemctl', 'status', `${taskName}.timer`, '--no-pager', '--output=cat'];
+        const state = useSpawn(command);
+
+        const result = await state.promise();
+      
+        const output = result.stdout;
+        // console.log('output:', output);
+        const errorOutput = result.stderr;
+
+        let status = '';
+
+        if (errorOutput.includes("could not be found")) {
+            status = "No schedule found."
+        } else if (errorOutput !== '') {
+            console.error(`Error running systemctl: ${errorOutput}`);
+            return "Error";
+        }
+        
+        const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
+        const activeStatusMatch = output.match(activeStatusRegex);
+
+        if (activeStatusMatch) {
+            status = activeStatusMatch[1].trim()
+        } else {
+            status = "No schedule found."
+        }
+        console.log(status);
+        return status;
+    } catch (error) {
+        console.error(`Error executing command: ${error}`);
+        return false;
+    }
 }

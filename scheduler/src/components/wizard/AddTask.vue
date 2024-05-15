@@ -5,6 +5,21 @@
         </template>
         <template v-slot:content>
             <div>
+                <div name="task-name">
+                    <!-- <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
+                        <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    </div> -->
+                    <div class="flex flex-row justify-between items-center">
+                        <div class="flex flex-row justify-between items-center">
+                            <label class="block text-sm leading-6 text-default">Task Name</label>
+                            <InfoTile class="ml-1" title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save." />
+                        </div>
+                        <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    </div>
+                    <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default" placeholder="New Task" title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save."/> 
+                    <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task" title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save."/> 
+                </div>
                 <div name="task-template" v-if="taskTemplates.length > 0">
 					<label for="task-template-selection" class="block text-sm leading-6 text-default">Task Template</label>
 					<select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
@@ -12,14 +27,6 @@
                         <option v-for="template, idx in taskTemplates" :key="idx" :value="template">{{ template.name }}</option>
 					</select>
 				</div>
-                <div name="task-name">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
-                        <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
-                    </div>
-                    <input v-if="!newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default" placeholder="New Task"/> 
-                    <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task"/> 
-                </div>
                 <div v-if="selectedTemplate">
                     <ParameterInput ref="parameterInputComponent" :selectedTemplate="selectedTemplate"/>
                 </div>
@@ -60,6 +67,7 @@ import { inject, provide, ref, Ref, watch } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import InfoTile from '../common/InfoTile.vue';
 import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
 
 const emit = defineEmits(['close']);
@@ -133,11 +141,13 @@ async function showSchedulePromptDialog() {
 }
 
 const makeScheduleLater : ConfirmationCallback = async () => {
+    adding.value = true;
     isStandaloneTask.value = true;
     console.log('Make Schedule Later. isStandalone Task:', isStandaloneTask.value);
     await saveTask();
     updateShowSchedulePrompt(false);
     closeModal();
+    adding.value = true;
 }
 
 const makeScheduleNow : ConfirmationCallback = async () => {

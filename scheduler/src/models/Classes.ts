@@ -213,19 +213,8 @@ export class Scheduler implements SchedulerType {
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
 
         const status = await getTaskStatus(fullTaskName);
-        // if (!status) {
-        //     const state = checkTaskTimer(fullTaskName);
-            
-        // }
         return status;
     }
-    
-    // loadSchedulesFor(taskInstance) {
-    //     const schedules = new TaskSchedule()
-        
-    //     return TaskSchedule;
-    // }
-    
 
     async checkScheduleState(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -293,7 +282,7 @@ export class Scheduler implements SchedulerType {
     }
 
     parseIntervalIntoString(interval) {
-        const elements : string[] = [];
+        const elements: string[] = [];
     
         function getMonthName(number) {
             const months = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -301,46 +290,57 @@ export class Scheduler implements SchedulerType {
             return months[number - 1] || 'undefined';
         }
     
+        function getDaySuffix(day) {
+            if (day > 3 && day < 21) return 'th';
+            switch (day % 10) {
+                case 1: return 'st';
+                case 2: return 'nd';
+                case 3: return 'rd';
+                default: return 'th';
+            }
+        }
+    
         function formatUnit(value, type) {
             if (value === '*') {
-                return `every ${type}`;
-            } else if (value.includes(',')) {
-                const items = value.split(',').map(item => item.trim());
-                return (type === 'month' ? `in ${items.map(getMonthName).join(', ')}` :
-                       (type === 'day' && items.length === 1) ? `on ${items.join(', ')}` :
-                       `${items.join(', ')} ${type}`);
-            } else if (value.includes('-')) {
-                const [start, end] = value.split('-');
-                return `from ${start} to ${end} ${type}s`;
-            } else if (value.includes('..')) {
-                const [start, end] = value.split('..').map(item => item.trim());
-                return type === 'month' ? `from ${getMonthName(start)} to ${getMonthName(end)}` :
-                                          `from ${start} to ${end} ${type}s`;
-            } else if (value.includes('/')) {
-                const [base, step] = value.split('/');
-                return `every ${step} ${type}s from ${base}`;
+                return type === 'minute' ? 'every minute' :
+                       type === 'hour' ? 'every hour' : `every ${type}`;
+            } else if (value === '0' && type === 'minute') {
+                return 'at the start of the hour'
+            } else if (value === '0' && type === 'hour') {
+                return 'at midnight';
+            } else if (type === 'day') {
+                return `on the ${value}${getDaySuffix(value)} of the month`;
+            } else if (type === 'month') {
+                return `in ${getMonthName(value)}`;
             }
-            return type === 'year' ? `in the year ${value}` :
-                    (type === 'month' ? `in ${getMonthName(value)}` : `${value}`);
+            return `at ${value} ${type}`;
         }
-        
-        const minute = formatUnit(interval.minute?.value.toString() || '*', 'minute');
-        const hour = formatUnit(interval.hour?.value.toString() || '*', 'hour');
-        const day = formatUnit(interval.day?.value.toString() || '*', 'day');
-        const month = formatUnit(interval.month?.value.toString() || '*', 'month');
-        const year = formatUnit(interval.year?.value.toString() || '*', 'year');
     
-        elements.push(`at ${minute} minutes past hour ${hour}`);
-        if (!day.startsWith('every')) {
-            elements.push(`on day ${day}`);
+        const formattedMinute = interval.minute ? formatUnit(interval.minute.value.toString(), 'minute') : null;
+        const formattedHour = interval.hour ? formatUnit(interval.hour.value.toString(), 'hour') : null;
+    
+        // Special case for "at midnight"
+        if (formattedMinute === null && formattedHour === 'at midnight') {
+            elements.push('at midnight');
+        } else {
+            if (formattedMinute) elements.push(formattedMinute);
+            if (formattedHour) elements.push(formattedHour);
         }
-        elements.push(`${month}`, `${year}`);
-        
+    
+        const day = interval.day ? formatUnit(interval.day.value.toString(), 'day') : "every day";
+        const month = interval.month ? formatUnit(interval.month.value.toString(), 'month') : "every month";
+        const year = interval.year ? formatUnit(interval.year.value.toString(), 'year') : "every year";
+    
+         // Push only non-null values
+        if(day) elements.push(day);
+        if(month) elements.push(month);
+        if(year) elements.push(year)
+    
         if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
             elements.push(`on ${interval.dayOfWeek.join(', ')}`);
         }
-        
-        return elements.join(' ');
+    
+        return elements.filter(e => e).join(', ');
     }
     
 
@@ -354,72 +354,6 @@ export class Scheduler implements SchedulerType {
         return formattedTemplateName;
     }
     
-}
-
-export class TaskExecutionLog {
-    entries: TaskExecutionResult[];
-
-    constructor(entries: TaskExecutionResult[]) {
-        this.entries = entries;
-    }
-
-    // async loadEntries() {}
-
-
-    async getEntriesFor(taskInstance, timestamp) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = this.formatTemplateName(taskInstance.template.name);
-        const taskName = taskInstance.name;
-
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
-        
-        const taskLogData = await getTaskExecutionResults(fullTaskName, timestamp);
-        // console.log('taskLogData:', taskLogData);
-        
-        return taskLogData;
-    }
-
-    async getLatestEntryFor(taskInstance) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = this.formatTemplateName(taskInstance.template.name);
-        const taskName = taskInstance.name;
-
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
-        const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
-
-        console.log('latest entry:', latestEntry);
-        const logEntry = new TaskExecutionResult(latestEntry.exit_code, latestEntry.output, latestEntry.start_date, latestEntry.finish_date)
-
-        return logEntry || 'None';
-    }
-
-    formatTemplateName(templateName) {
-        // Split the string into words using space as the delimiter
-        let words = templateName.split(' ');
-        // Capitalize the first letter of each word and lowercase the rest
-        let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
-        // Join the words without spaces
-        let formattedTemplateName = formattedWords.join('');
-        return formattedTemplateName;
-    }
-
-}
-
-export class TaskExecutionResult {
-    exitCode: number;
-    output: string;
-    // startDate: Date;
-    // finishDate: Date;
-    startDate: string;
-    finishDate: string;
-
-    // constructor(exitCode: number, output: string, startDate: Date, finishDate: Date) {
-    constructor(exitCode: number, output: string, startDate: string, finishDate: string) {
-        this.exitCode = exitCode;
-        this.output = output;
-        this.startDate = startDate;
-        this.finishDate = finishDate;
-    }
 }
 
 export class TaskTemplate implements TaskTemplateType {
@@ -668,41 +602,70 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         }
         return child;
     }
-    
-    // Method to create ZfsDatasetParameter from a location
-    // static fromLocation(label: string, key: string, location: Location): ZfsDatasetParameter {
-    //     const { host, port, user, root, path } = location;
-    //     return new ZfsDatasetParameter(label, key, host, port, user, root, path);
-    // }
-
-    // // Method to convert ZfsDatasetParameter to a location
-    // toLocation(): Location {
-    //     const label = (this.children[0] as StringParameter).value;
-    //     const key = (this.children[1] as StringParameter).value;
-    //     const host = (this.children[2] as StringParameter).value;
-    //     const port = (this.children[3] as IntParameter).value;
-    //     const user = (this.children[4] as StringParameter).value;
-    //     const root = (this.children[5] as SelectionParameter).value;
-    //     const path = (this.children[6] as SelectionParameter).value;
-
-    //     return { host, port, user, root, path };
-    // }
 }
 
-// export class Location implements LocationType {
-//     host: string;
-//     port: number;
-//     user: string;
-//     root: string;
-//     path: string;
+export class TaskExecutionLog {
+    entries: TaskExecutionResult[];
 
-//     constructor(host: string, port: number, user: string, root: string, path: string) {
-//         this.host = host;
-//         this.port = port;
-//         this.user = user;
-//         this.root = root;
-//         this.path = path;
-//     }
-// }
+    constructor(entries: TaskExecutionResult[]) {
+        this.entries = entries;
+    }
+
+    // async loadEntries() {}
 
 
+    async getEntriesFor(taskInstance, timestamp) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const taskName = taskInstance.name;
+
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
+        
+        const taskLogData = await getTaskExecutionResults(fullTaskName, timestamp);
+        // console.log('taskLogData:', taskLogData);
+        
+        return taskLogData;
+    }
+
+    async getLatestEntryFor(taskInstance) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.formatTemplateName(taskInstance.template.name);
+        const taskName = taskInstance.name;
+
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
+        const latestEntry = await getLatestTaskExecutionResult(fullTaskName);
+
+        // console.log('latest entry:', latestEntry);
+        const logEntry = new TaskExecutionResult(latestEntry.exit_code, latestEntry.output, latestEntry.start_date, latestEntry.finish_date)
+
+        return logEntry || 'None';
+    }
+
+    formatTemplateName(templateName) {
+        // Split the string into words using space as the delimiter
+        let words = templateName.split(' ');
+        // Capitalize the first letter of each word and lowercase the rest
+        let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+        // Join the words without spaces
+        let formattedTemplateName = formattedWords.join('');
+        return formattedTemplateName;
+    }
+
+}
+
+export class TaskExecutionResult {
+    exitCode: number;
+    output: string;
+    // startDate: Date;
+    // finishDate: Date;
+    startDate: string;
+    finishDate: string;
+
+    // constructor(exitCode: number, output: string, startDate: Date, finishDate: Date) {
+    constructor(exitCode: number, output: string, startDate: string, finishDate: string) {
+        this.exitCode = exitCode;
+        this.output = output;
+        this.startDate = startDate;
+        this.finishDate = finishDate;
+    }
+}

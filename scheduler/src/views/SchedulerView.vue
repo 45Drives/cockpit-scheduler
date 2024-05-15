@@ -6,20 +6,13 @@
                     <div class="">
                         <div class="flex flex-row justify-between sm:flex sm:items-center">
                             <div class="px-4 sm:px-0 sm:flex-auto">
-                                <p class="mt-2 text-medium text-default">List of all task instances. Click on View Details button to view details.</p>
+                                <p class="mt-2 text-medium text-default">All tasks currently configured on the system are listed here.</p>
                             </div>
                             <div class="flex flex-row justify-between">
                                 <div class="px-3">
                                     <label class="block text-medium font-medium leading-6 text-default">Search Tasks</label>
                                     <input type="text" @keydown.enter="" v-model="searchItem" class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
                                 </div>
-                                <!-- <div class="px-3">
-                                    <label class="block text-medium font-medium leading-6 text-default">Filter</label>
-                                    <select v-model="filterItem" class="text-default bg-defaultblock w-fit input-textlike sm:text-sm">
-                                        <option value="no_filter">No Filter</option>
-                                        <option value="filter_item">filter_item</option>
-                                    </select>
-                                </div> -->
                                 <div class="mt-5 py-0.5 px-3">
                                     <button @click="refreshBtn()" class="btn btn-secondary"><ArrowPathIcon class="w-5 h-5 m-0.5"/></button>
                                 </div>
@@ -158,6 +151,12 @@
                                                                     Filesystem: <b>
                                                                         <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
                                                                         {{ findValue(taskInstance.parameters, 'filesystem', 'dataset') }}
+                                                                    </b>
+                                                                </p>
+                                                                <p v-if="findValue(taskInstance.parameters, 'customName_flag', 'customName_flag')" class="my-2">
+                                                                    Custom Snapshot Name: <b>
+                                                                        <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                        {{ findValue(taskInstance.parameters, 'customName', 'customName') }}
                                                                     </b>
                                                                 </p>
                                                             </div>
@@ -325,6 +324,8 @@ function taskStatusClass(status) {
             return 'text-warning';
         } else if (status.includes('failed')) {
             return 'text-danger';
+        } else if (status.includes('No schedule found')) {
+            return 'text-muted';
         }
     }
 }
