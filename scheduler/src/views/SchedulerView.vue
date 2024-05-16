@@ -67,7 +67,7 @@
                                 </thead>
                                 <tbody class="bg-accent">
                                     <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index"
-                                        :class="showDetails[index] ? 'outline outline-2 outline-red-700 dark:outline-red-800 bg-default' : ''"
+                                        :class="showDetails[index] ? 'border-2 border-red-700 dark:border-red-800 bg-default' : ''"
                                         class="border border-default border-collapse grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
                                         <!-- Table Cells -->
                                         <td
