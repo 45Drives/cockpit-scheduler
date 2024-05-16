@@ -329,13 +329,14 @@
 <script setup lang="ts">
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-import { computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, watch, onUnmounted } from 'vue';
+import { computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, onUnmounted } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
-import { boolToYesNo, upperCaseWord } from '../composables/helpers'
+import { boolToYesNo, upperCaseWord } from '../composables/utility'
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import AddTask from "../components/wizard/AddTask.vue";
 import EditTask from "../components/wizard/EditTask.vue";
-import { Scheduler, TaskExecutionLog } from '../models/Classes';
+import { Scheduler } from '../models/Scheduler';
+import { TaskExecutionLog } from '../models/TaskLog';
 
 
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
@@ -400,11 +401,12 @@ function taskStatusClass(status) {
     }
 }
 
-
 async function fetchLatestLog(task) {
     try {
         const latestLog = await myTaskLog.getLatestEntryFor(task);
-        latestTaskExecution.set(task.name, latestLog.startDate);
+        if (latestLog) {
+            latestTaskExecution.set(task.name, latestLog.startDate);
+        }
         // console.log(`Last execution of ${task.name}:`, latestLog);
     } catch (error) {
         console.error("Failed to fetch logs:", error);

@@ -1,45 +1,22 @@
 <template>
-	<!-- <div class="min-h-screen h-full w-full min-w-fit flex flex-col bg-default overflow-auto"> -->
-		<!-- <HoustonHeader moduleName="Houston Scheduler" sourceURL=""
-			issuesURL="" :pluginVersion="Number(pluginVersion)"
-			:infoNudgeScrollbar="true" /> -->
-		<!-- 	<Suspense>
-				<template #default> -->
-					<HoustonAppContainer moduleName="Houston Scheduler">
-						<CenteredCardColumn>
-							<CardContainer>
-								<SchedulerView class="z-0"/>
-							</CardContainer>
-						</CenteredCardColumn>
-						
-					</HoustonAppContainer>
-				<!-- </template>
-				<template #fallback>
-					<div>
-						not working
-					</div>
-				</template>
-			</Suspense> -->
-		<!-- <Teleport to="body">
-			<Notifications
-                :notificationFIFO="notificationFIFO"
-                ref="notifications" class="z-9999"
-            />
-		</Teleport> -->
-	<!-- </div> -->
-	
-	
-			
+	<HoustonAppContainer moduleName="Houston Scheduler">
+		<CenteredCardColumn>
+			<CardContainer>
+				<SchedulerView class="z-0"/>
+			</CardContainer>
+		</CenteredCardColumn>
+		
+	</HoustonAppContainer>		
 </template>
 
 <script setup lang="ts">
-import { ref, provide, onMounted, Teleport } from 'vue';
+import { ref, provide, onMounted } from 'vue';
 import "@45drives/cockpit-css/src/index.css";
 import "@45drives/cockpit-vue-components/dist/style.css";
-import { pluginVersion } from "./version";
-import { HoustonHeader } from "@45drives/cockpit-vue-components";
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, Scheduler, TaskExecutionLog, TaskExecutionResult } from './models/Classes';
+import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, } from './models/Tasks';
+import { Scheduler } from './models/Scheduler';
+import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
 
 

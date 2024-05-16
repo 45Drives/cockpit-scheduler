@@ -1,7 +1,5 @@
 import { useSpawn, errorString } from '@45drives/cockpit-helpers';
 // @ts-ignore
-import get_tasks_script from '../scripts/get-task-instances.py?raw';
-// @ts-ignore
 import get_datasets_script from '../scripts/get-datasets-in-pool.py?raw';
 // @ts-ignore
 import get_pools_script from '../scripts/get-pools.py?raw';
@@ -17,35 +15,6 @@ import generate_schedule_script from '../scripts/make-schedule.py?raw';
 import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
-//@ts-ignore
-import get_latest_task_execution_script from '../scripts/get-this-latest-task-log-result.py?raw';
-
-export async function executePythonScript(script: string, args: string[]): Promise<any> {
-    try {
-        const command = ['/usr/bin/env', 'python3', '-c', script, ...args];
-        const state = useSpawn(command, { superuser: 'try' });
-
-        const output = await state.promise();
-        // console.log(`output:`, output);
-        return output.stdout;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-export async function getTaskData() {
-    try {
-        const state = useSpawn(['/usr/bin/env','python3', '-c', get_tasks_script], {superuser: 'try'});
-        const tasksOutput = (await state.promise()).stdout;
-        // console.log('Raw tasksOutput:', tasksOutput);
-        const tasksData = JSON.parse(tasksOutput);
-        return tasksData;
-    } catch (state) {
-        console.error(errorString(state));
-        return null;
-    }
-}
 
 export async function getPoolData(host?, port?, user?) {
     try {
@@ -154,40 +123,19 @@ export async function testSSH(sshTarget) {
     }
 }
 
-export async function getLatestTaskExecutionResult(taskName) {
+export async function executePythonScript(script: string, args: string[]): Promise<any> {
     try {
-        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_latest_task_execution_script, taskName], { superuser: 'try', stderr: 'out' });
+        const command = ['/usr/bin/env', 'python3', '-c', script, ...args];
+        const state = useSpawn(command, { superuser: 'try' });
 
         const output = await state.promise();
-        // console.log('get execution result output:', output);
-        const result = JSON.parse(output.stdout);
-        return result;
+        // console.log(`output:`, output);
+        return output.stdout;
     } catch (error) {
         console.error(errorString(error));
         return false;
     }
 }
-
-export async function getTaskExecutionResults(serviceName, untilTime) {
-    try {
-        let command;
-        if (untilTime) {
-            command = ['journalctl', '-r', '-u', serviceName, '--until', untilTime, '--no-pager'];
-        } else {
-            console.log("No until time provided");
-            return "No until time available.";
-        }
-
-        const state = useSpawn(command, { superuser: 'try' });
-        const result = await state.promise();
-
-        return result.stdout.trim();
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
 
 export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
     return executePythonScript(generate_task_files_script, ['-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
@@ -209,88 +157,25 @@ export async function runTask(taskName) {
     return executePythonScript(run_task_script, [taskName]);
 }
 
-export async function enableTaskTimer(taskName) {
-    const timerName = `${taskName}.timer`;
-    try {
-        // Reload the system daemon
-        let command = ['sudo', 'systemctl', 'daemon-reload'];
-        let state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
+//change the first letter of a word to upper case
+export const upperCaseWord = (word => {
+	let lowerCaseWord = word.toLowerCase();
+	let firstLetter  = lowerCaseWord.charAt(0);
+	let remainingLetters = lowerCaseWord.substring(1);
+	let firstLetterCap = firstLetter.toUpperCase();
+	return firstLetterCap + remainingLetters;
+});
 
-        // Enable the timer
-        command = ['sudo', 'systemctl', 'enable', timerName];
-        state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
-
-        // Start the timer
-        command = ['sudo', 'systemctl', 'start', timerName];
-        state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
-
-        console.log(`${timerName} has been enabled and started`);
-        return `${timerName} has been enabled and started`;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
+export function boolToYesNo(state: boolean) {
+	if (state == true) { return 'Yes' } else if (state == false) { return 'No' }
 }
 
-
-export async function disableTaskTimer(taskName) {
-    const timerName = `${taskName}.timer`;
-    try {
-        // Stop the timer 
-        let command = ['sudo', 'systemctl', 'stop', timerName];
-        let state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
-
-        // Disable the timer
-        command = ['sudo', 'systemctl', 'disable', timerName];
-        state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
-
-        // Reload the system daemon
-        command = ['sudo', 'systemctl', 'daemon-reload'];
-        state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
-
-        console.log(`${timerName} has been stopped and disabled`);
-        return `${timerName} has been stopped and disabled`;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
-}
-
-
-export async function getTaskStatus(taskName) {
-    let result, output;
-    try {
-        const command = ['systemctl', 'status', `${taskName}.timer`, '--no-pager', '--output=cat'];
-        const state = useSpawn(command, { superuser: 'try'});
-        result = await state.promise();
-        output = result.stdout;
-
-    } catch (error) {
-        // console.error(errorString(error));
-        // return false;
-        return 'Not scheduled';
-    }
-
-    try {
-        let status = '';
-        const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
-        const activeStatusMatch = output.match(activeStatusRegex);
-
-        if (activeStatusMatch) {
-            status = activeStatusMatch[1].trim();
-        } else {
-            status = "No schedule found.";
-        }
-        // console.log(`Status for ${taskName}`, status);
-        return status;
-    } catch (error) {
-        console.error(errorString(error));
-        return false;
-    }
+export function formatTemplateName(templateName) {
+    // Split the string into words using space as the delimiter
+    let words = templateName.split(' ');
+    // Capitalize the first letter of each word and lowercase the rest
+    let formattedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+    // Join the words without spaces
+    let formattedTemplateName = formattedWords.join('');
+    return formattedTemplateName;
 }

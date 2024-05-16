@@ -29,16 +29,17 @@
         </template>
     </Modal>
 
-
     <div v-if="showSaveConfirmation">
         <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Save Task'" :message="'Save your edits?'" :confirmYes="confirmSaveChanges" :confirmNo="cancelEdit" :operation="'saving'" :operating="saving"/>
     </div>
+
 </template>
 <script setup lang="ts">
 import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
-import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Tasks';
+import { Scheduler } from '../../models/Scheduler';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface EditTaskProps {

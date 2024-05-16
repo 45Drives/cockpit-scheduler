@@ -81,14 +81,6 @@
                                 </div>
                             </div>
                            
-                            <!-- 
-                                <label class="block text-sm text-default mt-0.5">
-                                    Step values (all fields except for Month & Year): Use asterisk + slash (eg. */2).
-                                </label>
-                                <label class="block text-sm text-default mt-0.5">
-                                    Range of dates (Day, Month, Year): Use two periods (eg. 1..4).
-                                </label>
-                             -->
                             <div name="dayOfWeek" class="col-span-2">
                                 <label class="block text-sm leading-6 text-default">Day of Week</label>
                                 <table class="w-full">
@@ -174,6 +166,7 @@
     <div v-if="showSaveConfirmation">
         <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Create Task'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask" :operation="'saving'" :operating="savingSchedule"/>
     </div>
+    
 </template>
 <script setup lang="ts">
 import { inject, reactive, ref, Ref, watch, onMounted } from 'vue';
@@ -181,7 +174,8 @@ import Modal from '../common/Modal.vue';
 import CalendarComponent from '../common/CalendarComponent.vue';
 import InfoTile from '../common/InfoTile.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler, TaskInstance } from '../../models/Classes';
+import { Scheduler } from '../../models/Scheduler';
+import { TaskInstance } from '../../models/Tasks';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface ManageScheduleProps {

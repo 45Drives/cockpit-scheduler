@@ -95,13 +95,6 @@
                 </div>
             </div>
             <div name="destination-dataset">
-                <!--    <div class="flex flex-row justify-between items-center">
-                            <label class="mt-1 block text-base leading-6 text-default">Target Location</label>
-                            <div class="mt-1 flex flex-col items-center text-center">
-                                <label class="block text-xs text-default">Custom</label>
-                                <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded"/>
-                            </div>
-                        </div> -->
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                     <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
@@ -240,7 +233,7 @@
 import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Classes';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Parameters';
 import { getPoolData, getDatasetData, testSSH } from '../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 

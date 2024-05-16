@@ -11,7 +11,6 @@
         <template v-slot:footer>
             <div class="w-full">
                 <div class="button-group-row w-full justify-between">
-                    <!-- <button @click="confirmNo" id="confirmation-no" name="no-button" class="mt-1 btn btn-danger object-left justify-start h-fit w-full">No</button> -->
                     <button v-if="!operating" @click="confirmNo" id="confirmation-no" name="no-button" class="mt-1 btn btn-danger object-left justify-start h-fit w-full">No</button>
                     <button v-if="operating" disabled id="working-no-btn" type="button" class="mt-1 btn btn-danger object-left justify-start h-fit w-full">No</button>
                     
@@ -30,9 +29,8 @@
 </template>
 
 <script setup lang="ts">
-import { Switch } from '@headlessui/vue';
-import { Ref, inject, ref, computed, watch} from 'vue';
-import { upperCaseWord } from '../../composables/helpers';
+import { ref } from 'vue';
+import { upperCaseWord } from '../../composables/utility';
 import Modal from './Modal.vue';
 
 interface ConfirmationDialogProps {

@@ -88,7 +88,7 @@
 import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Classes';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Parameters';
 import { getPoolData, getDatasetData } from '../../composables/utility';
 
 interface AutomatedSnapshotTaskParamsProps {
@@ -119,8 +119,6 @@ const snapsToKeep = ref(5);
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
 const customSrcDatasetErrorTag = ref(false);
-
-const notifications = inject<Ref<any>>('notifications')!;
 
 const errorList = inject<Ref<string[]>>('errors')!;
 

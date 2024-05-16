@@ -72,7 +72,7 @@
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Switch } from '@headlessui/vue';
 import Modal from '../components/common/Modal.vue';
-import { Scheduler, TaskExecutionLog } from '../models/Classes';
+import { TaskExecutionLog } from '../models/TaskLog';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 
 interface LogViewProps {
@@ -82,11 +82,8 @@ interface LogViewProps {
 
 const props = defineProps<LogViewProps>();
 const emit = defineEmits(['close']);
-const notifications = inject<Ref<any>>('notifications')!;
 const showLogView = inject<Ref<boolean>>('show-log-view')!;
-const myScheduler = inject<Scheduler>('scheduler')!;
 const myTaskLog = inject<TaskExecutionLog>('log')!;
-const loading = inject<Ref<boolean>>('loading')!;
 const loadingLogs = ref(false);
 const loadingMoreLogs = ref(false);
 const taskInstance = ref(props.task);
@@ -126,7 +123,9 @@ const fetchLatestLog = async () => {
     loadingLogs.value = true;
     try {
         const latestLog = await myTaskLog.getLatestEntryFor(taskInstance.value);
-        thisLogEntry.value = latestLog;
+        if (latestLog) {
+            thisLogEntry.value = latestLog;
+        }
     } catch (error) {
         console.error("Failed to fetch logs:", error);
     } finally {
@@ -137,7 +136,7 @@ const fetchLatestLog = async () => {
 const fetchAllLogs = async () => {
     loadingMoreLogs.value = true;
     try {
-        const logs = await await myTaskLog.getEntriesFor(taskInstance.value, thisLogEntry.value?.startDate);
+        const logs = await myTaskLog.getEntriesFor(taskInstance.value, thisLogEntry.value?.startDate);
         allLogsForThisTask.value = logs;
     } catch (error) {
         console.error("Failed to fetch logs:", error);

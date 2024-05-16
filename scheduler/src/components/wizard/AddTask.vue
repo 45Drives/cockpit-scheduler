@@ -61,6 +61,7 @@
     <div v-if="showScheduleWizard">
         <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'new'" :task="newTask"/>
     </div>
+    
 </template>
 <script setup lang="ts">
 import { inject, provide, ref, Ref, watch } from 'vue';
@@ -68,7 +69,8 @@ import Modal from '../common/Modal.vue';
 import ParameterInput from './ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
-import { Scheduler, TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Classes';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Tasks';
+import { Scheduler } from '../../models/Scheduler';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 const emit = defineEmits(['close']);
