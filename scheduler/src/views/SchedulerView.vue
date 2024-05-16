@@ -1,9 +1,8 @@
 <template>
-
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
             <div class="px-4 sm:px-0 sm:flex-auto">
-                <p class="mt-2 text-medium text-default">All tasks currently configured on the system are listed
+                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed
                     here.</p>
             </div>
             <div class="flex flex-row justify-between">
@@ -23,254 +22,261 @@
             </div>
         </div>
 
-
         <div class="my-4 flow-root">
             <div class="-mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8 overflow-x-auto">
                     <div v-if="!loading && taskInstances.length < 1"
                         class="min-w-full min-h-full items-center text-center bg-well">
                         <h2>No Tasks Found</h2>
                     </div>
-                    <table v-if="!loading && taskInstances.length > 0"
-                        class="table-auto min-w-full divide-y divide-default overflow-x-auto">
-                        <thead class="bg-well">
-                            <tr class="border border-default border-collapse grid grid-cols-8">
-                                <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
-                                <th scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
-                                    <button @click="sortBy('name')"
-                                        class="flex w-full justify-between whitespace-nowrap">
-                                        Name
-                                        <BarsArrowDownIcon class="ml-1 aspect-square w-5 h-5 text-muted"
-                                            v-if="sort.field === 'name' && sortMode == 'desc'" />
-                                        <BarsArrowUpIcon class="ml-1 aspect-square w-5 h-5 text-muted"
-                                            v-else-if="sort.field === 'name' && sortMode == 'asc'" />
-                                        <Bars3Icon class="ml-1 aspect-square w-5 h-5 text-muted" v-else />
-                                    </button>
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
-                                    Status
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
-                                    Last Run
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
-                                    Scheduled
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
-                                    Details
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-accent">
-                            <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index"
-                                :class="showDetails[index] ? 'outline outline-2 outline-red-700 dark:outline-red-800 bg-default' : ''"
-                                class="border border-default border-collapse grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
-                                <!-- Table Cells -->
-                                <td
-                                    class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                    {{ taskInstance.name }}
-                                </td>
-                                <td
-                                    class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                    <span :class="taskStatusClass(taskStatuses.get(taskInstance.name))">
-                                        {{ taskStatuses.get(taskInstance.name) ?
-                                            upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a' }}
-                                    </span>
-                                </td>
-                                <td
-                                    class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                    <span>
-                                        {{ latestTaskExecution.get(taskInstance.name) || 'N/A' }}
-                                    </span>
-                                </td>
-                                <td
-                                    class="whitespace-nowrap text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-                                    <input v-if="taskInstance.schedule.intervals.length > 0"
-                                        :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`"
-                                        type="checkbox" :checked="taskInstance.schedule.enabled"
-                                        @change="handleScheduleCheckboxChange(taskInstance, index)"
-                                        class="ml-2 h-4 w-4 rounded " />
-                                    <input v-else disabled type="checkbox" :title="'No Schedule Found'"
-                                        class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
-                                </td>
-                                <td
-                                    class="whitespace-nowrap text-base font-medium text-default border-default m-1 col-span-1">
-                                    <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)"
-                                        class="btn btn-secondary">View Details</button>
-                                    <button v-if="showDetails[index]" @click="closeDetailsBtn(index)"
-                                        class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close
-                                        Details</button>
-                                </td>
-                                <td v-if="showDetails[index]"
-                                    class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
-                                    <div>
-                                        <!-- Details for ZFS Replication Task -->
-                                        <div v-if="taskInstance.template.name === 'ZFS Replication Task'"
-                                            class="grid grid-cols-4 items-left text-left">
-                                            <div class="col-span-1">
-                                                <p class="my-2">
-                                                    Task Type: <b>{{ taskInstance.template.name }}</b>
-                                                </p>
-                                                <p class="my-2">
-                                                    Send Type:
-                                                    <b
-                                                        v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
-                                                    <b
-                                                        v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b>
-                                                </p>
-                                                <p class="my-2"
-                                                    v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
-                                                    Remote SSH Host: <b>{{ findValue(taskInstance.parameters,
-                                                        'destDataset', 'host') }}</b>
-                                                    <br />
-                                                    Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,
-                                                        'destDataset', 'port') }}</b>
-                                                </p>
-                                            </div>
-                                            <div class="col-span-1">
-                                                <p class="my-2">
-                                                    Compression: <b>{{ findValue(taskInstance.parameters,
-                                                        'sendOptions', 'raw_flag') ? 'Raw' :
-                                                        findValue(taskInstance.parameters, 'sendOptions',
-                                                            'compressed_flag') ? 'Compressed' : 'None' }}</b>
-                                                </p>
-                                                <p class="my-2">
-                                                    Recursive Send: <b>{{
-                                                        boolToYesNo(findValue(taskInstance.parameters,
-                                                            'sendOptions', 'recursive_flag')) }}</b>
-                                                </p>
-                                            </div>
-                                            <div class="col-span-2 row-span-2">
-                                                <p class="my-2 font-bold">Current Schedules:</p>
-                                                <div v-if="taskInstance.schedule.intervals.length > 0"
-                                                    v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                                                    class="flex flex-row col-span-2 divide divide-y divide-default p-1">
-                                                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                    <div v-if="!loading && taskInstances.length > 0" class="relative">
+	                    <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-default">
+                                <thead class="bg-well">
+                                    <tr class="border border-default border-collapse grid grid-cols-8 w-full">
+                                        <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
+                                        <th scope="col"
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            <button @click="sortBy('name')"
+                                                class="flex w-full justify-between whitespace-nowrap">
+                                                Name
+                                                <BarsArrowDownIcon class="ml-1 aspect-square w-5 h-5 text-muted"
+                                                    v-if="sort.field === 'name' && sortMode == 'desc'" />
+                                                <BarsArrowUpIcon class="ml-1 aspect-square w-5 h-5 text-muted"
+                                                    v-else-if="sort.field === 'name' && sortMode == 'asc'" />
+                                                <Bars3Icon class="ml-1 aspect-square w-5 h-5 text-muted" v-else />
+                                            </button>
+                                        </th>
+                                        <th scope="col"
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            Status
+                                        </th>
+                                        <th scope="col"
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            Last Run
+                                        </th>
+                                        <th scope="col"
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
+                                            Scheduled
+                                        </th>
+                                        <th scope="col"
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
+                                            Details
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-accent">
+                                    <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index"
+                                        :class="showDetails[index] ? 'outline outline-2 outline-red-700 dark:outline-red-800 bg-default' : ''"
+                                        class="border border-default border-collapse grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+                                        <!-- Table Cells -->
+                                        <td
+                                            :title="taskInstance.name" class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                            {{ taskInstance.name }}
+                                        </td>
+                                        <td
+                                            :title="taskStatuses.get(taskInstance.name) ?
+                                                    upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a'" 
+                                                    class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                            <span :class="taskStatusClass(taskStatuses.get(taskInstance.name))">
+                                                {{ taskStatuses.get(taskInstance.name) ?
+                                                    upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a' }}
+                                            </span>
+                                        </td>
+                                        <td
+                                            :title="latestTaskExecution.get(taskInstance.name) || 'N/A'" 
+                                            class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                            <span>
+                                                {{ latestTaskExecution.get(taskInstance.name) || 'N/A' }}
+                                            </span>
+                                        </td>
+                                        <td
+                                            class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
+                                            <input v-if="taskInstance.schedule.intervals.length > 0"
+                                                :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`"
+                                                type="checkbox" :checked="taskInstance.schedule.enabled"
+                                                @change="handleScheduleCheckboxChange(taskInstance, index)"
+                                                class="ml-2 h-4 w-4 rounded " />
+                                            <input v-else disabled type="checkbox" :title="'No Schedule Found'"
+                                                class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
+                                        </td>
+                                        <td
+                                            class="truncate text-base font-medium text-default border-default m-1 col-span-1">
+                                            <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)"
+                                                class="btn btn-secondary">View Details</button>
+                                            <button v-if="showDetails[index]" @click="closeDetailsBtn(index)"
+                                                class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close
+                                                Details</button>
+                                        </td>
+                                        <td v-if="showDetails[index]"
+                                            class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
+                                            <div>
+                                                <!-- Details for ZFS Replication Task -->
+                                                <div v-if="taskInstance.template.name === 'ZFS Replication Task'"
+                                                    class="grid grid-cols-4 items-left text-left">
+                                                    <div class="col-span-1">
+                                                        <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
+                                                            Task Type: <b>{{ taskInstance.template.name }}</b>
+                                                        </p>
+                                                        <p class="my-2 truncate" :title="`Send Type: ${findValue(taskInstance.parameters, 'destDataset', 'host') !== '' ? 'Remote' : 'Local'}`">
+                                                            Send Type:
+                                                            <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
+                                                            <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b>
+                                                        </p>
+                                                        <p class="my-2"
+                                                            v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
+                                                            <p class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'destDataset', 'host')}`">
+                                                                Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'destDataset', 'host') }}</b>
+                                                            </p>
+                                                            <p class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'destDataset', 'port')}`">
+                                                                Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'destDataset', 'port') }}</b>
+                                                            </p>        
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-span-1">
+                                                        <p class="my-2 truncate" 
+                                                        :title="`Compression: ${findValue(taskInstance.parameters, 'sendOptions', 'raw_flag') ? 'Raw' : findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag') ? 'Compressed' : 'None'}`">
+                                                            Compression: <b>{{ findValue(taskInstance.parameters,
+                                                                'sendOptions', 'raw_flag') ? 'Raw' :
+                                                                findValue(taskInstance.parameters, 'sendOptions',
+                                                                    'compressed_flag') ? 'Compressed' : 'None' }}</b>
+                                                        </p>
+                                                        <p class="my-2 truncate" 
+                                                        :title="`Recursive Send: ${boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))}`">
+                                                            Recursive Send: <b>{{
+                                                                boolToYesNo(findValue(taskInstance.parameters,
+                                                                    'sendOptions', 'recursive_flag')) }}</b>
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-span-2 row-span-2">
+                                                        <p class="my-2 truncate font-bold">Current Schedules:</p>
+                                                        <div v-if="taskInstance.schedule.intervals.length > 0"
+                                                            v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
+                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                                                            <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                                                        </div>
+                                                        <div v-else>
+                                                            <p>No Intervals Currently Scheduled</p>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-span-1">
+                                                        <p class="my-2 truncate" :title="`Source: ${findValue(taskInstance.parameters, 'sourceDataset', 'dataset')}`">
+                                                            Source: <b>
+                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                {{ findValue(taskInstance.parameters, 'sourceDataset',
+                                                                    'dataset') }}
+                                                            </b>
+                                                        </p>
+                                                        <p class="my-2 truncate" :title="`Source Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'source')}`">
+                                                            Source Snapshots to Keep: <b>
+                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
+                                                                    'source') }}
+                                                            </b>
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-span-1">
+                                                        <p class="my-2 truncate" :title="`Destination: ${findValue(taskInstance.parameters, 'destDataset', 'dataset')}`">
+                                                            Destination: <b>
+                                                                <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
+                                                                {{ findValue(taskInstance.parameters, 'destDataset',
+                                                                    'dataset') }}
+                                                            </b>
+                                                        </p>
+                                                        <p class="my-2 truncate" :title="`Destination Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'destination')}`">
+                                                            Destination Snapshots to Keep: <b>
+                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
+                                                                    'destination') }}
+                                                            </b>
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div v-else>
-                                                    <p>No Intervals Currently Scheduled</p>
-                                                </div>
-                                            </div>
-                                            <div class="col-span-1">
-                                                <p class="my-2">
-                                                    Source: <b>
-                                                        <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                        {{ findValue(taskInstance.parameters, 'sourceDataset',
-                                                            'dataset') }}
-                                                    </b>
-                                                </p>
-                                                <p class="my-2">
-                                                    Source Snapshots to Keep: <b>
-                                                        {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                            'source') }}
-                                                    </b>
-                                                </p>
-                                            </div>
-                                            <div class="col-span-1">
-                                                <p class="my-2">
-                                                    Destination: <b>
-                                                        <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
-                                                        {{ findValue(taskInstance.parameters, 'destDataset',
-                                                            'dataset') }}
-                                                    </b>
-                                                </p>
-                                                <p class="my-2">
-                                                    Destination Snapshots to Keep: <b>
-                                                        {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                            'destination') }}
-                                                    </b>
-                                                </p>
-                                            </div>
-                                        </div>
 
-                                        <!-- Details for Automated Snapshot Task -->
-                                        <div v-if="taskInstance.template.name === 'Automated Snapshot Task'"
-                                            class="grid grid-cols-4 items-left text-left">
-                                            <div class="col-span-1">
-                                                <p class="my-2">
-                                                    Task Type: <b>{{ taskInstance.template.name }}</b>
-                                                </p>
-                                                <p class="my-2">
-                                                    Filesystem: <b>
-                                                        <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                        {{ findValue(taskInstance.parameters, 'filesystem',
-                                                            'dataset') }}
-                                                    </b>
-                                                </p>
-                                                <p v-if="findValue(taskInstance.parameters, 'customName_flag', 'customName_flag')"
-                                                    class="my-2">
-                                                    Custom Snapshot Name: <b>
-                                                        <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                        {{ findValue(taskInstance.parameters, 'customName',
-                                                            'customName') }}
-                                                    </b>
-                                                </p>
-                                            </div>
-                                            <div class="col-span-1">
-                                                <p class="my-2">
-                                                    Recursive Snapshots: <b>{{
-                                                        boolToYesNo(findValue(taskInstance.parameters,
-                                                            'recursive_flag', 'recursive_flag')) }}</b>
-                                                </p>
-                                                <p class="my-2">
-                                                    Snapshots to Keep: <b>
-                                                        {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                            'snapRetention') }}
-                                                    </b>
-                                                </p>
-                                            </div>
-                                            <div class="col-span-2 row-span-2">
-                                                <p class="my-2 font-bold">Current Schedules:</p>
-                                                <div v-if="taskInstance.schedule.intervals.length > 0"
-                                                    v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                                                    class="flex flex-row col-span-2 divide divide-y divide-default p-1">
-                                                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
-                                                </div>
-                                                <div v-else>
-                                                    <p>No Intervals Currently Scheduled</p>
+                                                <!-- Details for Automated Snapshot Task -->
+                                                <div v-if="taskInstance.template.name === 'Automated Snapshot Task'"
+                                                    class="grid grid-cols-4 items-left text-left">
+                                                    <div class="col-span-1">
+                                                        <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
+                                                            Task Type: <b>{{ taskInstance.template.name }}</b>
+                                                        </p>
+                                                        <p class="my-2 truncate" :title="`Filesystem: ${findValue(taskInstance.parameters, 'filesystem', 'dataset')}`">
+                                                            Filesystem: <b>
+                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                {{ findValue(taskInstance.parameters, 'filesystem',
+                                                                    'dataset') }}
+                                                            </b>
+                                                        </p>
+                                                        <p v-if="findValue(taskInstance.parameters, 'customName_flag', 'customName_flag')"
+                                                            class="my-2 truncate" :title="`Custom Snapshot Name: ${findValue(taskInstance.parameters, 'customName', 'customName')}`">
+                                                            Custom Snapshot Name: <b>
+                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                {{ findValue(taskInstance.parameters, 'customName',
+                                                                    'customName') }}
+                                                            </b>
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-span-1">
+                                                        <p class="my-2 truncate" :title="`Recursive Snapshots: ${boolToYesNo(findValue(taskInstance.parameters, 'recursive_flag', 'recursive_flag'))}`">
+                                                            Recursive Snapshots: <b>{{
+                                                                boolToYesNo(findValue(taskInstance.parameters,
+                                                                    'recursive_flag', 'recursive_flag')) }}</b>
+                                                        </p>
+                                                        <p class="my-2 truncate" :title="`Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'snapRetention')}`">
+                                                            Snapshots to Keep: <b>
+                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
+                                                                    'snapRetention') }}
+                                                            </b>
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-span-2 row-span-2">
+                                                        <p class="my-2 truncate font-bold">Current Schedules:</p>
+                                                        <div v-if="taskInstance.schedule.intervals.length > 0"
+                                                            v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
+                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1 truncate" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                                                            <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                                                        </div>
+                                                        <div v-else>
+                                                            <p>No Intervals Currently Scheduled</p>
+                                                        </div>
+                                                    </div>
+
                                                 </div>
                                             </div>
 
-                                        </div>
-                                    </div>
+                                            <div class="button-group-row justify-center col-span-5 mt-2">
+                                                <button @click="runTaskBtn(taskInstance)"
+                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
+                                                    Run Now
+                                                    <PlayIcon class="h-5 ml-2 mt-0.5" />
+                                                </button>
+                                                <button @click="manageScheduleBtn(taskInstance)"
+                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                    Manage Schedule
+                                                    <CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
+                                                </button>
+                                                <button @click="editTaskBtn(taskInstance)"
+                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                    Edit
+                                                    <PencilIcon class="h-5 ml-2 mt-0.5" />
+                                                </button>
+                                                <button @click="viewLogsBtn(taskInstance)"
+                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+                                                    View Logs
+                                                    <TableCellsIcon class="h-5 ml-2 mt-0.5" />
+                                                </button>
+                                                <button @click="removeTaskBtn(taskInstance, index)"
+                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+                                                    Remove
+                                                    <TrashIcon class="h-5 ml-2 mt-0.5" />
+                                                </button>
 
-                                    <div class="button-group-row justify-center col-span-5 mt-2">
-                                        <button @click="runTaskBtn(taskInstance)"
-                                            class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
-                                            Run Now
-                                            <PlayIcon class="h-5 ml-2 mt-0.5" />
-                                        </button>
-                                        <button @click="manageScheduleBtn(taskInstance)"
-                                            class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                            Manage Schedule
-                                            <CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
-                                        </button>
-                                        <button @click="editTaskBtn(taskInstance)"
-                                            class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                            Edit
-                                            <PencilIcon class="h-5 ml-2 mt-0.5" />
-                                        </button>
-                                        <button @click="viewLogsBtn(taskInstance)"
-                                            class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                            View Logs
-                                            <TableCellsIcon class="h-5 ml-2 mt-0.5" />
-                                        </button>
-                                        <button @click="removeTaskBtn(taskInstance, index)"
-                                            class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
-                                            Remove
-                                            <TrashIcon class="h-5 ml-2 mt-0.5" />
-                                        </button>
-
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
                     <div v-if="loading" class="flex items-center justify-center">
                         <CustomLoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'"
                             :fillColor="'fill-gray-500'" />
