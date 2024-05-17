@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-6'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-6'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
         <template v-slot:title>
             Manage Schedule
         </template>

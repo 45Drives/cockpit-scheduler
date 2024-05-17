@@ -1,7 +1,7 @@
 <template>
     <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <div class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
-            <CustomLoadingSpinner :width="'w-40'" :height="'h-40'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+            <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
         </div>
     </div>
     <div v-if="!loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">

@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
         <template v-slot:title>
             Edit <span class="text-base">{{taskInstance.name}}</span> <br/><span class="text-base text-muted italic">{{taskInstance.template.name}}</span>
         </template>
@@ -37,7 +37,7 @@
 <script setup lang="ts">
 import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from './ParameterInput.vue';
+import ParameterInput from '../parameters/ParameterInput.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Tasks';
 import { Scheduler } from '../../models/Scheduler';
 import { pushNotification, Notification } from 'houston-common-ui';

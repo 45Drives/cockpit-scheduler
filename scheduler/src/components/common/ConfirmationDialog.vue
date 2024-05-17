@@ -1,5 +1,5 @@
 <template>
-    <Modal :isOpen="showFlag" @close="closeModal()" :marginTop="'mt-60'" :width="'w-96'" :minWidth="'min-w-min'" :height="'h-min'" :closeOnBackgroundClick="true">
+    <Modal :isOpen="showFlag" @close="closeModal()" :marginTop="'mt-60'" :width="'w-96'" :minWidth="'min-w-min'"  :height="'h-min'" :min-height="'min-h-min'" :closeOnBackgroundClick="true">
         <template v-slot:title>
             <legend class="flex justify-center">{{ props.title }}</legend>
         </template>

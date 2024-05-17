@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
         <template v-slot:title>
             Add New Task
         </template>
@@ -66,7 +66,7 @@
 <script setup lang="ts">
 import { inject, provide, ref, Ref, watch } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from './ParameterInput.vue';
+import ParameterInput from '../parameters/ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Tasks';

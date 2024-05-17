@@ -71,9 +71,9 @@
 <script setup lang="ts">
 import { inject, provide, reactive, ref, Ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Switch } from '@headlessui/vue';
-import Modal from '../components/common/Modal.vue';
-import { TaskExecutionLog } from '../models/TaskLog';
-import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
+import Modal from '../../components/common/Modal.vue';
+import { TaskExecutionLog } from '../../models/TaskLog';
+import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.vue';
 
 interface LogViewProps {
     idKey: string;

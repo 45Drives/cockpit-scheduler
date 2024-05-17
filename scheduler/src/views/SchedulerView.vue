@@ -339,8 +339,8 @@ import { computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, 
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/utility'
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
-import AddTask from "../components/wizard/AddTask.vue";
-import EditTask from "../components/wizard/EditTask.vue";
+import AddTask from "../components/modals/AddTask.vue";
+import EditTask from "../components/modals/EditTask.vue";
 import { Scheduler } from '../models/Scheduler';
 import { TaskExecutionLog } from '../models/TaskLog';
 
@@ -640,7 +640,7 @@ function manageScheduleBtn(task) {
 const scheduleWizardComponent = ref();
 const loadScheduleWizardComponent = async () => {
     console.log('loadScheduleWizard triggered');
-    const module = await import('../components/wizard/ManageSchedule.vue');
+    const module = await import('../components/modals/ManageSchedule.vue');
     scheduleWizardComponent.value = module.default;
 }
 
@@ -675,7 +675,7 @@ async function viewLogsBtn(task) {
 // }
 const logViewComponent = ref();
 async function loadLogViewComponent() {
-    const module = await import('../views/LogView.vue');
+    const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
 const updateShowLogViewComponent = (newVal) => {
