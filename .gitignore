@@ -30,3 +30,4 @@ src/version.js
 node_modules/
 .yarn/
 .yarnrc.yml
+node_modules
