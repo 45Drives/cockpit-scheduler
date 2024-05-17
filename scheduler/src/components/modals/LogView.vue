@@ -1,5 +1,5 @@
 <template>
-     <Modal @close="closeModal" :isOpen="showLogView" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :close-on-background-click="true">
+     <Modal @close="closeModal" :isOpen="showLogView" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="true">
         <template v-slot:title>
             <div class="text-lg font-semibold text-default mb-4">
                 <h3>Latest Task Exection Result for <span class="italic">{{ props.task.name }}</span></h3>

@@ -1,1 +1,1 @@
-export const pluginVersion = "0.1.0-0built_from_source";
+export const pluginVersion = "1.0.0-1built_from_source";

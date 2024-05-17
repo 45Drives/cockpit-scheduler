@@ -1,5 +1,5 @@
 <template>
-	<HoustonAppContainer moduleName="Houston Scheduler">
+	<HoustonAppContainer moduleName="Task Scheduler">
 		<CenteredCardColumn>
 			<CardContainer>
 				<SchedulerView/>
@@ -18,7 +18,6 @@ import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
-
 
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();

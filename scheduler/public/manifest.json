@@ -3,9 +3,9 @@
 
   "menu": {
       "scheduler": {
-          "label": "Houston Scheduler",
+          "label": "Task Scheduler",
           "path": "index.html",
-          "order": 113
+          "order": 110
       }
   }
 }
