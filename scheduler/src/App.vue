@@ -2,7 +2,7 @@
 	<HoustonAppContainer moduleName="Houston Scheduler">
 		<CenteredCardColumn>
 			<CardContainer>
-				<SchedulerView class="z-0"/>
+				<SchedulerView/>
 			</CardContainer>
 		</CenteredCardColumn>
 		

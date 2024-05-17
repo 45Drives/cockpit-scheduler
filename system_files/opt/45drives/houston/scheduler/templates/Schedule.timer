@@ -1,0 +1,10 @@
+[Unit]
+Description={description}
+
+[Timer]
+{on_calendar_lines}
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

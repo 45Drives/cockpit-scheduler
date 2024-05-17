@@ -2292,6 +2292,33 @@ __metadata:
   languageName: node
   linkType: hard
 
+"cockpit-scheduler@workspace:scheduler":
+  version: 0.0.0-use.local
+  resolution: "cockpit-scheduler@workspace:scheduler"
+  dependencies:
+    "@45drives/cockpit-css": "npm:^0.1.12"
+    "@45drives/cockpit-helpers": "npm:^0.1.19"
+    "@45drives/cockpit-typings": "npm:^0.1.2"
+    "@45drives/cockpit-vue-components": "npm:^0.1.0-beta2"
+    "@headlessui/vue": "npm:^1.7.13"
+    "@heroicons/vue": "npm:^2.0.18"
+    "@tailwindcss/forms": "npm:^0.5.2"
+    "@vitejs/plugin-vue": "npm:^3.0.0"
+    autoprefixer: "npm:^10.4.8"
+    heroicons: "npm:^2.0.18"
+    houston-common-css: "workspace:^"
+    houston-common-lib: "workspace:^"
+    houston-common-ui: "workspace:^"
+    postcss: "npm:^8.4.16"
+    tailwindcss: "npm:^3.1.8"
+    tsc: "npm:^2.0.4"
+    typescript: "npm:^5.0.4"
+    vite: "npm:^3.2.6"
+    vite-plugin-vue-type-imports: "npm:^0.2.0"
+    vue: "npm:^3.4.27"
+  languageName: unknown
+  linkType: soft
+
 "code-block-writer@npm:^11.0.3":
   version: 11.0.3
   resolution: "code-block-writer@npm:11.0.3"
@@ -3791,33 +3818,6 @@ __metadata:
     typedoc-plugin-vue: "npm:^1.1.0"
     typedoc-umlclass: "npm:^0.9.0"
     typescript: "npm:^5.4.5"
-  languageName: unknown
-  linkType: soft
-
-"houston-scheduler@workspace:scheduler":
-  version: 0.0.0-use.local
-  resolution: "houston-scheduler@workspace:scheduler"
-  dependencies:
-    "@45drives/cockpit-css": "npm:^0.1.12"
-    "@45drives/cockpit-helpers": "npm:^0.1.19"
-    "@45drives/cockpit-typings": "npm:^0.1.2"
-    "@45drives/cockpit-vue-components": "npm:^0.1.0-beta2"
-    "@headlessui/vue": "npm:^1.7.13"
-    "@heroicons/vue": "npm:^2.0.18"
-    "@tailwindcss/forms": "npm:^0.5.2"
-    "@vitejs/plugin-vue": "npm:^3.0.0"
-    autoprefixer: "npm:^10.4.8"
-    heroicons: "npm:^2.0.18"
-    houston-common-css: "workspace:^"
-    houston-common-lib: "workspace:^"
-    houston-common-ui: "workspace:^"
-    postcss: "npm:^8.4.16"
-    tailwindcss: "npm:^3.1.8"
-    tsc: "npm:^2.0.4"
-    typescript: "npm:^5.0.4"
-    vite: "npm:^3.2.6"
-    vite-plugin-vue-type-imports: "npm:^0.2.0"
-    vue: "npm:^3.4.27"
   languageName: unknown
   linkType: soft
 

@@ -149,7 +149,7 @@
                                                         </p>
                                                     </div>
                                                     <div class="col-span-2 row-span-2">
-                                                        <p class="my-2 truncate font-bold">Current Schedules:</p>
+                                                        <p class="my-2 font-bold">Current Schedules:</p>
                                                         <div v-if="taskInstance.schedule.intervals.length > 0"
                                                             v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
                                                             class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
@@ -228,10 +228,10 @@
                                                         </p>
                                                     </div>
                                                     <div class="col-span-2 row-span-2">
-                                                        <p class="my-2 truncate font-bold">Current Schedules:</p>
+                                                        <p class="my-2 font-bold">Current Schedules:</p>
                                                         <div v-if="taskInstance.schedule.intervals.length > 0"
                                                             v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1 truncate" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
                                                             <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
                                                         </div>
                                                         <div v-else>
@@ -585,6 +585,8 @@ async function showRunNowDialog() {
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     await myScheduler.runTaskNow(selectedTask.value!);
+    pollTaskStatus();
+    pollTaskLastRun();  
     updateShowRunNowPrompt(false);
     running.value = false;
 }

@@ -27,10 +27,27 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
 	print(f"new snapshot created: {new_snap}")
 	# return new_snap
 
+def get_local_snapshots(filesystem):
+    command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+    try:
+        output = subprocess.check_output(command)
+        snapshots = []
+        for line in output.decode().splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                snapshot_name = parts[0]
+                snapshot_guid = parts[1]
+                snapshot_creation = parts[2]
+                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
+                snapshots.append(snapshot)
+        return snapshots
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to fetch local snapshots: {e}")
+        return []
 
 def prune_snapshots(filesystem, max_retain_count):
-	snapshots = []
-
+	snapshots = get_local_snapshots(filesystem)
+ 
 	if len(snapshots) is not 0:
 		snapshots.sort(key=lambda x: x.creation)
 

@@ -1,5 +1,5 @@
 {
-  "name": "houston-scheduler",
+  "name": "cockpit-scheduler",
   "private": true,
   "version": "0.0.0",
   "description": "Houston Scheduler for Automating Server Tasks",
