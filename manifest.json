@@ -3,7 +3,7 @@
     "name": "cockpit-scheduler",
     "title": "houston scheduler",
     "prerelease": true,
-    "version": "1.0.1",
+    "version": "1.0.1-1",
     "buildVersion": "2",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/houston-scheduler",
@@ -47,7 +47,7 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.0.1",
+        "version": "1.0.1-1",
         "buildVersion": "2",
         "ignore": [],
         "date": null,
