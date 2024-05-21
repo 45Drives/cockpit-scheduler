@@ -6,7 +6,7 @@
     "version": "1.0.1-1",
     "buildVersion": "2",
     "author": "Jordan Keough <jkeough@45drives.com>",
-    "url": "https://github.com/45Drives/houston-scheduler",
+    "url": "https://github.com/45Drives/cockpit-scheduler",
     "category": "utils",
     "priority": "optional",
     "licence": "GPL-3.0+",
