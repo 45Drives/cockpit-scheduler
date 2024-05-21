@@ -3,8 +3,8 @@
     "name": "cockpit-scheduler",
     "title": "houston scheduler",
     "prerelease": true,
-    "version": "1.0.0",
-    "buildVersion": "1",
+    "version": "1.0.1",
+    "buildVersion": "2",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/houston-scheduler",
     "category": "utils",
@@ -22,6 +22,10 @@
         "urgency": "medium"
     },
     "dependencies": {
+        "deb": [
+            "cockpit",
+            "python3"
+        ],
         "el": {
             "el8": [
                 "cockpit",
@@ -31,6 +35,11 @@
     },
     "releases": [
         {
+            "image": "node-ubuntu-focal-builder",
+            "codeName": "focal",
+            "type": "deb"
+        },
+        {
             "image": "node-rocky-el8-builder",
             "codeName": "el8",
             "type": "el"
@@ -38,8 +47,8 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.0.0",
-        "buildVersion": "1",
+        "version": "1.0.1",
+        "buildVersion": "2",
         "ignore": [],
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
