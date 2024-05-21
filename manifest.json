@@ -22,6 +22,10 @@
         "urgency": "medium"
     },
     "dependencies": {
+        "deb": [
+            "cockpit",
+            "python3"
+        ],
         "el": {
             "el8": [
                 "cockpit",
@@ -30,6 +34,11 @@
         }
     },
     "releases": [
+        {
+            "image": "node-ubuntu-focal-builder",
+            "codeName": "focal",
+            "type": "deb"
+        },
         {
             "image": "node-rocky-el8-builder",
             "codeName": "el8",
