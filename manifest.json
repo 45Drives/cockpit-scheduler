@@ -22,10 +22,12 @@
         "urgency": "medium"
     },
     "dependencies": {
-        "deb": [
-            "cockpit",
-            "python3"
-        ],
+        "deb": {
+            "focal":  [
+                "cockpit",
+                "python3"
+            ]
+        },
         "el": {
             "el8": [
                 "cockpit",
