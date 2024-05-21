@@ -1,7 +1,7 @@
 {
     "__version": "45D-R2",
     "name": "cockpit-scheduler",
-    "title": "houston scheduler",
+    "title": "task scheduler",
     "prerelease": true,
     "version": "1.0.1-1",
     "buildVersion": "2",
@@ -15,17 +15,13 @@
         "el": "noarch"
     },
     "description": {
-        "long": "houston scheduler for automating tasks",
-        "short": "houston scheduler"
+        "long": "task scheduler for automating server tasks",
+        "short": "task scheduler"
     },
     "defaults": {
         "urgency": "medium"
     },
     "dependencies": {
-        "deb": [
-            "cockpit",
-            "python3"
-        ],
         "el": {
             "el8": [
                 "cockpit",
@@ -34,11 +30,6 @@
         }
     },
     "releases": [
-        {
-            "image": "node-ubuntu-focal-builder",
-            "codeName": "focal",
-            "type": "deb"
-        },
         {
             "image": "node-rocky-el8-builder",
             "codeName": "el8",
