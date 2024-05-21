@@ -22,7 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-testfiles/
 
 # Generated files
 src/version.js
