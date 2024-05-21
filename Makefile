@@ -68,14 +68,11 @@ default: $(VERSION_FILES) $(OUTPUTS)
 
 all: default
 
-.PHONY: default all install clean help install-local install-remote install
-
-.PHONY: submodules
 submodules:
 	git submodule init
 	git submodule update
 
-default: submodules $(VERSION_FILES) $(OUTPUTS)
+.PHONY: default all install clean help install-local install-remote install submodules
 
 $(VERSION_FILES): ./manifest.json
 	mkdir -p $(dir $@)
