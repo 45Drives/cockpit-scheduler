@@ -71,8 +71,8 @@ all: default
 .PHONY: default all install clean help install-local install-remote install
 
 $(VERSION_FILES): ./manifest.json
-    mkdir -p $(dir $@)  # This ensures the directory exists
-    echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
+	mkdir -p $(dir $@)
+	echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
 
 # build outputs
 .SECONDEXPANSION:
