@@ -70,8 +70,17 @@ all: default
 
 .PHONY: default all install clean help install-local install-remote install
 
+.PHONY: submodules
+submodules:
+	git submodule init
+	git submodule update
+
+default: submodules $(VERSION_FILES) $(OUTPUTS)
+
 $(VERSION_FILES): ./manifest.json
+	mkdir -p $(dir $@)
 	echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
+
 
 # build outputs
 .SECONDEXPANSION:
