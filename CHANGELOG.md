@@ -1,3 +1,3 @@
-## houston scheduler 1.0.1-1-2
+## task scheduler 1.0.2-1
 
-* Updates to scripts & UI + packaging for focal
+* Building package
