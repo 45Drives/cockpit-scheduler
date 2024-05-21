@@ -2,8 +2,7 @@
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
             <div class="px-4 sm:px-0 sm:flex-auto">
-                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed
-                    here.</p>
+                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.</p>
             </div>
             <div class="flex flex-row justify-between">
                 <div class="px-3">
@@ -74,13 +73,20 @@
                                             :title="taskInstance.name" class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                             {{ taskInstance.name }}
                                         </td>
-                                        <td
+                                        <td v-if="taskInstance.schedule.enabled"
                                             :title="taskStatuses.get(taskInstance.name) ?
                                                     upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a'" 
                                                     class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
                                             <span :class="taskStatusClass(taskStatuses.get(taskInstance.name))">
                                                 {{ taskStatuses.get(taskInstance.name) ?
                                                     upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a' }}
+                                            </span>
+                                        </td>
+                                        <td v-if="!taskInstance.schedule.enabled"
+                                            :title="'Disabled'" 
+                                                    class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+                                            <span :class="taskStatusClass('Disabled')">
+                                                Disabled
                                             </span>
                                         </td>
                                         <td
@@ -123,6 +129,19 @@
                                                             <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
                                                             <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b>
                                                         </p>
+                                                        <p class="my-2 truncate" :title="`Source: ${findValue(taskInstance.parameters, 'sourceDataset', 'dataset')}`">
+                                                            Source: <b>
+                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
+                                                                {{ findValue(taskInstance.parameters, 'sourceDataset',
+                                                                    'dataset') }}
+                                                            </b>
+                                                        </p>
+                                                        <p class="my-2 truncate" :title="`Source Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'source')}`">
+                                                            Source Snapshots to Keep: <b>
+                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
+                                                                    'source') }}
+                                                            </b>
+                                                        </p>
                                                         <p class="my-2"
                                                             v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
                                                             <p class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'destDataset', 'host')}`">
@@ -132,6 +151,7 @@
                                                                 Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'destDataset', 'port') }}</b>
                                                             </p>        
                                                         </p>
+                                                        
                                                     </div>
                                                     <div class="col-span-1">
                                                         <p class="my-2 truncate" 
@@ -147,34 +167,6 @@
                                                                 boolToYesNo(findValue(taskInstance.parameters,
                                                                     'sendOptions', 'recursive_flag')) }}</b>
                                                         </p>
-                                                    </div>
-                                                    <div class="col-span-2 row-span-2">
-                                                        <p class="my-2 font-bold">Current Schedules:</p>
-                                                        <div v-if="taskInstance.schedule.intervals.length > 0"
-                                                            v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                                                            <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
-                                                        </div>
-                                                        <div v-else>
-                                                            <p>No Intervals Currently Scheduled</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-span-1">
-                                                        <p class="my-2 truncate" :title="`Source: ${findValue(taskInstance.parameters, 'sourceDataset', 'dataset')}`">
-                                                            Source: <b>
-                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                                {{ findValue(taskInstance.parameters, 'sourceDataset',
-                                                                    'dataset') }}
-                                                            </b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Source Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'source')}`">
-                                                            Source Snapshots to Keep: <b>
-                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                                    'source') }}
-                                                            </b>
-                                                        </p>
-                                                    </div>
-                                                    <div class="col-span-1">
                                                         <p class="my-2 truncate" :title="`Destination: ${findValue(taskInstance.parameters, 'destDataset', 'dataset')}`">
                                                             Destination: <b>
                                                                 <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
@@ -188,6 +180,17 @@
                                                                     'destination') }}
                                                             </b>
                                                         </p>
+                                                    </div>
+                                                    <div class="col-span-2 row-span-2">
+                                                        <p class="my-2 font-bold">Current Schedules:</p>
+                                                        <div v-if="taskInstance.schedule.intervals.length > 0"
+                                                            v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
+                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                                                            <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                                                        </div>
+                                                        <div v-else>
+                                                            <p>No Intervals Currently Scheduled</p>
+                                                        </div>
                                                     </div>
                                                 </div>
 
@@ -286,16 +289,12 @@
         </div>
     </div>
 
-
-
-
-
-    <div v-if="showTaskWizard" class="z-0">
-        <AddTask :id-key="'add-task-modal'" />
+    <div v-if="showTaskWizard">
+        <component :is="addTaskComponent" :id-key="'add-task-modal'"/>
     </div>
 
-    <div v-if="showEditTaskWizard" class="z-0">
-        <EditTask :id-key="'edit-task-modal'" :task="selectedTask!" />
+    <div v-if="showEditTaskWizard">
+        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!"/>
     </div>
 
     <div v-if="showThisScheduleWizard">
@@ -339,11 +338,8 @@ import { computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, 
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/utility'
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
-import AddTask from "../components/modals/AddTask.vue";
-import EditTask from "../components/modals/EditTask.vue";
 import { Scheduler } from '../models/Scheduler';
 import { TaskExecutionLog } from '../models/TaskLog';
-
 
 const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
 const loading = inject<Ref<boolean>>('loading')!;
@@ -354,152 +350,57 @@ const selectedTaskIdx = ref<number>();
 const latestTaskExecution = reactive(new Map());
 const taskStatuses = reactive(new Map());
 
-function findValue(obj, targetKey, valueKey) {
-    if (!obj || typeof obj !== 'object') return null;
-
-    // Directly check at the current level if this is the targetKey
-    if (obj.key === targetKey) {
-        // If looking for the same key as targetKey and it has a value, return it
-        if (targetKey === valueKey && obj.value !== undefined) {
-            return obj.value;
-        }
-        // If there's a different valueKey to find, look for it among children
-        let foundChild = obj.children?.find(child => child.key === valueKey);
-        if (foundChild && foundChild.value !== undefined) {
-            return foundChild.value;
-        }
-    }
-
-    // If no value found at this level, and there are children, search them recursively
-    if (Array.isArray(obj.children)) {
-        for (let child of obj.children) {
-            const result = findValue(child, targetKey, valueKey);
-            if (result !== null) {  // Ensure '0', 'false', or empty string are considered valid returns
-                return result;
-            }
-        }
-    }
-
-    return null;  // If the search yields no results, return null
-}
-
-// Polling Interval
-const pollingInterval = ref(10000);
-const intervalId = ref();
-
-async function updateTaskStatus(task) {
-    const status = await myScheduler.getTaskStatusFor(task);
-    taskStatuses.set(task.name, status);
-    // console.log(`Status for ${task.name}:`, status);
-}
-
-function taskStatusClass(status) {
-    if (status) {
-        if (status.includes('active')) {
-            return 'text-success';
-        } else if (status.includes('inactive')) {
-            return 'text-warning';
-        } else if (status.includes('failed')) {
-            return 'text-danger';
-        } else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
-            return 'text-muted';
-        }
-    }
-}
-
-async function fetchLatestLog(task) {
-    try {
-        const latestLog = await myTaskLog.getLatestEntryFor(task);
-        if (latestLog) {
-            latestTaskExecution.set(task.name, latestLog.startDate);
-        }
-        // console.log(`Last execution of ${task.name}:`, latestLog);
-    } catch (error) {
-        console.error("Failed to fetch logs:", error);
-    }
-};
-
-const pollTaskStatus = async () => {
-    if (taskInstances.value) {
-        for (const task of taskInstances.value) {
-            await updateTaskStatus(task);
-        }
-    }
-}
-
-const pollTaskLastRun = async () => {
-    if (taskInstances.value) {
-        for (const task of taskInstances.value) {
-            await fetchLatestLog(task);
-        }
-    }
-}
-
-const startPolling = () => {
-    if (!intervalId.value) {
-        intervalId.value = setInterval(() => {
-            pollTaskStatus();
-        }, pollingInterval.value);
-    }
-}
-
-const stopPolling = () => {
-    if (intervalId.value) {
-        clearInterval(intervalId.value);
-        intervalId.value = null;
-    }
-}
-
-onMounted(() => {
-    startPolling();
-});
-
-onUnmounted(() => {
-    stopPolling();
-});
-
-// Optional: watchEffect to handle changes in taskInstances
-watchEffect(() => {
-    if (taskInstances.value.length > 0) {
-        pollTaskStatus();
-        pollTaskLastRun();
-    }
-});
-
-
-
-const showDetails = ref({});
-function taskDetailsBtn(idx) {
-    showDetails.value = {};
-    showDetails.value[idx] = !showDetails.value[idx];
-}
-
-function closeDetailsBtn(idx) {
-    showDetails.value[idx] = !showDetails.value[idx];
-}
-
-const showTaskWizard = ref(false);
-function addTaskBtn() {
-    showTaskWizard.value = true;
-}
-
-const showEditTaskWizard = ref(false)
-function editTaskBtn(task) {
-    selectedTask.value = task;
-    showEditTaskWizard.value = true;
-}
-
+/* Refresh Display */
 async function refreshBtn() {
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
 }
 
+
+/* Toggle task details */
+const showDetails = ref({});
+function taskDetailsBtn(idx) {
+    showDetails.value = {};
+    showDetails.value[idx] = !showDetails.value[idx];
+}
+function closeDetailsBtn(idx) {
+    showDetails.value[idx] = !showDetails.value[idx];
+}
+
+
+/* Add New Task */
+const showTaskWizard = ref(false);
+async function addTaskBtn() {
+    await loadAddTaskComponent();
+    showTaskWizard.value = true;
+}
+const addTaskComponent = ref();
+async function loadAddTaskComponent() {
+    const module = await import('../components/modals/AddTask.vue');
+    addTaskComponent.value = module.default;
+}
+
+
+/* Edit Task */
+const showEditTaskWizard = ref(false)
+async function editTaskBtn(task) {
+    selectedTask.value = task;
+    await loadEditTaskComponent();
+    showEditTaskWizard.value = true;
+}
+const editTaskComponent = ref();
+async function loadEditTaskComponent() {
+    const module = await import('../components/modals/EditTask.vue');
+    editTaskComponent.value = module.default;
+}
+
+
+/* Generic loading function for Confirmation Dialogs */
 async function loadConfirmationDialog(dialogRef) {
     const module = await import('../components/common/ConfirmationDialog.vue');
     dialogRef.value = module.default;
 }
-
 
 // handle checkbox for toggling task schedule enabled/disabled
 function handleScheduleCheckboxChange(task: TaskInstanceType, index: number) {
@@ -518,7 +419,6 @@ function handleScheduleCheckboxChange(task: TaskInstanceType, index: number) {
 const showEnablePrompt = ref(false);
 const enableDialog = ref();
 const enabling = ref(false);
-
 async function showEnableDialog() {
     await loadConfirmationDialog(enableDialog);
     showEnablePrompt.value = true;
@@ -530,8 +430,6 @@ const enableYes: ConfirmationCallback = async () => {
     await updateTaskStatus(selectedTask.value);
     updateShowEnablePrompt(false);
     enabling.value = false;
-
-
 }
 const enableNo: ConfirmationCallback = async () => {
     console.log('leaving task schedule as is');
@@ -548,7 +446,6 @@ const updateShowEnablePrompt = (newVal) => {
 const showDisablePrompt = ref(false);
 const disableDialog = ref();
 const disabling = ref(false);
-
 async function showDisableDialog() {
     await loadConfirmationDialog(disableDialog);
     showDisablePrompt.value = true;
@@ -569,7 +466,7 @@ const updateShowDisablePrompt = (newVal) => {
 }
 
 
-/* Run Task Ad Hoc */
+/* Run Task Now */
 const showRunNowPrompt = ref(false);
 const runNowDialog = ref();
 const running = ref(false);
@@ -636,7 +533,6 @@ function manageScheduleBtn(task) {
     selectedTask.value = task;
     showThisScheduleWizardComponent();
 }
-
 const scheduleWizardComponent = ref();
 const loadScheduleWizardComponent = async () => {
     console.log('loadScheduleWizard triggered');
@@ -655,11 +551,11 @@ async function showThisScheduleWizardComponent() {
         console.error('Failed to load Schedule Wizard Component:', error);
     }
 }
-
 const updateShowThisScheduleWizardComponent = (newVal) => {
     console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
 }
+
 
 /* Task Log View */
 const showLogView = ref(false);
@@ -668,11 +564,6 @@ async function viewLogsBtn(task) {
     await loadLogViewComponent();
     showLogView.value = true;
 }
-// async function viewAllLogsBtn() {
-//     selectedTask.value = undefined;
-//     await loadLogViewComponent();
-//     showLogView.value = true;
-// }
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
@@ -683,16 +574,132 @@ const updateShowLogViewComponent = (newVal) => {
 }
 
 
+
+/* Getting Task Status + Last Run Time */
+const pollingInterval = ref(10000);
+const intervalId = ref();
+async function updateTaskStatus(task) {
+    const status = await myScheduler.getTaskStatusFor(task);
+    taskStatuses.set(task.name, status);
+    // console.log(`Status for ${task.name}:`, status);
+}
+
+// change color of status text
+function taskStatusClass(status) {
+    if (status) {
+        if (status.includes('active')) {
+            return 'text-success';
+        } else if (status.includes('inactive')) {
+            return 'text-warning';
+        } else if (status.includes('failed')) {
+            return 'text-danger';
+        } else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
+            return 'text-muted';
+        } else if (status == 'Disabled') {
+            return 'text-45d';
+        }
+    }
+}
+
+async function fetchLatestLog(task) {
+    try {
+        const latestLog = await myTaskLog.getLatestEntryFor(task);
+        if (latestLog) {
+            latestTaskExecution.set(task.name, latestLog.startDate);
+        }
+        // console.log(`Last execution of ${task.name}:`, latestLog);
+    } catch (error) {
+        console.error("Failed to fetch logs:", error);
+    }
+};
+
+const pollTaskStatus = async () => {
+    if (taskInstances.value) {
+        for (const task of taskInstances.value) {
+            await updateTaskStatus(task);
+        }
+    }
+}
+
+const pollTaskLastRun = async () => {
+    if (taskInstances.value) {
+        for (const task of taskInstances.value) {
+            await fetchLatestLog(task);
+        }
+    }
+}
+
+const startPolling = () => {
+    if (!intervalId.value) {
+        intervalId.value = setInterval(() => {
+            pollTaskStatus();
+        }, pollingInterval.value);
+    }
+}
+
+const stopPolling = () => {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+        intervalId.value = null;
+    }
+}
+
+onMounted(() => {
+    startPolling();
+});
+
+onUnmounted(() => {
+    stopPolling();
+});
+
+//handle changes in taskInstances and check status/timestamp accordingly
+watchEffect(() => {
+    if (taskInstances.value.length > 0) {
+        pollTaskStatus();
+        pollTaskLastRun();
+    }
+});
+
+
+/* Getting values from Parameter structure to display in table */
+function findValue(obj, targetKey, valueKey) {
+    if (!obj || typeof obj !== 'object') return null;
+
+    // Directly check at the current level if this is the targetKey
+    if (obj.key === targetKey) {
+        // If looking for the same key as targetKey and it has a value, return it
+        if (targetKey === valueKey && obj.value !== undefined) {
+            return obj.value;
+        }
+        // If there's a different valueKey to find, look for it among children
+        let foundChild = obj.children?.find(child => child.key === valueKey);
+        if (foundChild && foundChild.value !== undefined) {
+            return foundChild.value;
+        }
+    }
+
+    // If no value found at this level, and there are children, search them recursively
+    if (Array.isArray(obj.children)) {
+        for (let child of obj.children) {
+            const result = findValue(child, targetKey, valueKey);
+            if (result !== null) {  // Ensure '0', 'false', or empty string are considered valid returns
+                return result;
+            }
+        }
+    }
+
+    return null;  // If the search yields no results, return null
+}
+
+
 /* Searching + Sorting List */
 const searchItem = ref('');
 const filterItem = ref('no_filter');
 const sortMode = ref<string | null>(null);
-
 const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
     field: null,
     order: 1,
 });
-
 const filteredAndSortedTasks = computed(() => {
     let filteredTasks = taskInstances.value;
 
@@ -717,7 +724,6 @@ const filteredAndSortedTasks = computed(() => {
 
     return sortTasks(filteredTasks);
 });
-
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     if (!sort.value.field) return tasksToSort;
 
@@ -739,7 +745,6 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
         return factor * ((valueA as number) - (valueB as number));
     });
 };
-
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -749,7 +754,6 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
-
 function sortIconFlip() {
     if (sort.value.order == 1) {
         sortMode.value = 'asc';

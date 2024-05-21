@@ -1,16 +1,10 @@
 import { useSpawn, errorString } from '@45drives/cockpit-helpers';
 // @ts-ignore
-import get_datasets_script from '../scripts/get-datasets-in-pool.py?raw';
-// @ts-ignore
-import get_pools_script from '../scripts/get-pools.py?raw';
+import get_zfs_data_script from '../scripts/get-zfs-data.py?raw';
 // @ts-ignore
 import test_ssh_script from '../scripts/test-ssh.py?raw';
 //@ts-ignore
-import generate_task_files_script from '../scripts/make-and-start-task.py?raw';
-//@ts-ignore
-import generate_standalone_task_script from '../scripts/make-standalone-task.py?raw';
-//@ts-ignore
-import generate_schedule_script from '../scripts/make-schedule.py?raw';
+import task_file_creation_script from '../scripts/task-file-creation.py?raw';
 //@ts-ignore
 import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
@@ -18,7 +12,7 @@ import run_task_script from '../scripts/run-task-now.py?raw';
 
 export async function getPoolData(host?, port?, user?) {
     try {
-        const cmd = ['/usr/bin/env', 'python3', '-c', get_pools_script]
+        const cmd = ['/usr/bin/env', 'python3', '-c', get_zfs_data_script, '-t', 'pools']
         if (host) {
             cmd.push('--host');
             cmd.push(host);
@@ -60,7 +54,7 @@ export async function getPoolData(host?, port?, user?) {
 
 export async function getDatasetData(pool, host?, port?, user?) {
     try {
-        const cmd = ['/usr/bin/env', 'python3', '-c', get_datasets_script]
+        const cmd = ['/usr/bin/env', 'python3', '-c', get_zfs_data_script, '-t', 'datasets']
 
         cmd.push('--pool');
         cmd.push(pool);
@@ -138,15 +132,15 @@ export async function executePythonScript(script: string, args: string[]): Promi
 }
 
 export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
-    return executePythonScript(generate_task_files_script, ['-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
+    return executePythonScript(task_file_creation_script, ['-t', 'create-task-schedule', '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
 }
 
 export async function createStandaloneTask(serviceTemplate, envFile) {
-    return executePythonScript(generate_standalone_task_script, ['-st', serviceTemplate, '-e', envFile]);
+    return executePythonScript(task_file_creation_script, ['-t', 'create-task', '-st', serviceTemplate, '-e', envFile]);
 }
 
 export async function createScheduleForTask(taskName, timerTemplate, scheduleFile) {
-    return executePythonScript(generate_schedule_script, ['-n', taskName, '-tt', timerTemplate, '-s', scheduleFile]);
+    return executePythonScript(task_file_creation_script, ['-t', 'create-schedule', '-n', taskName, '-tt', timerTemplate, '-s', scheduleFile]);
 }
 
 export async function removeTask(taskName) {

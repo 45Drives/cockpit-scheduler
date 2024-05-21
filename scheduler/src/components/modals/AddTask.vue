@@ -6,10 +6,6 @@
         <template v-slot:content>
             <div>
                 <div name="task-name">
-                    <!-- <div class="flex flex-row justify-between items-center">
-                        <label class="mt-1 block text-sm leading-6 text-default">Task Name</label>
-                        <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
-                    </div> -->
                     <div class="flex flex-row justify-between items-center">
                         <div class="flex flex-row justify-between items-center">
                             <label class="block text-sm leading-6 text-default">Task Name</label>

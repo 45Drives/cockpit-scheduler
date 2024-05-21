@@ -123,7 +123,6 @@
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
                                 <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"  :class="intervalSelectedClass(idx)">
-                                    
                                     <button class="h-full w-full rounded-lg p-2 px-2 text-left" @click.stop="selectionMethod(interval, idx)" :class="intervalSelectedClass(idx)">
                                         <div class="flex flex-col w-full grow">
                                             <span v-if="selectedIndex !== undefined && selectedIndex == idx" class="flex flex-row grow w-full justify-center text-center text-xs text-semibold italic text-default">EDITING INTERVAL:</span>
@@ -134,7 +133,6 @@
                             </ul>
                             <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
                                 <button name="remove-interval" @click.stop="removeSelectedInterval(selectedIndex)" class="btn btn-danger h-min w-full">Remove Interval</button>
-                                <!-- <button name="edit-interval" @click="editSelectedInterval(selectedInterval)" class="btn btn-secondary h-min w-full">Edit Interval</button> -->
                             </div>
                         </div>
                     </div>

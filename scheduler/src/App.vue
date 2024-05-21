@@ -5,7 +5,6 @@
 				<SchedulerView/>
 			</CardContainer>
 		</CenteredCardColumn>
-		
 	</HoustonAppContainer>		
 </template>
 
@@ -19,6 +18,7 @@ import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
 
+// Instantiate task templates -> These must corrolate with Template files located in /system_files/opt/45drives/houston/scheduler/templates
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();
 	const autoSnapTaskTemplate = new AutomatedSnapshotTaskTemplate();
@@ -28,7 +28,6 @@ function initializeTaskTemplates(): TaskTemplate[] {
 	]
 }
 
-// Instantiate task templates
 const taskTemplates = initializeTaskTemplates();
 const taskInstances = ref<TaskInstance[]>([]);
 const myScheduler = new Scheduler(taskTemplates, taskInstances.value);
