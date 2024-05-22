@@ -18,16 +18,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@45drives/cockpit-css": "^0.1.12",
     "@45drives/cockpit-helpers": "^0.1.19",
     "@45drives/cockpit-typings": "^0.1.2",
     "@headlessui/vue": "^1.7.13",
     "@heroicons/vue": "^2.0.18",
     "@tailwindcss/forms": "^0.5.2",
     "heroicons": "^2.0.18",
+    "houston-common-css": "workspace:^",
     "houston-common-lib": "workspace:^",
     "houston-common-ui": "workspace:^",
-    "houston-common-css": "workspace:^",
     "tsc": "^2.0.4",
     "vue": "^3.4.27"
   },

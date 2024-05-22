@@ -10,8 +10,8 @@
 
 <script setup lang="ts">
 import { ref, provide, onMounted } from 'vue';
-import "@45drives/cockpit-css/src/index.css";
-import "@45drives/cockpit-vue-components/dist/style.css";
+import 'houston-common-css/src/index.css';
+import "houston-common-ui/style.css";
 import SchedulerView from './views/SchedulerView.vue';
 import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, } from './models/Tasks';
 import { Scheduler } from './models/Scheduler';

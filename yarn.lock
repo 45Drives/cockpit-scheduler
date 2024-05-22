@@ -5,13 +5,6 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"@45drives/cockpit-css@npm:^0.1.12":
-  version: 0.1.12
-  resolution: "@45drives/cockpit-css@npm:0.1.12::__archiveUrl=https%3A%2F%2Fnpm.pkg.github.com%2Fdownload%2F%4045Drives%2Fcockpit-css%2F0.1.12%2F42ecb717da68e4c31454b5bc6019e3a4fe7dcd6c"
-  checksum: 10c0/471d549ba50deb9ce654d2851b8cf86a15a81daabe6c0b04f04f47e3169ed9125bd8f28e89955acbb0a96373df70c4608bd227c34a0a290ee3edb808a92067e3
-  languageName: node
-  linkType: hard
-
 "@45drives/cockpit-helpers@npm:^0.1.19":
   version: 0.1.19
   resolution: "@45drives/cockpit-helpers@npm:0.1.19::__archiveUrl=https%3A%2F%2Fnpm.pkg.github.com%2Fdownload%2F%4045Drives%2Fcockpit-helpers%2F0.1.19%2F29920cb9a0866220cfda58b9db4f34c8435f8960"
@@ -2296,7 +2289,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "cockpit-scheduler@workspace:scheduler"
   dependencies:
-    "@45drives/cockpit-css": "npm:^0.1.12"
     "@45drives/cockpit-helpers": "npm:^0.1.19"
     "@45drives/cockpit-typings": "npm:^0.1.2"
     "@45drives/cockpit-vue-components": "npm:^0.1.0-beta2"

@@ -332,8 +332,8 @@
 </template>
 
 <script setup lang="ts">
-import "@45drives/cockpit-css/src/index.css";
-import "@45drives/cockpit-vue-components/dist/style.css";
+import 'houston-common-css/src/index.css';
+import "houston-common-ui/style.css";
 import { computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, onUnmounted } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/utility'
