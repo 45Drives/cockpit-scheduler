@@ -5,6 +5,11 @@
     "houston-common",
     "houston-common/houston-common-*"
   ],
+  "resolutions": {
+    "houston-common-lib": "workspace:^",
+    "houston-common-ui": "workspace:^",
+    "houston-common-css": "workspace:^"
+  },
   "scripts": {
     "build": "yarn build:common && yarn build:app"
   },
