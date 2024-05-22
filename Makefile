@@ -53,16 +53,13 @@ BUILD_FLAGS=-- --minify false
 endif
 
 ifndef PLUGIN_SRCS
-PLUGIN_SRCS:=$(patsubst %/package.json,%,$(wildcard */package.json))
+PLUGIN_SRCS:=$(filter-out %-old, $(patsubst %/package.json,%,$(filter-out houston-common%, $(wildcard */package.json))))
 endif
 
 OUTPUTS:=$(addsuffix /dist/index.html, $(PLUGIN_SRCS))
 
-# NPM_PREFIX:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn --cwd' || echo 'npm --prefix')
-# NPM_UPDATE:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn upgrade --cwd' || echo 'npm update --prefix')
-NPM_PREFIX:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn workspace' || echo 'npm --prefix')
-NPM_UPDATE:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn workspace' || echo 'npm update --prefix')
-
+NPM_PREFIX:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn --cwd' || echo 'npm --prefix')
+NPM_UPDATE:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn upgrade --cwd' || echo 'npm update --prefix')
 
 VERSION_FILES:=$(addsuffix /src/version.js, $(PLUGIN_SRCS))
 OS_PACKAGE_RELEASE?=built_from_source
@@ -71,16 +68,10 @@ default: $(VERSION_FILES) $(OUTPUTS)
 
 all: default
 
-submodules:
-	git submodule init
-	git submodule update
-
-.PHONY: default all install clean help install-local install-remote install submodules
+.PHONY: default all install clean help install-local install-remote install
 
 $(VERSION_FILES): ./manifest.json
-	mkdir -p $(dir $@)
 	echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
-
 
 # build outputs
 .SECONDEXPANSION:
