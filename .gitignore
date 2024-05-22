@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+node_modules/
+.yarn/
+.yarnrc.yml
 
 # Editor directories and files
 .vscode/*
@@ -25,8 +28,3 @@ dist-ssr
 
 # Generated files
 src/version.js
-
-# node_modules/
-.yarn/
-# .yarnrc.yml
-# node_modules
