@@ -14,6 +14,10 @@ jobs:
         with:
           submodules: true
           fetch-depth: 0
+      - name: Checkout submodules
+        run: |
+          git submodule init
+          git submodule update
       - name: Install Dependencies
         run: yarn install
       - name: Package Binaries
