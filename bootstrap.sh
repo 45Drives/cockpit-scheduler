@@ -11,10 +11,10 @@ git submodule update --init
 
 jq 'del(.packageManager)' ./package.json | sponge ./package.json
 
+rm .yarnrc.yml .yarn -rf
 
+yarn --version
 
 yarn set version stable
 
 yarn config set nodeLinker node-modules
-
-rm .yarnrc.yml .yarn -rf
