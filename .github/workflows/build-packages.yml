@@ -17,7 +17,7 @@ jobs:
       - name: Checkout submodules
         run: |
           git submodule init
-          git submodule update
+          git submodule update --init --recursive
       - name: Install Dependencies
         run: yarn install
       - name: Package Binaries
