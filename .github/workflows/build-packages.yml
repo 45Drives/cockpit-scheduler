@@ -18,8 +18,6 @@ jobs:
         run: |
           git submodule init
           git submodule update --init --recursive
-      - name: Install Dependencies
-        run: yarn install
       - name: Package Binaries
         run: build-packages ${{github.repository}} ${{github.workspace}} --env NPM_AUTH_TOKEN ${{secrets.NPM_AUTH_PAT}}
       - name: Set Variables
