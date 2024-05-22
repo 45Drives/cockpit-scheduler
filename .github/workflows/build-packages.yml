@@ -8,16 +8,12 @@ on:
 jobs:
   main:
     runs-on: self-hosted
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          submodules: true
-          fetch-depth: 0
-      - name: Checkout submodules
-        run: |
-          git submodule init
-          git submodule update --init --recursive
       - name: Package Binaries
         run: build-packages ${{github.repository}} ${{github.workspace}} --env NPM_AUTH_TOKEN ${{secrets.NPM_AUTH_PAT}}
       - name: Set Variables
