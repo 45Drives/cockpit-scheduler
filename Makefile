@@ -80,6 +80,7 @@ houston-common: $(BOOTSTRAP)
 	$(MAKE) -C houston-common
 
 $(VERSION_FILES): ./manifest.json
+	mkdir -p $(dir $@)
 	echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
 
 # build outputs
