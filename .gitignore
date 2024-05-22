@@ -26,7 +26,7 @@ dist-ssr
 # Generated files
 src/version.js
 
-node_modules/
+# node_modules/
 .yarn/
-.yarnrc.yml
-node_modules
+# .yarnrc.yml
+# node_modules
