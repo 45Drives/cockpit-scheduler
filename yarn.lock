@@ -19,15 +19,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@45drives/cockpit-vue-components@npm:^0.1.0-beta2":
-  version: 0.1.0-beta2
-  resolution: "@45drives/cockpit-vue-components@npm:0.1.0-beta2::__archiveUrl=https%3A%2F%2Fnpm.pkg.github.com%2Fdownload%2F%4045Drives%2Fcockpit-vue-components%2F0.1.0-beta2%2Fa216666b3e9eb97a30cf47c0b947b4e5661798db"
-  dependencies:
-    vue: "npm:^3.2.37"
-  checksum: 10c0/ab033dc08a38fddeceb43118dd13f994b16705fa861205403b73fdb34c3a0d1f72dc0338ab5e8ebb54192172531f0f6592dfbb88386a01dc89c8696917beb917
-  languageName: node
-  linkType: hard
-
 "@alloc/quick-lru@npm:^5.2.0":
   version: 5.2.0
   resolution: "@alloc/quick-lru@npm:5.2.0"
@@ -2291,7 +2282,6 @@ __metadata:
   dependencies:
     "@45drives/cockpit-helpers": "npm:^0.1.19"
     "@45drives/cockpit-typings": "npm:^0.1.2"
-    "@45drives/cockpit-vue-components": "npm:^0.1.0-beta2"
     "@headlessui/vue": "npm:^1.7.13"
     "@heroicons/vue": "npm:^2.0.18"
     "@tailwindcss/forms": "npm:^0.5.2"
@@ -7024,7 +7014,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vue@npm:^3.2.37, vue@npm:^3.4.27":
+"vue@npm:^3.4.27":
   version: 3.4.27
   resolution: "vue@npm:3.4.27"
   dependencies:

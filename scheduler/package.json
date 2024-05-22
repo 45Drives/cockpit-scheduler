@@ -31,7 +31,6 @@
     "vue": "^3.4.27"
   },
   "devDependencies": {
-    "@45drives/cockpit-vue-components": "^0.1.0-beta2",
     "@vitejs/plugin-vue": "^3.0.0",
     "autoprefixer": "^10.4.8",
     "postcss": "^8.4.16",
