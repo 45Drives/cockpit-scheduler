@@ -89,7 +89,6 @@ $(VERSION_FILES): ./manifest.json
 .SECONDEXPANSION:
 $(OUTPUTS): %/dist/index.html: bootstrap-yarn houston-common $$(shell find '$$*' -type d \( -name node_modules -o -path '$$*/dist' -o -path '*node_modules*'  \) -prune -o -type f -not \( -name .gitignore \) -print)
 	@echo -e $(call cyantext,Building $*)
-	@echo "Running yarn install in directory: $*"
 	yarn --cwd $* install
 ifeq ($(AUTO_UPGRADE_DEPS),1)
 	yarn upgrade --cwd $*
