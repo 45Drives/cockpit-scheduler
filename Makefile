@@ -64,22 +64,22 @@ NPM_UPDATE:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn upgrade --cwd
 VERSION_FILES:=$(addsuffix /src/version.js, $(PLUGIN_SRCS))
 OS_PACKAGE_RELEASE?=built_from_source
 
-BOOTSTRAP:=.yarnrc.yml
-
 default: $(VERSION_FILES) $(OUTPUTS)
 
 all: default
 
-.PHONY: default all install clean help install-local install-remote install houston-common
+.PHONY: default all install clean help install-local install-remote install houston-common bootstrap-yarn
 
-$(BOOTSTRAP):
+bootstrap-yarn: .yarnrc.yml
+
+.yarnrc.yml:
 	./bootstrap.sh
-
-houston-common: houston-common/Makefile $(BOOTSTRAP)
-	$(MAKE) -C houston-common
 
 houston-common/Makefile:
 	git submodule update --init
+
+houston-common: houston-common/Makefile bootstrap-yarn
+	$(MAKE) -C houston-common
 
 $(VERSION_FILES): ./manifest.json
 	mkdir -p $(dir $@)
@@ -87,7 +87,7 @@ $(VERSION_FILES): ./manifest.json
 
 # build outputs
 .SECONDEXPANSION:
-$(OUTPUTS): %/dist/index.html: houston-common $$(shell find '$$*' -type d \( -name node_modules -o -path '$$*/dist' -o -path '*node_modules*'  \) -prune -o -type f -not \( -name .gitignore \) -print)
+$(OUTPUTS): %/dist/index.html: bootstrap-yarn houston-common $$(shell find '$$*' -type d \( -name node_modules -o -path '$$*/dist' -o -path '*node_modules*'  \) -prune -o -type f -not \( -name .gitignore \) -print)
 	@echo -e $(call cyantext,Building $*)
 	yarn --cwd $* install
 ifeq ($(AUTO_UPGRADE_DEPS),1)
