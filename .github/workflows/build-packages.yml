@@ -1,10 +1,10 @@
 name: Build Packages
 on:
   push:
-    branches: 
+    branches:
       - build
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 jobs:
   main:
     runs-on: self-hosted
@@ -23,6 +23,8 @@ jobs:
           git submodule update
       - name: Package Binaries
         run: build-packages ${{github.repository}} ${{github.workspace}} --env NPM_AUTH_TOKEN ${{secrets.NPM_AUTH_PAT}}
+        env:
+          YARN_IGNORE_NODE: 1
       - name: Set Variables
         if: startsWith(github.ref, 'refs/tags/')
         run: |
