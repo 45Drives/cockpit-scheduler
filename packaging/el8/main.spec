@@ -25,6 +25,7 @@ make DESTDIR=%{buildroot} install
 
 %files
 /usr/share/cockpit/scheduler/*
+/opt/45drives/houston/scheduler/*
 
 %changelog
 * Tue May 21 2024 Jordan Keough <jkeough@45drives.com> 1.0.2-1
