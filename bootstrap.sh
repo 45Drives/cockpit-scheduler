@@ -14,3 +14,12 @@ rm .yarnrc.yml .yarn -rf
 yarn set version stable
 
 yarn config set nodeLinker node-modules
+
+# hack to fix using legacy cockpit-helpers and cockpit-typings
+cat <<'EOF' >> .yarnrc.yml
+npmScopes:
+  45drives:
+    npmRegistryServer: https://npm.pkg.github.com
+    npmAlwaysAuth: false
+    npmAuthToken: ${NPM_AUTH_TOKEN}
+EOF
