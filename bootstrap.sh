@@ -7,7 +7,7 @@ set -x
 
 command -v sponge >/dev/null || { echo "Missing 'sponge'. Please install moreutils." >&2 ; exit 1 ; }
 
-git submodule update --init
+git submodule update --init --recursive
 
 jq 'del(.packageManager)' ./package.json | sponge ./package.json
 
