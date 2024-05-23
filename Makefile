@@ -53,7 +53,7 @@ BUILD_FLAGS=-- --minify false
 endif
 
 ifndef PLUGIN_SRCS
-PLUGIN_SRCS:=$(patsubst %/package.json,%,$(filter-out houston-common% %-old, $(wildcard */package.json)))
+PLUGIN_SRCS:=$(filter-out %-old houston-common, $(patsubst %/package.json,%,$(wildcard */package.json)))
 endif
 
 OUTPUTS:=$(addsuffix /dist/index.html, $(PLUGIN_SRCS))
@@ -75,12 +75,14 @@ all: default
 $(BOOTSTRAP):
 	./bootstrap.sh
 
-houston-common: $(BOOTSTRAP)
-	git submodule update --init
+houston-common: houston-common/Makefile $(BOOTSTRAP)
 	$(MAKE) -C houston-common
 
+houston-common/Makefile:
+	git submodule update --init
+
 $(VERSION_FILES): ./manifest.json
-	mkdir -p $(dir $@)
+# mkdir -p $(dir $@)
 	echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
 
 # build outputs
