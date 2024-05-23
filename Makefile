@@ -13,8 +13,7 @@
 # If not, see <https://www.gnu.org/licenses/>. 
 
 # PLUGIN_SRCS is space-delimited list of subdirectories containg a plugin project.
-# You can leave it empty for automatic detection based on directories containing a package.json file.
-PLUGIN_SRCS=
+PLUGIN_SRCS=scheduler
 
 # For installing to a remote machine for testing with `make install-remote`
 REMOTE_TEST_HOST=192.168.13.40
@@ -53,7 +52,8 @@ BUILD_FLAGS=-- --minify false
 endif
 
 ifndef PLUGIN_SRCS
-PLUGIN_SRCS:=$(filter-out %-old houston-common, $(patsubst %/package.json,%,$(wildcard */package.json)))
+# PLUGIN_SRCS:=$(filter-out %-old houston-common, $(patsubst %/package.json,%,$(wildcard */package.json)))
+$(error PLUGIN_SRCS not set - please edit Makefile)
 endif
 
 OUTPUTS:=$(addsuffix /dist/index.html, $(PLUGIN_SRCS))
