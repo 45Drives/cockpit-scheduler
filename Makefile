@@ -153,6 +153,10 @@ package-generic: default
 clean: FORCE
 	rm $(dir $(OUTPUTS)) -rf
 
+clean-all: clean FORCE
+	rm .yarnrc.yml .yarn/ -rf
+	find . -name node_modules -type d -exec rm -rf {} \; -prune
+
 help:
 	@echo 'make usage'
 	@echo
