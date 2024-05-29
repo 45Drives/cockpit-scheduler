@@ -140,4 +140,39 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         }
         return child;
     }
+    
+   /*  // Method to create ZfsDatasetParameter from a location
+    static fromLocation(label: string, key: string, location: Location): ZfsDatasetParameter {
+        const { host, port, user, root, path } = location;
+        return new ZfsDatasetParameter(label, key, host, port, user, root, path);
+    }
+
+    // Method to convert ZfsDatasetParameter to a location
+    toLocation(): Location {
+        const label = (this.children[0] as StringParameter).value;
+        const key = (this.children[1] as StringParameter).value;
+        const host = (this.children[2] as StringParameter).value;
+        const port = (this.children[3] as IntParameter).value;
+        const user = (this.children[4] as StringParameter).value;
+        const root = (this.children[5] as SelectionParameter).value;
+        const path = (this.children[6] as SelectionParameter).value;
+
+        return { host, port, user, root, path };
+    } */
+}
+
+export class Location implements LocationType {
+    host: string;
+    port: number;
+    user: string;
+    root: string;
+    path: string;
+
+    constructor(host: string, port: number, user: string, root: string, path: string) {
+        this.host = host;
+        this.port = port;
+        this.user = user;
+        this.root = root;
+        this.path = path;
+    }
 }

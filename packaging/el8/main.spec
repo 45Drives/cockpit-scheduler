@@ -36,17 +36,3 @@ make DESTDIR=%{buildroot} install
 - Updates to scripts & UI + packaging for focal
 * Fri May 17 2024 Jordan Keough <jkeough@45drives.com> 1.0.0-1
 - Build packaging
-* Mon Mar 11 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-7
-- wip bug fixing for root_dataset property
-* Mon Mar 11 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-6
-- wip bug fixing for root_dataset property
-* Mon Mar 11 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-5
-- wip bug fixing for root_dataset property
-* Mon Mar 11 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-4
-- wip bug fix for root_dataset property again
-* Mon Mar 11 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-3
-- wip bug fix for root_dataset property
-* Mon Mar 11 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-2
-- bug fix for scan property
-* Fri Mar 08 2024 Jordan Keough <jkeough@45drives.com> 0.1.0-1
-- initial release

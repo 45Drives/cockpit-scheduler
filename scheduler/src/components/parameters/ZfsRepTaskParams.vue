@@ -634,30 +634,29 @@ function validateParams() {
     if (errorList.value.length == 0) {
         setParams();
     }
-
 }
 
 function setParams() {
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
-            .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', destPool.value, destDataset.value))
-            .addChild(new ParameterNode('Send Options', 'sendOptions')
-                .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
-                .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
-                .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
-                .addChild(new IntParameter('MBuffer Size', 'mbufferSize', mbufferSize.value))
-                .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
-                .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
-                .addChild(new StringParameter('Custom Name', 'customName', customName.value))
-            )
-            .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
-                .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
-                .addChild(new IntParameter('Destination', 'destination', snapsToKeepDest.value)
-            )
-        );
+        .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', destPool.value, destDataset.value))
+        .addChild(new ParameterNode('Send Options', 'sendOptions')
+            .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
+            .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
+            .addChild(new IntParameter('MBuffer Size', 'mbufferSize', mbufferSize.value))
+            .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
+            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
+            .addChild(new StringParameter('Custom Name', 'customName', customName.value))
+        )
+        .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
+            .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
+            .addChild(new IntParameter('Destination', 'destination', snapsToKeepDest.value)
+        )
+    );
 
-        parameters.value = newParams;
-        console.log('newParams:', newParams);
+    parameters.value = newParams;
+    console.log('newParams:', newParams);
 }
 
 async function confirmTest(destHost, destUser) {
