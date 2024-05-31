@@ -41,6 +41,8 @@ import ParameterInput from '../parameters/ParameterInput.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Tasks';
 import { Scheduler } from '../../models/Scheduler';
 import { pushNotification, Notification } from 'houston-common-ui';
+import { injectWithCheck } from '../../composables/utility'
+import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 
 interface EditTaskProps {
     idKey: string;
@@ -51,8 +53,10 @@ const props = defineProps<EditTaskProps>();
 const emit = defineEmits(['close']);
 const showEditTaskWizard = inject<Ref<boolean>>('show-edit-task-wizard')!;
 const saving = ref(false);
-const myScheduler = inject<Scheduler>('scheduler')!;
-const loading = inject<Ref<boolean>>('loading')!;
+
+const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
+const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+
 const taskInstance = ref(props.task);
 
 const errorList = ref<string[]>([]);

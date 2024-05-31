@@ -170,9 +170,10 @@ import Modal from '../common/Modal.vue';
 import CalendarComponent from '../common/CalendarComponent.vue';
 import InfoTile from '../common/InfoTile.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import { Scheduler } from '../../models/Scheduler';
 import { TaskInstance } from '../../models/Tasks';
 import { pushNotification, Notification } from 'houston-common-ui';
+import { injectWithCheck } from '../../composables/utility'
+import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 
 interface ManageScheduleProps {
     idKey: string;
@@ -182,10 +183,14 @@ interface ManageScheduleProps {
 
 const props = defineProps<ManageScheduleProps>();
 const emit = defineEmits(['close']);
-const myScheduler = inject<Scheduler>('scheduler')!;
+
+const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+
 const showScheduleWizard = inject<Ref<boolean>>('show-schedule-wizard')!;
 const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
-const loading = inject<Ref<boolean>>('loading')!;
+
+const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
+
 const savingSchedule = ref(false);
 const scheduleEnabled = ref(true);
 

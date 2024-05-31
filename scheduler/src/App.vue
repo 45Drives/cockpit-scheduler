@@ -17,6 +17,7 @@ import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
+import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey, taskTemplatesInjectionKey } from './keys/injection-keys';
 
 // Instantiate task templates -> These must corrolate with Template files located in /system_files/opt/45drives/houston/scheduler/templates
 function initializeTaskTemplates(): TaskTemplate[] {
@@ -43,11 +44,11 @@ onMounted(async () => {
 	loading.value = false;
 });
 
-provide('loading', loading);
-provide('scheduler', myScheduler);
-provide('log', myTaskLog);
-provide('task-instances', taskInstances);
-provide('task-templates', taskTemplates);
+provide(loadingInjectionKey, loading);
+provide(schedulerInjectionKey, myScheduler);
+provide(logInjectionKey, myTaskLog);
+provide(taskInstancesInjectionKey, taskInstances);
+provide(taskTemplatesInjectionKey, taskTemplates);
 </script>
 
 	

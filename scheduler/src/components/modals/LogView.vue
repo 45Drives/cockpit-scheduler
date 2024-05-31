@@ -75,6 +75,8 @@ import { Switch } from '@headlessui/vue';
 import Modal from '../../components/common/Modal.vue';
 import { TaskExecutionLog } from '../../models/TaskLog';
 import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.vue';
+import { injectWithCheck } from '../../composables/utility'
+import { logInjectionKey } from '../../keys/injection-keys';
 
 interface LogViewProps {
     idKey: string;
@@ -84,7 +86,7 @@ interface LogViewProps {
 const props = defineProps<LogViewProps>();
 const emit = defineEmits(['close']);
 const showLogView = inject<Ref<boolean>>('show-log-view')!;
-const myTaskLog = inject<TaskExecutionLog>('log')!;
+const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 const loadingLogs = ref(false);
 const loadingMoreLogs = ref(false);
 const taskInstance = ref(props.task);

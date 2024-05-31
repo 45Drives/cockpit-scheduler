@@ -335,17 +335,19 @@
 <script setup lang="ts">
 import 'houston-common-css/src/index.css';
 import "houston-common-ui/style.css";
-import { computed, Ref, inject, ref, provide, reactive, onMounted, watchEffect, onUnmounted } from 'vue';
+import { computed, ref, provide, reactive, onMounted, watchEffect, onUnmounted } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { boolToYesNo, upperCaseWord } from '../composables/utility'
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import { Scheduler } from '../models/Scheduler';
 import { TaskExecutionLog } from '../models/TaskLog';
+import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
+import { injectWithCheck } from '../composables/utility'
+const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
+const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
+const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 
-const taskInstances = inject<Ref<TaskInstanceType[]>>('task-instances')!;
-const loading = inject<Ref<boolean>>('loading')!;
-const myScheduler = inject<Scheduler>('scheduler')!;
-const myTaskLog = inject<TaskExecutionLog>('log')!;
 const selectedTask = ref<TaskInstanceType>();
 const selectedTaskIdx = ref<number>();
 const latestTaskExecution = reactive(new Map());

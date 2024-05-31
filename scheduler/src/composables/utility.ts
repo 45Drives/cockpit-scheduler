@@ -9,6 +9,15 @@ import task_file_creation_script from '../scripts/task-file-creation.py?raw';
 import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
+import { inject, InjectionKey } from 'vue';
+
+export function injectWithCheck<T>(key: InjectionKey<T>, errorMessage: string): T {
+  const injectedValue = inject(key)!;
+  if (!injectedValue) {
+    throw new Error(errorMessage);
+  }
+  return injectedValue;
+}
 
 export async function getPoolData(host?, port?, user?) {
     try {
