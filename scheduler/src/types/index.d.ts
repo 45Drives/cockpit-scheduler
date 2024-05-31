@@ -1,11 +1,25 @@
 interface SchedulerType {
 	taskTemplates: TaskTemplateType[];
 	taskInstances: TaskInstanceType[];
+
+	async loadTaskInstances(): void;
+	createParameterNodeFromSchema(schema: ParameterNode, parameters: any) : ParameterNode;
+	async registerTaskInstance(taskInstance: TaskInstance): void;
+	async updateTaskInstance(taskInstance: TaskInstance): void;
+	async runTaskNow(taskInstance: TaskInstance): void;
+	async unregisterTaskInstance(taskInstance: TaskInstance): void;
+	async getTaskStatusFor(taskInstance: TaskInstance): string;
+	async enableSchedule(taskInstance: TaskInstance): void;
+	async disableSchedule(taskInstance: TaskInstance): void;
+	async updateSchedule(taskInstance: TaskInstance): void;
+	parseIntervalIntoString(interval: TaskScheduleInterval): string;
 }
 
 interface TaskTemplateType {
 	name: string;
 	parameterSchema: ParameterNodeType;
+
+	createTaskInstance(parameters: ParameterNode): TaskInstance;
 }
 
 interface TaskInstanceType {
@@ -41,19 +55,22 @@ interface LocationType {
 	path: string;
 }
 
-type UIComponent = any;
-
 interface ParameterNodeType {
 	label: string;
 	key: string;
 	children: ParameterNodeType[];
 	value?: any;
-	uiComponent?: UIComponent;
+
+	addChild(child: ParameterNode): ParameterNode;
+	asEnvKeyValues(): string[];
 }
 
 interface SelectionParameterType extends ParameterNodeType {
 	value: string;
 	options: SelectionOptionType[];
+
+	addOption(option: SelectionOption);
+	asEnvKeyValues(): string[];
 }
 
 interface SelectionOptionType {
@@ -63,18 +80,27 @@ interface SelectionOptionType {
 
 interface StringParameterType extends ParameterNodeType {
 	value: string;
+
+	asEnvKeyValues(): string[];
 }
 
 interface BoolParameterType extends ParameterNodeType {
 	value: boolean;
+
+	asEnvKeyValues(): string[];
 }
 
 interface IntParameterType extends ParameterNodeType {
 	value: number;
+
+	asEnvKeyValues(): string[];
 }
 
 interface TaskExecutionLogType {
 	entries: TaskExecutionResultType[];
+
+	async getEntriesFor(taskInstance: TaskInstance, untilTime: string): string;
+	async getLatestEntryFor(taskInstance: TaskInstance): string;
 }
 
 interface TaskExecutionResultType {

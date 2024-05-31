@@ -64,7 +64,6 @@ export class BoolParameter extends ParameterNode implements BoolParameterType {
     }
 }
 
-
 export class SelectionOption implements SelectionOptionType {
     value: string | number | boolean;
     label: string;
@@ -111,7 +110,6 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         // const datasetParam = new SelectionParameter("Dataset", "dataset", dataset);
         const datasetParam = new SelectionParameter("Dataset", "dataset", dataset);     
         this.addChild(datasetParam);
-
     }
 
     async loadPools() {
@@ -141,7 +139,7 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         return child;
     }
     
-   /*  // Method to create ZfsDatasetParameter from a location
+    // Method to create ZfsDatasetParameter from a location
     static fromLocation(label: string, key: string, location: Location): ZfsDatasetParameter {
         const { host, port, user, root, path } = location;
         return new ZfsDatasetParameter(label, key, host, port, user, root, path);
@@ -158,7 +156,7 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
         const path = (this.children[6] as SelectionParameter).value;
 
         return { host, port, user, root, path };
-    } */
+    }
 }
 
 export class Location implements LocationType {
@@ -174,5 +172,36 @@ export class Location implements LocationType {
         this.user = user;
         this.root = root;
         this.path = path;
+    }
+}
+
+export class LocationParameter extends ParameterNode implements ParameterNodeType {
+    constructor(label: string, key: string, host: string = "", port: number = 0, user: string = "", root: string = "", path: string = "") {
+        super(label, key);
+
+        this.addChild(new StringParameter("Host", "host", host));
+        this.addChild(new IntParameter("Port", "port", port));
+        this.addChild(new StringParameter("User", "user", user));
+        this.addChild(new StringParameter("Root", "root", root));
+        this.addChild(new StringParameter("Path", "path", path));
+    } 
+
+    // Method to create ZfsDatasetParameter from a location
+    static fromLocation(label: string, key: string, location: Location): LocationParameter {
+        const { host, port, user, root, path } = location;
+        return new LocationParameter(label, key, host, port, user, root, path);
+    }
+
+    // Method to convert ZfsDatasetParameter to a location
+    toLocation(): Location {
+        const label = (this.children[0] as StringParameter).value;
+        const key = (this.children[1] as StringParameter).value;
+        const host = (this.children[2] as StringParameter).value;
+        const port = (this.children[3] as IntParameter).value;
+        const user = (this.children[4] as StringParameter).value;
+        const root = (this.children[5] as SelectionParameter).value;
+        const path = (this.children[6] as SelectionParameter).value;
+
+        return { host, port, user, root, path };
     }
 }

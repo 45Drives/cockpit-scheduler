@@ -1,4 +1,4 @@
-import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter } from "./Parameters";
+import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
 
 export class TaskInstance implements TaskInstanceType {
     name: string;
@@ -50,13 +50,10 @@ export class TaskTemplate implements TaskTemplateType {
     }
 }
 
-export class ZFSReplicationTaskTemplate implements TaskTemplate {
-    name: string;
-    parameterSchema: ParameterNode;
-
+export class ZFSReplicationTaskTemplate extends TaskTemplate {
     constructor() {
-        this.name = "ZFS Replication Task";
-        this.parameterSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
+        const name = "ZFS Replication Task";
+        const parameterSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
             .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', '', ''))
             .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
             .addChild(new ParameterNode('Send Options', 'sendOptions')
@@ -73,6 +70,7 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
                 .addChild(new IntParameter('Destination', 'destination', 5)
             )
         );
+        super(name, parameterSchema);
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ZFSReplicationTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
@@ -81,21 +79,96 @@ export class ZFSReplicationTaskTemplate implements TaskTemplate {
     }
 }
 
-export class AutomatedSnapshotTaskTemplate implements TaskTemplate {
-    name: string;
-    parameterSchema: ParameterNode;
-
+export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
     constructor() {
-        this.name = "Automated Snapshot Task";
-        this.parameterSchema = new ParameterNode("Automated Snapshot Task Config", "autoSnapConfig")
+        const name = "Automated Snapshot Task";
+        const parameterSchema = new ParameterNode("Automated Snapshot Task Config", "autoSnapConfig")
             .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
             .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
             .addChild(new StringParameter('Custom Name', 'customName', ''))
-            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5));
+            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)
+        );
+        super(name, parameterSchema);
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: AutomatedSnapshotTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
+}
+
+export class RsyncTaskTemplate extends TaskTemplate {
+    constructor() {
+        const name = "Rsync Task";
+        const push = new SelectionOption('push', 'Push');
+        const pull = new SelectionOption('pull', 'Pull');
+        const directionSelection = [] as any as SelectionOption[];
+        directionSelection.push(push);
+        directionSelection.push(pull);
+        const parameterSchema = new ParameterNode("Rsync Task Config", "rsyncConfig")
+        .addChild(new StringParameter('Local Path', 'local_path', ''))
+        .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
+        .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
+        .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
+            .addChild(new BoolParameter('Archive', 'archive_flag', true))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', true))
+            .addChild(new BoolParameter('Compressed', 'compressed_flag', true))
+            .addChild(new BoolParameter('Delete', 'delete_flag', false))
+            .addChild(new BoolParameter('Quiet', 'quiet_flag', false))
+            .addChild(new BoolParameter('Preserve Times', 'times_flag', false))
+            .addChild(new BoolParameter('Preserve Hard Links', 'hard_links_flag', false))
+            .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', false))
+            .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', false))
+            .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
+            .addChild(new StringParameter('Include', 'include_pattern', ''))
+            .addChild(new StringParameter('Exclude', 'exclude_pattern', ''))
+            .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))
+            .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', false))
+            .addChild(new IntParameter('Threads', 'parallel_threads', 0))
+        );
+        super(name, parameterSchema);
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: RsyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
+}
+
+export class ScrubTaskTemplate extends TaskTemplate {
+    constructor() {
+        const name = "Scrub Task";
+        const parameterSchema = new ParameterNode("Scrub Task Config", "scrubConfig")
+/*           .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
+            .addChild(new StringParameter('Custom Name', 'customName', ''))
+            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)); */
+
+        super(name, parameterSchema);
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ScrubTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
+}
+
+export class SmartTestTemplate extends TaskTemplate {
+    constructor() {
+        const name = "SMART Test";
+        const parameterSchema = new ParameterNode("SMART Test Config", "smartConfig")
+    /*       .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
+            .addChild(new StringParameter('Custom Name', 'customName', ''))
+            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)); */
+
+        super(name, parameterSchema);
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: SmartTestTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }

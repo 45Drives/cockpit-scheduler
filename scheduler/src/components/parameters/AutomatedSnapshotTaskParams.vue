@@ -4,7 +4,7 @@
             <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
         </div>
     </div>
-    <div v-if="!loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2">
+    <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2">
         <div name="source-data" class="border border-default rounded-md p-2 col-span-2 bg-accent">
             <div class="flex flex-row justify-between items-center text-center">
                 <label class="mt-1 block text-base leading-6 text-default">Filesystem to Snapshot</label>
@@ -18,20 +18,20 @@
                     <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                     <ExclamationCircleIcon v-if="sourcePoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <div v-if="!useCustomSource">
-                    <select v-if="!sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select a Pool</option>
-                        <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
-                        <option v-if="loadingSourcePools">Loading...</option>
-                    </select>
+                <div v-if="useCustomSource">
+                    <input v-if="customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Pool"/> 
+                    <input v-else type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Pool"/> 
+                </div>
+                <div v-else>
                     <select v-if="sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                         <option value="">Select a Pool</option>
                         <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
                     </select>
-                </div>
-                <div v-if="useCustomSource">
-                    <input v-if="!customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Pool"/> 
-                    <input v-if="customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Pool"/> 
+                    <select v-else v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Pool</option>
+                        <option v-if="loadingSourcePools">Loading...</option>
+                        <option v-else v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
+                    </select>
                 </div>
             </div>
             <div name="source-dataset">
@@ -39,21 +39,22 @@
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
                     <ExclamationCircleIcon v-if="sourceDatasetErrorTag || customSrcDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <div v-if="!useCustomSource">
-                    <select v-if="!sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                <div v-if="useCustomSource">
+                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Dataset"/> 
+                    <input v-else type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Dataset"/> 
+                </div>
+                <div v-else>
+                    <select v-if="sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
                         <option value="">Select a Dataset</option>
                         <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
+                    </select>
+                    <select v-else v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Dataset</option>
                         <option v-if="loadingSourceDatasets">Loading...</option>
-                    </select>
-                    <select v-if="sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
-                    <option value="">Select a Dataset</option>
-                        <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
+                        <option v-else v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
                     </select>
                 </div>
-                <div v-if="useCustomSource">
-                    <input v-if="!customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Dataset"/> 
-                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Dataset"/> 
-                </div>
+               
             </div>
             <div name="source-snapshot-retention">
                 <label class="mt-1 block text-sm leading-6 text-default">Snapshots to Keep</label>
@@ -69,9 +70,9 @@
                     <ExclamationCircleIcon v-if="customNameErrorTag" class="mt-2 w-5 h-5 text-danger"/>
                 </div>
                 <div name="custom-snapshot-name-field" class="mt-1 flex-grow">
-                    <input v-if="useCustomName && !customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is CustomName + Timestamp"/>
                     <input v-if="useCustomName && customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Name is CustomName + Timestamp"/>
-                    <input v-if="!useCustomName" disabled type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is Timestamp"/>
+                    <input v-else-if="useCustomName && !customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is CustomName + Timestamp"/>
+                    <input v-else disabled type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is Timestamp"/>
                 </div>
                 <div name="send-opt-recursive" class="flex flex-row items-center gap-2 mt-2">
                     <label class="block text-sm leading-6 text-default">Recursive Snapshots</label>

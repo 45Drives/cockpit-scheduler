@@ -1,16 +1,12 @@
 <template>
     <div class="mt-3">
-        <div v-if="template.name == 'ZFS Replication Task'">
-            <ZfsRepTaskParams ref="zfsRepTaskParamsComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
-        </div>
-        <div v-if="template.name == 'Automated Snapshot Task'">
-            <AutomatedSnapshotTaskParams ref="automatedSnapshotTaskParamsComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
-        </div>
+        <ZfsRepTaskParams v-if="template.name == 'ZFS Replication Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
+        <AutomatedSnapshotTaskParams v-else-if="template.name == 'Automated Snapshot Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
     </div>
 </template>
 <script setup lang="ts">
 
-import { ref, watch, computed } from 'vue';
+import { ref, computed } from 'vue';
 import ZfsRepTaskParams from '../parameters/ZfsRepTaskParams.vue'
 import AutomatedSnapshotTaskParams from '../parameters/AutomatedSnapshotTaskParams.vue'
 interface ParameterInputProps {
@@ -20,21 +16,9 @@ interface ParameterInputProps {
 
 const props = defineProps<ParameterInputProps>();
 
-const template = ref(props.selectedTemplate)
+const template = computed(() => props.selectedTemplate);
 
-const zfsRepTaskParamsComponent = ref();
-const automatedSnapshotTaskParamsComponent = ref();
-
-const activeComponent = computed(() => {
-    switch (props.selectedTemplate.name) {
-        case 'ZFS Replication Task':
-            return zfsRepTaskParamsComponent.value;
-        case 'Automated Snapshot Task':
-            return automatedSnapshotTaskParamsComponent.value;
-        default:
-            return null;
-    }
-});
+const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams> | null>(null);
 
 function validation() {
     activeComponent.value?.validateParams();
@@ -43,11 +27,6 @@ function validation() {
 function clearTaskParamErrorTags() {
     activeComponent.value?.clearErrorTags();
 }
-
-// Watch for changes in selectedTemplate
-watch(() => props.selectedTemplate, (newTemplate) => {
-    template.value = newTemplate;
-}, { deep: true });
 
 defineExpose({
     validation,

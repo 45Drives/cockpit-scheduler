@@ -24,11 +24,15 @@
         <div class="my-4 flow-root">
             <div class="-mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8 overflow-x-auto">
-                    <div v-if="!loading && taskInstances.length < 1"
+                    <div v-if="loading" class="flex items-center justify-center">
+                        <CustomLoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'"
+                            :fillColor="'fill-gray-500'" />
+                    </div>
+                    <div v-else-if="taskInstances.length === 0"
                         class="min-w-full min-h-full items-center text-center bg-well">
                         <h2>No Tasks Found</h2>
                     </div>
-                    <div v-if="!loading && taskInstances.length > 0" class="relative">
+                    <div v-else class="relative">
 	                    <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
@@ -280,10 +284,7 @@
                         </div>
                     </div>
                     
-                    <div v-if="loading" class="flex items-center justify-center">
-                        <CustomLoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'"
-                            :fillColor="'fill-gray-500'" />
-                    </div>
+                   
                 </div>
             </div>
         </div>

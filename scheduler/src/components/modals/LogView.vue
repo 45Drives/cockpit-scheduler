@@ -7,8 +7,11 @@
         </template>
         <template v-slot:content>
             <div>
-                <div v-if="thisLogEntry !== undefined && !loadingLogs">
-                    <div>
+                <div v-if="loadingLogs" class="flex items-center justify-center">
+                    <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                </div>
+                <div v-else>
+                    <div v-if="thisLogEntry !== undefined">
                         <div class="max-w-5xl mx-auto p-4 bg-accent text-default shadow-md rounded-lg">
                             <div class="grid grid-cols-2 gap-2">
                                 <div class="col-span-1 mb-4">
@@ -53,9 +56,7 @@
                         </div>
                     </div>
                 </div>
-                <div v-if="loadingLogs" class="flex items-center justify-center">
-                    <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
-                </div>
+              
             </div>
         </template>
         <template v-slot:footer>
