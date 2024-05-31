@@ -19,6 +19,37 @@ export function injectWithCheck<T>(key: InjectionKey<T>, errorMessage: string): 
   return injectedValue;
 }
 
+/* Getting values from Parameter structure to display in table */
+export function findValue(obj, targetKey, valueKey) {
+    if (!obj || typeof obj !== 'object') return null;
+
+    // Directly check at the current level if this is the targetKey
+    if (obj.key === targetKey) {
+        // If looking for the same key as targetKey and it has a value, return it
+        if (targetKey === valueKey && obj.value !== undefined) {
+            return obj.value;
+        }
+        // If there's a different valueKey to find, look for it among children
+        let foundChild = obj.children?.find(child => child.key === valueKey);
+        if (foundChild && foundChild.value !== undefined) {
+            return foundChild.value;
+        }
+    }
+
+    // If no value found at this level, and there are children, search them recursively
+    if (Array.isArray(obj.children)) {
+        for (let child of obj.children) {
+            const result = findValue(child, targetKey, valueKey);
+            if (result !== null) {  // Ensure '0', 'false', or empty string are considered valid returns
+                return result;
+            }
+        }
+    }
+
+    return null;  // If the search yields no results, return null
+}
+
+
 export async function getPoolData(host?, port?, user?) {
     try {
         const cmd = ['/usr/bin/env', 'python3', '-c', get_zfs_data_script, '-t', 'pools']

@@ -37,7 +37,6 @@
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
                                     <tr class="border border-default border-collapse grid grid-cols-8 w-full">
-                                        <!-- Table Headers -> Name, Enabled/Scheduled, Status, LastRuntime, Details/Empty -->
                                         <th scope="col"
                                             class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
                                             <button @click="sortBy('name')"
@@ -69,222 +68,13 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <tr v-for="taskInstance, index in filteredAndSortedTasks" :key="index"
-                                        :class="showDetails[index] ? 'border-2 border-red-700 dark:border-red-800 bg-default' : ''"
-                                        class="border border-default border-collapse grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
-                                        <!-- Table Cells -->
-                                        <td
-                                            :title="taskInstance.name" class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                            {{ taskInstance.name }}
-                                        </td>
-                                        <td v-if="taskInstance.schedule.enabled"
-                                            :title="taskStatuses.get(taskInstance.name) ?
-                                                    upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a'" 
-                                                    class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                            <span :class="taskStatusClass(taskStatuses.get(taskInstance.name))">
-                                                {{ taskStatuses.get(taskInstance.name) ?
-                                                    upperCaseWord(taskStatuses.get(taskInstance.name)) : 'N/A' || 'n/a' }}
-                                            </span>
-                                        </td>
-                                        <td v-if="!taskInstance.schedule.enabled"
-                                            :title="'Disabled'" 
-                                                    class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                            <span :class="taskStatusClass('Disabled')">
-                                                Disabled
-                                            </span>
-                                        </td>
-                                        <td
-                                            :title="latestTaskExecution.get(taskInstance.name) || 'N/A'" 
-                                            class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-                                            <span>
-                                                {{ latestTaskExecution.get(taskInstance.name) || 'N/A' }}
-                                            </span>
-                                        </td>
-                                        <td
-                                            class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-                                            <input v-if="taskInstance.schedule.intervals.length > 0"
-                                                :title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`"
-                                                type="checkbox" :checked="taskInstance.schedule.enabled"
-                                                @change="handleScheduleCheckboxChange(taskInstance, index)"
-                                                class="ml-2 h-4 w-4 rounded " />
-                                            <input v-else disabled type="checkbox" :title="'No Schedule Found'"
-                                                class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
-                                        </td>
-                                        <td
-                                            class="truncate text-base font-medium text-default border-default m-1 col-span-1">
-                                            <button v-if="!showDetails[index]" @click="taskDetailsBtn(index)"
-                                                class="btn btn-secondary">View Details</button>
-                                            <button v-if="showDetails[index]" @click="closeDetailsBtn(index)"
-                                                class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close
-                                                Details</button>
-                                        </td>
-                                        <td v-if="showDetails[index]"
-                                            class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
-                                            <div>
-                                                <!-- Details for ZFS Replication Task -->
-                                                <div v-if="taskInstance.template.name === 'ZFS Replication Task'"
-                                                    class="grid grid-cols-4 items-left text-left">
-                                                    <div class="col-span-1">
-                                                        <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
-                                                            Task Type: <b>{{ taskInstance.template.name }}</b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Send Type: ${findValue(taskInstance.parameters, 'destDataset', 'host') !== '' ? 'Remote' : 'Local'}`">
-                                                            Send Type:
-                                                            <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
-                                                            <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Source: ${findValue(taskInstance.parameters, 'sourceDataset', 'dataset')}`">
-                                                            Source: <b>
-                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                                {{ findValue(taskInstance.parameters, 'sourceDataset',
-                                                                    'dataset') }}
-                                                            </b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Source Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'source')}`">
-                                                            Source Snapshots to Keep: <b>
-                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                                    'source') }}
-                                                            </b>
-                                                        </p>
-                                                        <p class="my-2"
-                                                            v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
-                                                            <p class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'destDataset', 'host')}`">
-                                                                Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'destDataset', 'host') }}</b>
-                                                            </p>
-                                                            <p class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'destDataset', 'port')}`">
-                                                                Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'destDataset', 'port') }}</b>
-                                                            </p>        
-                                                        </p>
-                                                        
-                                                    </div>
-                                                    <div class="col-span-1">
-                                                        <p class="my-2 truncate" 
-                                                        :title="`Compression: ${findValue(taskInstance.parameters, 'sendOptions', 'raw_flag') ? 'Raw' : findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag') ? 'Compressed' : 'None'}`">
-                                                            Compression: <b>{{ findValue(taskInstance.parameters,
-                                                                'sendOptions', 'raw_flag') ? 'Raw' :
-                                                                findValue(taskInstance.parameters, 'sendOptions',
-                                                                    'compressed_flag') ? 'Compressed' : 'None' }}</b>
-                                                        </p>
-                                                        <p class="my-2 truncate" 
-                                                        :title="`Recursive Send: ${boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))}`">
-                                                            Recursive Send: <b>{{
-                                                                boolToYesNo(findValue(taskInstance.parameters,
-                                                                    'sendOptions', 'recursive_flag')) }}</b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Destination: ${findValue(taskInstance.parameters, 'destDataset', 'dataset')}`">
-                                                            Destination: <b>
-                                                                <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
-                                                                {{ findValue(taskInstance.parameters, 'destDataset',
-                                                                    'dataset') }}
-                                                            </b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Destination Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'destination')}`">
-                                                            Destination Snapshots to Keep: <b>
-                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                                    'destination') }}
-                                                            </b>
-                                                        </p>
-                                                    </div>
-                                                    <div class="col-span-2 row-span-2">
-                                                        <p class="my-2 font-bold">Current Schedules:</p>
-                                                        <div v-if="taskInstance.schedule.intervals.length > 0"
-                                                            v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                                                            <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
-                                                        </div>
-                                                        <div v-else>
-                                                            <p>No Intervals Currently Scheduled</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <!-- Details for Automated Snapshot Task -->
-                                                <div v-if="taskInstance.template.name === 'Automated Snapshot Task'"
-                                                    class="grid grid-cols-4 items-left text-left">
-                                                    <div class="col-span-1">
-                                                        <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
-                                                            Task Type: <b>{{ taskInstance.template.name }}</b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Filesystem: ${findValue(taskInstance.parameters, 'filesystem', 'dataset')}`">
-                                                            Filesystem: <b>
-                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                                {{ findValue(taskInstance.parameters, 'filesystem',
-                                                                    'dataset') }}
-                                                            </b>
-                                                        </p>
-                                                        <p v-if="findValue(taskInstance.parameters, 'customName_flag', 'customName_flag')"
-                                                            class="my-2 truncate" :title="`Custom Snapshot Name: ${findValue(taskInstance.parameters, 'customName', 'customName')}`">
-                                                            Custom Snapshot Name: <b>
-                                                                <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
-                                                                {{ findValue(taskInstance.parameters, 'customName',
-                                                                    'customName') }}
-                                                            </b>
-                                                        </p>
-                                                    </div>
-                                                    <div class="col-span-1">
-                                                        <p class="my-2 truncate" :title="`Recursive Snapshots: ${boolToYesNo(findValue(taskInstance.parameters, 'recursive_flag', 'recursive_flag'))}`">
-                                                            Recursive Snapshots: <b>{{
-                                                                boolToYesNo(findValue(taskInstance.parameters,
-                                                                    'recursive_flag', 'recursive_flag')) }}</b>
-                                                        </p>
-                                                        <p class="my-2 truncate" :title="`Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'snapRetention')}`">
-                                                            Snapshots to Keep: <b>
-                                                                {{ findValue(taskInstance.parameters, 'snapRetention',
-                                                                    'snapRetention') }}
-                                                            </b>
-                                                        </p>
-                                                    </div>
-                                                    <div class="col-span-2 row-span-2">
-                                                        <p class="my-2 font-bold">Current Schedules:</p>
-                                                        <div v-if="taskInstance.schedule.intervals.length > 0"
-                                                            v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                                                            class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                                                            <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
-                                                        </div>
-                                                        <div v-else>
-                                                            <p>No Intervals Currently Scheduled</p>
-                                                        </div>
-                                                    </div>
-
-                                                </div>
-                                            </div>
-
-                                            <div class="button-group-row justify-center col-span-5 mt-2">
-                                                <button @click="runTaskBtn(taskInstance)"
-                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
-                                                    Run Now
-                                                    <PlayIcon class="h-5 ml-2 mt-0.5" />
-                                                </button>
-                                                <button @click="manageScheduleBtn(taskInstance)"
-                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                                    Manage Schedule
-                                                    <CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
-                                                </button>
-                                                <button @click="editTaskBtn(taskInstance)"
-                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                                    Edit
-                                                    <PencilIcon class="h-5 ml-2 mt-0.5" />
-                                                </button>
-                                                <button @click="viewLogsBtn(taskInstance)"
-                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-                                                    View Logs
-                                                    <TableCellsIcon class="h-5 ml-2 mt-0.5" />
-                                                </button>
-                                                <button @click="removeTaskBtn(taskInstance, index)"
-                                                    class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
-                                                    Remove
-                                                    <TrashIcon class="h-5 ml-2 mt-0.5" />
-                                                </button>
-
-                                            </div>
-                                        </td>
-                                    </tr>
+                                       <TaskInstanceTableRow v-for="taskInstance, index in filteredAndSortedTasks" :key="index" :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
+                                       @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
+                                       @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"/>
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                    
-                   
                 </div>
             </div>
         </div>
@@ -301,17 +91,6 @@
     <div v-if="showThisScheduleWizard">
         <component :is="scheduleWizardComponent" @close="updateShowThisScheduleWizardComponent" :task="selectedTask"
             :mode="'edit'" />
-    </div>
-
-    <div v-if="showEnablePrompt">
-        <component :is="enableDialog" @close="updateShowEnablePrompt" :showFlag="showEnablePrompt"
-            :title="'Enable Schedule'" :message="'Do you wish to enable the schedule for this task?'"
-            :confirmYes="enableYes" :confirmNo="enableNo" :operating="enabling" :operation="'enabling'" />
-    </div>
-    <div v-if="showDisablePrompt">
-        <component :is="disableDialog" @close="updateShowDisablePrompt" :showFlag="showDisablePrompt"
-            :title="'Disable Schedule'" :message="'Do you wish to disable the schedule for this task?'"
-            :confirmYes="disableYes" :confirmNo="disableNo" :operating="disabling" :operation="'disabling'" />
     </div>
 
     <div v-if="showRunNowPrompt">
@@ -335,23 +114,17 @@
 <script setup lang="ts">
 import 'houston-common-css/src/index.css';
 import "houston-common-ui/style.css";
-import { computed, ref, provide, reactive, onMounted, watchEffect, onUnmounted } from 'vue';
-import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
-import { boolToYesNo, upperCaseWord } from '../composables/utility'
+import { computed, ref, provide } from 'vue';
+import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
-import { Scheduler } from '../models/Scheduler';
-import { TaskExecutionLog } from '../models/TaskLog';
-import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
+import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
+import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
-const selectedTaskIdx = ref<number>();
-const latestTaskExecution = reactive(new Map());
-const taskStatuses = reactive(new Map());
 
 /* Refresh Display */
 async function refreshBtn() {
@@ -360,15 +133,9 @@ async function refreshBtn() {
     loading.value = false;
 }
 
-
-/* Toggle task details */
-const showDetails = ref({});
-function taskDetailsBtn(idx) {
-    showDetails.value = {};
-    showDetails.value[idx] = !showDetails.value[idx];
-}
-function closeDetailsBtn(idx) {
-    showDetails.value[idx] = !showDetails.value[idx];
+const expandedTaskName = ref(null);
+function toggleDetails(taskName) {
+  expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
 }
 
 
@@ -405,69 +172,6 @@ async function loadConfirmationDialog(dialogRef) {
     dialogRef.value = module.default;
 }
 
-// handle checkbox for toggling task schedule enabled/disabled
-function handleScheduleCheckboxChange(task: TaskInstanceType, index: number) {
-    selectedTask.value = task;
-    selectedTaskIdx.value = index;
-
-    if (selectedTask.value.schedule.enabled) {
-        showDisableDialog();
-    } else {
-        showEnableDialog();
-    }
-}
-
-
-/* Enable Task */
-const showEnablePrompt = ref(false);
-const enableDialog = ref();
-const enabling = ref(false);
-async function showEnableDialog() {
-    await loadConfirmationDialog(enableDialog);
-    showEnablePrompt.value = true;
-}
-const enableYes: ConfirmationCallback = async () => {
-    enabling.value = true;
-    console.log('enabling schedule for:', selectedTask.value!.name)
-    await myScheduler.enableSchedule(selectedTask!.value);
-    await updateTaskStatus(selectedTask.value);
-    updateShowEnablePrompt(false);
-    enabling.value = false;
-}
-const enableNo: ConfirmationCallback = async () => {
-    console.log('leaving task schedule as is');
-    selectedTask.value!.schedule.enabled = selectedTask.value!.schedule.enabled;
-    await updateTaskStatus(selectedTask.value);
-    updateShowEnablePrompt(false);
-}
-const updateShowEnablePrompt = (newVal) => {
-    showEnablePrompt.value = newVal;
-}
-
-
-/* Disable Task */
-const showDisablePrompt = ref(false);
-const disableDialog = ref();
-const disabling = ref(false);
-async function showDisableDialog() {
-    await loadConfirmationDialog(disableDialog);
-    showDisablePrompt.value = true;
-}
-const disableYes: ConfirmationCallback = async () => {
-    disabling.value = true;
-    console.log('disabling schedule for:', selectedTask.value!.name)
-    await myScheduler.disableSchedule(selectedTask!.value);
-    updateShowDisablePrompt(false);
-    disabling.value = false;
-}
-const disableNo: ConfirmationCallback = async () => {
-    console.log('leaving task schedule as is');
-    updateShowDisablePrompt(false);
-}
-const updateShowDisablePrompt = (newVal) => {
-    showDisablePrompt.value = newVal;
-}
-
 
 /* Run Task Now */
 const showRunNowPrompt = ref(false);
@@ -485,8 +189,6 @@ async function showRunNowDialog() {
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     await myScheduler.runTaskNow(selectedTask.value!);
-    pollTaskStatus();
-    pollTaskLastRun();  
     updateShowRunNowPrompt(false);
     running.value = false;
 }
@@ -503,10 +205,10 @@ const showRemoveTaskPrompt = ref(false);
 const removeTaskDialog = ref();
 const removing = ref(false);
 
-function removeTaskBtn(task, index) {
+function removeTaskBtn(task) {
     console.log('removeTaskBtn triggered');
     selectedTask.value = task;
-    selectedTaskIdx.value = index;
+
     showRemoveTaskDialog();
 }
 async function showRemoveTaskDialog() {
@@ -574,124 +276,6 @@ async function loadLogViewComponent() {
 }
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
-}
-
-
-
-/* Getting Task Status + Last Run Time */
-const pollingInterval = ref(10000);
-const intervalId = ref();
-async function updateTaskStatus(task) {
-    const status = await myScheduler.getTaskStatusFor(task);
-    taskStatuses.set(task.name, status);
-    // console.log(`Status for ${task.name}:`, status);
-}
-
-// change color of status text
-function taskStatusClass(status) {
-    if (status) {
-        if (status.includes('active')) {
-            return 'text-success';
-        } else if (status.includes('inactive')) {
-            return 'text-warning';
-        } else if (status.includes('failed')) {
-            return 'text-danger';
-        } else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
-            return 'text-muted';
-        } else if (status == 'Disabled') {
-            return 'text-45d';
-        }
-    }
-}
-
-async function fetchLatestLog(task) {
-    try {
-        const latestLog = await myTaskLog.getLatestEntryFor(task);
-        if (latestLog) {
-            latestTaskExecution.set(task.name, latestLog.startDate);
-        }
-        // console.log(`Last execution of ${task.name}:`, latestLog);
-    } catch (error) {
-        console.error("Failed to fetch logs:", error);
-    }
-};
-
-const pollTaskStatus = async () => {
-    if (taskInstances.value) {
-        for (const task of taskInstances.value) {
-            await updateTaskStatus(task);
-        }
-    }
-}
-
-const pollTaskLastRun = async () => {
-    if (taskInstances.value) {
-        for (const task of taskInstances.value) {
-            await fetchLatestLog(task);
-        }
-    }
-}
-
-const startPolling = () => {
-    if (!intervalId.value) {
-        intervalId.value = setInterval(() => {
-            pollTaskStatus();
-        }, pollingInterval.value);
-    }
-}
-
-const stopPolling = () => {
-    if (intervalId.value) {
-        clearInterval(intervalId.value);
-        intervalId.value = null;
-    }
-}
-
-onMounted(() => {
-    startPolling();
-});
-
-onUnmounted(() => {
-    stopPolling();
-});
-
-//handle changes in taskInstances and check status/timestamp accordingly
-watchEffect(() => {
-    if (taskInstances.value.length > 0) {
-        pollTaskStatus();
-        pollTaskLastRun();
-    }
-});
-
-
-/* Getting values from Parameter structure to display in table */
-function findValue(obj, targetKey, valueKey) {
-    if (!obj || typeof obj !== 'object') return null;
-
-    // Directly check at the current level if this is the targetKey
-    if (obj.key === targetKey) {
-        // If looking for the same key as targetKey and it has a value, return it
-        if (targetKey === valueKey && obj.value !== undefined) {
-            return obj.value;
-        }
-        // If there's a different valueKey to find, look for it among children
-        let foundChild = obj.children?.find(child => child.key === valueKey);
-        if (foundChild && foundChild.value !== undefined) {
-            return foundChild.value;
-        }
-    }
-
-    // If no value found at this level, and there are children, search them recursively
-    if (Array.isArray(obj.children)) {
-        for (let child of obj.children) {
-            const result = findValue(child, targetKey, valueKey);
-            if (result !== null) {  // Ensure '0', 'false', or empty string are considered valid returns
-                return result;
-            }
-        }
-    }
-
-    return null;  // If the search yields no results, return null
 }
 
 

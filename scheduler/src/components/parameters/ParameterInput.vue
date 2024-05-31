@@ -7,8 +7,8 @@
 <script setup lang="ts">
 
 import { ref, computed } from 'vue';
-import ZfsRepTaskParams from '../parameters/ZfsRepTaskParams.vue'
-import AutomatedSnapshotTaskParams from '../parameters/AutomatedSnapshotTaskParams.vue'
+import ZfsRepTaskParams from './task-parameters/ZfsRepTaskParams.vue'
+import AutomatedSnapshotTaskParams from './task-parameters/AutomatedSnapshotTaskParams.vue'
 interface ParameterInputProps {
     selectedTemplate: TaskTemplateType;
     task?: TaskInstanceType;

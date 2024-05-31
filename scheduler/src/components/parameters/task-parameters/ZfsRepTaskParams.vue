@@ -223,9 +223,9 @@
 
 import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH } from '../../composables/utility';
+import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
+import { getPoolData, getDatasetData, testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface ZfsRepTaskParamsProps {

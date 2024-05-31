@@ -88,9 +88,9 @@
 
 import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../models/Parameters';
-import { getPoolData, getDatasetData } from '../../composables/utility';
+import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
+import { getPoolData, getDatasetData } from '../../../composables/utility';
 
 interface AutomatedSnapshotTaskParamsProps {
    parameterSchema: ParameterNodeType;
