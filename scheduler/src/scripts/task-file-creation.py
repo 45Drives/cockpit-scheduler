@@ -41,6 +41,9 @@ def parse_env_file(parameter_env_file_path):
                     parameters[flag_key] = ''
                     if flag == 'customName':
                         parameters['autoSnapConfig_customName'] = ''
+                        
+        # elif key.startswith('rsyncConfig'):
+            
         
     return parameters
 

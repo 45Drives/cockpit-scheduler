@@ -1,4 +1,4 @@
-import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
+import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter, ListParameter } from "./Parameters";
 
 export class TaskInstance implements TaskInstanceType {
     name: string;
@@ -140,11 +140,8 @@ export class ScrubTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Scrub Task";
         const parameterSchema = new ParameterNode("Scrub Task Config", "scrubConfig")
-/*           .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
-            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
-            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
-            .addChild(new StringParameter('Custom Name', 'customName', ''))
-            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)); */
+        // .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', '', ''));
+        .addChild(new LocationParameter('Pool', 'pool', '', 0, '', '', ''));
 
         super(name, parameterSchema);
     }
@@ -158,12 +155,16 @@ export class ScrubTaskTemplate extends TaskTemplate {
 export class SmartTestTemplate extends TaskTemplate {
     constructor() {
         const name = "SMART Test";
+        const testTypeOptions = [
+            new SelectionOption('short', 'short'),
+            new SelectionOption('long', 'long'),
+            new SelectionOption('conveyance', 'conveyance'),
+            new SelectionOption('offline', 'offline'),
+            // new SelectionOption('select', 'select'),  (Not sure if using, requires a RangeParameter)
+        ]
         const parameterSchema = new ParameterNode("SMART Test Config", "smartConfig")
-    /*       .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
-            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
-            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
-            .addChild(new StringParameter('Custom Name', 'customName', ''))
-            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)); */
+        .addChild(new ListParameter('Disks', 'disks', []))
+        .addChild(new SelectionParameter('Test Type', 'test_type', 'short', testTypeOptions));
 
         super(name, parameterSchema);
     }

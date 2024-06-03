@@ -19,5 +19,4 @@ const template = computed(() => props.task.template);
 
 const activeComponent = ref<InstanceType<typeof ZfsRepTaskDetails | typeof AutomatedSnapshotTaskDetails> | null>(null);
 
-
 </script>
