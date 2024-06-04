@@ -65,11 +65,12 @@ import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate } from '../../models/Tasks';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
-import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey } from '../../keys/injection-keys';
+import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
+const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, "taskTemplates not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
@@ -100,6 +101,10 @@ function clearAllErrors() {
     parameterInputComponent.value.clearTaskParamErrorTags();
 }
 
+function doesTaskNameExist(name: string): boolean {
+    return taskInstances.value.some(task => task.name === name);
+}
+
 async function validateTaskName() {
     if (newTaskName.value === '') {
         errorList.value.push("Task name cannot be empty.");
@@ -107,6 +112,9 @@ async function validateTaskName() {
     } else if (!/^[a-zA-Z0-9_ ]+$/.test(newTaskName.value)) {
         // Checks if the task name contains only letters, digits, underscores, and spaces
         errorList.value.push("Task name can only contain letters, numbers, spaces, and underscores.");
+        newTaskNameErrorTag.value = true;
+    } else if (doesTaskNameExist(newTaskName.value)) {
+        errorList.value.push("Task already exists with this name.");
         newTaskNameErrorTag.value = true;
     }
 }
@@ -196,6 +204,8 @@ async function saveTask() {
         template.value = new ZFSReplicationTaskTemplate();
     } else if (selectedTemplate.value?.name == 'Automated Snapshot Task') {
         template.value = new AutomatedSnapshotTaskTemplate();
+    } else if (selectedTemplate.value?.name == 'Rsync Task') {
+        template.value = new RsyncTaskTemplate();
     }
 
     let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');

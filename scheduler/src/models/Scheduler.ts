@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval } from './Tasks';
+import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 // @ts-ignore
@@ -29,6 +29,8 @@ export class Scheduler implements SchedulerType {
                     newTaskTemplate.value = new ZFSReplicationTaskTemplate;
                 } else if (task.template == 'AutomatedSnapshotTask') {
                     newTaskTemplate.value = new AutomatedSnapshotTaskTemplate;
+                } else if (task.template == 'RsyncTask') {
+                    newTaskTemplate.value = new RsyncTaskTemplate;
                 }
 
                 const parameters = task.parameters;
@@ -220,7 +222,7 @@ export class Scheduler implements SchedulerType {
         console.log(`${fullTaskName} removed`);
     }
 
-    async getTaskStatusFor(taskInstance) {
+    async getTaskStatusFor(taskInstance: TaskInstanceType) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
@@ -231,7 +233,7 @@ export class Scheduler implements SchedulerType {
             const state = useSpawn(command, { superuser: 'try'});
             result = await state.promise();
             output = result.stdout;
-
+            // console.log(`status for task ${taskInstance.name} is ${output}`);
         } catch (error) {
             // console.error(errorString(error));
             // return false;

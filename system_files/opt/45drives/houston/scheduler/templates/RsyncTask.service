@@ -4,7 +4,7 @@ Description=Service for {task_name}
 [Service]
 Type=oneshot
 EnvironmentFile={env_path}
-ExecStart=python3 /opt/45drives/houston/scheduler/scripts/rsync-script.py {rsyncConfig_local_path}
+ExecStart=python3 /opt/45drives/houston/scheduler/scripts/rsync-script.py --source {rsyncConfig_local_path} --direction {rsyncConfig_direction} --host {rsyncConfig_target_info_host} --port {rsyncConfig_target_info_port} --user {rsyncConfig_target_info_user} --target {rsyncConfig_target_info_path}  {rsyncConfig_rsyncOptions_archive_flag} {rsyncConfig_rsyncOptions_recursive_flag} {rsyncConfig_rsyncOptions_compressed_flag} {rsyncConfig_rsyncOptions_delete_flag} {rsyncConfig_rsyncOptions_quiet_flag} {rsyncConfig_rsyncOptions_times_flag} {rsyncConfig_rsyncOptions_hardLinks_flag} {rsyncConfig_rsyncOptions_permissions_flag} {rsyncConfig_rsyncOptions_xattr_flag} --bandwidth {rsyncConfig_rsyncOptions_bandwidth_limit_kbps} --include {rsyncConfig_rsyncOptions_include_pattern} --exclude {rsyncConfig_rsyncOptions_exclude_pattern} --customArgs {rsyncConfig_rsyncOptions_custom_args} {rsyncConfig_rsyncOptions_parallel_flag} --threads {rsyncConfig_rsyncOptions_parallel_threads}
 Restart=on-failure
 RestartSec=30sec
 StartLimitBurst=2

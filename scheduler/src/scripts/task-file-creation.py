@@ -14,7 +14,7 @@ def parse_env_file(parameter_env_file_path):
             key, value = line.strip().split('=')
             parameters[key] = value
         
-        # Special parsing for zfsRepConfig and autoSnapConfig
+        # Special parsing for different task templates
         if key.startswith('zfsRepConfig'):
             if parameters.get(f'zfsRepConfig_sendOptions_raw_flag', 'false').lower() == 'true':
                 parameters[f'zfsRepConfig_sendOptions_compressed_flag'] = ''
@@ -42,7 +42,16 @@ def parse_env_file(parameter_env_file_path):
                     if flag == 'customName':
                         parameters['autoSnapConfig_customName'] = ''
                         
-        # elif key.startswith('rsyncConfig'):
+        elif key.startswith('rsyncConfig'):
+            flags = ['archive', 'recursive', 'compressed', 'delete', 'quiet', 'times', 'hardLinks', 'permissions', 'xattr', 'parallel']
+            for flag in flags:
+                flag_key = f'rsyncConfig_rsyncOptions_{flag}_flag'
+                if parameters.get(flag_key, 'false').lower() == 'true':
+                    parameters[flag_key] == f"--{flag}"
+                else:
+                    parameters[flag_key] = ''
+                    if flag == 'parallel':
+                        parameters['rsyncConfig_rsyncOptions_parallel_threads'] = '0'
             
         
     return parameters

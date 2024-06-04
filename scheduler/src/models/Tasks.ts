@@ -117,7 +117,7 @@ export class RsyncTaskTemplate extends TaskTemplate {
             .addChild(new BoolParameter('Delete', 'delete_flag', false))
             .addChild(new BoolParameter('Quiet', 'quiet_flag', false))
             .addChild(new BoolParameter('Preserve Times', 'times_flag', false))
-            .addChild(new BoolParameter('Preserve Hard Links', 'hard_links_flag', false))
+            .addChild(new BoolParameter('Preserve Hard Links', 'hardLinks_flag', false))
             .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', false))
             .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', false))
             .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))

@@ -267,7 +267,7 @@ import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headless
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
-import { ParameterNode, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
+import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter } from '../../../models/Parameters';
 import { testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 
@@ -284,11 +284,17 @@ const sourcePath = ref('');
 const sourcePathErrorTag = ref(false);
 const destPath = ref('');
 const destPathErrorTag = ref(false);
-
+const destRoot = ref('');
 const destHost = ref('');
 const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
+
+// const directionSelection = ref<SelectionParameter>();
+// const directionPUSH = new SelectionOption('push', 'Push');
+// const directionPULL = new SelectionOption('pull', 'Pull');
+
+// PUSH = false, PULL = true
 const directionSwitched = ref(false)
 
 const isArchive = ref(true);
@@ -300,7 +306,7 @@ const preserveTimes = ref(false);
 const preserveHardLinks = ref(false);
 const preservePerms = ref(false);
 const preserveXattr = ref(false);
-const limitBandwidthKbps = ref('');
+const limitBandwidthKbps = ref(0);
 const includePattern = ref('');
 const excludePattern = ref('');
 const isParallel = ref(false);
@@ -316,23 +322,43 @@ async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
     if (props.task) {
         loading.value = true;
+        const params = props.task.parameters.children;
 
-        // assign values
-
+        sourcePath.value = params.find(p => p.key === 'local_path')!.value;
+        const targetInfoParams = params.find(p => p.key === 'target_info')!.children;
+        destPath.value = targetInfoParams.find(p => p.key === 'path')!.value;
+        destHost.value = targetInfoParams.find(p => p.key === 'host')!.value;
+        destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
+        destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
+        destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
+        const transferDirection = params.find(p => p.key === 'direction')!.value;
+        if (transferDirection == 'pull') {
+            directionSwitched.value = true;
+        } else {
+            directionSwitched.value = false;
+        }
+        const rsyncOptions = params.find(p => p.key === 'rsyncOptions')!.children;
+        isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
+        isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
+        isCompressed.value = rsyncOptions.find(p => p.key === 'compressed_flag')!.value;
+        isQuiet.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
+        deleteFiles.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
+        preserveTimes.value = rsyncOptions.find(p => p.key === 'times_flag')!.value;
+        preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
+        preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
+        preserveXattr.value = rsyncOptions.find(p => p.key === 'xattr_flag')!.value;
+        limitBandwidthKbps.value = rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
+        includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value;
+        excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value;
+        isParallel.value = rsyncOptions.find(p => p.key === 'custom_args')!.value;
+        parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
+        extraUserParams.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
+        
         loading.value = false;
     } else {
-       //if no props.task, new task configuration (default values)
-
+        // directionSelection.value!.addOption(directionPUSH);
+        // directionSelection.value!.addOption(directionPULL);
     }
-}
-
-function handleCheckboxChange(checkbox) {
-    /* // Ensure only one checkbox (raw, compressed) is selected at a time
-    if (checkbox === 'sendCompressed' && sendCompressed.value) {
-        sendRaw.value = false;
-    } else if (checkbox === 'sendRaw' && sendRaw.value) {
-        sendCompressed.value = false;
-    } */
 }
 
 
@@ -354,66 +380,44 @@ function validateHost() {
     }
 }
 
-function validateSourcePath() {
+function validatePath(path) {
+  // Regular expression to validate a UNIX-like file path
+  const pathRegex = /^(\/[^/ ]*)+\/?$/;
+  return pathRegex.test(path);
+}
 
+function validateSourcePath() {
+  if (validatePath(sourcePath.value)) {
+    console.log("Valid source path.");
+    return true;
+  } else {
+    console.log("Invalid source path.");
+    errorList.value.push("Source path is invalid.");
+    destPathErrorTag.value = true;
+    return false;
+  }
 }
 
 function validateDestinationPath() {
-  
-}
-
-
-function isValidPoolName(poolName) {
-   /*  if (poolName === '') {
-        return false;
+  if (validatePath(destPath.value)) {
+    // Ensure the destination path has a trailing slash
+    if (!destPath.value.endsWith('/')) {
+      destPath.value += '/';
     }
-    if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(poolName)) {
-        return false;
-    }
-    if (/^[0-9._: -]/.test(poolName)) {
-        return false;
-    }
-    if (!/^[a-zA-Z0-9_.:-]*$/.test(poolName)) {
-        return false;
-    }
-    if (poolName.match(/[ ]$/)) {
-        return false;
-    }
-    return true; */
-}
-
-function doesItExist(thisName: string, list: string[]) {
-   /*  if (list.includes(thisName)) {
-        return true;
-    } else {
-        return false;
-    } */
-}
-
-
-function isValidDatasetName(datasetName) {
-   /*  if (datasetName === '') {
-        return false;
-    }
-    // Check if it starts with alphanumeric characters (not a slash)
-    if (!/^[a-zA-Z0-9]/.test(datasetName)) {
-        return false;
-    }
-    // Check if it ends with whitespace or a slash
-    if (/[ \/]$/.test(datasetName)) {
-        return false;
-    }
-    // Check for valid characters throughout the string, allowing internal slashes
-    if (!/^[a-zA-Z0-9_.:\/-]*$/.test(datasetName)) {
-        return false;
-    }
-    return true; */
+    console.log("Valid destination path: " + destPath.value);
+    return destPath.value;
+  } else {
+    console.log("Invalid destination path.");
+    errorList.value.push("Target path is invalid.");
+    destPathErrorTag.value = true;
+    return false;
+  }
 }
 
 function clearErrorTags() {
-    destHostErrorTag.value = false;
     sourcePathErrorTag.value = false;
     destPathErrorTag.value = false;
+    destHostErrorTag.value = false;
     errorList.value = [];
 }
 
@@ -429,9 +433,38 @@ function validateParams() {
 }
 
 function setParams() {
+    const directionPUSH = new SelectionOption('push', 'Push');
+    const directionPULL = new SelectionOption('pull', 'Pull');
+
+    const transferDirection = ref();
+    // PUSH = false, PULL = true
+    if (directionSwitched.value) {
+        transferDirection.value = directionPULL;
+    } else {
+        transferDirection.value = directionPUSH;
+    }
+  
     const newParams = new ParameterNode("Rsync Task Config", "rsyncConfig")
-        
-    ;
+    .addChild(new StringParameter('Local Path', 'local_path', sourcePath.value))
+        .addChild(new LocationParameter('Target Information', 'target_info', destHost.value, destPort.value, destUser.value, destRoot.value, destPath.value))
+        .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value.value))
+        .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
+            .addChild(new BoolParameter('Archive', 'archive_flag', isArchive.value))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', isRecursive.value))
+            .addChild(new BoolParameter('Compressed', 'compressed_flag', isCompressed.value))
+            .addChild(new BoolParameter('Delete', 'delete_flag', deleteFiles.value))
+            .addChild(new BoolParameter('Quiet', 'quiet_flag', isQuiet.value))
+            .addChild(new BoolParameter('Preserve Times', 'times_flag', preserveTimes.value))
+            .addChild(new BoolParameter('Preserve Hard Links', 'hardLinks_flag', preserveHardLinks.value))
+            .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', preservePerms.value))
+            .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', preserveXattr.value))
+            .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', limitBandwidthKbps.value))
+            .addChild(new StringParameter('Include', 'include_pattern', includePattern.value))
+            .addChild(new StringParameter('Exclude', 'exclude_pattern', excludePattern.value))
+            .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', extraUserParams.value))
+            .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', isParallel.value))
+            .addChild(new IntParameter('Threads', 'parallel_threads', parallelThreads.value))
+        );
 
     parameters.value = newParams;
     console.log('newParams:', newParams);

@@ -4,14 +4,14 @@ interface SchedulerType {
 
 	async loadTaskInstances(): void;
 	createParameterNodeFromSchema(schema: ParameterNode, parameters: any) : ParameterNode;
-	async registerTaskInstance(taskInstance: TaskInstance): void;
-	async updateTaskInstance(taskInstance: TaskInstance): void;
-	async runTaskNow(taskInstance: TaskInstance): void;
-	async unregisterTaskInstance(taskInstance: TaskInstance): void;
-	async getTaskStatusFor(taskInstance: TaskInstance): string;
-	async enableSchedule(taskInstance: TaskInstance): void;
-	async disableSchedule(taskInstance: TaskInstance): void;
-	async updateSchedule(taskInstance: TaskInstance): void;
+	async registerTaskInstance(taskInstance: TaskInstanceType): void;
+	async updateTaskInstance(taskInstance: TaskInstanceType): void;
+	async runTaskNow(taskInstance: TaskInstanceType): void;
+	async unregisterTaskInstance(taskInstance: TaskInstanceType): void;
+	async getTaskStatusFor(taskInstance: TaskInstanceType): Promise<string | false>;
+	async enableSchedule(taskInstance: TaskInstanceType): void;
+	async disableSchedule(taskInstance: TaskInstanceType): void;
+	async updateSchedule(taskInstance: TaskInstanceType): void;
 	parseIntervalIntoString(interval: TaskScheduleInterval): string;
 }
 
