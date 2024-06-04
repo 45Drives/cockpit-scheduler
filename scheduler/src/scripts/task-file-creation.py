@@ -47,7 +47,7 @@ def parse_env_file(parameter_env_file_path):
             for flag in flags:
                 flag_key = f'rsyncConfig_rsyncOptions_{flag}_flag'
                 if parameters.get(flag_key, 'false').lower() == 'true':
-                    parameters[flag_key] == f"--{flag}"
+                    parameters[flag_key] = f"--{flag}"
                 else:
                     parameters[flag_key] = ''
                     if flag == 'parallel':

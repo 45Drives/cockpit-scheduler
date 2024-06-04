@@ -220,7 +220,7 @@
                                             Limit Bandwidth (Kbps)
                                             <InfoTile class="ml-1" title="Limit I/O bandwidth; KBytes per second" />
                                         </label>
-                                        <input type="text" v-model="limitBandwidthKbps" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="0"/> 
+                                        <input type="number" v-model="limitBandwidthKbps" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="0"/> 
                                     </div>
                                 </div>
 
