@@ -7,7 +7,7 @@
     <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2">
         <div name="source-data" class="border border-default rounded-md p-2 col-span-2 bg-accent">
             <div class="flex flex-row justify-between items-center text-center">
-                <label class="mt-1 block text-base leading-6 text-default">Filesystem to Snapshot</label>
+                <label class="block text-base leading-6 text-default">Filesystem to Snapshot</label>
                 <div class="mt-1 flex flex-col items-center text-center">
                     <label class="block text-xs text-default">Custom</label>
                     <input type="checkbox" v-model="useCustomSource" class="h-4 w-4 rounded"/>

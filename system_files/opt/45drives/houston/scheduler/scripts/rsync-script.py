@@ -6,7 +6,8 @@ def execute_rsync(localPath, direction, targetPath, targetHost="", targetPort=22
     try:
     
         command = ['rsync']
-    
+        command.append('-h')
+        
         # Rsync options
         if isArchive:
             command.append('-a')
@@ -52,11 +53,15 @@ def execute_rsync(localPath, direction, targetPath, targetHost="", targetPort=22
                 dest = localPath
         
         if isParallel and not targetHost:
+            print(f'Transferring using {parallelThreads} parallel threads ({direction}) from {src} to {dest}')
             parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {" ".join(command)} {{}} {dest}'
             subprocess.run(parallel_command, shell=True)
         else:
+            print(f'Rsync transferring ({direction}) from {src} to {dest}')
             command.extend([src, dest])
             subprocess.run(command)
+            
+            
     except Exception as e:
         print(f"send error: {e}")
         sys.exit(1)
@@ -79,16 +84,16 @@ def main():
     parser.add_argument('--hardLinks', action='store_true', help='preserve hard links')
     parser.add_argument('--permissions', action='store_true', help='preserve permissions')
     parser.add_argument('--xattr', action='store_true', help='preserve extended attributes')
-    parser.add_argument('--bandwidth', type=int, default=0, help='limit I/O bandwidth; KBytes per second')
-    parser.add_argument('--include', type=str, default='', help='include pattern')
-    parser.add_argument('--exclude', type=str, default='', help='exclude pattern')
-    parser.add_argument('--customArgs', type=str, default='', help='additional custom arguments')
+    parser.add_argument('--bandwidth', type=int, nargs='?', default=0, help='limit I/O bandwidth; KBytes per second')
+    parser.add_argument('--include', type=str, nargs='?',default='', help='include pattern')
+    parser.add_argument('--exclude', type=str, nargs='?',default='', help='exclude pattern')
+    parser.add_argument('--customArgs', type=str, nargs='?', default='', help='additional custom arguments')
     parser.add_argument('--parallel', action='store_true', help='parallel transfer')
-    parser.add_argument('--threads', type=int, default=0, help='number of parallel threads')
+    parser.add_argument('--threads', type=int, nargs='?', default=0, help='number of parallel threads')
 
     args = parser.parse_args()
     
-    localPath = args.sourcePath
+    localPath = args.source
     direction = args.direction
     targetHost = args.host
     targetPort = args.port

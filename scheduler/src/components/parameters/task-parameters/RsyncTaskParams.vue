@@ -12,7 +12,8 @@
                 <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Source
-                            <InfoTile class="ml-1" title="Use a trailing slash (/) if you wish to transfer just the source directory's contents. Leave trailing slash out if you wish to transfer the entire directory." />
+                            <!-- <InfoTile class="ml-1" title="Use a trailing slash (/) if you wish to transfer just the source directory's contents. Leave trailing slash out if you wish to transfer the entire directory." /> -->
+                            <InfoTile class="ml-1" title="Source directory must always have a trailing slash (If none is provided it will be added automatically.)" />
                         </label>
                         <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
@@ -233,23 +234,43 @@
                                         <input v-else type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded"/> -->
                                         <input type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded"/>
                                     </div>
-                                   
+                                
                                     <div name="options-parallel" class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                        <label class="block text-sm leading-6 text-default mt-0.5">
+                                        <!-- <label class="block text-sm leading-6 text-default mt-0.5">
+                                            Use Parallel Threads
+                                            <InfoTile class="ml-1" title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
+                                        </label> 
+                                        <input type="checkbox" v-model="isParallel" class=" h-4 w-4 rounded"/>
+                                        -->
+                                        <label class="block text-sm leading-6 text-muted mt-0.5">
                                             Use Parallel Threads
                                             <InfoTile class="ml-1" title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
                                         </label>
-                                        <input type="checkbox" v-model="isParallel" class=" h-4 w-4 rounded"/>
+                                        <input type="checkbox" disabled v-model="isParallel" class=" h-4 w-4 rounded bg-accent"/>
                                     </div>
-                                    <div name="options-parallel-threads" class="col-span-2">
-                                        <label class="mt-1 block text-sm leading-6 text-default">
+                                    <div class="col-span-1 col-start-2 mt-1 ml-3">
+                                        <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
+                                            ** COMING SOON **
+                                        </label>
+                                    </div>
+                                    <div name="options-parallel-threads" class="col-span-1 col-start-1">
+                                        <!-- <label class="mt-1 block text-sm leading-6 text-default">
                                             # of Threads
                                             <InfoTile class="ml-1" title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
                                         </label>
-                                        <input v-if="isParallel" type="number" v-model="parallelThreads" class="mt-1 block w-min text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
-                                        <input v-else disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                                         <input v-if="isParallel" type="number" v-model="parallelThreads" class="mt-1 block w-min text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                                        <input v-else disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/>  -->
+                                        <label class="mt-1 block text-sm leading-6 text-muted">
+                                            # of Threads
+                                            <InfoTile class="ml-1" title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
+                                        </label>
+                                        <input disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/>
                                     </div>
-
+                                    <div class="col-span-1 col-start-2 mt-1 ml-3">
+                                        <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
+                                            ** COMING SOON **
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </DisclosurePanel>
@@ -272,8 +293,8 @@ import { testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface RsyncTaskParamsProps {
-   parameterSchema: ParameterNodeType;
-   task?: TaskInstanceType;
+    parameterSchema: ParameterNodeType;
+    task?: TaskInstanceType;
 }
 
 const props = defineProps<RsyncTaskParamsProps>();
@@ -290,11 +311,6 @@ const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
 
-// const directionSelection = ref<SelectionParameter>();
-// const directionPUSH = new SelectionOption('push', 'Push');
-// const directionPULL = new SelectionOption('pull', 'Pull');
-
-// PUSH = false, PULL = true
 const directionSwitched = ref(false)
 
 const isArchive = ref(true);
@@ -350,14 +366,11 @@ async function initializeData() {
         limitBandwidthKbps.value = rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
         includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value;
         excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value;
-        isParallel.value = rsyncOptions.find(p => p.key === 'custom_args')!.value;
-        parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
-        extraUserParams.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
+        extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value;
+        isParallel.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
+        parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
         
         loading.value = false;
-    } else {
-        // directionSelection.value!.addOption(directionPUSH);
-        // directionSelection.value!.addOption(directionPULL);
     }
 }
 
@@ -376,42 +389,47 @@ function validateHost() {
             errorList.value.push("Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.");
             destHostErrorTag.value = true;
         }
-
     }
 }
 
 function validatePath(path) {
-  // Regular expression to validate a UNIX-like file path
-  const pathRegex = /^(\/[^/ ]*)+\/?$/;
-  return pathRegex.test(path);
+    // Regular expression to validate a UNIX-like file path
+    const pathRegex = /^(\/[^/ ]*)+\/?$/;
+    return pathRegex.test(path);
 }
 
 function validateSourcePath() {
-  if (validatePath(sourcePath.value)) {
+if (validatePath(sourcePath.value)) {
+    if (!sourcePath.value.endsWith('/')) {
+        // sourcePathErrorTag.value = true;
+        // errorList.value.push("Source path has no trailing slash (/), entire directory will be transferred if not added.");
+        // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 8000));
+        sourcePath.value += '/';
+    }
     console.log("Valid source path.");
     return true;
-  } else {
+} else {
     console.log("Invalid source path.");
     errorList.value.push("Source path is invalid.");
-    destPathErrorTag.value = true;
+    sourcePathErrorTag.value = true;
     return false;
-  }
+}
 }
 
 function validateDestinationPath() {
-  if (validatePath(destPath.value)) {
+if (validatePath(destPath.value)) {
     // Ensure the destination path has a trailing slash
     if (!destPath.value.endsWith('/')) {
-      destPath.value += '/';
+        destPath.value += '/';
     }
     console.log("Valid destination path: " + destPath.value);
     return destPath.value;
-  } else {
+} else {
     console.log("Invalid destination path.");
     errorList.value.push("Target path is invalid.");
     destPathErrorTag.value = true;
     return false;
-  }
+}
 }
 
 function clearErrorTags() {
@@ -427,7 +445,7 @@ function validateParams() {
     validateHost();
     validateDestinationPath();
 
-    if (errorList.value.length == 0) {
+    if (errorList.value.length == 0 && sourcePathErrorTag.value == false) {
         setParams();
     }
 }
@@ -443,7 +461,7 @@ function setParams() {
     } else {
         transferDirection.value = directionPUSH;
     }
-  
+
     const newParams = new ParameterNode("Rsync Task Config", "rsyncConfig")
     .addChild(new StringParameter('Local Path', 'local_path', sourcePath.value))
         .addChild(new LocationParameter('Target Information', 'target_info', destHost.value, destPort.value, destUser.value, destRoot.value, destPath.value))
