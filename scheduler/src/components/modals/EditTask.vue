@@ -38,7 +38,7 @@
 import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate } from '../../models/Tasks';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
@@ -116,6 +116,10 @@ async function saveEditedTask() {
         template.value = new AutomatedSnapshotTaskTemplate();
     } else if (taskInstance.value?.template.name == 'Rsync Task') {
         template.value = new RsyncTaskTemplate();
+    } else if (taskInstance.value?.template.name == "Scrub Task") {
+        template.value = new ScrubTaskTemplate();
+    } else if (taskInstance.value?.template.name == "SMART Test") {
+        template.value = new SmartTestTemplate();
     }
   
     let sanitizedName = taskInstance.value.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');

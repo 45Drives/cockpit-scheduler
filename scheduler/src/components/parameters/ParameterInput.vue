@@ -3,8 +3,8 @@
         <ZfsRepTaskParams v-if="template.name == 'ZFS Replication Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
         <AutomatedSnapshotTaskParams v-else-if="template.name == 'Automated Snapshot Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
         <RsyncTaskParams v-else-if="template.name == 'Rsync Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
-        <!-- <ScrubTaskParams v-else-if="template.name == 'Scrub Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
-        <SmartTestTaskParams v-else-if="template.name == 'SMART Test'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/> -->
+        <ScrubTaskParams v-else-if="template.name == 'Scrub Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
+        <!-- <SmartTestTaskParams v-else-if="template.name == 'SMART Test'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/> -->
     </div>
 </template>
 <script setup lang="ts">
@@ -24,9 +24,8 @@ interface ParameterInputProps {
 const props = defineProps<ParameterInputProps>();
 
 const template = computed(() => props.selectedTemplate);
-
-const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams > | null>(null);
-// const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams | typeof ScrubTaskParams | typeof SmartTestTaskParams> | null>(null);
+// const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams > | null>(null);
+const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams | typeof ScrubTaskParams> | null>(null);
 
 function validation() {
     activeComponent.value?.validateParams();

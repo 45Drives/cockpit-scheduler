@@ -141,7 +141,6 @@ export class ScrubTaskTemplate extends TaskTemplate {
         const name = "Scrub Task";
         const parameterSchema = new ParameterNode("Scrub Task Config", "scrubConfig")
         .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', '', ''));
-        // .addChild(new LocationParameter('Pool', 'pool', '', 0, '', '', ''));
 
         super(name, parameterSchema);
     }

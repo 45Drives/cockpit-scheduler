@@ -73,7 +73,7 @@ import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate } from '../../models/Tasks';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
@@ -214,6 +214,10 @@ async function saveTask() {
         template.value = new AutomatedSnapshotTaskTemplate();
     } else if (selectedTemplate.value?.name == 'Rsync Task') {
         template.value = new RsyncTaskTemplate();
+    } else if (selectedTemplate.value?.name == "Scrub Task") {
+        template.value = new ScrubTaskTemplate();
+    } else if (selectedTemplate.value?.name == "SMART Test") {
+        template.value = new SmartTestTemplate();
     }
 
     let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');

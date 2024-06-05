@@ -78,7 +78,8 @@ def parse_env_file(parameter_env_file_path):
                 parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = ''
             else:
                 parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = f"--exclude={parameters['rsyncConfig_rsyncOptions_exclude_pattern']}"
-        
+            
+            
     return parameters
 
 def read_schedule_json(file_path):
@@ -203,7 +204,6 @@ def main():
         full_unit_name = f"houston_scheduler_{task_instance_name}"
         
         create_schedule(args.schedule, args.timerTemplate, full_unit_name, False)
-        manage_service(full_unit_name + '.timer')
 
 if __name__ == "__main__":
     main()

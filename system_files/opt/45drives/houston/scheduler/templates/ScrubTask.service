@@ -1,0 +1,14 @@
+[Unit]
+Description=Service for {task_name}
+
+[Service]
+Type=oneshot
+EnvironmentFile={env_path}
+ExecStart=zpool scrub {scrubConfig_pool_pool}
+Restart=on-failure
+RestartSec=30sec
+StartLimitBurst=2
+StartLimitInterval=60s
+
+[Install]
+WantedBy=multi-user.target

@@ -13,7 +13,7 @@ import { ref, provide, onMounted } from 'vue';
 import 'houston-common-css/src/index.css';
 import "houston-common-ui/style.css";
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, RsyncTaskTemplate, } from './models/Tasks';
+import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, } from './models/Tasks';
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
@@ -24,13 +24,14 @@ function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();
 	const autoSnapTaskTemplate = new AutomatedSnapshotTaskTemplate();
 	const rsyncTaskTemplate = new RsyncTaskTemplate();
-	// const scrubTaskTemplate = new ScrubTaskTemplate();
-	// const smartTestTemplate = new SmartTestTemplate();
+	const scrubTaskTemplate = new ScrubTaskTemplate();
+	const smartTestTemplate = new SmartTestTemplate();
 
 	return [
 		zfsRepTaskTemplate,
 		autoSnapTaskTemplate,
-		rsyncTaskTemplate
+		rsyncTaskTemplate,
+		scrubTaskTemplate
 	]
 }
 

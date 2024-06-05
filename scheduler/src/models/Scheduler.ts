@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate } from './Tasks';
+import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 // @ts-ignore
@@ -31,6 +31,10 @@ export class Scheduler implements SchedulerType {
                     newTaskTemplate.value = new AutomatedSnapshotTaskTemplate;
                 } else if (task.template == 'RsyncTask') {
                     newTaskTemplate.value = new RsyncTaskTemplate;
+                } else if (task.template == 'ScrubTask') {
+                    newTaskTemplate.value = new ScrubTaskTemplate;
+                } else if (task.template == 'SmartTest') {
+                    newTaskTemplate.value = new SmartTestTemplate;
                 }
 
                 const parameters = task.parameters;
