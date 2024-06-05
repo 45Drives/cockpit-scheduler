@@ -18,8 +18,9 @@
                         <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
                 <div>
-                    <input v-if="sourcePathErrorTag" type="text" v-model="sourcePath" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Path"/> 
-                    <input v-else type="text" v-model="sourcePath" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Path"/> 
+                    <input type="text" v-model="sourcePath" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                    :class="[sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']" 
+                    placeholder="Specify Source Path"/>
                 </div>
             </div>
             <div name="destination-path">
@@ -28,11 +29,11 @@
                             Target
                             <InfoTile class="ml-1" title="Target directory must always have a trailing slash (If none is provided it will be added automatically.)" />
                         </label>                  
-                    <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    <ExclamationCircleIcon v-if="destPathErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
                 <div>
-                    <input v-if="destPathErrorTag" type="text" v-model="destPath" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Path"/> 
-                    <input v-else type="text" v-model="destPath" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Path"/> 
+                    <input type="text" v-model="destPath" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                    :class="[destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']" placeholder="Specify Target Path"/> 
                 </div>
             </div>
             <div name="direction" class="">
@@ -90,8 +91,8 @@
                     <label class="block text-sm leading-6 text-default">Host</label>
                     <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
-                <input v-if="destHostErrorTag" type="text" v-model="destHost" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Leave blank for local transfer."/> 
-                <input v-else type="text" v-model="destHost" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local transfer."/> 
+                <input type="text" v-model="destHost" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" 
+                :class="[destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']" placeholder="Leave blank for local transfer."/> 
             </div>
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
@@ -110,7 +111,7 @@
             <label class="mt-1 block text-base leading-6 text-default">Rsync Options</label>
             <!-- Basic options -->
             <div class="grid grid-cols-4 gap-4">
-                <div class="col-span-1">
+                <div class="col-span-1" :class="[paramsErrorTag ? 'rounded-md m-0.5 outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
                     <div name="options-archive" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
                             Archive
@@ -146,7 +147,7 @@
                     <div name="options-delete" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
                             Delete Files
-                            <InfoTile class="ml-1" title="Deletes files in target path that do not exist in source." />
+                            <InfoTile class="ml-1" title="Deletes files in target path that do not exist in source. (REQUIRES Archive or Recursive)" />
                         </label>
                         <input type="checkbox" v-model="deleteFiles" class=" h-4 w-4 rounded"/>
                     </div>
@@ -165,19 +166,19 @@
                             <div class="flex flex-row justify-between items-center">
                                 <label class="mt-1 block text-sm leading-6 text-default">
                                     Include Pattern
-                                    <InfoTile class="ml-1" title="Pattern applying to specific directories/files to include." />
+                                    <InfoTile class="ml-1" title="Pattern applying to specific directories/files to include. Separate patterns with commas (,)." />
                                 </label>
                             </div>
-                            <input type="text" v-model="includePattern" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Include files matching this pattern."/> 
+                            <input type="text" v-model="includePattern" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Eg. */, *.txt"/> 
                         </div>
                         <div name="options-exclude" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="mt-1 block text-sm leading-6 text-default">
                                     Exclude Pattern
-                                    <InfoTile class="ml-1" title="Pattern applying to specific directories/files to exclude." />
+                                    <InfoTile class="ml-1" title="Pattern applying to specific directories/files to exclude. Separate patterns with commas (,)." />
                                 </label>
                             </div>
-                            <input type="text" v-model="excludePattern" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Exclude files matching this pattern."/> 
+                            <input type="text" v-model="excludePattern" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Eg. temp*, *.py"/> 
                         </div>
                     </div>
                     <div name="options-extra-params" class="col-span-2">
@@ -212,7 +213,7 @@
                                     </div>
                                     <div name="options-preserve-extended-attributes" class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
                                         <label class="block text-sm leading-6 text-default mt-0.5">
-                                            Preserve Extended Attributes
+                                            Preserve Extended Attrs.
                                         </label>
                                         <input type="checkbox" v-model="preserveXattr" class=" h-4 w-4 rounded"/>
                                     </div>
@@ -236,41 +237,41 @@
                                     </div>
                                 
                                     <div name="options-parallel" class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                        <!-- <label class="block text-sm leading-6 text-default mt-0.5">
+                                        <label class="block text-sm leading-6 text-default mt-0.5">
                                             Use Parallel Threads
                                             <InfoTile class="ml-1" title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
                                         </label> 
                                         <input type="checkbox" v-model="isParallel" class=" h-4 w-4 rounded"/>
-                                        -->
-                                        <label class="block text-sm leading-6 text-muted mt-0.5">
+                                       
+                                        <!-- <label class="block text-sm leading-6 text-muted mt-0.5">
                                             Use Parallel Threads
                                             <InfoTile class="ml-1" title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
                                         </label>
-                                        <input type="checkbox" disabled v-model="isParallel" class=" h-4 w-4 rounded bg-accent"/>
+                                        <input type="checkbox" disabled v-model="isParallel" class=" h-4 w-4 rounded bg-accent"/> -->
                                     </div>
-                                    <div class="col-span-1 col-start-2 mt-1 ml-3">
+                                    <!-- <div class="col-span-1 col-start-2 mt-1 ml-3">
                                         <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
                                             ** COMING SOON **
                                         </label>
-                                    </div>
+                                    </div> -->
                                     <div name="options-parallel-threads" class="col-span-1 col-start-1">
-                                        <!-- <label class="mt-1 block text-sm leading-6 text-default">
+                                        <label class="mt-1 block text-sm leading-6 text-default">
                                             # of Threads
                                             <InfoTile class="ml-1" title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
                                         </label>
                                          <input v-if="isParallel" type="number" v-model="parallelThreads" class="mt-1 block w-min text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
-                                        <input v-else disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/>  -->
-                                        <label class="mt-1 block text-sm leading-6 text-muted">
+                                        <input v-else disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> 
+                                        <!-- <label class="mt-1 block text-sm leading-6 text-muted">
                                             # of Threads
                                             <InfoTile class="ml-1" title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
                                         </label>
-                                        <input disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/>
+                                        <input disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> -->
                                     </div>
-                                    <div class="col-span-1 col-start-2 mt-1 ml-3">
+                                    <!-- <div class="col-span-1 col-start-2 mt-1 ml-3">
                                         <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
                                             ** COMING SOON **
                                         </label>
-                                    </div>
+                                    </div> -->
                                 </div>
                             </div>
                         </DisclosurePanel>
@@ -310,7 +311,7 @@ const destHost = ref('');
 const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
-
+const paramsErrorTag = ref(false);
 const directionSwitched = ref(false)
 
 const isArchive = ref(true);
@@ -364,9 +365,9 @@ async function initializeData() {
         preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
         preserveXattr.value = rsyncOptions.find(p => p.key === 'xattr_flag')!.value;
         limitBandwidthKbps.value = rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
-        includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value;
-        excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value;
-        extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value;
+        includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value.replace(/^'|'$/g, '');
+        excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value.replace(/^'|'$/g, '');
+        extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value.replace(/^'|'$/g, '');
         isParallel.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
         parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
         
@@ -399,37 +400,47 @@ function validatePath(path) {
 }
 
 function validateSourcePath() {
-if (validatePath(sourcePath.value)) {
-    if (!sourcePath.value.endsWith('/')) {
-        // sourcePathErrorTag.value = true;
-        // errorList.value.push("Source path has no trailing slash (/), entire directory will be transferred if not added.");
-        // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 8000));
-        sourcePath.value += '/';
+    if (validatePath(sourcePath.value)) {
+        if (!sourcePath.value.endsWith('/')) {
+            // sourcePathErrorTag.value = true;
+            // errorList.value.push("Source path has no trailing slash (/), entire directory will be transferred if not added.");
+            // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 8000));
+            sourcePath.value += '/';
+        }
+        console.log("Valid source path.");
+        return true;
+    } else {
+        console.log("Invalid source path.");
+        errorList.value.push("Source path is invalid.");
+        sourcePathErrorTag.value = true;
+        return false;
     }
-    console.log("Valid source path.");
-    return true;
-} else {
-    console.log("Invalid source path.");
-    errorList.value.push("Source path is invalid.");
-    sourcePathErrorTag.value = true;
-    return false;
-}
 }
 
 function validateDestinationPath() {
-if (validatePath(destPath.value)) {
-    // Ensure the destination path has a trailing slash
-    if (!destPath.value.endsWith('/')) {
-        destPath.value += '/';
+    if (validatePath(destPath.value)) {
+        // Ensure the destination path has a trailing slash
+        if (!destPath.value.endsWith('/')) {
+            destPath.value += '/';
+        }
+        console.log("Valid destination path: " + destPath.value);
+        return destPath.value;
+    } else {
+        console.log("Invalid destination path.");
+        errorList.value.push("Target path is invalid.");
+        destPathErrorTag.value = true;
+        return false;
     }
-    console.log("Valid destination path: " + destPath.value);
-    return destPath.value;
-} else {
-    console.log("Invalid destination path.");
-    errorList.value.push("Target path is invalid.");
-    destPathErrorTag.value = true;
-    return false;
 }
+
+function validateDependantParams() {
+    if (deleteFiles.value && !isArchive.value || deleteFiles.value && !isRecursive ) {
+        errorList.value.push("Delete Files requires either Archive or Recursive to be selected.")
+        paramsErrorTag.value = true;
+        return false;
+    } else {
+        return true;
+    }
 }
 
 function clearErrorTags() {
@@ -444,6 +455,8 @@ function validateParams() {
     validateSourcePath();
     validateHost();
     validateDestinationPath();
+    validateDependantParams();
+    
 
     if (errorList.value.length == 0 && sourcePathErrorTag.value == false) {
         setParams();
@@ -477,11 +490,11 @@ function setParams() {
             .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', preservePerms.value))
             .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', preserveXattr.value))
             .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', limitBandwidthKbps.value))
-            .addChild(new StringParameter('Include', 'include_pattern', includePattern.value))
-            .addChild(new StringParameter('Exclude', 'exclude_pattern', excludePattern.value))
-            .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', extraUserParams.value))
+            .addChild(new StringParameter('Include', 'include_pattern', `'${includePattern.value}'`))
+            .addChild(new StringParameter('Exclude', 'exclude_pattern', `'${excludePattern.value}'`))
             .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', isParallel.value))
             .addChild(new IntParameter('Threads', 'parallel_threads', parallelThreads.value))
+            .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', `'${extraUserParams.value}'`))
         );
 
     parameters.value = newParams;
@@ -495,7 +508,7 @@ async function confirmTest(destHost, destUser) {
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000));
+        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for remote transfers.`, 'success', 8000));
     } else {
         pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000));
     }

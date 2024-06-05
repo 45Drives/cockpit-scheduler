@@ -13,8 +13,16 @@
                         </div>
                         <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                     </div>
-                    <input v-if="newTaskNameErrorTag" type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="New Task" title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save."/> 
-                    <input v-else type="text" v-model="newTaskName" class="my-1 block w-full input-textlike bg-default text-default" placeholder="New Task" title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save."/> 
+                    <input
+                        type="text"
+                        v-model="newTaskName"
+                        :class="[
+                        'my-1 block w-full input-textlike bg-default text-default',
+                        newTaskNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]"
+                        placeholder="New Task"
+                        title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save."
+                    />
                 </div>
                 <div name="task-template" v-if="taskTemplates.length > 0">
 					<label for="task-template-selection" class="block text-sm leading-6 text-default">Task Template</label>

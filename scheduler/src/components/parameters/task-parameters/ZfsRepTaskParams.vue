@@ -20,18 +20,27 @@
                     <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
                 <div v-if="useCustomSource">
-                    <input v-if="customSrcPoolErrorTag" type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Pool"/> 
-                    <input v-else type="text" v-model="sourcePool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Pool"/> 
+                    <input
+                        type="text"
+                        v-model="sourcePool"
+                        :class="[
+                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                        customSrcPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]"
+                        placeholder="Specify Pool"
+                    />
                 </div>
                 <div v-else>
-                    <select v-if="sourcePoolErrorTag" v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                    <select
+                        v-model="sourcePool"
+                        :class="[
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
+                        sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]"
+                    >
                         <option value="">Select a Pool</option>
                         <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
-                    </select>
-                    <select v-else v-model="sourcePool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select a Pool</option>
                         <option v-if="loadingSourcePools">Loading...</option>
-                        <option v-else="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
                     </select>
                 </div>
             </div>
@@ -41,18 +50,29 @@
                     <ExclamationCircleIcon v-if="sourceDatasetErrorTag || customSrcDatasetErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
                 <div v-if="useCustomSource">
-                    <input v-if="!customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Source Dataset"/> 
-                    <input v-if="customSrcDatasetErrorTag" type="text" v-model="sourceDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Source Dataset"/> 
+                    <div v-if="useCustomSource">
+                        <input
+                        type="text"
+                        v-model="sourceDataset"
+                        :class="[
+                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                            customSrcDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]"
+                        placeholder="Specify Dataset"
+                        />
+                    </div>
                 </div>
                 <div v-else>
-                    <select v-if="sourceDatasetErrorTag" v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                    <select
+                    v-model="sourceDataset"
+                    :class="[
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
+                        sourceDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]"
+                    >
                         <option value="">Select a Dataset</option>
                         <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
-                    </select>
-                    <select v-else v-model="sourceDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select a Dataset</option>
                         <option v-if="loadingSourceDatasets">Loading...</option>
-                        <option v-else v-for="dataset in sourceDatasets" :value="dataset">{{ dataset }}</option>
                     </select>
                 </div>
             </div>
@@ -77,18 +97,27 @@
                     <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                 </div>
                 <div v-if="useCustomTarget">
-                    <input v-if="customDestPoolErrorTag" type="text" v-model="destPool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Pool"/> 
-                    <input v-else type="text" v-model="destPool" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Pool"/>                    
+                    <input
+                    type="text"
+                    v-model="destPool"
+                    :class="[
+                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                        customDestPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]"
+                    placeholder="Specify Target Pool"
+                    />
                 </div>
                 <div v-else>
-                    <select v-if="destPoolErrorTag" v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                    <select
+                    v-model="destPool"
+                    :class="[
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
+                        destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]"
+                    >
                         <option value="">Select a Pool</option>
                         <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                    </select>
-                    <select v-else v-model="destPool" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select a Pool</option>
                         <option v-if="loadingDestPools">Loading...</option>
-                        <option v-else v-for="pool in destPools" :value="pool">{{ pool }}</option>
                     </select>
                 </div>
             </div>
@@ -99,23 +128,32 @@
                 </div>
                 <div v-if="useCustomTarget">
                     <div class="flex flex-row justify-between items-center w-full flex-grow">
-                        <input v-if="customDestDatasetErrorTag" type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Specify Target Dataset"/> 
-                        <input v-else type="text" v-model="destDataset" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Specify Target Dataset"/>
-                        <div class="m-1 flex flex-col items-center text-center flex-shrink">
-                            <label class="block text-xs text-default">Create</label>
-                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded"/>
-                        </div>
+                    <input
+                        type="text"
+                        v-model="destDataset"
+                        :class="[
+                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                        customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]"
+                        placeholder="Specify Target Dataset"
+                    />
+                    <div class="m-1 flex flex-col items-center text-center flex-shrink">
+                        <label class="block text-xs text-default">Create</label>
+                        <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                    </div>
                     </div>
                 </div>
                 <div v-else>
-                    <select v-if="destDatasetErrorTag" v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 outline outline-1 outline-rose-500 dark:outline-rose-700">
+                    <select
+                    v-model="destDataset"
+                    :class="[
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
+                        destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]"
+                    >
                         <option value="">Select a Dataset</option>
                         <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>
-                    </select>
-                    <select v-else v-model="destDataset" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select a Dataset</option>
                         <option v-if="loadingDestDatasets">Loading...</option>
-                        <option v-else v-for="dataset in destDatasets" :value="dataset">{{ dataset }}</option>     
                     </select>
                 </div>
             </div>
@@ -143,10 +181,18 @@
             <div name="destination-host" class="mt-1">
                 <div class="flex flex-row justify-between items-center">
                     <label class="block text-sm leading-6 text-default">Host</label>
-                    <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                    <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <input v-if="destHostErrorTag" type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Leave blank for local replication."/> 
-                <input v-else type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Leave blank for local replication."/> 
+                <input
+                type="text"
+                v-model="destHost"
+                @input="debouncedDestHostChange($event.target)"
+                :class="[
+                    'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                    destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]"
+                placeholder="Leave blank for local replication."
+                />
             </div>
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
@@ -186,8 +232,15 @@
                     <ExclamationCircleIcon v-if="customNameErrorTag" class="mt-2 w-5 h-5 text-danger"/>
                 </div>
                 <div name="custom-snapshot-name-field" class="mt-1">
-                    <input v-if="useCustomName && customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" placeholder="Name is CustomName + Timestamp"/>
-                    <input v-else-if="useCustomName && !customNameErrorTag" type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is CustomName + Timestamp"/>
+                    <input v-if="useCustomName"
+                        type="text"
+                        v-model="customName"
+                        :class="[
+                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                            customNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]"
+                        placeholder="Name is CustomName + Timestamp"
+                    />
                     <input v-else disabled type="text" v-model="customName" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Name is Timestamp"/>
                 </div>
             </div>

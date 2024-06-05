@@ -30,8 +30,17 @@
                                     </div>
                                     <ExclamationCircleIcon v-if="hourErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                                 </div>
-                                <input @click.stop v-if="hourErrorTag" v-model="newInterval.hour!.value" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
-                                <input @click.stop v-else v-model="newInterval.hour!.value" type="text" placeholder="(0-23)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <input
+                                    @click.stop
+                                    v-model="newInterval.hour!.value"
+                                    type="text"
+                                    placeholder="(0-23)"
+                                    :class="[
+                                    'my-1 block w-full text-default input-textlike bg-default',
+                                    hourErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                                    ]"
+                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"
+                                />
                             </div>
                             <div name="minute">
                                 <div class="flex flex-row justify-between items-center">
@@ -41,8 +50,17 @@
                                     </div>
                                     <ExclamationCircleIcon v-if="minuteErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                                 </div>
-                                <input @click.stop v-if="minuteErrorTag" v-model="newInterval.minute!.value" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
-                                <input @click.stop v-else v-model="newInterval.minute!.value" type="text" placeholder="(0-59)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"/>
+                                <input
+                                    @click.stop
+                                    v-model="newInterval.minute!.value"
+                                    type="text"
+                                    placeholder="(0-59)"
+                                    :class="[
+                                    'my-1 block w-full text-default input-textlike bg-default',
+                                    minuteErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                                    ]"
+                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"
+                                />
                             </div>
 
                             <div name="date-data" class="col-span-2 grid grid-cols-3 gap-2">
@@ -54,8 +72,17 @@
                                         </div>
                                         <ExclamationCircleIcon v-if="dayErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                                     </div>
-                                    <input @click.stop v-if="dayErrorTag" v-model="newInterval.day!.value" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"/>
-                                    <input @click.stop v-else v-model="newInterval.day!.value" type="text" placeholder="(1-31)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"/>
+                                    <input
+                                        @click.stop
+                                        v-model="newInterval.day!.value"
+                                        type="text"
+                                        placeholder="(1-31)"
+                                        :class="[
+                                        'my-1 block w-full text-default input-textlike bg-default',
+                                        dayErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                                        ]"
+                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"
+                                    />
                                 </div>
                                 <div name="month">
                                     <div class="flex flex-row justify-between items-center">
@@ -65,8 +92,17 @@
                                         </div>
                                         <ExclamationCircleIcon v-if="monthErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                                     </div>
-                                    <input @click.stop v-if="monthErrorTag" v-model="newInterval.month!.value" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"/>
-                                    <input @click.stop v-else v-model="newInterval.month!.value" type="text" placeholder="(1-12)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"/> 
+                                    <input
+                                        @click.stop
+                                        v-model="newInterval.month!.value"
+                                        type="text"
+                                        placeholder="(1-12)"
+                                        :class="[
+                                        'my-1 block w-full text-default input-textlike bg-default',
+                                        monthErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                                        ]"
+                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"
+                                    />
                                 </div>
                                 <div name="year">
                                     <div class="flex flex-row justify-between items-center">
@@ -76,8 +112,17 @@
                                         </div>
                                         <ExclamationCircleIcon v-if="yearErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                                     </div>
-                                    <input @click.stop v-if="yearErrorTag" v-model="newInterval.year!.value" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default outline outline-1 outline-rose-500 dark:outline-rose-700" title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"/>
-                                    <input @click.stop v-else v-model="newInterval.year!.value" type="text" placeholder="(YYYY)" class="my-1 block w-full text-default input-textlike bg-default" title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"/> 
+                                    <input
+                                        @click.stop
+                                        v-model="newInterval.year!.value"
+                                        type="text"
+                                        placeholder="(YYYY)"
+                                        :class="[
+                                        'my-1 block w-full text-default input-textlike bg-default',
+                                        yearErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                                        ]"
+                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"
+                                    />
                                 </div>
                             </div>
                            
