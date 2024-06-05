@@ -213,3 +213,12 @@ export function formatTemplateName(templateName) {
     let formattedTemplateName = formattedWords.join('');
     return formattedTemplateName;
 }
+
+export function validateNumber(field, number) {
+    if (isNaN(number) || number < 0) {
+        // errorList.value.push(`${field} must be a valid non-negative number.`);
+        return false;
+    } else {
+        return true;
+    }
+}

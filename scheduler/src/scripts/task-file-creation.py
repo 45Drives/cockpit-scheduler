@@ -48,11 +48,36 @@ def parse_env_file(parameter_env_file_path):
                 flag_key = f'rsyncConfig_rsyncOptions_{flag}_flag'
                 if parameters.get(flag_key, 'false').lower() == 'true':
                     parameters[flag_key] = f"--{flag}"
+                    if flag == 'parallel':
+                        parameters['rsyncConfig_rsyncOptions_parallel_threads'] = f"--threads={parameters.get('rsyncConfig_rsyncOptions_parallel_threads', '1')}"
                 else:
                     parameters[flag_key] = ''
                     if flag == 'parallel':
-                        parameters['rsyncConfig_rsyncOptions_parallel_threads'] = '0'
+                        parameters['rsyncConfig_rsyncOptions_parallel_threads'] = ''
             
+            if 'rsyncConfig_target_info_host' not in parameters or not parameters['rsyncConfig_target_info_host']:
+                parameters['rsyncConfig_target_info_host'] = ''
+                parameters['rsyncConfig_target_info_port'] = ''
+                parameters['rsyncConfig_target_info_user'] = ''
+            else:
+                parameters['rsyncConfig_target_info_host'] = f"--host={parameters['rsyncConfig_target_info_host']}"
+                parameters['rsyncConfig_target_info_port'] = f"--port={parameters['rsyncConfig_target_info_port']}"
+                parameters['rsyncConfig_target_info_user'] = f"--user={parameters['rsyncConfig_target_info_user']}"
+                
+            if 'rsyncConfig_rsyncOptions_bandwidth_limit_kbps' == 0:
+                parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = 0
+            else:
+                parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = f"--bandwidth={parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps']}"
+                
+            if 'rsyncConfig_rsyncOptions_include_pattern' == '':
+                parameters['rsyncConfig_rsyncOptions_include_pattern'] = ''
+            else:
+                parameters['rsyncConfig_rsyncOptions_include_pattern'] = f"--include={parameters['rsyncConfig_rsyncOptions_include_pattern']}"
+            
+            if 'rsyncConfig_rsyncOptions_exclude_pattern' == '':
+                parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = ''
+            else:
+                parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = f"--exclude={parameters['rsyncConfig_rsyncOptions_exclude_pattern']}"
         
     return parameters
 
@@ -96,24 +121,13 @@ def generate_concrete_file(template_content, output_file_path):
     with open(output_file_path, 'w') as file:
         file.write(template_content)
 
-def manage_service(unit_name):
+def manage_service(unit_name, action):
     try:
         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}'], check=True)
-        print(f'{unit_name} has been started')
+        subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
+        print(f'{unit_name} has been {action}d')
     except subprocess.CalledProcessError as e:
-        print(f"Failed to restart {unit_name}: {e}")
-
-def restart_service(unit_name):
-    try:
-        subprocess.run(['sudo', 'systemctl', 'reset-failed'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'enable', f'{unit_name}'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'restart', f'{unit_name}'], check=True)
-        print(f'{unit_name} has been restarted')
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to restart {unit_name}: {e}")
+        print(f"Failed to {action} {unit_name}: {e}")
 
 def create_task(service_template_path, param_env_path, isStandalone):
     param_env_filename = os.path.basename(param_env_path)
@@ -130,10 +144,11 @@ def create_task(service_template_path, param_env_path, isStandalone):
     
     generate_concrete_file(service_template_content, output_path_service)
     print("Standalone concrete service file generated successfully.")
-    if (isStandalone):
-        manage_service(service_file_name)
+    if isStandalone:
+        manage_service(service_file_name, 'enable')
+        manage_service(service_file_name, 'start')
     else:
-        restart_service(service_file_name)
+        manage_service(service_file_name, 'restart')
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
     output_path_timer = f"/etc/systemd/system/{full_unit_name}.timer"
@@ -151,10 +166,11 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isS
     generate_concrete_file(timer_template_content, output_path_timer)
     print("Concrete timer file generated successfully.")
     
-    if (isStandalone):
-        manage_service(full_unit_name + '.timer')
+    if isStandalone:
+        manage_service(full_unit_name + '.timer', 'enable')
+        manage_service(full_unit_name + '.timer', 'start')
     else:
-        restart_service(full_unit_name)
+        manage_service(full_unit_name + '.timer', 'restart')
 
 def main():
     parser = argparse.ArgumentParser(description='Manage Service and Timer Files')

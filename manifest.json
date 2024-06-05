@@ -25,13 +25,17 @@
         "deb": {
             "focal": [
                 "cockpit",
-                "python3"
+                "python3",
+                "rsync",
+                "findutils"
             ]
         },
         "el": {
             "el8": [
                 "cockpit",
-                "python3"
+                "python3",
+                "rsync",
+                "findutils"
             ]
         }
     },

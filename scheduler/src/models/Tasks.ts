@@ -111,9 +111,9 @@ export class RsyncTaskTemplate extends TaskTemplate {
         .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
         .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
         .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
-            .addChild(new BoolParameter('Archive', 'archive_flag', true))
-            .addChild(new BoolParameter('Recursive', 'recursive_flag', true))
-            .addChild(new BoolParameter('Compressed', 'compressed_flag', true))
+            .addChild(new BoolParameter('Archive', 'archive_flag', false))
+            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+            .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
             .addChild(new BoolParameter('Delete', 'delete_flag', false))
             .addChild(new BoolParameter('Quiet', 'quiet_flag', false))
             .addChild(new BoolParameter('Preserve Times', 'times_flag', false))
@@ -140,8 +140,8 @@ export class ScrubTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Scrub Task";
         const parameterSchema = new ParameterNode("Scrub Task Config", "scrubConfig")
-        // .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', '', ''));
-        .addChild(new LocationParameter('Pool', 'pool', '', 0, '', '', ''));
+        .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', '', ''));
+        // .addChild(new LocationParameter('Pool', 'pool', '', 0, '', '', ''));
 
         super(name, parameterSchema);
     }

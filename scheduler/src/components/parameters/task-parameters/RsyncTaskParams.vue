@@ -111,13 +111,13 @@
             <label class="mt-1 block text-base leading-6 text-default">Rsync Options</label>
             <!-- Basic options -->
             <div class="grid grid-cols-4 gap-4">
-                <div class="col-span-1" :class="[paramsErrorTag ? 'rounded-md m-0.5 outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
+                <div class="col-span-1">
                     <div name="options-archive" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
                             Archive
                             <InfoTile class="ml-1" title="Archive mode. Equivalent to Recursive + Preserve the following: Times, Symbolic Links, Permissions, Groups, Owner, Devices/Specials (cli flags: -rlptgoD)" />
                         </label>
-                        <input type="checkbox" v-model="isArchive" class=" h-4 w-4 rounded"/>
+                        <input type="checkbox" v-model="isArchive" class=" h-4 w-4 rounded" :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']"/>
                     </div>
                     <div name="options-recursive" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
@@ -126,7 +126,7 @@
                         </label>
                         <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
                         <input v-else type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"/> -->
-                        <input type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"/>
+                        <input type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded" :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']"/>
                     </div>
                     <div name="options-compressed" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
@@ -311,23 +311,28 @@ const destHost = ref('');
 const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
-const paramsErrorTag = ref(false);
 const directionSwitched = ref(false)
 
-const isArchive = ref(true);
+const isArchive = ref(false);
 const isRecursive = ref(false);
-const isCompressed = ref(true);
+const isCompressed = ref(false);
 const isQuiet = ref(false);
+
 const deleteFiles = ref(false);
+const isDeleteErrorTag = ref(false);
+
 const preserveTimes = ref(false);
 const preserveHardLinks = ref(false);
 const preservePerms = ref(false);
 const preserveXattr = ref(false);
+
 const limitBandwidthKbps = ref(0);
 const includePattern = ref('');
 const excludePattern = ref('');
+
 const isParallel = ref(false);
 const parallelThreads = ref(0);
+
 const extraUserParams = ref('');
 
 const testingSSH = ref(false);
@@ -364,7 +369,7 @@ async function initializeData() {
         preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
         preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
         preserveXattr.value = rsyncOptions.find(p => p.key === 'xattr_flag')!.value;
-        limitBandwidthKbps.value = rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
+        limitBandwidthKbps.value = (parseInt(rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value) == 0 ? 0 : rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value);
         includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value.replace(/^'|'$/g, '');
         excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value.replace(/^'|'$/g, '');
         extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value.replace(/^'|'$/g, '');
@@ -436,10 +441,16 @@ function validateDestinationPath() {
 function validateDependantParams() {
     if (deleteFiles.value && !isArchive.value || deleteFiles.value && !isRecursive ) {
         errorList.value.push("Delete Files requires either Archive or Recursive to be selected.")
-        paramsErrorTag.value = true;
+        isDeleteErrorTag.value = true;
         return false;
     } else {
         return true;
+    }
+}
+
+function sanitizeNumber(number) {
+    if (isNaN(number) || number < 0) {
+       number = 0;
     }
 }
 
@@ -447,6 +458,7 @@ function clearErrorTags() {
     sourcePathErrorTag.value = false;
     destPathErrorTag.value = false;
     destHostErrorTag.value = false;
+    isDeleteErrorTag.value = false;
     errorList.value = [];
 }
 
@@ -456,9 +468,10 @@ function validateParams() {
     validateHost();
     validateDestinationPath();
     validateDependantParams();
-    
+    // validateNumber('Bandwidth limit', limitBandwidthKbps.value);
+    sanitizeNumber(limitBandwidthKbps.value);
 
-    if (errorList.value.length == 0 && sourcePathErrorTag.value == false) {
+    if (errorList.value.length == 0 && sourcePathErrorTag.value == false && destPathErrorTag.value == false) {
         setParams();
     }
 }
