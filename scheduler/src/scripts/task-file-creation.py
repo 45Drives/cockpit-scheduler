@@ -146,11 +146,11 @@ def generate_concrete_file(template_content, output_file_path):
         file.write(template_content)
     logging.debug('Concrete file generated successfully')
 
-def manage_service(unit_name, action):
+def manage_service(unit_name, action, start=False):
     logging.debug(f'Managing service: {unit_name} with action: {action}')
     try:
         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        if action == 'enable':
+        if start:
             subprocess.run(['sudo', 'systemctl', '--now', action, unit_name], check=True)
         else:
             subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
@@ -181,7 +181,7 @@ def create_task(service_template_path, param_env_path, isStandalone):
         manage_service(service_file_name, 'enable')
         # manage_service(service_file_name, 'start')
     else:
-        manage_service(service_file_name, 'restart')
+        manage_service(service_file_name, 'enable', True)
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')
@@ -203,7 +203,7 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isS
     # print("Concrete timer file generated successfully.")
     
     if isStandalone:
-        manage_service(full_unit_name + '.timer', 'enable')
+        manage_service(full_unit_name + '.timer', 'enable', True)
         # manage_service(full_unit_name + '.timer', 'start')
     else:
         manage_service(full_unit_name + '.timer', 'restart')
@@ -244,3 +244,58 @@ def main():
         
 if __name__ == "__main__":
     main()
+
+# def manage_service(unit_name, action, start=False):
+#     logging.debug(f'Managing service: {unit_name} with action: {action}')
+#     try:
+#         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+#         if start:
+#             subprocess.run(['sudo', 'systemctl', '--now', action, unit_name], check=True)
+#         else:
+#             subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
+#         logging.debug(f'{unit_name} has been {action}d')
+#     except subprocess.CalledProcessError as e:
+#         logging.error(f"Failed to {action} {unit_name}: {e}")
+
+# def create_task(service_template_path, param_env_path, isStandalone):
+#     logging.debug(f'Creating task with service template: {service_template_path} and env file: {param_env_path}')
+#     param_env_filename = os.path.basename(param_env_path)
+#     parts = param_env_filename.split('_')
+#     task_instance_name = '_'.join(parts[2:]).split('.env')[0]
+#     service_file_name = f'houston_scheduler_{task_instance_name}.service'
+#     output_path_service = f'/etc/systemd/system/{service_file_name}'
+    
+#     service_template_content = read_template_file(service_template_path)
+#     parameters = parse_env_file(param_env_path)
+#     service_template_content = replace_placeholders(service_template_content, parameters)
+#     service_template_content = service_template_content.replace("{task_name}", task_instance_name)
+#     service_template_content = service_template_content.replace("{env_path}", param_env_path)
+    
+#     generate_concrete_file(service_template_content, output_path_service)
+#     logging.debug("Standalone concrete service file generated successfully.")
+#     if isStandalone:
+#         manage_service(service_file_name, 'enable', start=False)
+#     else:
+#         manage_service(service_file_name, 'enable')
+
+# def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
+#     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')
+#     output_path_timer = f"/etc/systemd/system/{full_unit_name}.timer"
+#     schedule_data = read_schedule_json(schedule_json_path)
+    
+#     if not schedule_data:
+#         logging.error("Invalid schedule data.")
+#         return
+
+#     timer_template_content = read_template_file(timer_template_path)
+#     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
+#     on_calendar_lines_str = "\n".join(on_calendar_lines)
+#     timer_template_content = timer_template_content.replace("{description}", f"Timer for {full_unit_name}").replace("{on_calendar_lines}", on_calendar_lines_str)
+    
+#     generate_concrete_file(timer_template_content, output_path_timer)
+#     logging.debug("Concrete timer file generated successfully.")
+    
+#     if isStandalone:
+#         manage_service(full_unit_name + '.timer', 'enable', start=True)
+#     else:
+#         manage_service(full_unit_name + '.timer', 'enable')
