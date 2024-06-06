@@ -313,7 +313,7 @@ const destPort = ref(22);
 const destUser = ref('root');
 const directionSwitched = ref(false)
 
-const isArchive = ref(false);
+const isArchive = ref(true);
 const isRecursive = ref(false);
 const isCompressed = ref(false);
 const isQuiet = ref(false);

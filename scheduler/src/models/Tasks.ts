@@ -111,7 +111,7 @@ export class RsyncTaskTemplate extends TaskTemplate {
         .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
         .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
         .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
-            .addChild(new BoolParameter('Archive', 'archive_flag', false))
+            .addChild(new BoolParameter('Archive', 'archive_flag', true))
             .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
             .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
             .addChild(new BoolParameter('Delete', 'delete_flag', false))
@@ -161,7 +161,7 @@ export class SmartTestTemplate extends TaskTemplate {
             new SelectionOption('offline', 'offline'),
             // new SelectionOption('select', 'select'),  (Not sure if using, requires a RangeParameter)
         ]
-        const parameterSchema = new ParameterNode("SMART Test Config", "smartConfig")
+        const parameterSchema = new ParameterNode("SMART Test Config", "smartTestConfig")
         .addChild(new ListParameter('Disks', 'disks', []))
         .addChild(new SelectionParameter('Test Type', 'test_type', 'short', testTypeOptions));
 

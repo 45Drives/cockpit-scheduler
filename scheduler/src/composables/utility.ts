@@ -9,14 +9,17 @@ import task_file_creation_script from '../scripts/task-file-creation.py?raw';
 import remove_task_script from '../scripts/remove-task-files.py?raw';
 //@ts-ignore
 import run_task_script from '../scripts/run-task-now.py?raw';
+//@ts-ignore
+import get_disks_script from '../scripts/get-disk-data.py?raw';
+
 import { inject, InjectionKey } from 'vue';
 
 export function injectWithCheck<T>(key: InjectionKey<T>, errorMessage: string): T {
-  const injectedValue = inject(key)!;
-  if (!injectedValue) {
-    throw new Error(errorMessage);
-  }
-  return injectedValue;
+    const injectedValue = inject(key)!;
+    if (!injectedValue) {
+        throw new Error(errorMessage);
+    }
+    return injectedValue;
 }
 
 /* Getting values from Parameter structure to display in table */
@@ -220,5 +223,16 @@ export function validateNumber(field, number) {
         return false;
     } else {
         return true;
+    }
+}
+
+export async function getDisks() {
+    try {
+        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_disks_script], { superuser: 'try' });
+        const disks = (await state.promise()).stdout;
+        return disks;
+    } catch (state) {
+        console.error(errorString(state));
+        return null;
     }
 }

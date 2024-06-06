@@ -263,9 +263,6 @@ export class Scheduler implements SchedulerType {
     }
 
     async enableSchedule(taskInstance) {
-        //activate timer file
-        //run systemctl daemon-reload
-        //flip checkbox value
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
@@ -277,13 +274,8 @@ export class Scheduler implements SchedulerType {
             let state = useSpawn(command, { superuser: 'try' });
             await state.promise();
 
-            // Enable the timer
-            command = ['sudo', 'systemctl', 'enable', timerName];
-            state = useSpawn(command, { superuser: 'try' });
-            await state.promise();
-
-            // Start the timer
-            command = ['sudo', 'systemctl', 'start', timerName];
+            // Start and Enable the timer
+            command = ['sudo', 'systemctl', 'enable', '--now', timerName];
             state = useSpawn(command, { superuser: 'try' });
             await state.promise();
 
@@ -298,43 +290,97 @@ export class Scheduler implements SchedulerType {
     }
     
     async disableSchedule(taskInstance) {
-        //deactivate timer file
-        //run systemctl daemon-reload
-        //flip checkbox value
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
+    
         const timerName = `${fullTaskName}.timer`;
         try {
-            // Stop the timer 
-            let command = ['sudo', 'systemctl', 'stop', timerName];
-            let state = useSpawn(command, { superuser: 'try' });
+            // Reload systemd daemon
+            let reloadCommand = ['sudo', 'systemctl', 'daemon-reload'];
+            let reloadState = useSpawn(reloadCommand, { superuser: 'try' });
+            await reloadState.promise();
+            
+            // Stop and Disable the timer
+            let disableCommand = ['sudo', 'systemctl', 'disable', '--now', timerName];
+            let state = useSpawn(disableCommand, { superuser: 'try' });
             await state.promise();
-
-            // Disable the timer
-            command = ['sudo', 'systemctl', 'disable', timerName];
-            state = useSpawn(command, { superuser: 'try' });
-            await state.promise();
-
-            // Reload the system daemon
-            command = ['sudo', 'systemctl', 'daemon-reload'];
-            state = useSpawn(command, { superuser: 'try' });
-            await state.promise();
-
+    
             console.log(`${timerName} has been stopped and disabled`);
             taskInstance.schedule.enabled = false;
             console.log('taskInstance after disable:', taskInstance);
             await this.updateSchedule(taskInstance);
-
+    
         } catch (error) {
             console.error(errorString(error));
             return false;
         }
-       
     }
     
 
+/*     async disableSchedule(taskInstance) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+        const timerName = `${fullTaskName}.timer`;
+    
+        try {
+            // Stop the timer
+            console.log(`Stopping timer: ${timerName}`);
+            await this.runSystemctlCommand(['stop', timerName]);
+            // await this.checkSystemctlStatus(timerName, 'inactive');
+            // if (await this.checkSystemctlStatus(timerName, 'inactive')) {
+
+            // }
+            
+            // Disable the timer
+            console.log(`Disabling timer: ${timerName}`);
+            await this.runSystemctlCommand(['disable', timerName]);
+            
+            // Reload the system daemon
+            console.log('Reloading system daemon');
+            await this.runSystemctlCommand(['daemon-reload']);
+    
+            console.log(`${timerName} has been stopped and disabled`);
+            taskInstance.schedule.enabled = false;
+            console.log('taskInstance after disable:', taskInstance);
+            await this.updateSchedule(taskInstance);
+    
+        } catch (error) {
+            console.error(errorString(error));
+            return false;
+        }
+    }
+    
+    async runSystemctlCommand(args) {
+        try {
+            const command = ['sudo', 'systemctl', ...args];
+            console.log('Running command:', command.join(' '));
+            let state = useSpawn(command, { superuser: 'try' });
+            await state.promise();
+        } catch (state) {
+            console.error('Error running systemctl command:', errorString(state));
+            throw state;
+        }
+    }
+    
+    async checkSystemctlStatus(timerName, expectedStatus) {
+        try {
+            const command = ['sudo', 'systemctl', 'is-active', timerName];
+            console.log('Checking status with command:', command.join(' '));
+            let state = useSpawn(command, { superuser: 'try' });
+            const result = await state.promise();
+            if (result.stdout.trim() !== expectedStatus) {
+                throw new Error(`${timerName} is not ${expectedStatus}: ${result.stdout}`);
+            } else {
+                return true;
+            }
+        } catch (state) {
+            console.error('Error checking systemctl status:', errorString(state));
+            throw state;
+        }
+    }
+ */
     async updateSchedule(taskInstance) {
         const templateName = formatTemplateName(taskInstance.template.name);
   
@@ -359,7 +405,9 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
-        await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
+        if (taskInstance.schedule.enabled) {
+            await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
+        }
     }
 
     parseIntervalIntoString(interval) {

@@ -3,7 +3,7 @@ import argparse
 import sys
 
 def build_rsync_command(options):
-    command = ['rsync', '-h', '--progress', '-i', '-vv']
+    command = ['rsync', '-h', '--progress', '-i', '-v']
     
     option_flags = {
         'isArchive': '-a',

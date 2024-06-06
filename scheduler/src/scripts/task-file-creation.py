@@ -2,12 +2,19 @@ import subprocess
 import argparse
 import json
 import os
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def read_template_file(template_file_path):
+    logging.debug(f'Reading template file: {template_file_path}')
     with open(template_file_path, 'r') as file:
-        return file.read()
+        content = file.read()
+    logging.debug('Template file read successfully')
+    return content
 
 def parse_env_file(parameter_env_file_path):
+    logging.debug(f'Parsing env file: {parameter_env_file_path}')
     parameters = {}
     with open(parameter_env_file_path, "r") as f:
         for line in f:
@@ -64,34 +71,48 @@ def parse_env_file(parameter_env_file_path):
                 parameters['rsyncConfig_target_info_port'] = f"--port={parameters['rsyncConfig_target_info_port']}"
                 parameters['rsyncConfig_target_info_user'] = f"--user={parameters['rsyncConfig_target_info_user']}"
                 
-            if 'rsyncConfig_rsyncOptions_bandwidth_limit_kbps' == 0:
-                parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = 0
-            else:
+            if parameters.get('rsyncConfig_rsyncOptions_bandwidth_limit_kbps') != '0':
                 parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = f"--bandwidth={parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps']}"
-                
-            if 'rsyncConfig_rsyncOptions_include_pattern' == '':
-                parameters['rsyncConfig_rsyncOptions_include_pattern'] = ''
             else:
+                parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = ''
+
+            if parameters.get('rsyncConfig_rsyncOptions_include_pattern') and parameters['rsyncConfig_rsyncOptions_include_pattern'] != "''":
                 parameters['rsyncConfig_rsyncOptions_include_pattern'] = f"--include={parameters['rsyncConfig_rsyncOptions_include_pattern']}"
-            
-            if 'rsyncConfig_rsyncOptions_exclude_pattern' == '':
-                parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = ''
             else:
+                parameters['rsyncConfig_rsyncOptions_include_pattern'] = ''
+
+            if parameters.get('rsyncConfig_rsyncOptions_custom_args') and parameters['rsyncConfig_rsyncOptions_exclude_pattern'] != "''":
                 parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = f"--exclude={parameters['rsyncConfig_rsyncOptions_exclude_pattern']}"
+            else:
+                parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = ''
+                
+            if parameters.get('rsyncConfig_rsyncOptions_custom_args') and parameters['rsyncConfig_rsyncOptions_custom_args'] != "''":
+                parameters['rsyncConfig_rsyncOptions_custom_args'] = f"--customArgs={parameters['rsyncConfig_rsyncOptions_custom_args']}"
+            else:
+                parameters['rsyncConfig_rsyncOptions_custom_args'] = ''
             
-            
+        # elif key.startswith('scrubConfig'):
+        
+        
+        # elif key.startswith('smartTestConfig'):
+        
+    logging.debug('Env file parsed successfully')
     return parameters
 
 def read_schedule_json(file_path):
+    logging.debug(f'Reading schedule JSON file: {file_path}')
     try:
         with open(file_path, 'r') as file:
             data = json.load(file)
+            logging.debug('Schedule JSON file read successfully')
             return data
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Error reading JSON from file {file_path}: {e}")
+        # print(f"Error reading JSON from file {file_path}: {e}")
+        logging.error(f"Error reading JSON from file {file_path}: {e}")
         return None
 
 def interval_to_on_calendar(interval):
+    logging.debug(f'Converting interval to OnCalendar format: {interval}')
     parts = []
     
     if 'dayOfWeek' in interval:
@@ -113,24 +134,34 @@ def interval_to_on_calendar(interval):
     return 'OnCalendar=' + ' '.join(parts)
 
 def replace_placeholders(template_content, parameters):
+    logging.debug('Replacing placeholders in the template')
     for key, value in parameters.items():
         placeholder = "{" + key + "}"
         template_content = template_content.replace(placeholder, value)
     return template_content
 
 def generate_concrete_file(template_content, output_file_path):
+    logging.debug(f'Generating concrete file at: {output_file_path}')
     with open(output_file_path, 'w') as file:
         file.write(template_content)
+    logging.debug('Concrete file generated successfully')
 
 def manage_service(unit_name, action):
+    logging.debug(f'Managing service: {unit_name} with action: {action}')
     try:
         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
-        print(f'{unit_name} has been {action}d')
+        if action == 'enable':
+            subprocess.run(['sudo', 'systemctl', '--now', action, unit_name], check=True)
+        else:
+            subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
+        # print(f'{unit_name} has been {action}d')
+        logging.debug(f'{unit_name} has been {action}d')
     except subprocess.CalledProcessError as e:
-        print(f"Failed to {action} {unit_name}: {e}")
+        # print(f"Failed to {action} {unit_name}: {e}")
+        logging.error(f"Failed to {action} {unit_name}: {e}")
 
 def create_task(service_template_path, param_env_path, isStandalone):
+    logging.debug(f'Creating task with service template: {service_template_path} and env file: {param_env_path}')
     param_env_filename = os.path.basename(param_env_path)
     parts = param_env_filename.split('_')
     task_instance_name = '_'.join(parts[2:]).split('.env')[0]
@@ -144,19 +175,22 @@ def create_task(service_template_path, param_env_path, isStandalone):
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
     
     generate_concrete_file(service_template_content, output_path_service)
-    print("Standalone concrete service file generated successfully.")
+    # print("Standalone concrete service file generated successfully.")
+    logging.debug("Standalone concrete service file generated successfully.")
     if isStandalone:
         manage_service(service_file_name, 'enable')
-        manage_service(service_file_name, 'start')
+        # manage_service(service_file_name, 'start')
     else:
         manage_service(service_file_name, 'restart')
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
+    logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')
     output_path_timer = f"/etc/systemd/system/{full_unit_name}.timer"
     schedule_data = read_schedule_json(schedule_json_path)
     
     if not schedule_data:
-        print("Invalid schedule data.")
+        # print("Invalid schedule data.")
+        logging.error("Invalid schedule data.")
         return
 
     timer_template_content = read_template_file(timer_template_path)
@@ -165,15 +199,17 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isS
     timer_template_content = timer_template_content.replace("{description}", f"Timer for {full_unit_name}").replace("{on_calendar_lines}", on_calendar_lines_str)
     
     generate_concrete_file(timer_template_content, output_path_timer)
-    print("Concrete timer file generated successfully.")
+    logging.debug("Concrete timer file generated successfully.")
+    # print("Concrete timer file generated successfully.")
     
     if isStandalone:
         manage_service(full_unit_name + '.timer', 'enable')
-        manage_service(full_unit_name + '.timer', 'start')
+        # manage_service(full_unit_name + '.timer', 'start')
     else:
         manage_service(full_unit_name + '.timer', 'restart')
 
 def main():
+    logging.debug('Starting main function')
     parser = argparse.ArgumentParser(description='Manage Service and Timer Files')
     parser.add_argument('-t', '--type', type=str, choices=['create-task', 'create-schedule', 'create-task-schedule'], required=True, help='Type of operation to perform')
     parser.add_argument('-st', '--serviceTemplate', type=str, help='Template service file path')
@@ -204,6 +240,7 @@ def main():
         full_unit_name = f"houston_scheduler_{task_instance_name}"
         
         create_schedule(args.schedule, args.timerTemplate, full_unit_name, False)
-
+        logging.debug('Main function execution completed')
+        
 if __name__ == "__main__":
     main()
