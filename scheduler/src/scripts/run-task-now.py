@@ -6,7 +6,7 @@ def run_task_now(unit_name):
     # Reload systemd to recognize new or changed units
     subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     # Start the service 
-    subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}.service'], check=True)
+    subprocess.run(['sudo', 'systemctl', 'enable', '--now', f'{unit_name}.service'], check=True)
 
 def check_for_service_file(unit_name):
     system_dir = '/etc/systemd/system/'
