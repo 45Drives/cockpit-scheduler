@@ -3,11 +3,15 @@ import sys
 import os
 
 def run_task_now(unit_name):
-    # Reload systemd to recognize new or changed units
-    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-    # Start the service 
-    subprocess.run(['sudo', 'systemctl', 'enable', '--now', f'{unit_name}.service'], check=True)
-
+    try:
+        # Reload systemd to recognize new or changed units
+        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+        # Start the service 
+        subprocess.run(['sudo', 'systemctl', 'enable', '--now', f'{unit_name}.service'], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to run task: {e}")
+        sys.exit(1)
+        
 def check_for_service_file(unit_name):
     system_dir = '/etc/systemd/system/'
     prefix = "houston_scheduler_"

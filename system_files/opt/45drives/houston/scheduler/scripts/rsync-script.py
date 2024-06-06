@@ -3,7 +3,7 @@ import argparse
 import sys
 
 def build_rsync_command(options):
-    command = ['rsync', '-h', '--progress', '-i', '-v']
+    command = ['rsync', '-h', '-i', '-v', '--progress']
     
     option_flags = {
         'isArchive': '-a',
@@ -65,35 +65,71 @@ def construct_paths(localPath, direction, targetPath, targetHost, targetUser):
             dest = localPath
     return src, dest
 
+# def execute_command(command, src, dest, isParallel=False, parallelThreads=0):
+#     if isParallel and parallelThreads > 0:
+#         print(f'Transferring using {parallelThreads} parallel threads from {src} to {dest}')
+#         rsync_command = " ".join(command)
+#         parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {{}} {dest}'
+        
+#         print(f'Executing command: {parallel_command}')
+        
+#         process = subprocess.Popen(
+#             parallel_command, 
+#             shell=True, 
+#             universal_newlines=True
+#         )
+#     else:
+#         command.extend([src, dest])
+        
+#         print(f'Executing command: {" ".join(command)}')
+        
+#         process = subprocess.Popen(
+#             command, 
+#             universal_newlines=True
+#         )
+    
+#     stdout, stderr = process.communicate()
+#     if process.returncode != 0:
+#         print(f"Error: {stderr}")
+#         sys.exit(1)
+#     else:
+#         print(stdout)
+
 def execute_command(command, src, dest, isParallel=False, parallelThreads=0):
     if isParallel and parallelThreads > 0:
         print(f'Transferring using {parallelThreads} parallel threads from {src} to {dest}')
         rsync_command = " ".join(command)
-        parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {{}} {dest}'
-        
+        parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {src} {dest}'
+
         print(f'Executing command: {parallel_command}')
-        
+
         process = subprocess.Popen(
-            parallel_command, 
-            shell=True, 
-            universal_newlines=True
+            parallel_command,
+            shell=True,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
+        stdout, stderr = process.communicate()
     else:
         command.extend([src, dest])
-        
+
         print(f'Executing command: {" ".join(command)}')
-        
+
         process = subprocess.Popen(
-            command, 
-            universal_newlines=True
+            command,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
-    
-    stdout, stderr = process.communicate()
+        stdout, stderr = process.communicate()
+
     if process.returncode != 0:
         print(f"Error: {stderr}")
         sys.exit(1)
     else:
         print(stdout)
+
 
 def execute_rsync(options):
     try:
