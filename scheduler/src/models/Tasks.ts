@@ -1,4 +1,4 @@
-import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter, ListParameter } from "./Parameters";
+import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
 
 export class TaskInstance implements TaskInstanceType {
     name: string;
@@ -67,9 +67,8 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
             )
             .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
                 .addChild(new IntParameter('Source', 'source', 5))
-                .addChild(new IntParameter('Destination', 'destination', 5)
-            )
-        );
+                .addChild(new IntParameter('Destination', 'destination', 5))
+            );
         super(name, parameterSchema);
     }
 
@@ -154,16 +153,18 @@ export class ScrubTaskTemplate extends TaskTemplate {
 export class SmartTestTemplate extends TaskTemplate {
     constructor() {
         const name = "SMART Test";
-        const testTypeOptions = [
-            new SelectionOption('short', 'short'),
-            new SelectionOption('long', 'long'),
-            new SelectionOption('conveyance', 'conveyance'),
-            new SelectionOption('offline', 'offline'),
-            // new SelectionOption('select', 'select'),  (Not sure if using, requires a RangeParameter)
-        ]
+        // const testTypeOptions = [
+        //     new SelectionOption('short', 'short'),
+        //     new SelectionOption('long', 'long'),
+        //     new SelectionOption('conveyance', 'conveyance'),
+        //     new SelectionOption('offline', 'offline'),
+        // ];
+
         const parameterSchema = new ParameterNode("SMART Test Config", "smartTestConfig")
-        .addChild(new ListParameter('Disks', 'disks', []))
-        .addChild(new SelectionParameter('Test Type', 'test_type', 'short', testTypeOptions));
+        // .addChild(new ListParameter('Disks', 'disks', []))
+        // .addChild(new SelectionParameter('Test Type', 'test_type', 'short', testTypeOptions));
+        .addChild(new StringParameter('Disks', 'disks', ''))
+        .addChild(new StringParameter('Test Type', 'test_type', ''))
 
         super(name, parameterSchema);
     }

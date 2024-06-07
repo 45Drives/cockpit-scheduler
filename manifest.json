@@ -27,7 +27,8 @@
                 "cockpit",
                 "python3",
                 "rsync",
-                "findutils"
+                "findutils",
+                "smartmontools"
             ]
         },
         "el": {
@@ -35,7 +36,8 @@
                 "cockpit",
                 "python3",
                 "rsync",
-                "findutils"
+                "findutils",
+                "smartmontools"
             ]
         }
     },

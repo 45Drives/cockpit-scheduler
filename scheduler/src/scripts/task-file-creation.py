@@ -181,7 +181,8 @@ def create_task(service_template_path, param_env_path, isStandalone):
         manage_service(service_file_name, 'enable')
         # manage_service(service_file_name, 'start')
     else:
-        manage_service(service_file_name, 'enable', True)
+        # manage_service(service_file_name, 'enable', True)
+        manage_service(service_file_name, 'enable')
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')

@@ -138,7 +138,6 @@ function toggleDetails(taskName) {
   expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
 }
 
-
 /* Add New Task */
 const showTaskWizard = ref(false);
 async function addTaskBtn() {

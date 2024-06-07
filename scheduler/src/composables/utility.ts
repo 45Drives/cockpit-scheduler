@@ -12,7 +12,7 @@ import run_task_script from '../scripts/run-task-now.py?raw';
 //@ts-ignore
 import get_disks_script from '../scripts/get-disk-data.py?raw';
 
-import { inject, InjectionKey } from 'vue';
+import { inject, InjectionKey, ref } from 'vue';
 
 export function injectWithCheck<T>(key: InjectionKey<T>, errorMessage: string): T {
     const injectedValue = inject(key)!;
@@ -226,13 +226,66 @@ export function validateNumber(field, number) {
     }
 }
 
-export async function getDisks() {
+export async function getDisks(diskGroup) {
     try {
         const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_disks_script], { superuser: 'try' });
         const disks = (await state.promise()).stdout;
-        return disks;
+        // return disks;
+        const parsedJSON = JSON.parse(disks);
+        //loops through and adds disk data from JSON to disk data object, pushes objects to disks array
+		for (let i = 0; i < parsedJSON.length; i++) {
+			const disk: DiskData = {
+                name: parsedJSON[i].name,
+                capacity: parsedJSON[i].capacity,
+                model: parsedJSON[i].model,
+                type: parsedJSON[i].type,
+                phy_path: parsedJSON[i].phy_path,
+                sd_path: parsedJSON[i].sd_path,
+                vdev_path: parsedJSON[i].vdev_path,
+                serial: parsedJSON[i].serial,
+                health: parsedJSON[i].health,
+                temp: parsedJSON[i].temp,
+			}
+			diskGroup.value.push(disk);
+			// console.log("Disk:", disk);
+        }
+
     } catch (state) {
         console.error(errorString(state));
         return null;
     }
+}
+
+export function getDiskIDName(disks : DiskData[], diskIdentifier : string, selectedDiskName : string) {
+	// console.log('disks:', disks, 'diskID:', diskIdentifier, 'selectedDiskName:', selectedDiskName);
+	const phyPathPrefix = '/dev/disk/by-path/';
+	const sdPathPrefix = '/dev/';
+	const newDisk = ref();
+	const diskName = ref('');
+	const diskPath = ref('');
+
+	newDisk.value = disks.find(disk => disk.name === selectedDiskName);
+	switch (diskIdentifier) {
+		case 'vdev_path':
+			diskPath.value = newDisk.value!.vdev_path;
+			diskName.value = selectedDiskName;
+			break;
+		case 'phy_path':
+			diskPath.value = newDisk.value!.phy_path;
+			diskName.value = diskPath.value.replace(phyPathPrefix, '');
+			break;
+		case 'sd_path':
+			diskPath.value = newDisk.value!.sd_path;
+			diskName.value = diskPath.value.replace(sdPathPrefix, '');
+			break;	
+		default:
+			console.log('error with selectedDiskNames/diskIdentifier'); 
+			break;
+	}
+
+	return {diskName: diskName.value, diskPath: diskPath.value};
+}
+
+export function truncateName(name : string, threshold : number) {
+    return (name.length > threshold ? name.slice(0, threshold) + '...' : name)
 }

@@ -1,4 +1,4 @@
-import { getPoolData, getDatasetData } from '../composables/utility';
+import { getPoolData, getDatasetData, getDisks } from '../composables/utility';
 
 export class ParameterNode implements ParameterNodeType {
     label: string;
@@ -206,26 +206,26 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
     }
 }
 
-export class ListParameter extends ParameterNode implements ParameterNodeType {
-    constructor(label: string, key: string, values: string[] = []) {
-        super(label, key);
-        this.value = values;
-    }
+// export class ListParameter extends ParameterNode implements ParameterNodeType {
+//     constructor(label: string, key: string, values: string[] = []) {
+//         super(label, key);
+//         this.value = values;
+//     }
 
-    addValue(value: string) {
-        if (!this.value.includes(value)) {
-            this.value.push(value);
-        }
-    }
+//     addValue(value: string) {
+//         if (!this.value.includes(value)) {
+//             this.value.push(value);
+//         }
+//     }
 
-    removeValue(value: string) {
-        const index = this.value.indexOf(value);
-        if (index > -1) {
-            this.value.splice(index, 1);
-        }
-    }
+//     removeValue(value: string) {
+//         const index = this.value.indexOf(value);
+//         if (index > -1) {
+//             this.value.splice(index, 1);
+//         }
+//     }
 
-    asEnvKeyValues(): string[] {
-        return [`${this.key}=${this.value.join(',')}`]; // Generate key=value pair
-    }
-}
+//     asEnvKeyValues(): string[] {
+//         return [`${this.key}=${this.value.join(',')}`]; // Generate key=value pair
+//     }
+// }

@@ -169,7 +169,6 @@ export class Scheduler implements SchedulerType {
 
             await createTaskFiles(templateServicePath, envFilePath, templateTimerPath, jsonFilePath);
         }
-
     }   
     
     

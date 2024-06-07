@@ -31,7 +31,8 @@ function initializeTaskTemplates(): TaskTemplate[] {
 		zfsRepTaskTemplate,
 		autoSnapTaskTemplate,
 		rsyncTaskTemplate,
-		scrubTaskTemplate
+		scrubTaskTemplate,
+		smartTestTemplate
 	]
 }
 
@@ -46,7 +47,8 @@ const myTaskLog = new TaskExecutionLog(entries.value);
 onMounted(async () => {
 	loading.value = true;
 	initializeTaskTemplates();
-	await myScheduler.loadTaskInstances();;
+	await myScheduler.loadTaskInstances();
+	
 	loading.value = false;
 });
 
@@ -56,5 +58,3 @@ provide(logInjectionKey, myTaskLog);
 provide(taskInstancesInjectionKey, taskInstances);
 provide(taskTemplatesInjectionKey, taskTemplates);
 </script>
-
-	

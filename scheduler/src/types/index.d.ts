@@ -111,3 +111,22 @@ interface TaskExecutionResultType {
 }
 
 type ConfirmationCallback = (param?: any) => void;
+
+
+interface DiskData {
+	name: string;
+	capacity: string;
+	model: string;
+	type: string;
+	health: string;
+	phy_path: string;
+	sd_path: string;
+	vdev_path: string;
+	serial: string;
+	temp: string;
+}
+
+interface DiskDetails {
+	diskName: string;
+	diskPath: string;
+}

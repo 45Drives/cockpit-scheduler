@@ -1,6 +1,44 @@
 <template>
+    <!-- Details for SMART Test Task -->
+    <div v-if="taskInstance.template.name === 'SMART Test Task'"
+        class="grid grid-cols-4 items-left text-left">
+        <div class="col-span-2">
+            <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
+                Task Type: <b>SMART Test Task</b>
+            </p>
+            <p>
+                Test Type: {{ findValue(taskInstance.parameters, 'testType', 'testType') }}
+            </p>
+            <p>
+                Disks: {{ findValue(taskInstance.parameters, 'disks', 'disks') }}
+            </p>
+        </div>
 
-</template>
-<script setup lang="ts">
-
-</script>
+        <div class="col-span-2 row-span-2">
+            <p class="my-2 font-bold">Current Schedules:</p>
+            <div v-if="taskInstance.schedule.intervals.length > 0"
+                v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
+                class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+            </div>
+            <div v-else>
+                <p>No Intervals Currently Scheduled</p>
+            </div>
+        </div>
+    
+    </div>
+    </template>
+    <script setup lang="ts">
+    import { ref} from 'vue';
+    import { boolToYesNo, injectWithCheck, findValue } from '../../../composables/utility'
+    import { schedulerInjectionKey } from '../../../keys/injection-keys';
+    
+    interface SmartTestTaskDetailsProps {
+        task: TaskInstanceType;
+    }
+    
+    const props = defineProps<SmartTestTaskDetailsProps>();
+    const taskInstance = ref(props.task);
+    const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+    
+    </script>

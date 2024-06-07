@@ -16,20 +16,16 @@ def main():
             device_path = disk['dev']
 
             disks.append({
-                'vdev_path': f'/dev/disk/by-vdev/{disk["bay-id"]}',
+                'name': disk['bay-id'],
+                'capacity': disk['capacity'],
+                'model': disk['model-name'],
+                'type': disk['disk_type'],
+                'health': disk['health'],
                 'phy_path': disk['dev-by-path'],
                 'sd_path': device_path,
-                'name': disk['bay-id'],
-                'model': disk['model-name'],
+                'vdev_path': f'/dev/disk/by-vdev/{disk["bay-id"]}',
                 'serial': disk['serial'],
-                'capacity': disk['capacity'],
-                'type': disk['disk_type'],
-                'usable': True,
                 'temp': disk['temp-c'],
-                'health': disk['health'],
-                'rotation_rate': disk['rotation-rate'],
-                'power_on_count': disk['power-cycle-count'],
-                'power_on_time': disk['power-on-time'],
             })
 
     print(json.dumps(disks, indent=4))

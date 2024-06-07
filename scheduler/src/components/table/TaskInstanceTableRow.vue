@@ -31,19 +31,19 @@
 		</td>
 		<td class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
 			<input
-			v-if="taskInstance.schedule.intervals.length > 0"
-			:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`"
-			type="checkbox"
-			:checked="taskInstance.schedule.enabled"
-			@click.prevent="toggleTaskSchedule"
-			class="ml-2 h-4 w-4 rounded"
+				v-if="taskInstance.schedule.intervals.length > 0"
+				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`"
+				type="checkbox"
+				:checked="taskInstance.schedule.enabled"
+				@click.prevent="toggleTaskSchedule"
+				class="ml-2 h-4 w-4 rounded"
 			/>
 			<input
-			v-else
-			disabled
-			type="checkbox"
-			:title="'No Schedule Found'"
-			class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400"
+				v-else
+				disabled
+				type="checkbox"
+				:title="'No Schedule Found'"
+				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400"
 			/>
 		</td>
 		<td
@@ -255,31 +255,6 @@ async function toggleTaskSchedule(event) {
 	}
 }
 
-// async function toggleTaskSchedule(event) {
-//     const intendedValue = !taskInstance.value.schedule.enabled;
-//     event.preventDefault();
-
-//     if (intendedValue) {
-//         const confirmed = await showEnableDialog();
-//         if (confirmed) {
-//             enabling.value = true;
-//             await myScheduler.enableSchedule(taskInstance.value);
-//             taskInstance.value.schedule.enabled = true;
-//             enabling.value = false;
-//             await updateTaskStatus(taskInstance.value);
-//         }
-//     } else {
-//         const confirmed = await showDisableDialog();
-//         if (confirmed) {
-//             disabling.value = true;
-//             await myScheduler.disableSchedule(taskInstance.value);
-//             taskInstance.value.schedule.enabled = false;
-//             disabling.value = false;
-//             await updateTaskStatus(taskInstance.value);
-//         }
-//     }
-// }
-
 /* Getting Task Status + Last Run Time */
 const pollingInterval = ref(10000);
 const intervalId = ref();
@@ -294,15 +269,15 @@ async function updateTaskStatus(task) {
 function taskStatusClass(status) {
 	if (status) {
 		if (status.includes('active')) {
-				return 'text-success';
+			return 'text-success';
 		} else if (status.includes('inactive')) {
-				return 'text-warning';
+			return 'text-warning';
 		} else if (status.includes('failed')) {
-				return 'text-danger';
+			return 'text-danger';
 		} else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
-				return 'text-muted';
+			return 'text-muted';
 		} else if (status == 'Disabled') {
-				return 'text-45d';
+			return 'text-45d';
 		}
 	}
 }
@@ -311,18 +286,18 @@ async function fetchLatestLog(task) {
 	try {
 		const latestLog = await myTaskLog.getLatestEntryFor(task);
 		if (latestLog) {
-				latestTaskExecution.value = latestLog.startDate;
+			latestTaskExecution.value = latestLog.startDate;
 		}
 		// console.log(`Last execution of ${task.name}:`, latestLog);
 	} catch (error) {
-			console.error("Failed to fetch logs:", error);
+		console.error("Failed to fetch logs:", error);
 	}
 };
 
 const pollTaskStatus = async () => {
 	if (taskInstances.value) {
 		for (const task of taskInstances.value) {
-				await updateTaskStatus(task);
+			await updateTaskStatus(task);
 		}
 	}
 }
@@ -330,7 +305,7 @@ const pollTaskStatus = async () => {
 const pollTaskLastRun = async () => {
 	if (taskInstances.value) {
 		for (const task of taskInstances.value) {
-				await fetchLatestLog(task);
+			await fetchLatestLog(task);
 		}
 	}
 }
