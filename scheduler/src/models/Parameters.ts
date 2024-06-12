@@ -205,27 +205,3 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
         return { host, port, user, root, path };
     }
 }
-
-// export class ListParameter extends ParameterNode implements ParameterNodeType {
-//     constructor(label: string, key: string, values: string[] = []) {
-//         super(label, key);
-//         this.value = values;
-//     }
-
-//     addValue(value: string) {
-//         if (!this.value.includes(value)) {
-//             this.value.push(value);
-//         }
-//     }
-
-//     removeValue(value: string) {
-//         const index = this.value.indexOf(value);
-//         if (index > -1) {
-//             this.value.splice(index, 1);
-//         }
-//     }
-
-//     asEnvKeyValues(): string[] {
-//         return [`${this.key}=${this.value.join(',')}`]; // Generate key=value pair
-//     }
-// }

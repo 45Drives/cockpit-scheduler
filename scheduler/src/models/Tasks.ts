@@ -153,16 +153,7 @@ export class ScrubTaskTemplate extends TaskTemplate {
 export class SmartTestTemplate extends TaskTemplate {
     constructor() {
         const name = "SMART Test";
-        // const testTypeOptions = [
-        //     new SelectionOption('short', 'short'),
-        //     new SelectionOption('long', 'long'),
-        //     new SelectionOption('conveyance', 'conveyance'),
-        //     new SelectionOption('offline', 'offline'),
-        // ];
-
         const parameterSchema = new ParameterNode("SMART Test Config", "smartTestConfig")
-        // .addChild(new ListParameter('Disks', 'disks', []))
-        // .addChild(new SelectionParameter('Test Type', 'test_type', 'short', testTypeOptions));
         .addChild(new StringParameter('Disks', 'disks', ''))
         .addChild(new StringParameter('Test Type', 'testType', ''))
 
