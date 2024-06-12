@@ -289,3 +289,23 @@ export function getDiskIDName(disks : DiskData[], diskIdentifier : string, selec
 export function truncateName(name : string, threshold : number) {
     return (name.length > threshold ? name.slice(0, threshold) + '...' : name)
 }
+
+export function splitAndClean(inputString: string, isDisk: boolean) {
+    // Trim any leading/trailing whitespace from string and remove both single and double quotes
+    const cleanedString = inputString.trim().replace(/^['"]|['"]$/g, '');
+
+    // Split the input string by comma
+    const parts = cleanedString.split(',');
+
+    // Trim any leading/trailing whitespace from each part and optionally remove the disk prefix
+    const cleanedParts: string[] = parts.map(part => {
+        let cleanedPart = part.trim();
+        // if (isDisk) {
+        //     cleanedPart = cleanedPart.replace(/^\/dev\/disk\/by-vdev\//, '');
+        // }
+        return cleanedPart;
+    });
+  
+    return cleanedParts;
+}
+

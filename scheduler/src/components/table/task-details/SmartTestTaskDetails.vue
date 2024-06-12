@@ -1,16 +1,16 @@
 <template>
     <!-- Details for SMART Test Task -->
-    <div v-if="taskInstance.template.name === 'SMART Test Task'"
+    <div v-if="taskInstance.template.name === 'SMART Test'"
         class="grid grid-cols-4 items-left text-left">
         <div class="col-span-2">
             <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
                 Task Type: <b>SMART Test Task</b>
             </p>
-            <p>
-                Test Type: {{ findValue(taskInstance.parameters, 'testType', 'testType') }}
+            <p class="my-2 truncate" :title="` Test Type: ${upperCaseWord(findValue(taskInstance.parameters, 'testType', 'testType'))}`">
+                Test Type: <b>{{ upperCaseWord(findValue(taskInstance.parameters, 'testType', 'testType')) }}</b>
             </p>
-            <p>
-                Disks: {{ findValue(taskInstance.parameters, 'disks', 'disks') }}
+            <p class="my-2" :title="`Disks: ${findValue(taskInstance.parameters, 'disks', 'disks')}`">
+                Disks: <span v-for="disk, idx in disksArray" class="p-1 mx-1 font-medium border border-default rounded-lg bg-accent">{{ disksArray[idx] }}</span>
             </p>
         </div>
 
@@ -27,18 +27,20 @@
         </div>
     
     </div>
-    </template>
-    <script setup lang="ts">
-    import { ref} from 'vue';
-    import { boolToYesNo, injectWithCheck, findValue } from '../../../composables/utility'
-    import { schedulerInjectionKey } from '../../../keys/injection-keys';
-    
-    interface SmartTestTaskDetailsProps {
-        task: TaskInstanceType;
-    }
-    
-    const props = defineProps<SmartTestTaskDetailsProps>();
-    const taskInstance = ref(props.task);
-    const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-    
-    </script>
+</template>
+
+<script setup lang="ts">
+import { ref} from 'vue';
+import { boolToYesNo, injectWithCheck, findValue, splitAndClean, upperCaseWord } from '../../../composables/utility'
+import { schedulerInjectionKey } from '../../../keys/injection-keys';
+
+interface SmartTestTaskDetailsProps {
+    task: TaskInstanceType;
+}
+
+const props = defineProps<SmartTestTaskDetailsProps>();
+const taskInstance = ref(props.task);
+const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+
+const disksArray = splitAndClean(findValue(taskInstance.value.parameters, 'disks', 'disks'), true);
+</script>

@@ -164,7 +164,7 @@ export class SmartTestTemplate extends TaskTemplate {
         // .addChild(new ListParameter('Disks', 'disks', []))
         // .addChild(new SelectionParameter('Test Type', 'test_type', 'short', testTypeOptions));
         .addChild(new StringParameter('Disks', 'disks', ''))
-        .addChild(new StringParameter('Test Type', 'test_type', ''))
+        .addChild(new StringParameter('Test Type', 'testType', ''))
 
         super(name, parameterSchema);
     }
