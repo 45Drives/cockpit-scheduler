@@ -115,23 +115,48 @@ def interval_to_on_calendar(interval):
     logging.debug(f'Converting interval to OnCalendar format: {interval}')
     parts = []
     
-    if 'dayOfWeek' in interval:
+    if 'dayOfWeek' in interval and interval['dayOfWeek']:
         day_of_week = ','.join(interval['dayOfWeek'])
         parts.append(day_of_week)
     
     year_part = interval.get('year', {}).get('value', '*')
     month_part = interval.get('month', {}).get('value', '*')
     day_part = interval.get('day', {}).get('value', '*')
+    
+    # Modify the parts if they contain a slash and the base is not an asterisk
+    if '/' in day_part:
+        base, step = day_part.split('/')
+        if base == '*':
+            base = '1'  # Default to starting from the 1st day if base is '*'
+        day_part = f'{base}/{step}'
+    
     date_part = f'{year_part}-{month_part}-{day_part}'
     parts.append(date_part)
     
     hour = interval.get('hour', {}).get('value', '*')
     minute = interval.get('minute', {}).get('value', '*')
     second = interval.get('second', {}).get('value', '0')
+    
+    # Modify the parts if they contain a slash
+    if '/' in hour:
+        base, step = hour.split('/')
+        if base == '*':
+            base = '0'  # Default to starting from 0 if base is '*'
+        hour = f'{base}/{step}'
+    
+    if '/' in minute:
+        base, step = minute.split('/')
+        if base == '*':
+            base = '0'  # Default to starting from 0 if base is '*'
+        minute = f'{base}/{step}'
+    
     time_part = f'{hour}:{minute}:{second}'
     parts.append(time_part)
     
-    return 'OnCalendar=' + ' '.join(parts)
+    # Join parts with a space
+    on_calendar_value = ' '.join(parts)
+    
+    return 'OnCalendar=' + on_calendar_value
 
 def replace_placeholders(template_content, parameters):
     logging.debug('Replacing placeholders in the template')
@@ -146,19 +171,34 @@ def generate_concrete_file(template_content, output_file_path):
         file.write(template_content)
     logging.debug('Concrete file generated successfully')
 
-def manage_service(unit_name, action, start=False):
+def manage_service(unit_name, action):
     logging.debug(f'Managing service: {unit_name} with action: {action}')
     try:
         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        if start:
-            subprocess.run(['sudo', 'systemctl', '--now', action, unit_name], check=True)
-        else:
-            subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
-        # print(f'{unit_name} has been {action}d')
+        subprocess.run(['sudo', 'systemctl', action, unit_name], check=True)
         logging.debug(f'{unit_name} has been {action}d')
     except subprocess.CalledProcessError as e:
-        # print(f"Failed to {action} {unit_name}: {e}")
         logging.error(f"Failed to {action} {unit_name}: {e}")
+
+def start_timer(timer_name):
+    logging.debug(f'Starting timer: {timer_name}')
+    try:
+        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+
+        # Check if the timer is active
+        result = subprocess.run(['sudo', 'systemctl', 'is-enabled', timer_name], universal_newlines=True)
+        
+        if result.stdout == 'enabled':
+            # Timer is active
+            logging.debug(f'Timer {timer_name} is active, restarting it')
+            subprocess.run(['sudo', 'systemctl', 'restart', timer_name], check=True)
+            logging.debug(f'{timer_name} has been restarted')
+        else:
+            logging.debug(f'Timer {timer_name} is inactive, starting it')
+            subprocess.run(['sudo', 'systemctl', 'start', timer_name], check=True)
+            logging.debug(f'{timer_name} has been started')
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to start {timer_name}: {e}")
 
 def create_task(service_template_path, param_env_path, isStandalone):
     logging.debug(f'Creating task with service template: {service_template_path} and env file: {param_env_path}')
@@ -175,15 +215,11 @@ def create_task(service_template_path, param_env_path, isStandalone):
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
     
     generate_concrete_file(service_template_content, output_path_service)
-    # print("Standalone concrete service file generated successfully.")
     logging.debug("Standalone concrete service file generated successfully.")
-    if not isStandalone:
-    #     manage_service(service_file_name, 'enable')
-    #     # manage_service(service_file_name, 'start')
-    # else:
-    #     # manage_service(service_file_name, 'enable', True)
-    #     manage_service(service_file_name, 'enable')
-        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+    
+    manage_service(service_file_name, 'enable')
+    # manage_service(f'houston_scheduler_{task_instance_name}.timer', 'enable')
+    # start_timer(f'houston_scheduler_{task_instance_name}.timer')
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')
@@ -191,7 +227,6 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isS
     schedule_data = read_schedule_json(schedule_json_path)
     
     if not schedule_data:
-        # print("Invalid schedule data.")
         logging.error("Invalid schedule data.")
         return
 
@@ -202,13 +237,9 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isS
     
     generate_concrete_file(timer_template_content, output_path_timer)
     logging.debug("Concrete timer file generated successfully.")
-    # print("Concrete timer file generated successfully.")
     
-    if isStandalone:
-        manage_service(full_unit_name + '.timer', 'enable', True)
-        # manage_service(full_unit_name + '.timer', 'start')
-    else:
-        manage_service(full_unit_name + '.timer', 'restart')
+    manage_service(full_unit_name + '.timer', 'enable')
+    start_timer(full_unit_name + '.timer')
 
 def main():
     logging.debug('Starting main function')
@@ -242,7 +273,7 @@ def main():
         full_unit_name = f"houston_scheduler_{task_instance_name}"
         
         create_schedule(args.schedule, args.timerTemplate, full_unit_name, False)
-        logging.debug('Main function execution completed')
+    logging.debug('Main function execution completed')
         
 if __name__ == "__main__":
     main()

@@ -201,6 +201,15 @@ export class Scheduler implements SchedulerType {
         });
 
         await createStandaloneTask(templateServicePath, envFilePath);
+
+        // Reload the system daemon
+        let command = ['sudo', 'systemctl', 'daemon-reload'];
+        let state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+
+        // command = ['sudo', 'systemctl', 'restart', `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.timer`];
+        // state = useSpawn(command, { superuser: 'try' });
+        // await state.promise();
     }
     
     async runTaskNow(taskInstance: TaskInstanceType) {
@@ -342,6 +351,15 @@ export class Scheduler implements SchedulerType {
 
         if (taskInstance.schedule.enabled) {
             await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
+
+            // Reload the system daemon
+            let command = ['sudo', 'systemctl', 'daemon-reload'];
+            let state = useSpawn(command, { superuser: 'try' });
+            await state.promise();
+
+            command = ['sudo', 'systemctl', 'restart', fullTaskName + '.timer'];
+            state = useSpawn(command, { superuser: 'try' });
+            await state.promise();
         }
     }
 
@@ -371,6 +389,12 @@ export class Scheduler implements SchedulerType {
             } else if (value.startsWith('*/')) {
                 const interval = value.slice(2);
                 return `every ${interval} ${type}${interval > 1 ? 's' : ''}`;
+            } else if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                if (type === 'day') {
+                    return `every ${step} days starting on the ${base}${getDaySuffix(parseInt(base))}`;
+                }
+                return `every ${step} ${type}${step > 1 ? 's' : ''} starting from ${base}`;
             } else if (value === '0' && type === 'minute') {
                 return 'at the start of the hour';
             } else if (value === '0' && type === 'hour') {
@@ -398,7 +422,7 @@ export class Scheduler implements SchedulerType {
         const month = interval.month ? formatUnit(interval.month.value.toString(), 'month') : "every month";
         const year = interval.year ? formatUnit(interval.year.value.toString(), 'year') : "every year";
     
-         // Push only non-null values
+        // Push only non-null values
         if(day) elements.push(day);
         if(month) elements.push(month);
         if(year) elements.push(year)
@@ -409,4 +433,6 @@ export class Scheduler implements SchedulerType {
     
         return elements.filter(e => e).join(', ');
     }
+
+    
 }

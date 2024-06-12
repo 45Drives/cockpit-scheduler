@@ -33,6 +33,7 @@ def main():
     else:
         print(f'error: could not find task service file')
     
+    subprocess.run(['sudo', 'systemctl', 'disable', f'{unit_name}.service'], check=True)
     
 if __name__ == "__main__":
     main()

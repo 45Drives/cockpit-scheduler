@@ -68,7 +68,7 @@
                                     <div class="flex flex-row justify-between items-center">
                                         <div class="flex flex-row justify-between items-center">
                                             <label class="block text-sm leading-6 text-default">Day</label>
-                                            <InfoTile class="ml-1" title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
+                                            <InfoTile class="ml-1" title="Use * for Every Value, X/N for Every Nth Value starting on Day X, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
                                         </div>
                                         <ExclamationCircleIcon v-if="dayErrorTag" class="mt-1 w-5 h-5 text-danger"/>
                                     </div>
@@ -205,7 +205,7 @@
     </Modal>
 
     <div v-if="showSaveConfirmation">
-        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Create Task'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask" :operation="'saving'" :operating="savingSchedule"/>
+        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Save Schedule'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask" :operation="'saving'" :operating="savingSchedule"/>
     </div>
     
 </template>
@@ -320,7 +320,7 @@ function isOnCalendarExpression(value, type) {
         return true;
     } else if (value.includes('/') && type !== 'year' && type !== 'month') {
         const parts = value.split('/');
-        if (parts.length === 2 && parts[0] === '*') {
+        if (parts.length === 2) {
             return validateStepFormat(parts[1]);
         }
         return false;

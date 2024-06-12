@@ -66,15 +66,15 @@
 					Run Now
 					<PlayIcon class="h-5 ml-2 mt-0.5" />
 				</button>
+				<button @click="editTaskBtn()"
+					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+					Edit Task
+					<PencilIcon class="h-5 ml-2 mt-0.5" />
+				</button>
 				<button @click="manageScheduleBtn()"
 					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					Manage Schedule
 					<CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
-				</button>
-				<button @click="editTaskBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
-					Edit
-					<PencilIcon class="h-5 ml-2 mt-0.5" />
 				</button>
 				<button @click="viewLogsBtn()"
 					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
