@@ -107,19 +107,17 @@ async function initializeData() {
     await getDisks(diskList);
 	console.log('disks:', diskList)
 
-    /* if (props.task) {
-        const params = props.task.parameters.children;
-        selectedDisks.value = params.find(p => p.key === 'disks')!.value;
-        selectedTestType.value = params.find(p => p.key === 'test_type')!.value;
-    }  */
     if (props.task) {
         const params = props.task.parameters.children;
         const storedDisks = params.find(p => p.key === 'disks')!.value;
 
-        // Parse the stored comma-separated disk paths into an array
-        selectedDisks.value = storedDisks ? storedDisks.split(', ') : [];
+        // Parse the stored comma-separated disk paths into an array and trim the extra quotes
+        selectedDisks.value = storedDisks
+            ? storedDisks.split(', ').map(disk => disk.replace(/^'|'$/g, ''))
+            : [];
+        console.log('selectedDisks:', selectedDisks.value);
 
-        selectedTestType.value = params.find(p => p.key === 'test_type')!.value;
+        selectedTestType.value = params.find(p => p.key === 'testType')!.value;
     } 
 
     loading.value = false;

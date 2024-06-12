@@ -177,12 +177,13 @@ def create_task(service_template_path, param_env_path, isStandalone):
     generate_concrete_file(service_template_content, output_path_service)
     # print("Standalone concrete service file generated successfully.")
     logging.debug("Standalone concrete service file generated successfully.")
-    if isStandalone:
-        manage_service(service_file_name, 'enable')
-        # manage_service(service_file_name, 'start')
-    else:
-        # manage_service(service_file_name, 'enable', True)
-        manage_service(service_file_name, 'enable')
+    if not isStandalone:
+    #     manage_service(service_file_name, 'enable')
+    #     # manage_service(service_file_name, 'start')
+    # else:
+    #     # manage_service(service_file_name, 'enable', True)
+    #     manage_service(service_file_name, 'enable')
+        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')
