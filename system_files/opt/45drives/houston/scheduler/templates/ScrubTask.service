@@ -8,7 +8,4 @@ ExecStart=zpool scrub {scrubConfig_pool_pool}
 Restart=on-failure
 RestartSec=30sec
 StartLimitBurst=2
-StartLimitInterval=60s
-
-[Install]
-# WantedBy=multi-user.target
+StartLimitInterval=80s
