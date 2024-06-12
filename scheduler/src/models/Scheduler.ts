@@ -368,14 +368,17 @@ export class Scheduler implements SchedulerType {
             if (value === '*') {
                 return type === 'minute' ? 'every minute' :
                        type === 'hour' ? 'every hour' : `every ${type}`;
+            } else if (value.startsWith('*/')) {
+                const interval = value.slice(2);
+                return `every ${interval} ${type}${interval > 1 ? 's' : ''}`;
             } else if (value === '0' && type === 'minute') {
-                return 'at the start of the hour'
+                return 'at the start of the hour';
             } else if (value === '0' && type === 'hour') {
                 return 'at midnight';
             } else if (type === 'day') {
-                return `on the ${value}${getDaySuffix(value)} of the month`;
+                return `on the ${value}${getDaySuffix(parseInt(value))} of the month`;
             } else if (type === 'month') {
-                return `in ${getMonthName(value)}`;
+                return `in ${getMonthName(parseInt(value))}`;
             }
             return `at ${value} ${type}`;
         }

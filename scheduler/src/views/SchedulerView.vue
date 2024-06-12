@@ -68,9 +68,14 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                       <TaskInstanceTableRow v-for="taskInstance, index in filteredAndSortedTasks" :key="index" :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
+                                    <div  v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
+                                        <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
                                        @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
-                                       @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"/>
+                                       @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
+                                        ref="taskTableRow" :attr="taskInstance"
+                                        />
+                                    </div>
+                                       
                                 </tbody>
                             </table>
                         </div>
@@ -120,11 +125,24 @@ import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue"
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
+import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
+const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
+// const taskTableRow = ref();
+
+async function updateStatusAndTime(task: TaskInstanceType, index: number) {
+    // console.log('taskTableRow ref:', taskTableRow.value);
+    const target = taskTableRow.value[index];
+    // await taskTableRow.value!.updateTaskStatus(task);
+    // await taskTableRow.value!.fetchLatestLog(task);
+    await target.updateTaskStatus(task);
+    await target.fetchLatestLog(task);
+}
+
 
 /* Refresh Display */
 async function refreshBtn() {
@@ -188,6 +206,8 @@ async function showRunNowDialog() {
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     await myScheduler.runTaskNow(selectedTask.value!);
+    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
     updateShowRunNowPrompt(false);
     running.value = false;
 }

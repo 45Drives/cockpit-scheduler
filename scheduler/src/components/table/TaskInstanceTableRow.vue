@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watchEffect, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, defineExpose } from 'vue';
 import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
 import { upperCaseWord, injectWithCheck } from '../../composables/utility'
 import { schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
@@ -256,14 +256,28 @@ async function toggleTaskSchedule(event) {
 }
 
 /* Getting Task Status + Last Run Time */
-const pollingInterval = ref(10000);
-const intervalId = ref();
+onMounted(async () => {
+	await updateTaskStatus(taskInstance.value);
+	await fetchLatestLog(taskInstance.value);
+	// Polling within each component instance
+	const intervalId = setInterval(async () => {
+		await updateTaskStatus(taskInstance.value);
+		await fetchLatestLog(taskInstance.value);
+	}, 10000);
+	onUnmounted(() => clearInterval(intervalId));
+});
+
+// Ensure updates when taskInstance changes
+watch(taskInstance, async (newTask) => {
+	await updateTaskStatus(newTask);
+	await fetchLatestLog(newTask);
+});
+
 async function updateTaskStatus(task) {
 	const status = await myScheduler.getTaskStatusFor(task);
 	taskStatus.value = status.toString();
 	// console.log(`Status for ${task.name}:`, status);
 }
-
 
 // change color of status text
 function taskStatusClass(status) {
@@ -294,51 +308,8 @@ async function fetchLatestLog(task) {
 	}
 };
 
-const pollTaskStatus = async () => {
-	if (taskInstances.value) {
-		for (const task of taskInstances.value) {
-			await updateTaskStatus(task);
-		}
-	}
-}
-
-const pollTaskLastRun = async () => {
-	if (taskInstances.value) {
-		for (const task of taskInstances.value) {
-			await fetchLatestLog(task);
-		}
-	}
-}
-
-const startPolling = () => {
-	if (!intervalId.value) {
-		intervalId.value = setInterval(() => {
-				pollTaskStatus();
-		}, pollingInterval.value);
-	}
-}
-
-const stopPolling = () => {
-	if (intervalId.value) {
-		clearInterval(intervalId.value);
-		intervalId.value = null;
-	}
-}
-
-onMounted(() => {
-	startPolling();
+defineExpose({
+	updateTaskStatus,
+	fetchLatestLog,
 });
-
-onUnmounted(() => {
-	stopPolling();
-});
-
-//handle changes in taskInstances and check status/timestamp accordingly
-watchEffect(() => {
-	if (taskInstances.value.length > 0) {
-		pollTaskStatus();
-		pollTaskLastRun();
-	}
-});
-
 </script>
