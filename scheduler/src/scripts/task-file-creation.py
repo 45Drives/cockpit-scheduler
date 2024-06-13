@@ -216,10 +216,6 @@ def create_task(service_template_path, param_env_path, isStandalone):
     
     generate_concrete_file(service_template_content, output_path_service)
     logging.debug("Standalone concrete service file generated successfully.")
-    
-    manage_service(service_file_name, 'enable')
-    # manage_service(f'houston_scheduler_{task_instance_name}.timer', 'enable')
-    # start_timer(f'houston_scheduler_{task_instance_name}.timer')
 
 def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')

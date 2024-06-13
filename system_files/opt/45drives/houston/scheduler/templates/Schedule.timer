@@ -3,7 +3,7 @@ Description={description}
 
 [Timer]
 {on_calendar_lines}
-Persistent=true
+Persistent=false
 AccuracySec=1min
 
 [Install]

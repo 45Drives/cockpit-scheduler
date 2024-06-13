@@ -9,3 +9,6 @@ Restart=on-failure
 RestartSec=30sec
 StartLimitBurst=2
 StartLimitInterval=80s
+
+[Install]
+WantedBy=multi-user.target

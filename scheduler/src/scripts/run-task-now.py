@@ -7,7 +7,7 @@ def run_task_now(unit_name):
         # Reload systemd to recognize new or changed units
         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
         # Start the service 
-        subprocess.run(['sudo', 'systemctl', 'enable', '--now', f'{unit_name}.service'], check=True)
+        subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}.service'], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Failed to run task: {e}")
         sys.exit(1)
@@ -32,8 +32,6 @@ def main():
         run_task_now(unit_name)
     else:
         print(f'error: could not find task service file')
-    
-    subprocess.run(['sudo', 'systemctl', 'disable', f'{unit_name}.service'], check=True)
     
 if __name__ == "__main__":
     main()

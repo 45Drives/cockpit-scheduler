@@ -283,7 +283,7 @@ export class Scheduler implements SchedulerType {
             await state.promise();
 
             // Start and Enable the timer
-            command = ['sudo', 'systemctl', 'enable', '--now', timerName];
+            command = ['sudo', 'systemctl', 'enable', timerName];
             state = useSpawn(command, { superuser: 'try' });
             await state.promise();
 
@@ -310,7 +310,7 @@ export class Scheduler implements SchedulerType {
             await reloadState.promise();
             
             // Stop and Disable the timer
-            let disableCommand = ['sudo', 'systemctl', 'disable', '--now', timerName];
+            let disableCommand = ['sudo', 'systemctl', 'disable', timerName];
             let state = useSpawn(disableCommand, { superuser: 'try' });
             await state.promise();
     
