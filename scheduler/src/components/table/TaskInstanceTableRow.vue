@@ -23,10 +23,11 @@
 			</span>
 		</td>
 		<td
-			:title="latestTaskExecution || 'N/A'" 
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+			:title="latestTaskExecution" 
+			class="truncate font-medium border-r border-default text-left ml-4 col-span-2"
+			:class="latestTaskExecution.includes('disabled') ? 'text-muted text-sm' : 'text-default text-base'">
 			<span>
-				{{ latestTaskExecution || 'N/A' }}
+				{{ latestTaskExecution }}
 			</span>
 		</td>
 		<td class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
@@ -300,7 +301,12 @@ async function fetchLatestLog(task) {
 	try {
 		const latestLog = await myTaskLog.getLatestEntryFor(task);
 		if (latestLog) {
-			latestTaskExecution.value = latestLog.startDate;
+			if (latestLog.startDate) {
+				latestTaskExecution.value = latestLog.startDate;
+			} else {
+				latestTaskExecution.value = latestLog.output;
+			}
+			
 		}
 		// console.log(`Last execution of ${task.name}:`, latestLog);
 	} catch (error) {

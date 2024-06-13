@@ -12,18 +12,20 @@ export class TaskExecutionLog {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const taskName = taskInstance.name;
-
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
-        
+    
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
+    
         try {
-            let command;
-            if (untilTime) {
-                command = ['journalctl', '-r', '-u', fullTaskName, '--until', untilTime, '--no-pager'];
-            } else {
+            if (!untilTime) {
                 console.log("No until time provided");
-                return "No until time available.";
+                // Fallback to get the most recent log entries if no start time is available
+                const logCommand = ['journalctl', '-r', '-u', fullTaskName, '--no-pager', '--all', '-n', '1']; // Limit to the most recent log entry
+                const logState = useSpawn(logCommand, {superuser: 'try'});
+                const logResult = await logState.promise();
+                return logResult.stdout;
             }
     
+            const command = ['journalctl', '-u', fullTaskName, '--until', untilTime, '--no-pager', '--all'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
             const taskLogData = result.stdout.trim();
@@ -35,14 +37,15 @@ export class TaskExecutionLog {
             return false;
         }
     }
+    
 
     async getLatestEntryFor(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const taskName = taskInstance.name;
-
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskName;
-
+    
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
+    
         try {
             const execCommand = ['systemctl', 'show', fullTaskName, '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp'];
             const execState = useSpawn(execCommand, {superuser: 'try'});
@@ -55,13 +58,19 @@ export class TaskExecutionLog {
     
             let output = "";
             if (startTime) {
-                const logCommand = ['journalctl', '-r', '-u', fullTaskName, '--since', startTime, '--no-pager'];
+                const logCommand = ['journalctl', '-u', fullTaskName, '--since', startTime, '--no-pager', '--all'];
                 const logState = useSpawn(logCommand, {superuser: 'try'});
                 const logResult = await logState.promise();
                 output = logResult.stdout;
             } else {
-                output = "No start time available.";
+                output = "Task hasn't run since boot or is disabled.";
+                // Fallback to get the most recent log entries if no start time is available
+                // const logCommand = ['journalctl', '-r', '-u', fullTaskName, '--no-pager', '--all', '-n', '1']; // Limit to the most recent log entry
+                // const logState = useSpawn(logCommand, {superuser: 'try'});
+                // const logResult = await logState.promise();
+                // output = logResult.stdout || "Task hasn't run since boot or is disabled.";
             }
+    
             const latestEntry = new TaskExecutionResult(exitCode, output, startTime, finishTime);
             // console.log('latest entry:', latestEntry);
             return latestEntry;
