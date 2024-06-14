@@ -1,3 +1,3 @@
-## task scheduler 1.0.2-1
+## task scheduler 1.0.3-1
 
-* Building package
+* Adds Rsync, Scrub & SMART Test Tasks Support + General UX/UI improvements
