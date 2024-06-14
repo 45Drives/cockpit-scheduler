@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Fri Jun 14 2024 Jordan Keough <jkeough@45drives.com> 1.1.0-1
+- Updating Release Version
 * Fri Jun 14 2024 Jordan Keough <jkeough@45drives.com> 1.0.3-1
 - Adds Rsync, Scrub & SMART Test Tasks Support + General UX/UI improvements
 * Tue May 21 2024 Jordan Keough <jkeough@45drives.com> 1.0.2-1

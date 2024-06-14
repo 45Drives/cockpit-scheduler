@@ -1,3 +1,9 @@
+cockpit-scheduler (1.1.0-1focal) focal; urgency=medium
+
+  * Updating Release Version
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 14 Jun 2024 07:53:03 -0300
+
 cockpit-scheduler (1.0.3-1focal) focal; urgency=medium
 
   * Adds Rsync, Scrub & SMART Test Tasks Support + General UX/UI improvements
