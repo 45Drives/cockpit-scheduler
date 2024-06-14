@@ -64,6 +64,7 @@ interface ScrubTaskParamsProps {
 const props = defineProps<ScrubTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+const initialParameters = ref({});
 
 const pools = ref<string[]>([]);
 const loadingPools = ref(false);
@@ -83,11 +84,23 @@ async function initializeData() {
         const zfsParams = params.find(p => p.key === 'pool')!.children;
         pool.value = zfsParams.find(p => p.key === 'pool')!.value;
 
+        initialParameters.value = JSON.parse(JSON.stringify({
+            pool: pool.value
+        }));
+
         loading.value = false;
     } else {
         //if no props.task, new task configuration (default values)
         await getPools();
     }
+}
+
+function hasChanges() {
+    const currentParams = {
+        pool: pool.value
+    };
+
+    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
 const getPools = async () => {
@@ -178,5 +191,6 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
+    hasChanges
 });
 </script>

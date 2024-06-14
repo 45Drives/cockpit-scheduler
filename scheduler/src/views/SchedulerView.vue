@@ -86,7 +86,7 @@
     </div>
 
     <div v-if="showTaskWizard">
-        <component :is="addTaskComponent" :id-key="'add-task-modal'"/>
+        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler"/>
     </div>
 
     <div v-if="showEditTaskWizard">
@@ -95,7 +95,7 @@
 
     <div v-if="showThisScheduleWizard">
         <component :is="scheduleWizardComponent" @close="updateShowThisScheduleWizardComponent" :task="selectedTask"
-            :mode="'edit'" />
+            :mode="scheduleMode" />
     </div>
 
     <div v-if="showRunNowPrompt">
@@ -252,9 +252,11 @@ const updateShowRemoveTaskPrompt = (newVal) => {
 
 
 /* Schedule Management */
+const scheduleMode = ref('');
 const showThisScheduleWizard = ref(false);
 function manageScheduleBtn(task) {
     selectedTask.value = task;
+    scheduleMode.value = 'edit';
     showThisScheduleWizardComponent();
 }
 const scheduleWizardComponent = ref();
@@ -278,6 +280,13 @@ async function showThisScheduleWizardComponent() {
 const updateShowThisScheduleWizardComponent = (newVal) => {
     console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
+}
+
+const addScheduleHandler = async (task) => {
+    selectedTask.value = task;
+    scheduleMode.value = 'new';
+    await loadScheduleWizardComponent();
+    showThisScheduleWizard.value = true;
 }
 
 

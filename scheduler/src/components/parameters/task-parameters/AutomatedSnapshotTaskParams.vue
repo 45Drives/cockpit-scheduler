@@ -125,6 +125,7 @@ interface AutomatedSnapshotTaskParamsProps {
 const props = defineProps<AutomatedSnapshotTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+const initialParameters = ref({});
 
 const sourcePools = ref<string[]>([]);
 const sourceDatasets = ref<string[]>([]);
@@ -163,11 +164,33 @@ async function initializeData() {
         customName.value = params.find(p => p.key === 'customName')!.value;
         snapsToKeep.value = params.find(p => p.key === 'snapRetention')!.value;
 
+        initialParameters.value = JSON.parse(JSON.stringify({
+            sourcePool: sourcePool.value,
+            sourceDataset: sourceDataset.value,
+            sendRecursive: sendRecursive.value,
+            useCustomName: useCustomName.value,
+            customName: customName.value,
+            snapsToKeep: snapsToKeep.value
+        }));
+
         loading.value = false;
     } else {
         //if no props.task, new task configuration (default values)
         await getSourcePools();
     }
+}
+
+function hasChanges() {
+    const currentParams = {
+        sourcePool: sourcePool.value,
+        sourceDataset: sourceDataset.value,
+        sendRecursive: sendRecursive.value,
+        useCustomName: useCustomName.value,
+        customName: customName.value,
+        snapsToKeep: snapsToKeep.value
+    };
+
+    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
 const getSourcePools = async () => {
@@ -316,15 +339,15 @@ function validateParams() {
 
 function setParams() {
     const newParams = new ParameterNode("Automated Snapshot Task Config", "autoSnapConfig")
-            .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', sourcePool.value, sourceDataset.value))
-            .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
-            .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
-            .addChild(new StringParameter('Custom Name', 'customName', customName.value))
-            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', snapsToKeep.value)
-        );
+        .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', sourcePool.value, sourceDataset.value))
+        .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
+        .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
+        .addChild(new StringParameter('Custom Name', 'customName', customName.value))
+        .addChild(new IntParameter('Snapshot Retention', 'snapRetention', snapsToKeep.value)
+    );
 
-        parameters.value = newParams;
-        console.log('newParams:', newParams);
+    parameters.value = newParams;
+    console.log('newParams:', newParams);
 }
 
 watch(sourcePool, handleSourcePoolChange);
@@ -336,5 +359,6 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
+    hasChanges
 });
 </script>

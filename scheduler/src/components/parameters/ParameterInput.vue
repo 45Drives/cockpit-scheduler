@@ -34,8 +34,13 @@ function clearTaskParamErrorTags() {
     activeComponent.value?.clearErrorTags();
 }
 
+function hasChanges() {
+    return activeComponent.value?.hasChanges();
+}
+
 defineExpose({
     validation,
     clearTaskParamErrorTags,
+    hasChanges
 });
 </script>

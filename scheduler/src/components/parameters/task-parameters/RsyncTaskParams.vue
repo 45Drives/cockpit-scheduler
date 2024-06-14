@@ -301,6 +301,7 @@ interface RsyncTaskParamsProps {
 const props = defineProps<RsyncTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+const initialParameters = ref({});
 
 const sourcePath = ref('');
 const sourcePathErrorTag = ref(false);
@@ -376,8 +377,62 @@ async function initializeData() {
         isParallel.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
         parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
         
+        initialParameters.value = JSON.parse(JSON.stringify({
+            sourcePath: sourcePath.value,
+            destPath: destPath.value,
+            destHost: destHost.value,
+            destUser: destUser.value,
+            destRoot: destRoot.value,
+            destPort: destPort.value,
+            directionSwitched: directionSwitched.value,
+            isArchive: isArchive.value,
+            isRecursive: isRecursive.value,
+            isCompressed: isCompressed.value,
+            isQuiet: isQuiet.value,
+            deleteFiles: deleteFiles.value,
+            preserveTimes: preserveTimes.value,
+            preserveHardLinks: preserveHardLinks.value,
+            preservePerms: preservePerms.value,
+            preserveXattr: preserveXattr.value,
+            limitBandwidthKbps: limitBandwidthKbps.value,
+            includePattern: includePattern.value,
+            excludePattern: excludePattern.value,
+            extraUserParams: extraUserParams.value,
+            isParallel: isParallel.value,
+            parallelThreads: parallelThreads.value
+        }));
+
         loading.value = false;
     }
+}
+
+function hasChanges() {
+    const currentParams = {
+        sourcePath: sourcePath.value,
+        destPath: destPath.value,
+        destHost: destHost.value,
+        destUser: destUser.value,
+        destRoot: destRoot.value,
+        destPort: destPort.value,
+        directionSwitched: directionSwitched.value,
+        isArchive: isArchive.value,
+        isRecursive: isRecursive.value,
+        isCompressed: isCompressed.value,
+        isQuiet: isQuiet.value,
+        deleteFiles: deleteFiles.value,
+        preserveTimes: preserveTimes.value,
+        preserveHardLinks: preserveHardLinks.value,
+        preservePerms: preservePerms.value,
+        preserveXattr: preserveXattr.value,
+        limitBandwidthKbps: limitBandwidthKbps.value,
+        includePattern: includePattern.value,
+        excludePattern: excludePattern.value,
+        extraUserParams: extraUserParams.value,
+        isParallel: isParallel.value,
+        parallelThreads: parallelThreads.value
+    };
+
+    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
 
@@ -535,5 +590,6 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
+    hasChanges
 });
 </script>

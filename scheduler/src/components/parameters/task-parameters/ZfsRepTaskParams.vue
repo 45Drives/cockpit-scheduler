@@ -289,6 +289,7 @@ interface ZfsRepTaskParamsProps {
 const props = defineProps<ZfsRepTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+const initialParameters = ref({});
 
 const sourcePools = ref<string[]>([]);
 const sourceDatasets = ref<string[]>([]);
@@ -397,12 +398,58 @@ async function initializeData() {
         snapsToKeepSrc.value = snapshotRetentionParams.find(p => p.key === 'source')!.value;
         snapsToKeepDest.value = snapshotRetentionParams.find(p => p.key === 'destination')!.value;
 
+        initialParameters.value = JSON.parse(JSON.stringify({
+            sourcePool: sourcePool.value,
+            sourceDataset: sourceDataset.value,
+            useCustomSource: useCustomSource.value,
+            destHost: destHost.value,
+            destPort: destPort.value,
+            destUser: destUser.value,
+            destPool: destPool.value,
+            destDataset: destDataset.value,
+            useCustomTarget: useCustomTarget.value,
+            sendCompressed: sendCompressed.value,
+            sendRaw: sendRaw.value,
+            sendRecursive: sendRecursive.value,
+            mbufferSize: mbufferSize.value,
+            mbufferUnit: mbufferUnit.value,
+            useCustomName: useCustomName.value,
+            customName: customName.value,
+            snapsToKeepSrc: snapsToKeepSrc.value,
+            snapsToKeepDest: snapsToKeepDest.value
+        }));
+
         loading.value = false;
     } else {
         //if no props.task, new task configuration (default values)
         await getSourcePools();
         await getLocalDestinationPools();
     }
+}
+
+function hasChanges() {
+    const currentParams = {
+        sourcePool: sourcePool.value,
+        sourceDataset: sourceDataset.value,
+        useCustomSource: useCustomSource.value,
+        destHost: destHost.value,
+        destPort: destPort.value,
+        destUser: destUser.value,
+        destPool: destPool.value,
+        destDataset: destDataset.value,
+        useCustomTarget: useCustomTarget.value,
+        sendCompressed: sendCompressed.value,
+        sendRaw: sendRaw.value,
+        sendRecursive: sendRecursive.value,
+        mbufferSize: mbufferSize.value,
+        mbufferUnit: mbufferUnit.value,
+        useCustomName: useCustomName.value,
+        customName: customName.value,
+        snapsToKeepSrc: snapsToKeepSrc.value,
+        snapsToKeepDest: snapsToKeepDest.value
+    };
+
+    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
 function handleCheckboxChange(checkbox) {
@@ -735,5 +782,6 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
+    hasChanges
 });
 </script>

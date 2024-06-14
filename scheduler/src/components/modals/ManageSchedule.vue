@@ -187,7 +187,7 @@
             <div class="w-full">
 				<div class="button-group-row w-full justify-between">
                     <div class="button-group-row">
-                        <button @click.stop="closeModal" id="close-add-schedule-btn" name="close-add-schedule-btn" class="btn btn-danger h-fit w-full">Close</button>
+                        <button @click.stop="closeBtn()" id="close-add-schedule-btn" name="close-add-schedule-btn" class="btn btn-danger h-fit w-full">Close</button>
                     </div>
                     <div class="button-group-row">
                         <button disabled v-if="savingSchedule" id="adding-schedule-btn" type="button" class="btn btn-primary h-fit w-full">
@@ -206,6 +206,10 @@
 
     <div v-if="showSaveConfirmation">
         <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Save Schedule'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask" :operation="'saving'" :operating="savingSchedule"/>
+    </div>
+
+    <div v-if="showCloseConfirmation">
+        <component :is="closeConfirmationComponent" @close="updateShowCloseConfirmation" :showFlag="showCloseConfirmation" :title="props.mode == 'new' ? 'Cancel Add Task' : 'Cancel Edit Schedule'" :message="props.mode == 'new' ? 'Are you sure? This task configuration will be lost.' : 'Are you sure? Any changes will be lost.'" :confirmYes="confirmCancel" :confirmNo="cancelCancel" :operation="'canceling'" :operating="cancelingAddTask"/>
     </div>
     
 </template>
@@ -239,9 +243,50 @@ const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const savingSchedule = ref(false);
 const scheduleEnabled = ref(true);
 
+const initialScheduleIntervals = ref({});
+
 const closeModal = () => {
     showScheduleWizard.value = false;
     emit('close');
+}
+
+function hasScheduleChanges() {
+    return JSON.stringify(localIntervals.value) !== JSON.stringify(initialScheduleIntervals.value);
+}
+
+const cancelingAddTask = ref(false);
+const showCloseConfirmation = ref(false);
+const closeConfirmationComponent = ref();
+async function loadCloseConfirmationComponent() {
+    const module = await import('../common/ConfirmationDialog.vue');
+    closeConfirmationComponent.value = module.default;    
+}
+
+async function closeBtn() {
+    if (props.mode == 'edit') {
+        if (hasScheduleChanges()) {
+            await loadCloseConfirmationComponent();
+            showCloseConfirmation.value = true;
+        } else{
+            closeModal();
+        }
+    } else {
+        await loadCloseConfirmationComponent();
+        showCloseConfirmation.value = true;
+    }
+   
+}
+
+const updateShowCloseConfirmation = (newVal) => {
+    showCloseConfirmation.value = newVal;
+}
+
+const confirmCancel: ConfirmationCallback = async () => {
+    closeModal();
+}
+
+const cancelCancel: ConfirmationCallback = async () => {
+    updateShowCloseConfirmation(false);
 }
 
 const thisTask = ref(props.task);
@@ -583,12 +628,14 @@ watch(newInterval, (newVal, oldVal) => {
 const calendarKey = ref(0);
 
 function forceUpdateCalendar() {
-  calendarKey.value++;
+    calendarKey.value++;
 }
 
 onMounted(() => {
     console.log('mode (onMounted):', props.mode);
-
+    // clearFields();
+    // clearAllErrors();
+    
     console.log('task data (onMounted)', props.task);
     if (props.mode == 'new') {
         selectedInterval.value = undefined;
@@ -597,6 +644,7 @@ onMounted(() => {
     } else {
         localIntervals.value = [...props.task.schedule.intervals];
         console.log('localIntervals (onMounted)', localIntervals.value);
+        initialScheduleIntervals.value = JSON.parse(JSON.stringify(localIntervals.value));
    }
 });
 

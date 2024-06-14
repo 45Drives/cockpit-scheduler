@@ -90,9 +90,11 @@ interface SmartTestTaskParamsProps {
 const props = defineProps<SmartTestTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+const initialParameters = ref({});
+
 const diskList = ref<DiskData[]>([]);
 const selectedIdentifier = ref('vdev_path');
-// const selectedDisks = ref<DiskData[]>([]);
+
 const selectedDisks = ref<string[]>([]);
 const selectedTestType = ref('');
 
@@ -118,11 +120,24 @@ async function initializeData() {
         console.log('selectedDisks:', selectedDisks.value);
 
         selectedTestType.value = params.find(p => p.key === 'testType')!.value;
-    } 
+
+        initialParameters.value = JSON.parse(JSON.stringify({
+            selectedDisks: selectedDisks.value,
+            selectedTestType: selectedTestType.value
+        }));
+    }
 
     loading.value = false;
 }
 
+function hasChanges() {
+    const currentParams = {
+        selectedDisks: selectedDisks.value,
+        selectedTestType: selectedTestType.value
+    };
+
+    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
+}
 
 //change color of disk when selected
 const diskCardClass = (diskPath) => {
@@ -192,6 +207,7 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
+    hasChanges
 });
 </script>
 

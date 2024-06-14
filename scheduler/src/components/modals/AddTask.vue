@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false" :closeConfirm="closeBtn">
         <template v-slot:title>
             Add New Task
         </template>
@@ -40,7 +40,7 @@
             <div class="w-full">
 				<div class="button-group-row w-full justify-between">
                     <div class="button-group-row">
-                        <button @click.stop="closeModal" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger h-fit w-full">Close</button>
+                        <button @click.stop="closeBtn()" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger h-fit w-full">Close</button>
                     </div>
                     <div class="button-group-row">
                         <button disabled v-if="adding" id="adding-task-btn" type="button" class="btn btn-primary h-fit w-full">
@@ -62,8 +62,8 @@
         <component :is="confirmationComponent" @close="updateShowSchedulePrompt" :showFlag="showSchedulePrompt" :title="'Schedule Task'" :message="'Do you wish to schedule this task now?'" :confirmYes="makeScheduleNow" :confirmNo="makeScheduleLater" :operation="'adding'" :operating="adding"/>
     </div>
 
-    <div v-if="showScheduleWizard">
-        <component :is="scheduleWizardComponent" @close="updateShowScheduleWizardComponent" :mode="'new'" :task="newTask"/>
+    <div v-if="showCloseConfirmation">
+        <component :is="closeConfirmationComponent" @close="updateShowCloseConfirmation" :showFlag="showCloseConfirmation" :title="'Cancel Add Task'" :message="'Are you sure? This task configuration will be lost.'" :confirmYes="confirmCancel" :confirmNo="cancelCancel" :operation="'canceling'" :operating="cancelingAddTask"/>
     </div>
     
 </template>
@@ -83,7 +83,7 @@ const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, "taskTemplates 
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'manageSchedule']);
 
 const newTask = ref<TaskInstanceType>();
 
@@ -100,6 +100,31 @@ const parameters = ref();
 const closeModal = () => {
     showTaskWizard.value = false;
     emit('close');
+}
+
+const cancelingAddTask = ref(false);
+const showCloseConfirmation = ref(false);
+const closeConfirmationComponent = ref();
+async function loadCloseConfirmationComponent() {
+    const module = await import('../common/ConfirmationDialog.vue');
+    closeConfirmationComponent.value = module.default;    
+}
+
+const closeBtn = async () => {
+    await loadCloseConfirmationComponent();
+    showCloseConfirmation.value = true;
+};
+
+const updateShowCloseConfirmation = (newVal) => {
+    showCloseConfirmation.value = newVal;
+}
+
+const confirmCancel: ConfirmationCallback = async () => {
+    closeModal();
+}
+
+const cancelCancel: ConfirmationCallback = async () => {
+    updateShowCloseConfirmation(false);
 }
 
 // Validation
@@ -170,39 +195,14 @@ const makeScheduleNow : ConfirmationCallback = async () => {
     isStandaloneTask.value = false;
     console.log('Make Schedule Now. isStandalone:', isStandaloneTask.value);
     await saveTask();
+    emit('manageSchedule', newTask.value);
     updateShowSchedulePrompt(false);
-    showScheduleWizardComponent();
+    // showScheduleWizardComponent();
+    closeModal();
 }
 
 const updateShowSchedulePrompt = (newVal) => {
     showSchedulePrompt.value = newVal;
-}
-
-
-// Show Schedule Wizard
-const showScheduleWizard = ref(false);
-
-const scheduleWizardComponent = ref();
-const loadScheduleWizardComponent = async () => {
-    console.log('loadScheduleWizard triggered');
-    const module = await import('./ManageSchedule.vue');
-    scheduleWizardComponent.value = module.default;
-}
-
-async function showScheduleWizardComponent() {
-    console.log('Attempting to load Schedule Wizard Component...');
-    try {
-        await loadScheduleWizardComponent();
-        console.log('addTask: setting showScheduleWizard to true.');
-        showScheduleWizard.value = true;
-    } catch (error) {
-        console.error('Failed to load Schedule Wizard Component:', error);
-    }
-}
-
-const updateShowScheduleWizardComponent = (newVal) => {
-    console.log('updateShowScheduleWizard triggered');
-    showScheduleWizard.value = newVal;
 }
 
 async function saveTask() {
@@ -257,6 +257,6 @@ provide('parameters', parameters);
 provide('errors', errorList);
 provide('show-schedule-prompt', showSchedulePrompt);
 provide('is-standalone-task', isStandaloneTask);
-provide('show-schedule-wizard', showScheduleWizard);
+// provide('show-schedule-wizard', showScheduleWizard);
 </script>
 

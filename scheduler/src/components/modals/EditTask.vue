@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false" :closeConfirm="closeBtn">
         <template v-slot:title>
             Edit <span class="text-base">{{taskInstance.name}}</span> <br/><span class="text-base text-muted italic">{{taskInstance.template.name}}</span>
         </template>
@@ -12,7 +12,7 @@
             <div class="w-full">
 				<div class="button-group-row w-full justify-between">
                     <div class="button-group-row">
-                        <button @click.stop="closeModal" id="close-edit-task-btn" name="close-edit-task-btn" class="btn btn-danger h-fit w-full">Close</button>
+                        <button @click.stop="closeBtn()" id="close-edit-task-btn" name="close-edit-task-btn" class="btn btn-danger h-fit w-full">Close</button>
                     </div>
                     <div class="button-group-row">
                         <button v-if="saving" disabled id="editing-task-btn" type="button" class="btn btn-primary h-fit w-full">
@@ -31,6 +31,10 @@
 
     <div v-if="showSaveConfirmation">
         <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Save Task'" :message="'Save your edits?'" :confirmYes="confirmSaveChanges" :confirmNo="cancelEdit" :operation="'saving'" :operating="saving"/>
+    </div>
+
+    <div v-if="showCloseConfirmation">
+        <component :is="closeConfirmationComponent" @close="updateShowCloseConfirmation" :showFlag="showCloseConfirmation" :title="'Cancel Edit Task'" :message="'Are you sure? Any changes will be lost.'" :confirmYes="confirmCancel" :confirmNo="cancelCancel" :operation="'canceling'" :operating="cancelingEditTask"/>
     </div>
 
 </template>
@@ -62,10 +66,43 @@ const errorList = ref<string[]>([]);
 const parameterInputComponent = ref();
 const parameters = ref();
 
+const initialParameters = ref(props.task.parameters);
+
 const closeModal = () => {
     showEditTaskWizard.value = false;
     emit('close');
 }
+
+const cancelingEditTask = ref(false);
+const showCloseConfirmation = ref(false);
+const closeConfirmationComponent = ref();
+async function loadCloseConfirmationComponent() {
+    const module = await import('../common/ConfirmationDialog.vue');
+    closeConfirmationComponent.value = module.default;    
+}
+
+const closeBtn = async () => {
+    const hasChanges = parameterInputComponent.value.hasChanges();
+    if (hasChanges) {
+        await loadCloseConfirmationComponent();
+        showCloseConfirmation.value = true;
+    } else {
+        closeModal();
+    }
+};
+
+const updateShowCloseConfirmation = (newVal) => {
+    showCloseConfirmation.value = newVal;
+}
+
+const confirmCancel: ConfirmationCallback = async () => {
+    closeModal();
+}
+
+const cancelCancel: ConfirmationCallback = async () => {
+    updateShowCloseConfirmation(false);
+}
+
 
 function validateComponentParams() {
     parameterInputComponent.value.clearTaskParamErrorTags();
