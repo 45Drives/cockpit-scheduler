@@ -1,3 +1,4 @@
+import re
 import subprocess
 import argparse
 import json
@@ -21,83 +22,98 @@ def parse_env_file(parameter_env_file_path):
             key, value = line.strip().split('=')
             parameters[key] = value
         
-        # Special parsing for different task templates
-        if key.startswith('zfsRepConfig'):
-            if parameters.get(f'zfsRepConfig_sendOptions_raw_flag', 'false').lower() == 'true':
-                parameters[f'zfsRepConfig_sendOptions_compressed_flag'] = ''
-            elif parameters.get(f'zfsRepConfig_sendOptions_compressed_flag', 'false').lower() == 'true':
-                parameters[f'zfsRepConfig_sendOptions_raw_flag'] = ''
-                
-            flags = ['recursive', 'customName', 'raw', 'compressed']
-            for flag in flags:
-                flag_key = f'zfsRepConfig_sendOptions_{flag}_flag'
-                if parameters.get(flag_key, 'false').lower() == 'true':
-                    parameters[flag_key] = f"--{flag}"
-                else:
-                    parameters[flag_key] = ''
-                    if flag == 'customName':
-                        parameters['zfsRepConfig_sendOptions_customName'] = ''
-                        
-        elif key.startswith('autoSnapConfig'):
-            flags = ['recursive', 'customName']
-            for flag in flags:
-                flag_key = f'autoSnapConfig_{flag}_flag'
-                if parameters.get(flag_key, 'false').lower() == 'true':
-                    parameters[flag_key] = f"--{flag}"
-                else:
-                    parameters[flag_key] = ''
-                    if flag == 'customName':
-                        parameters['autoSnapConfig_customName'] = ''
-                        
-        elif key.startswith('rsyncConfig'):
-            flags = ['archive', 'recursive', 'compressed', 'delete', 'quiet', 'times', 'hardLinks', 'permissions', 'xattr', 'parallel']
-            for flag in flags:
-                flag_key = f'rsyncConfig_rsyncOptions_{flag}_flag'
-                if parameters.get(flag_key, 'false').lower() == 'true':
-                    parameters[flag_key] = f"--{flag}"
-                    if flag == 'parallel':
-                        parameters['rsyncConfig_rsyncOptions_parallel_threads'] = f"--threads={parameters.get('rsyncConfig_rsyncOptions_parallel_threads', '1')}"
-                else:
-                    parameters[flag_key] = ''
-                    if flag == 'parallel':
-                        parameters['rsyncConfig_rsyncOptions_parallel_threads'] = ''
-            
-            if 'rsyncConfig_target_info_host' not in parameters or not parameters['rsyncConfig_target_info_host']:
-                parameters['rsyncConfig_target_info_host'] = ''
-                parameters['rsyncConfig_target_info_port'] = ''
-                parameters['rsyncConfig_target_info_user'] = ''
-            else:
-                parameters['rsyncConfig_target_info_host'] = f"--host={parameters['rsyncConfig_target_info_host']}"
-                parameters['rsyncConfig_target_info_port'] = f"--port={parameters['rsyncConfig_target_info_port']}"
-                parameters['rsyncConfig_target_info_user'] = f"--user={parameters['rsyncConfig_target_info_user']}"
-                
-            if parameters.get('rsyncConfig_rsyncOptions_bandwidth_limit_kbps') != '0':
-                parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = f"--bandwidth={parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps']}"
-            else:
-                parameters['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = ''
-
-            if parameters.get('rsyncConfig_rsyncOptions_include_pattern') and parameters['rsyncConfig_rsyncOptions_include_pattern'] != "''":
-                parameters['rsyncConfig_rsyncOptions_include_pattern'] = f"--include={parameters['rsyncConfig_rsyncOptions_include_pattern']}"
-            else:
-                parameters['rsyncConfig_rsyncOptions_include_pattern'] = ''
-
-            if parameters.get('rsyncConfig_rsyncOptions_custom_args') and parameters['rsyncConfig_rsyncOptions_exclude_pattern'] != "''":
-                parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = f"--exclude={parameters['rsyncConfig_rsyncOptions_exclude_pattern']}"
-            else:
-                parameters['rsyncConfig_rsyncOptions_exclude_pattern'] = ''
-                
-            if parameters.get('rsyncConfig_rsyncOptions_custom_args') and parameters['rsyncConfig_rsyncOptions_custom_args'] != "''":
-                parameters['rsyncConfig_rsyncOptions_custom_args'] = f"--customArgs={parameters['rsyncConfig_rsyncOptions_custom_args']}"
-            else:
-                parameters['rsyncConfig_rsyncOptions_custom_args'] = ''
-            
-        # elif key.startswith('scrubConfig'):
-        
-        
-        # elif key.startswith('smartTestConfig'):
-        
     logging.debug('Env file parsed successfully')
     return parameters
+
+def selectParameterOptions(templateName):
+    if templateName == 'ZfsReplicationTask':
+        return [
+            "${zfsRepConfig_sourceDataset_dataset}",
+            "${zfsRepConfig_sendOptions_recursive_flag}",
+            "${zfsRepConfig_sendOptions_customName_flag}", 
+            "${zfsRepConfig_sendOptions_customName}", 
+            "${zfsRepConfig_sendOptions_compressed_flag}", 
+            "${zfsRepConfig_sendOptions_raw_flag}", 
+            "--root ${zfsRepConfig_destDataset_pool}", 
+            "--path ${zfsRepConfig_destDataset_dataset}",
+            "--user ${zfsRepConfig_destDataset_user}",
+            "--host ${zfsRepConfig_destDataset_host}",
+            "--port ${zfsRepConfig_destDataset_port}",
+            "--mbuffsize ${zfsRepConfig_sendOptions_mbufferSize}",
+            "--mbuffunit ${zfsRepConfig_sendOptions_mbufferUnit}",
+            "--snapsToKeepSrc ${zfsRepConfig_snapRetention_source}",
+            "--snapsToKeepDest ${zfsRepConfig_snapRetention_destination}",
+        ]
+    elif templateName == 'AutomatedSnapshotTask':
+        return [
+            "${autoSnapConfig_filesystem_dataset}",
+            "${autoSnapConfig_recursive_flag}",
+            "${autoSnapConfig_customName_flag}",
+            "${autoSnapConfig_customName}",
+            "--snapsToKeep ${autoSnapConfig_snapRetention}",
+        ]
+    elif templateName == 'RsyncTask':
+        return [
+            "--source ${rsyncConfig_local_path}",
+            "--direction ${rsyncConfig_direction}",
+            "--host=${rsyncConfig_target_info_host}",
+            "--port=${rsyncConfig_target_info_port}",
+            "--user=${rsyncConfig_target_info_user}",
+            "--target ${rsyncConfig_target_info_path}",
+            "${rsyncConfig_rsyncOptions_archive_flag}",
+            "${rsyncConfig_rsyncOptions_recursive_flag}",
+            "${rsyncConfig_rsyncOptions_compressed_flag}",
+            "${rsyncConfig_rsyncOptions_delete_flag}",
+            "${rsyncConfig_rsyncOptions_quiet_flag}",
+            "${rsyncConfig_rsyncOptions_times_flag}",
+            "${rsyncConfig_rsyncOptions_hardlinks_flag}",
+            "${rsyncConfig_rsyncOptions_permissions_flag}",
+            "${rsyncConfig_rsyncOptions_xattr_flag}",
+            "--bandwidth=${rsyncConfig_rsyncOptions_bandwidth_limit_kbps}",
+            "--include=${rsyncConfig_rsyncOptions_include_pattern}",
+            "--exclude=${rsyncConfig_rsyncOptions_exclude_pattern}",
+            "${rsyncConfig_rsyncOptions_parallel_flag}",
+            "--threads=${rsyncConfig_rsyncOptions_parallel_threads}",
+            "${rsyncConfig_rsyncOptions_custom_args}"
+        ]
+    elif templateName == 'SmartTest':
+        return [
+            "--disks ${smartTestConfig_disks}",
+            "--type ${smartTestConfig_testType}"
+        ]
+    elif templateName == 'ScrubTask':
+        return [
+            "${scrubConfig_pool_pool}"
+        ]
+    # elif templateName == 'CloudSyncTask':
+    #     return [
+            
+    #     ]
+    # elif templateName == 'CronJobTask':
+    #     return [
+            
+    #     ]
+    else:
+        return []
+
+def generate_exec_start(templateName, parameters, scriptPath):
+    base_python_command = f"python3 {scriptPath}"
+    options = selectParameterOptions(templateName)
+    
+    exec_start = []
+    if templateName == 'ScrubTask':
+        exec_start.append('zpool scrub')   
+    else:
+        exec_start.append(base_python_command)
+        
+    for option in options:
+        # Use regex to extract the placeholder name from ${placeholder}
+        match = re.search(r'\$\{(.+?)\}', option)
+        if match:
+            placeholder = match.group(1)
+            if placeholder in parameters and parameters[placeholder]:
+                exec_start.append(option)
+    return " ".join(exec_start)
 
 def read_schedule_json(file_path):
     logging.debug(f'Reading schedule JSON file: {file_path}')
@@ -107,7 +123,6 @@ def read_schedule_json(file_path):
             logging.debug('Schedule JSON file read successfully')
             return data
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        # print(f"Error reading JSON from file {file_path}: {e}")
         logging.error(f"Error reading JSON from file {file_path}: {e}")
         return None
 
@@ -153,7 +168,6 @@ def interval_to_on_calendar(interval):
     time_part = f'{hour}:{minute}:{second}'
     parts.append(time_part)
     
-    # Join parts with a space
     on_calendar_value = ' '.join(parts)
     
     return 'OnCalendar=' + on_calendar_value
@@ -185,11 +199,9 @@ def start_timer(timer_name):
     try:
         subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
 
-        # Check if the timer is active
-        result = subprocess.run(['sudo', 'systemctl', 'is-enabled', timer_name], universal_newlines=True)
+        result = subprocess.run(['sudo', 'systemctl', 'is-enabled', timer_name], universal_newlines=True, stdout=subprocess.PIPE)
         
-        if result.stdout == 'enabled':
-            # Timer is active
+        if result.stdout.strip() == 'enabled':
             logging.debug(f'Timer {timer_name} is active, restarting it')
             subprocess.run(['sudo', 'systemctl', 'restart', timer_name], check=True)
             logging.debug(f'{timer_name} has been restarted')
@@ -200,24 +212,25 @@ def start_timer(timer_name):
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to start {timer_name}: {e}")
 
-def create_task(service_template_path, param_env_path, isStandalone):
-    logging.debug(f'Creating task with service template: {service_template_path} and env file: {param_env_path}')
+def create_task(template_name, script_path, param_env_path):
+    logging.debug(f'Creating task with service template: {template_name} and env file: {param_env_path}')
     param_env_filename = os.path.basename(param_env_path)
     parts = param_env_filename.split('_')
     task_instance_name = '_'.join(parts[2:]).split('.env')[0]
     service_file_name = f'houston_scheduler_{task_instance_name}.service'
     output_path_service = f'/etc/systemd/system/{service_file_name}'
     
-    service_template_content = read_template_file(service_template_path)
+    service_template_content = read_template_file('/opt/45drives/houston/scheduler/templates/ServiceTemplate.service')
     parameters = parse_env_file(param_env_path)
-    service_template_content = replace_placeholders(service_template_content, parameters)
+    exec_start_command = generate_exec_start(template_name, parameters, script_path)
     service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
+    service_template_content = service_template_content.replace("{ExecStart}", exec_start_command)
     
     generate_concrete_file(service_template_content, output_path_service)
     logging.debug("Standalone concrete service file generated successfully.")
 
-def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isStandalone):
+def create_schedule(schedule_json_path, timer_template_path, full_unit_name):
     logging.debug(f'Creating schedule with timer template: {timer_template_path} and schedule file: {schedule_json_path}')
     output_path_timer = f"/etc/systemd/system/{full_unit_name}.timer"
     schedule_data = read_schedule_json(schedule_json_path)
@@ -240,8 +253,9 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name, isS
 def main():
     logging.debug('Starting main function')
     parser = argparse.ArgumentParser(description='Manage Service and Timer Files')
+    parser.add_argument('-tN', '--templateName', type=str, help='Task Template Name')
     parser.add_argument('-t', '--type', type=str, choices=['create-task', 'create-schedule', 'create-task-schedule'], required=True, help='Type of operation to perform')
-    parser.add_argument('-st', '--serviceTemplate', type=str, help='Template service file path')
+    parser.add_argument('-sP', '--scriptPath', type=str, help='Script Path')
     parser.add_argument('-e', '--env', type=str, help='Env file path')
     parser.add_argument('-tt', '--timerTemplate', type=str, help='Template timer file path')
     parser.add_argument('-s', '--schedule', type=str, help='Schedule JSON file path')
@@ -250,25 +264,25 @@ def main():
     args = parser.parse_args()
 
     if args.type == 'create-task':
-        if not args.serviceTemplate or not args.env:
-            parser.error("the following arguments are required for create-task: -st/--serviceTemplate, -e/--env")
-        create_task(args.serviceTemplate, args.env, True)
+        if not args.templateName or not args.scriptPath or not args.env:
+            parser.error("the following arguments are required for create-task: -tN/--templateName, -sP/--scriptPath, -e/--env")
+        create_task(args.templateName, args.scriptPath, args.env)
     elif args.type == 'create-schedule':
         if not args.timerTemplate or not args.schedule or not args.name:
             parser.error("the following arguments are required for create-schedule: -tt/--timerTemplate, -s/--schedule, -n/--name")
-        create_schedule(args.schedule, args.timerTemplate, args.name, True)
+        create_schedule(args.schedule, args.timerTemplate, args.name)
     elif args.type == 'create-task-schedule':
-        if not args.serviceTemplate or not args.env or not args.timerTemplate or not args.schedule:
-            parser.error("the following arguments are required for create-task-schedule: -st/--serviceTemplate, -e/--env, -tt/--timerTemplate, -s/--schedule")
+        if not args.templateName or not args.scriptPath or not args.env or not args.timerTemplate or not args.schedule:
+            parser.error("the following arguments are required for create-task-schedule: -tN/--templateName, -sP/--scriptPath, -e/--env, -tt/--timerTemplate, -s/--schedule")
         
-        create_task(args.serviceTemplate, args.env, False)
+        create_task(args.templateName, args.scriptPath, args.env)
         
         param_env_filename = os.path.basename(args.env)
         parts = param_env_filename.split('_')
         task_instance_name = '_'.join(parts[2:]).split('.env')[0]
         full_unit_name = f"houston_scheduler_{task_instance_name}"
         
-        create_schedule(args.schedule, args.timerTemplate, full_unit_name, False)
+        create_schedule(args.schedule, args.timerTemplate, full_unit_name)
     logging.debug('Main function execution completed')
         
 if __name__ == "__main__":

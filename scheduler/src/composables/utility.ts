@@ -174,12 +174,12 @@ export async function executePythonScript(script: string, args: string[]): Promi
     }
 }
 
-export async function createTaskFiles(serviceTemplate, envFile, timerTemplate, scheduleFile) {
-    return executePythonScript(task_file_creation_script, ['-t', 'create-task-schedule', '-st', serviceTemplate, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
+export async function createTaskFiles(templateName, scriptPath, envFile, timerTemplate, scheduleFile) {
+    return executePythonScript(task_file_creation_script, ['-tN', templateName, '-t', 'create-task-schedule', '-sP', scriptPath, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
 }
 
-export async function createStandaloneTask(serviceTemplate, envFile) {
-    return executePythonScript(task_file_creation_script, ['-t', 'create-task', '-st', serviceTemplate, '-e', envFile]);
+export async function createStandaloneTask(templateName, scriptPath, envFile) {
+    return executePythonScript(task_file_creation_script, ['-tN', templateName, '-t', 'create-task', '-sP', scriptPath, '-e', envFile]);
 }
 
 export async function createScheduleForTask(taskName, timerTemplate, scheduleFile) {

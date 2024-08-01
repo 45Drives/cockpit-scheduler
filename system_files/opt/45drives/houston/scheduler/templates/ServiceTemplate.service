@@ -1,0 +1,14 @@
+[Unit]
+Description=Service for {task_name}
+
+[Service]
+Type=oneshot
+EnvironmentFile={env_path}
+ExecStart={ExecStart}
+Restart=on-failure
+RestartSec=30sec
+StartLimitBurst=2
+StartLimitInterval=80s
+
+[Install]
+WantedBy=multi-user.target

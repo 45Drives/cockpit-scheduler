@@ -113,11 +113,129 @@ export class Scheduler implements SchedulerType {
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         console.log('envKeyVals:', envKeyValues);
 
-        const envKeyValuesString = envKeyValues.join('\n')
-
         const templateName = formatTemplateName(taskInstance.template.name);
-        
-        const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
+        // Template Names: ZfsReplicationTask, AutomatedSnapshotTask, RsyncTask, ScrubTask, SmartTest, CloudSyncTask, CronJobTask
+
+        // Convert envKeyValues to an object for easier manipulation
+        let envObject = envKeyValues.reduce((acc, curr) => {
+            const [key, value] = curr.split('=');
+            acc[key] = value;
+            return acc;
+        }, {});
+
+        let scriptFileName = '';
+
+        // Apply template-specific parsing logic
+        switch (templateName) {
+            case 'ZfsReplicationTask':
+                scriptFileName = 'replication-script';
+                if (envObject['zfsRepConfig_sendOptions_raw_flag'] === 'true') {
+                    envObject['zfsRepConfig_sendOptions_compressed_flag'] = '';
+                } else if (envObject['zfsRepConfig_sendOptions_compressed_flag'] === 'true') {
+                    envObject['zfsRepConfig_sendOptions_raw_flag'] = '';
+                }
+
+                ['recursive', 'customName', 'raw', 'compressed'].forEach(flag => {
+                    const flagKey = `zfsRepConfig_sendOptions_${flag}_flag`;
+                    if (envObject[flagKey] === 'true') {
+                        envObject[flagKey] = `--${flag}`;
+                    } else {
+                        envObject[flagKey] = '';
+                        if (flag === 'customName') {
+                            envObject['zfsRepConfig_sendOptions_customName'] = '';
+                        }
+                    }
+                });
+                break;
+            case 'AutomatedSnapshotTask':
+                scriptFileName = 'autosnap-script';
+                ['recursive', 'customName'].forEach(flag => {
+                    const flagKey = `autoSnapConfig_${flag}_flag`;
+                    if (envObject[flagKey] === 'true') {
+                        envObject[flagKey] = `--${flag}`;
+                    } else {
+                        envObject[flagKey] = '';
+                        if (flag === 'customName') {
+                            envObject['autoSnapConfig_customName'] = '';
+                        }
+                    }
+                });
+                break;
+            case 'RsyncTask':
+                scriptFileName = 'rsync-script';
+                ['archive', 'recursive', 'compressed', 'delete', 'quiet', 'times', 'hardLinks', 'permissions', 'xattr', 'parallel'].forEach(flag => {
+                    const flagKey = `rsyncConfig_rsyncOptions_${flag}_flag`;
+                    if (envObject[flagKey] === 'true') {
+                        envObject[flagKey] = `--${flag}`;
+                        if (flag === 'parallel') {
+                            envObject['rsyncConfig_rsyncOptions_parallel_threads'] = `--threads=${envObject['rsyncConfig_rsyncOptions_parallel_threads'] || '1'}`;
+                        }
+                    } else {
+                        envObject[flagKey] = '';
+                        if (flag === 'parallel') {
+                            envObject['rsyncConfig_rsyncOptions_parallel_threads'] = '';
+                        }
+                    }
+                });
+
+                if (!envObject['rsyncConfig_target_info_host']) {
+                    envObject['rsyncConfig_target_info_host'] = '';
+                    envObject['rsyncConfig_target_info_port'] = '';
+                    envObject['rsyncConfig_target_info_user'] = '';
+                } else {
+                    envObject['rsyncConfig_target_info_host'] = `--host=${envObject['rsyncConfig_target_info_host']}`;
+                    envObject['rsyncConfig_target_info_port'] = `--port=${envObject['rsyncConfig_target_info_port']}`;
+                    envObject['rsyncConfig_target_info_user'] = `--user=${envObject['rsyncConfig_target_info_user']}`;
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] !== '0') {
+                    envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = `--bandwidth=${envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = '';
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_include_pattern'] && envObject['rsyncConfig_rsyncOptions_include_pattern'] !== "''") {
+                    envObject['rsyncConfig_rsyncOptions_include_pattern'] = `--include=${envObject['rsyncConfig_rsyncOptions_include_pattern']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_include_pattern'] = '';
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_exclude_pattern'] && envObject['rsyncConfig_rsyncOptions_exclude_pattern'] !== "''") {
+                    envObject['rsyncConfig_rsyncOptions_exclude_pattern'] = `--exclude=${envObject['rsyncConfig_rsyncOptions_exclude_pattern']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_exclude_pattern'] = '';
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_custom_args'] && envObject['rsyncConfig_rsyncOptions_custom_args'] !== "''") {
+                    envObject['rsyncConfig_rsyncOptions_custom_args'] = `--customArgs=${envObject['rsyncConfig_rsyncOptions_custom_args']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_custom_args'] = '';
+                }
+                break;
+            case 'SmartTest':
+                scriptFileName = 'smart-test-script';
+                break;
+            // case 'CloudSyncTask':
+            //     scriptFileName = 'cloudsync-script';
+            //     break;
+            default:
+                break;
+        }
+
+        const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
+
+        // Remove empty values from envObject
+        envObject = Object.fromEntries(Object.entries(envObject).filter(([key, value]) => value !== '' && value !== 0));
+
+        console.log('Filtered envObject:', envObject);
+
+        // Convert the parsed envObject back to envKeyValuesString
+        const envKeyValuesString = Object.entries(envObject).map(([key, value]) => `${key}=${value}`).join('\n');
+
+        // const envKeyValuesString = envKeyValues.join('\n')
+
+        // const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
+        // const templateServicePath = `/opt/45drives/houston/scheduler/templates/Service.service`;
         const templateTimerPath = `/opt/45drives/houston/scheduler/templates/Schedule.timer`;
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -146,7 +264,7 @@ export class Scheduler implements SchedulerType {
             //ignore schedule for now
             console.log('No schedules found, parameter file generated.');
             
-            await createStandaloneTask(templateServicePath, envFilePath);
+            await createStandaloneTask(templateName, scriptPath, envFilePath);
             
         } else {
             //generate json file with enabled boolean + intervals (Schedule Intervals)
@@ -167,7 +285,7 @@ export class Scheduler implements SchedulerType {
                 file2.close();
             });
 
-            await createTaskFiles(templateServicePath, envFilePath, templateTimerPath, jsonFilePath);
+            await createTaskFiles(templateName, scriptPath, envFilePath, templateTimerPath, jsonFilePath);
         }
     }   
     
@@ -180,8 +298,32 @@ export class Scheduler implements SchedulerType {
         const envKeyValuesString = envKeyValues.join('\n')
 
         const templateName = formatTemplateName(taskInstance.template.name);
+
+        let scriptFileName = '';
+
+        // Apply template-specific parsing logic
+        switch (templateName) {
+            case 'ZfsReplicationTask':
+                scriptFileName = 'replication-script';
+                break;
+            case 'AutomatedSnapshotTask':
+                scriptFileName = 'autosnap-script';
+                break;
+            case 'RsyncTask':
+                scriptFileName = 'rsync-script';
+                break;
+            case 'SmartTest':
+                scriptFileName = 'smart-test-script';
+                break;
+            // case 'CloudSyncTask':
+            //     scriptFileName = 'cloudsync-script';
+            //     break;
+            default:
+                break;
+        }
         
-        const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
+        const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
+        // const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
@@ -200,7 +342,7 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
-        await createStandaloneTask(templateServicePath, envFilePath);
+        await createStandaloneTask(templateName, scriptPath, envFilePath);
 
         // Reload the system daemon
         let command = ['sudo', 'systemctl', 'daemon-reload'];
