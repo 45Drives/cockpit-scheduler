@@ -1,5 +1,6 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-6'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
+    <Modal @close="closeModal" :isOpen="showScheduleWizard" :margin-top="'mt-6'" :width="'w-3/5'"
+        :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false">
         <template v-slot:title>
             Manage Schedule
         </template>
@@ -7,10 +8,14 @@
             <div name="new-schedule-interval" class="">
                 <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
 
-                    <div @click="clearSelectedInterval()"  name="schedule-input" class="border border-default rounded-md p-2 col-span-2 row-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
+                    <div @click="clearSelectedInterval()" name="schedule-input"
+                        class="border border-default rounded-md p-2 col-span-2 row-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
                         <div name="schedule-preset" class="col-span-1">
-                            <label for="schedule-preset-selection" class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
-                            <select @click.stop id="task-template-selection" v-model="selectedPreset" name="task-template-selection" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                            <label for="schedule-preset-selection"
+                                class="block text-sm font-medium leading-6 text-default">Interval Preset</label>
+                            <select @click.stop id="task-template-selection" v-model="selectedPreset"
+                                name="task-template-selection"
+                                class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                                 <option value="none">None</option>
                                 <option value="minutely">Minutely</option>
                                 <option value="hourly">Hourly</option>
@@ -26,41 +31,33 @@
                                 <div class="flex flex-row justify-between items-center">
                                     <div class="flex flex-row justify-between items-center">
                                         <label class="block text-sm leading-6 text-default">Hour</label>
-                                        <InfoTile class="ml-1" title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Hyphen to specify a range of values." />
+                                        <InfoTile class="ml-1"
+                                            title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Hyphen to specify a range of values." />
                                     </div>
-                                    <ExclamationCircleIcon v-if="hourErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                    <ExclamationCircleIcon v-if="hourErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                 </div>
-                                <input
-                                    @click.stop
-                                    v-model="newInterval.hour!.value"
-                                    type="text"
-                                    placeholder="(0-23)"
+                                <input @click.stop v-model="newInterval.hour!.value" type="text" placeholder="(0-23)"
                                     :class="[
                                     'my-1 block w-full text-default input-textlike bg-default',
                                     hourErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                     ]"
-                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"
-                                />
+                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)" />
                             </div>
                             <div name="minute">
                                 <div class="flex flex-row justify-between items-center">
                                     <div class="flex flex-row justify-between items-center">
                                         <label class="block text-sm leading-6 text-default">Minute</label>
-                                        <InfoTile class="ml-1" title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Hyphen to specify a range of values." />
+                                        <InfoTile class="ml-1"
+                                            title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Hyphen to specify a range of values." />
                                     </div>
-                                    <ExclamationCircleIcon v-if="minuteErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                    <ExclamationCircleIcon v-if="minuteErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                 </div>
-                                <input
-                                    @click.stop
-                                    v-model="newInterval.minute!.value"
-                                    type="text"
-                                    placeholder="(0-59)"
+                                <input @click.stop v-model="newInterval.minute!.value" type="text" placeholder="(0-59)"
                                     :class="[
                                     'my-1 block w-full text-default input-textlike bg-default',
                                     minuteErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                     ]"
-                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)"
-                                />
+                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)" />
                             </div>
 
                             <div name="date-data" class="col-span-2 grid grid-cols-3 gap-2">
@@ -68,75 +65,67 @@
                                     <div class="flex flex-row justify-between items-center">
                                         <div class="flex flex-row justify-between items-center">
                                             <label class="block text-sm leading-6 text-default">Day</label>
-                                            <InfoTile class="ml-1" title="Use * for Every Value, X/N for Every Nth Value starting on Day X, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
+                                            <InfoTile class="ml-1"
+                                                title="Use * for Every Value, X/N for Every Nth Value starting on Day X, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
                                         </div>
-                                        <ExclamationCircleIcon v-if="dayErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                        <ExclamationCircleIcon v-if="dayErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                     </div>
-                                    <input
-                                        @click.stop
-                                        v-model="newInterval.day!.value"
-                                        type="text"
-                                        placeholder="(1-31)"
+                                    <input @click.stop v-model="newInterval.day!.value" type="text" placeholder="(1-31)"
                                         :class="[
                                         'my-1 block w-full text-default input-textlike bg-default',
                                         dayErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                         ]"
-                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"
-                                    />
+                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)" />
                                 </div>
                                 <div name="month">
                                     <div class="flex flex-row justify-between items-center">
                                         <div class="flex flex-row justify-between items-center">
                                             <label class="block text-sm leading-6 text-default">Month</label>
-                                            <InfoTile class="ml-1" title="Use * for Every Value, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
+                                            <InfoTile class="ml-1"
+                                                title="Use * for Every Value, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
                                         </div>
-                                        <ExclamationCircleIcon v-if="monthErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                        <ExclamationCircleIcon v-if="monthErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                     </div>
-                                    <input
-                                        @click.stop
-                                        v-model="newInterval.month!.value"
-                                        type="text"
-                                        placeholder="(1-12)"
-                                        :class="[
+                                    <input @click.stop v-model="newInterval.month!.value" type="text"
+                                        placeholder="(1-12)" :class="[
                                         'my-1 block w-full text-default input-textlike bg-default',
                                         monthErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                         ]"
-                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"
-                                    />
+                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)" />
                                 </div>
                                 <div name="year">
                                     <div class="flex flex-row justify-between items-center">
                                         <div class="flex flex-row justify-between items-center">
                                             <label class="block text-sm leading-6 text-default">Year</label>
-                                            <InfoTile class="ml-1" title="Use * for Every Value, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
+                                            <InfoTile class="ml-1"
+                                                title="Use * for Every Value, Commas to specify separate values, Two periods to specify a range of values (2..8)." />
                                         </div>
-                                        <ExclamationCircleIcon v-if="yearErrorTag" class="mt-1 w-5 h-5 text-danger"/>
+                                        <ExclamationCircleIcon v-if="yearErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                     </div>
-                                    <input
-                                        @click.stop
-                                        v-model="newInterval.year!.value"
-                                        type="text"
-                                        placeholder="(YYYY)"
-                                        :class="[
+                                    <input @click.stop v-model="newInterval.year!.value" type="text"
+                                        placeholder="(YYYY)" :class="[
                                         'my-1 block w-full text-default input-textlike bg-default',
                                         yearErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                         ]"
-                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)"
-                                    />
+                                        title="Use asterisk (*) for all values, double-periods (..) for ranges (eg. 2..7), and commas for lists (eg. 2,4,7)" />
                                 </div>
                             </div>
-                           
+
                             <div name="dayOfWeek" class="col-span-2">
                                 <label class="block text-sm leading-6 text-default">Day of Week</label>
                                 <table class="w-full">
                                     <tr class="grid grid-cols-7">
                                         <td v-for="day in daysOfWeek" class="px-0.5 col-span-1">
-                                            <button @click.stop class="flex items-center w-full h-full border border-default rounded-lg bg-default"
-                                            :class="daySelectedClass(day)">
-                                                <label :for="`${day}`" class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5 bg-default rounded-lg" :class="daySelectedClass(day)">
+                                            <button @click.stop
+                                                class="flex items-center w-full h-full border border-default rounded-lg bg-default"
+                                                :class="daySelectedClass(day)">
+                                                <label :for="`${day}`"
+                                                    class="flex flex-col items-center whitespace-nowrap w-full p-1 px-1 text-sm gap-0.5 bg-default rounded-lg"
+                                                    :class="daySelectedClass(day)">
                                                     <p class="w-full mt-0.5 text-sm text-default">{{ day }}</p>
-                                                    <input @click.stop :id="`${day}`" v-model="newInterval.dayOfWeek" type="checkbox" :value="`${day}`" :name="`${day}`" 
-                                                    class="mb-0.5 w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"/>	
+                                                    <input @click.stop :id="`${day}`" v-model="newInterval.dayOfWeek"
+                                                        type="checkbox" :value="`${day}`" :name="`${day}`"
+                                                        class="mb-0.5 w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2" />
                                                 </label>
                                             </button>
                                             <!-- <input v-if="newInterval.dayOfWeek!.includes(day)" type="number" v-model="newInterval.dayOfWeekSteps[day]" min="1" placeholder="Step (optional)" class="text-sm"/> -->
@@ -145,76 +134,107 @@
                                 </table>
                             </div>
                             <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
-                                <button name="clearFields" @click.stop="clearFields()" class="btn btn-danger h-min">Clear Interval</button>
-                                <button v-if="selectedIndex !== undefined" name="updateInterval" @click.stop="saveInterval(newInterval)" class="btn btn-secondary h-min">Update Interval</button>
-                                <button v-else name="saveInterval" @click.stop="saveInterval(newInterval)" class="btn btn-secondary h-min">Save Interval</button>
+                                <button name="clearFields" @click.stop="clearFields()"
+                                    class="btn btn-danger h-min">Clear Interval</button>
+                                <button v-if="selectedIndex !== undefined" name="updateInterval"
+                                    @click.stop="saveInterval(newInterval)" class="btn btn-secondary h-min">Update
+                                    Interval</button>
+                                <button v-else name="saveInterval" @click.stop="saveInterval(newInterval)"
+                                    class="btn btn-secondary h-min">Save Interval</button>
                             </div>
                         </div>
                     </div>
 
-                    <div @click="clearSelectedInterval()" name="schedule-preview" class="col-start-1 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
+                    <div @click="clearSelectedInterval()" name="schedule-preview"
+                        class="col-start-1 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
                         <label class="block text-sm font-medium leading-6 text-default">Interval Preview</label>
                         <div class="mt-1">
                             <CalendarComponent :key="calendarKey" :interval="newInterval!" />
                         </div>
                     </div>
 
-                    <div name="schedule-interval-list"  @click="clearSelectedInterval()" class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
+                    <div name="schedule-interval-list" @click="clearSelectedInterval()"
+                        class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
                         <div @click="clearSelectedInterval()">
                             <div class="flex flex-row justify-between">
-                                <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current Intervals</label>
+                                <label
+                                    class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current
+                                    Intervals</label>
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
-                                <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"  :class="intervalSelectedClass(idx)">
-                                    <button class="h-full w-full rounded-lg p-2 px-2 text-left" @click.stop="selectionMethod(interval, idx)" :class="intervalSelectedClass(idx)">
+                                <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"
+                                    :class="intervalSelectedClass(idx)">
+                                    <button class="h-full w-full rounded-lg p-2 px-2 text-left"
+                                        @click.stop="selectionMethod(interval, idx)"
+                                        :class="intervalSelectedClass(idx)">
                                         <div class="flex flex-col w-full grow">
-                                            <span v-if="selectedIndex !== undefined && selectedIndex == idx" class="flex flex-row grow w-full justify-center text-center text-xs text-semibold italic text-default">EDITING INTERVAL:</span>
+                                            <span v-if="selectedIndex !== undefined && selectedIndex == idx"
+                                                class="flex flex-row grow w-full justify-center text-center text-xs text-semibold italic text-default">EDITING
+                                                INTERVAL:</span>
                                             <p>{{ myScheduler.parseIntervalIntoString(interval) }}</p>
                                         </div>
                                     </button>
                                 </li>
                             </ul>
                             <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
-                                <button name="remove-interval" @click.stop="removeSelectedInterval(selectedIndex)" class="btn btn-danger h-min w-full">Remove Interval</button>
+                                <button name="remove-interval" @click.stop="removeSelectedInterval(selectedIndex)"
+                                    class="btn btn-danger h-min w-full">Remove Interval</button>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div> 
- 
+            </div>
+
         </template>
         <template v-slot:footer>
             <div class="w-full">
-				<div class="button-group-row w-full justify-between">
+                <div class="button-group-row w-full justify-between">
                     <div class="button-group-row">
-                        <button @click.stop="closeBtn()" id="close-add-schedule-btn" name="close-add-schedule-btn" class="btn btn-danger h-fit w-full">Close</button>
+                        <button @click.stop="closeBtn()" id="close-add-schedule-btn" name="close-add-schedule-btn"
+                            class="btn btn-danger h-fit w-full">Close</button>
                     </div>
                     <div class="button-group-row">
-                        <button disabled v-if="savingSchedule" id="adding-schedule-btn" type="button" class="btn btn-primary h-fit w-full">
-                            <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
-                                <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="text-success"/>
+                        <button disabled v-if="savingSchedule && hasIntervals" id="adding-schedule-btn" type="button"
+                            class="btn btn-primary h-fit w-full">
+                            <svg aria-hidden="true" role="status"
+                                class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
+                                viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+                                    fill="currentColor" />
+                                <path
+                                    d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+                                    fill="text-success" />
                             </svg>
                             Saving Schedule...
                         </button>
-                        <button v-else id="add-schedule-btn" type="button" class="btn btn-primary h-fit w-full" @click="saveScheduleBtn()">Save Schedule</button>                      
+                        <button disabled v-if="!savingSchedule && !hasIntervals" id="add-schedule-btn" type="button" class="btn btn-primary h-fit w-full"
+                            @click="saveScheduleBtn()">Save Schedule</button>
+                        <button v-if="!savingSchedule && hasIntervals" id="add-schedule-btn" type="button" class="btn btn-primary h-fit w-full"
+                            @click="saveScheduleBtn()">Save Schedule</button>
                     </div>
-				</div>
-			</div>
+                </div>
+            </div>
         </template>
     </Modal>
 
     <div v-if="showSaveConfirmation">
-        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation" :title="'Save Schedule'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask" :confirmNo="cancelScheduleTask" :operation="'saving'" :operating="savingSchedule"/>
+        <component :is="confirmationComponent" @close="updateShowSaveConfirmation" :showFlag="showSaveConfirmation"
+            :title="'Save Schedule'" :message="'Schedule this task?'" :confirmYes="confirmScheduleTask"
+            :confirmNo="cancelScheduleTask" :operation="'saving'" :operating="savingSchedule" />
     </div>
 
     <div v-if="showCloseConfirmation">
-        <component :is="closeConfirmationComponent" @close="updateShowCloseConfirmation" :showFlag="showCloseConfirmation" :title="props.mode == 'new' ? 'Cancel Add Task' : 'Cancel Edit Schedule'" :message="props.mode == 'new' ? 'Are you sure? This task configuration will be lost.' : 'Are you sure? Any changes will be lost.'" :confirmYes="confirmCancel" :confirmNo="cancelCancel" :operation="'canceling'" :operating="cancelingAddTask"/>
+        <component :is="closeConfirmationComponent" @close="updateShowCloseConfirmation"
+            :showFlag="showCloseConfirmation" :title="props.mode == 'new' ? 'Cancel Add Task' : 'Cancel Edit Schedule'"
+            :message="props.mode == 'new' ? 'Are you sure? This task configuration will be lost.' : 'Are you sure? Any changes will be lost.'"
+            :confirmYes="confirmCancel" :confirmNo="cancelCancel" :operation="'canceling'"
+            :operating="cancelingAddTask" />
     </div>
-    
+
 </template>
 <script setup lang="ts">
-import { inject, reactive, ref, Ref, watch, onMounted } from 'vue';
+import { inject, reactive, ref, Ref, watch, onMounted, computed } from 'vue';
 import Modal from '../common/Modal.vue';
 import CalendarComponent from '../common/CalendarComponent.vue';
 import InfoTile from '../common/InfoTile.vue';
@@ -253,6 +273,10 @@ const closeModal = () => {
 function hasScheduleChanges() {
     return JSON.stringify(localIntervals.value) !== JSON.stringify(initialScheduleIntervals.value);
 }
+
+const hasIntervals = computed(() => {
+    return localIntervals.value.length > 0 ? true : false;
+});
 
 const cancelingAddTask = ref(false);
 const showCloseConfirmation = ref(false);

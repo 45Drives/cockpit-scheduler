@@ -220,7 +220,7 @@ def create_task(template_name, script_path, param_env_path):
     service_file_name = f'houston_scheduler_{task_instance_name}.service'
     output_path_service = f'/etc/systemd/system/{service_file_name}'
     
-    service_template_content = read_template_file('/opt/45drives/houston/scheduler/templates/ServiceTemplate.service')
+    service_template_content = read_template_file('/opt/45drives/houston/scheduler/templates/Task.service')
     parameters = parse_env_file(param_env_path)
     exec_start_command = generate_exec_start(template_name, parameters, script_path)
     service_template_content = service_template_content.replace("{task_name}", task_instance_name)

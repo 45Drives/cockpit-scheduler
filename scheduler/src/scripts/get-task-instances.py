@@ -103,7 +103,7 @@ def create_task_instances(system_dir, valid_files):
     return json.dumps([instance.__dict__ for instance in task_instances], indent=4)
 
 def main():
-    template_dir = '/opt/45drives/houston/scheduler/templates/'
+    template_dir = '/opt/45drives/houston/scheduler/templates/task-templates'
     system_dir = '/etc/systemd/system/'
 
     # Store basenames of .service files in a dict from the templates directory
