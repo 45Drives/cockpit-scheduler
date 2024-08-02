@@ -22,7 +22,6 @@ export class ParameterNode implements ParameterNodeType {
             .flat()
             .map(kv => `${this.key}_${kv}`); // prefix key with parent key and _
     }
-
 }
 
 export class StringParameter extends ParameterNode implements StringParameterType {
@@ -203,5 +202,30 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
         const path = (this.children[6] as SelectionParameter).value;
 
         return { host, port, user, root, path };
+    }
+}
+
+export class ObjectParameter extends ParameterNode {
+    constructor(label: string, key: string, obj: { [key: string]: any }) {
+        super(label, key);
+        Object.entries(obj).forEach(([childKey, value]) => {
+            let childParam;
+            if (typeof value === 'string') {
+                childParam = new StringParameter(childKey, childKey, value);
+            } else if (typeof value === 'number') {
+                childParam = new IntParameter(childKey, childKey, value);
+            } else if (typeof value === 'boolean') {
+                childParam = new BoolParameter(childKey, childKey, value);
+            } else if (typeof value === 'object' && value !== null) {
+                childParam = new ObjectParameter(childKey, childKey, value);
+            } else {
+                throw new Error(`Unsupported parameter type for key: ${childKey}`);
+            }
+            this.addChild(childParam);
+        });
+    }
+
+    asEnvKeyValues(): string[] {
+        return super.asEnvKeyValues();
     }
 }

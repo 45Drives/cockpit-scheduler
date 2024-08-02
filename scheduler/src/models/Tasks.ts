@@ -165,3 +165,18 @@ export class SmartTestTemplate extends TaskTemplate {
         return TaskInstance;
     }
 }
+
+export class CloudSyncTemplate extends TaskTemplate {
+    constructor() {
+        const name = "Cloud Sync Task";
+        const parameterSchema = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
+        // .addChild(new ())
+
+        super(name, parameterSchema);
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CloudSyncTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
+}
