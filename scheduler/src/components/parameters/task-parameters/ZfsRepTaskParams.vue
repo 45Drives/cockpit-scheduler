@@ -738,7 +738,7 @@ function validateParams() {
 function setParams() {
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
-        .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', destPool.value, destDataset.value))
+        .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', destHost.value, destPort.value, destUser.value, destPool.value, destDataset.value))
         .addChild(new ParameterNode('Send Options', 'sendOptions')
             .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
             .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
