@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-2
+- Adds mbuffer as a dependency
 * Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-1
 - Major update, may require tasks to be destroyed + remade. Changes how task files
   are generated + read by system. Fixes major bug with SSH data not saving properly

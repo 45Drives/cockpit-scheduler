@@ -248,7 +248,7 @@
                 <div name="send-opt-mbuffer" class="col-span-1">
                     <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
                     <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
-                    <input v-else type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
+                    <input v-else type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
                 </div>
                   <div name="send-opt-mbuffer" class="col-span-1">
                     <div name="send-opt-mbuffer-unit">
