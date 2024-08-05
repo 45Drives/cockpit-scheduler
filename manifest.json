@@ -3,7 +3,7 @@
     "name": "cockpit-scheduler",
     "title": "task scheduler",
     "prerelease": true,
-    "version": "1.1.0",
+    "version": "1.2.0",
     "buildVersion": "1",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/cockpit-scheduler",
@@ -55,13 +55,11 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "buildVersion": "1",
         "ignore": [],
-        "date": "2024-08-02T15:27:03.043096",
+        "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
-        "changes": [
-            "Major update, may require tasks to be destroyed + remade. Changes how task files are generated + read by system. Fixes major bug with SSH data not saving properly for ZFS Replication Tasks, also lays groundwork for CloudSync authentication to come in next update. Numerous other QoL updates and small bugfixes."
-        ]
+        "changes": []
     }
 }

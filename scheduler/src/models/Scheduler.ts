@@ -297,6 +297,13 @@ export class Scheduler implements SchedulerType {
 
         const envKeyValuesString = envKeyValues.join('\n')
 
+        // Convert envKeyValues to an object for easier manipulation
+        let envObject = envKeyValues.reduce((acc, curr) => {
+            const [key, value] = curr.split('=');
+            acc[key] = value;
+            return acc;
+        }, {});
+
         const templateName = formatTemplateName(taskInstance.template.name);
 
         let scriptFileName = '';
@@ -305,12 +312,88 @@ export class Scheduler implements SchedulerType {
         switch (templateName) {
             case 'ZfsReplicationTask':
                 scriptFileName = 'replication-script';
+                if (envObject['zfsRepConfig_sendOptions_raw_flag'] === 'true') {
+                    envObject['zfsRepConfig_sendOptions_compressed_flag'] = '';
+                } else if (envObject['zfsRepConfig_sendOptions_compressed_flag'] === 'true') {
+                    envObject['zfsRepConfig_sendOptions_raw_flag'] = '';
+                }
+
+                ['recursive', 'customName', 'raw', 'compressed'].forEach(flag => {
+                    const flagKey = `zfsRepConfig_sendOptions_${flag}_flag`;
+                    if (envObject[flagKey] === 'true') {
+                        envObject[flagKey] = `--${flag}`;
+                    } else {
+                        envObject[flagKey] = '';
+                        if (flag === 'customName') {
+                            envObject['zfsRepConfig_sendOptions_customName'] = '';
+                        }
+                    }
+                });
                 break;
             case 'AutomatedSnapshotTask':
                 scriptFileName = 'autosnap-script';
+                ['recursive', 'customName'].forEach(flag => {
+                    const flagKey = `autoSnapConfig_${flag}_flag`;
+                    if (envObject[flagKey] === 'true') {
+                        envObject[flagKey] = `--${flag}`;
+                    } else {
+                        envObject[flagKey] = '';
+                        if (flag === 'customName') {
+                            envObject['autoSnapConfig_customName'] = '';
+                        }
+                    }
+                });
                 break;
             case 'RsyncTask':
                 scriptFileName = 'rsync-script';
+                ['archive', 'recursive', 'compressed', 'delete', 'quiet', 'times', 'hardLinks', 'permissions', 'xattr', 'parallel'].forEach(flag => {
+                    const flagKey = `rsyncConfig_rsyncOptions_${flag}_flag`;
+                    if (envObject[flagKey] === 'true') {
+                        envObject[flagKey] = `--${flag}`;
+                        if (flag === 'parallel') {
+                            envObject['rsyncConfig_rsyncOptions_parallel_threads'] = `--threads=${envObject['rsyncConfig_rsyncOptions_parallel_threads'] || '1'}`;
+                        }
+                    } else {
+                        envObject[flagKey] = '';
+                        if (flag === 'parallel') {
+                            envObject['rsyncConfig_rsyncOptions_parallel_threads'] = '';
+                        }
+                    }
+                });
+
+                if (!envObject['rsyncConfig_target_info_host']) {
+                    envObject['rsyncConfig_target_info_host'] = '';
+                    envObject['rsyncConfig_target_info_port'] = '';
+                    envObject['rsyncConfig_target_info_user'] = '';
+                } else {
+                    envObject['rsyncConfig_target_info_host'] = `--host=${envObject['rsyncConfig_target_info_host']}`;
+                    envObject['rsyncConfig_target_info_port'] = `--port=${envObject['rsyncConfig_target_info_port']}`;
+                    envObject['rsyncConfig_target_info_user'] = `--user=${envObject['rsyncConfig_target_info_user']}`;
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] !== '0') {
+                    envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = `--bandwidth=${envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = '';
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_include_pattern'] && envObject['rsyncConfig_rsyncOptions_include_pattern'] !== "''") {
+                    envObject['rsyncConfig_rsyncOptions_include_pattern'] = `--include=${envObject['rsyncConfig_rsyncOptions_include_pattern']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_include_pattern'] = '';
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_exclude_pattern'] && envObject['rsyncConfig_rsyncOptions_exclude_pattern'] !== "''") {
+                    envObject['rsyncConfig_rsyncOptions_exclude_pattern'] = `--exclude=${envObject['rsyncConfig_rsyncOptions_exclude_pattern']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_exclude_pattern'] = '';
+                }
+
+                if (envObject['rsyncConfig_rsyncOptions_custom_args'] && envObject['rsyncConfig_rsyncOptions_custom_args'] !== "''") {
+                    envObject['rsyncConfig_rsyncOptions_custom_args'] = `--customArgs=${envObject['rsyncConfig_rsyncOptions_custom_args']}`;
+                } else {
+                    envObject['rsyncConfig_rsyncOptions_custom_args'] = '';
+                }
                 break;
             case 'SmartTest':
                 scriptFileName = 'smart-test-script';
@@ -321,6 +404,7 @@ export class Scheduler implements SchedulerType {
             default:
                 break;
         }
+
         
         const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
         // const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
