@@ -1,3 +1,3 @@
-## task scheduler 1.1.0-1
+## task scheduler 1.2.0-3
 
-* Updating Release Version
+* Fixing issue with edit task data not storing

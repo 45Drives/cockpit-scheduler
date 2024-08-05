@@ -128,19 +128,19 @@
                 </div>
                 <div v-if="useCustomTarget">
                     <div class="flex flex-row justify-between items-center w-full flex-grow">
-                    <input
-                        type="text"
-                        v-model="destDataset"
-                        :class="[
-                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
-                        customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]"
-                        placeholder="Specify Target Dataset"
-                    />
-                    <div class="m-1 flex flex-col items-center text-center flex-shrink">
-                        <label class="block text-xs text-default">Create</label>
-                        <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
-                    </div>
+                        <input
+                            type="text"
+                            v-model="destDataset"
+                            :class="[
+                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                            customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                            ]"
+                            placeholder="Specify Target Dataset"
+                        />
+                        <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
+                            <label class="block text-xs text-default">Create</label>
+                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                        </div>
                     </div>
                 </div>
                 <div v-else>
@@ -248,7 +248,7 @@
                 <div name="send-opt-mbuffer" class="col-span-1">
                     <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
                     <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
-                    <input v-else type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
+                    <input v-else type="number" v-model="mbufferSize" min="1" class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1"/>
                 </div>
                   <div name="send-opt-mbuffer" class="col-span-1">
                     <div name="send-opt-mbuffer-unit">
@@ -738,7 +738,7 @@ function validateParams() {
 function setParams() {
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
-        .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', destPool.value, destDataset.value))
+        .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', destHost.value, destPort.value, destUser.value, destPool.value, destDataset.value))
         .addChild(new ParameterNode('Send Options', 'sendOptions')
             .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
             .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
