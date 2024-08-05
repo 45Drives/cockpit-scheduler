@@ -295,8 +295,6 @@ export class Scheduler implements SchedulerType {
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         console.log('envKeyVals:', envKeyValues);
 
-        const envKeyValuesString = envKeyValues.join('\n')
-
         // Convert envKeyValues to an object for easier manipulation
         let envObject = envKeyValues.reduce((acc, curr) => {
             const [key, value] = curr.split('=');
@@ -405,9 +403,16 @@ export class Scheduler implements SchedulerType {
                 break;
         }
 
-        
         const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
         // const templateServicePath = `/opt/45drives/houston/scheduler/templates/${templateName}.service`;
+
+        // Remove empty values from envObject
+        envObject = Object.fromEntries(Object.entries(envObject).filter(([key, value]) => value !== '' && value !== 0));
+
+        console.log('Filtered envObject:', envObject);
+
+        // Convert the parsed envObject back to envKeyValuesString
+        const envKeyValuesString = Object.entries(envObject).map(([key, value]) => `${key}=${value}`).join('\n');
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
