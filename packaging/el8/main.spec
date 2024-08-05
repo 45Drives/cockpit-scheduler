@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-3
+- Fixing issue with edit task data not storing
 * Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-2
 - Adds mbuffer as a dependency
 * Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-1

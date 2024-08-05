@@ -1,3 +1,3 @@
-## task scheduler 1.2.0-2
+## task scheduler 1.2.0-3
 
-* Adds mbuffer as a dependency
+* Fixing issue with edit task data not storing

@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.0-3focal) focal; urgency=medium
+
+  * Fixing issue with edit task data not storing
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 05 Aug 2024 10:06:06 -0300
+
 cockpit-scheduler (1.2.0-2focal) focal; urgency=medium
 
   * Adds mbuffer as a dependency
