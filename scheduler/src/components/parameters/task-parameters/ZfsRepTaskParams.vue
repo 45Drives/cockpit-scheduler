@@ -128,19 +128,19 @@
                 </div>
                 <div v-if="useCustomTarget">
                     <div class="flex flex-row justify-between items-center w-full flex-grow">
-                    <input
-                        type="text"
-                        v-model="destDataset"
-                        :class="[
-                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
-                        customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]"
-                        placeholder="Specify Target Dataset"
-                    />
-                    <div class="m-1 flex flex-col items-center text-center flex-shrink">
-                        <label class="block text-xs text-default">Create</label>
-                        <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
-                    </div>
+                        <input
+                            type="text"
+                            v-model="destDataset"
+                            :class="[
+                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                            customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                            ]"
+                            placeholder="Specify Target Dataset"
+                        />
+                        <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
+                            <label class="block text-xs text-default">Create</label>
+                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                        </div>
                     </div>
                 </div>
                 <div v-else>
