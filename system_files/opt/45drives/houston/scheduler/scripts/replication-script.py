@@ -1,7 +1,7 @@
 import subprocess
-import argparse
 import sys
 import datetime
+import os
 
 class Snapshot:
 	def __init__(self, name, guid, creation):
@@ -27,11 +27,11 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
 	print(f"new snapshot created: {new_snap}")
 	return new_snap
 
-def prune_snapshots(filesystem, max_retain_count, sshUser="", sshHost="", sshPort=""):
+def prune_snapshots(filesystem, max_retain_count, remoteUser="", remoteHost="", remotePort=""):
 	snapshots = []
  
-	if sshHost:
-		snapshots = get_remote_snapshots(sshUser, sshHost, sshPort, filesystem)
+	if remoteHost:
+		snapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, filesystem)
 	else:
 		snapshots = get_local_snapshots(filesystem)
 
@@ -83,7 +83,7 @@ def get_remote_snapshots(user, host, port, filesystem):
 
 	ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 
-	# print(f"SSH Command: {' '.join(ssh_cmd)}")  # Debug output
+	# print(f"remote Command: {' '.join(ssh_cmd)}")  # Debug output
  
 	try:
 		output = subprocess.check_output(ssh_cmd)
@@ -171,7 +171,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
     
 			print(f"received local send")
 
-		# If sending remotely via SSH
+		# If sending remotely via ssh
 		if recvHost != "" and recvHost is not None:
 
 			m_buff_cmd = ['mbuffer', '-s', '256k']
@@ -200,10 +200,10 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			ssh_cmd.append(recvName)
 
-			# print(f"SSH_CMD: {ssh_cmd}")	
+			# print(f"ssh_cmd: {ssh_cmd}")	
 			print(f"receiving {sendName} in {recvName} via {recvHostUser}@{recvHost}:{recvPort}")
 
-			process_ssh_recv = subprocess.Popen(
+			process_remote_recv = subprocess.Popen(
 				ssh_cmd,
 				stdin=process_m_buff.stdout,
 				stdout=subprocess.PIPE,
@@ -211,10 +211,10 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 				universal_newlines=True,
 			)
 
-			stdout, stderr = process_ssh_recv.communicate()
+			stdout, stderr = process_remote_recv.communicate()
 
-			if process_ssh_recv.returncode != 0:
-				print(f"SSH recv error: {stderr}")
+			if process_remote_recv.returncode != 0:
+				print(f"remote recv error: {stderr}")
 				sys.exit(1)
 			else:
 				print(stdout)
@@ -228,39 +228,20 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 
 def main():
-	parser = argparse.ArgumentParser(description='ZFS Replication Script')
-	parser.add_argument('filesystem', type=str, help='source filesystem to snapshot')
-	parser.add_argument('-R', '--recursive', action='store_true', help='recursively snap all child datasets')
-	parser.add_argument('-cn', '--customName', type=str, nargs='?', default=None, help='custom name for snapshot')
-	compression_options = parser.add_mutually_exclusive_group()
-	compression_options.add_argument('-r', '--raw', action='store_true', help='send raw')
-	compression_options.add_argument('-c', '--compressed', action='store_true', help='send compressed')
-	parser.add_argument('--root', type=str, help='root of send destination')
-	parser.add_argument('--path', type=str, help='path of send destination')
-	parser.add_argument('--user', type=str, nargs='?', default='root', help='user of ssh connection (root)')
-	parser.add_argument('--host', type=str, nargs='?', default='', help='hostname or ip of ssh connection')
-	parser.add_argument('--port', type=str, default='22', help='port to connect via ssh (22)')
-	parser.add_argument('--mbuffsize', type=str, default='1', help='size value of mbuffer')
-	parser.add_argument('--mbuffunit', type=str, default='G', help='unit to use for mbuffer size')
-	parser.add_argument('--snapsToKeepSrc', type=str, default='0', help='snaps to keep on source')
-	parser.add_argument('--snapsToKeepDest', type=str, default='0', help='snaps to keep on destination')
-
-	args = parser.parse_args()
- 
-	sourceFilesystem = args.filesystem
-	isRecursiveSnap = args.recursive
-	customName = args.customName
-	isRaw = args.raw
-	isCompressed = args.compressed
-	destinationRoot = args.root
-	destinationPath = args.path
-	sshUser = args.user
-	sshHost = args.host
-	sshPort = args.port
-	mBufferSize = args.mbuffsize
-	mBufferUnit = args.mbuffunit
-	snapsToKeepSrc = args.snapsToKeepSrc
-	snapsToKeepDest = args.snapsToKeepDest
+	sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
+	isRecursiveSnap = os.environ.get('zfsRepConfig_sendOptions_recursive_flag', False)
+	customName = os.environ.get('zfsRepConfig_sendOptions_customName', '')
+	isRaw = os.environ.get('zfsRepConfig_sendOptions_raw_flag', False)
+	isCompressed = os.environ.get('zfsRepConfig_sendOptions_compressed_flag', False)
+	destinationRoot = os.environ.get('zfsRepConfig_destDataset_pool', '')
+	destinationPath = os.environ.get('zfsRepConfig_destDataset_dataset', '')
+	remoteUser = os.environ.get('zfsRepConfig_destDataset_user', 'root')
+	remoteHost = os.environ.get('zfsRepConfig_destDataset_host', '')
+	remotePort = os.environ.get('zfsRepConfig_destDataset_port', 22)
+	mBufferSize = os.environ.get('zfsRepConfig_sendOptions_mbufferSize', 1)
+	mBufferUnit = os.environ.get('zfsRepConfig_sendOptions_mbufferUnit', 'G')
+	snapsToKeepSrc = os.environ.get('zfsRepConfig_snapRetention_source', '')
+	snapsToKeepDest = os.environ.get('zfsRepConfig_snapRetention_destination', '')
 
 	forceOverwrite = False
 	
@@ -273,8 +254,8 @@ def main():
 
 	incrementalSnapName = ""
   
-	if sshHost:
-		destinationSnapshots = get_remote_snapshots(sshUser, sshHost, sshPort, receivingFilesystem)
+	if remoteHost:
+		destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem)
 	else:
 		destinationSnapshots = get_local_snapshots(receivingFilesystem)
 
@@ -308,9 +289,9 @@ def main():
 
   
 	newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
-	# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nsshHost:{sshHost}\nsshPort:{sshPort}\nsshUser:{sshUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
-	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, sshHost, sshPort, sshUser, mBufferSize, mBufferUnit, forceOverwrite)
+	# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nremoteHost:{remoteHost}\nremotePort:{remotePort}\nremoteUser:{remoteUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
+	send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, remoteHost, remotePort, remoteUser, mBufferSize, mBufferUnit, forceOverwrite)
 	prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
-	prune_snapshots(receivingFilesystem, snapsToKeepDest, sshUser, sshHost, sshPort)
+	prune_snapshots(receivingFilesystem, snapsToKeepDest, remoteUser, remoteHost, remotePort)
 if __name__ == "__main__":
 	main()

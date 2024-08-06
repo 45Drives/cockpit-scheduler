@@ -1,6 +1,6 @@
 import subprocess
-import argparse
 import sys
+import os
 
 def run_smartctl_test(diskPathList, testType):
 	valid_test_types = ['offline', 'short', 'long', 'conveyance']
@@ -27,14 +27,8 @@ def run_smartctl_test(diskPathList, testType):
 			print(f"An error occurred while starting {testType} test on {diskPath}: {e}")
 
 def main():
-	parser = argparse.ArgumentParser(description='SMART Test Script')
-	parser.add_argument('--disks', type=str, help='comma delimited string of the disk(s) path(s)')
-	parser.add_argument('--type', type=str, help='type of S.M.A.R.T. test to perform on disk(s)')
-
-	args = parser.parse_args()
- 
-	diskPathList = args.disks
-	testType = args.type
+	diskPathList = os.environ.get('smartTestConfig_disks', '')
+	testType = os.environ.get('smartTestConfig_testType', 'short')
  
 	run_smartctl_test(diskPathList, testType)
 
