@@ -1,7 +1,7 @@
 import subprocess
-import argparse
 import sys
 import datetime
+import os
 
 class Snapshot:
 	def __init__(self, name, guid, creation):
@@ -71,18 +71,10 @@ def prune_snapshots(filesystem, max_retain_count):
 
 
 def main():
-	parser = argparse.ArgumentParser(description='ZFS Replication Script')
-	parser.add_argument('filesystem', type=str, help='source filesystem to snapshot')
-	parser.add_argument('-R', '--recursive', action='store_true', help='recursively snap all child datasets')
-	parser.add_argument('-cn', '--customName', type=str, nargs='?', default=None, help='custom name for snapshot')
-	parser.add_argument('--snapsToKeep', type=str, default='0', help='snaps to keep')
-
-	args = parser.parse_args()
- 
-	filesystem = args.filesystem
-	isRecursiveSnap = args.recursive
-	customName = args.customName
-	snapsToKeep = args.snapsToKeep
+	filesystem = os.environ.get('autoSnapConfig_filesystem_dataset', '')
+	isRecursiveSnap = os.environ.get('autoSnapConfig_recursive_flag', False)
+	customName = os.environ.get('autoSnapConfig_customName', '')
+	snapsToKeep = os.environ.get('autoSnapConfig_snapRetention', '')
 
 	create_snapshot(filesystem, isRecursiveSnap, customName)
 	prune_snapshots(filesystem, snapsToKeep)

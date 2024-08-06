@@ -3,6 +3,10 @@ import re
 import json
 import subprocess
 
+currentTaskTemplates = ['ZfsReplicationTask', 'AutomatedSnapshotTask', 'ScrubTask', 'RsyncTask', 'SmartTest']
+# , 'CloudSyncTask'
+
+
 class TaskScheduleInterval:
     def __init__(self, interval_data):
         self.__dict__ = interval_data
@@ -103,18 +107,13 @@ def create_task_instances(system_dir, valid_files):
     return json.dumps([instance.__dict__ for instance in task_instances], indent=4)
 
 def main():
-    template_dir = '/opt/45drives/houston/scheduler/templates/task-templates'
     system_dir = '/etc/systemd/system/'
 
-    # Store basenames of .service files in a dict from the templates directory
-    template_basenames = find_template_basenames(template_dir)
-
-    # Check files in the system directory for those containing any of those basenames
-    valid_task_data_files = find_valid_task_data_files(system_dir, template_basenames)
+    # Check files in the system directory for those containing any of the task template names
+    valid_task_data_files = find_valid_task_data_files(system_dir, currentTaskTemplates)
     
     task_instances = create_task_instances(system_dir, valid_task_data_files)
-    print(task_instances)
-    
+    print(task_instances)   
     
 if __name__ == "__main__":
 	main()

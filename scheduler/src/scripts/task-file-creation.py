@@ -24,96 +24,13 @@ def parse_env_file(parameter_env_file_path):
         
     logging.debug('Env file parsed successfully')
     return parameters
-
-def selectParameterOptions(templateName):
-    if templateName == 'ZfsReplicationTask':
-        return [
-            "${zfsRepConfig_sourceDataset_dataset}",
-            "${zfsRepConfig_sendOptions_recursive_flag}",
-            "${zfsRepConfig_sendOptions_customName_flag}", 
-            "${zfsRepConfig_sendOptions_customName}", 
-            "${zfsRepConfig_sendOptions_compressed_flag}", 
-            "${zfsRepConfig_sendOptions_raw_flag}", 
-            "--root ${zfsRepConfig_destDataset_pool}", 
-            "--path ${zfsRepConfig_destDataset_dataset}",
-            "--user ${zfsRepConfig_destDataset_user}",
-            "--host ${zfsRepConfig_destDataset_host}",
-            "--port ${zfsRepConfig_destDataset_port}",
-            "--mbuffsize ${zfsRepConfig_sendOptions_mbufferSize}",
-            "--mbuffunit ${zfsRepConfig_sendOptions_mbufferUnit}",
-            "--snapsToKeepSrc ${zfsRepConfig_snapRetention_source}",
-            "--snapsToKeepDest ${zfsRepConfig_snapRetention_destination}",
-        ]
-    elif templateName == 'AutomatedSnapshotTask':
-        return [
-            "${autoSnapConfig_filesystem_dataset}",
-            "${autoSnapConfig_recursive_flag}",
-            "${autoSnapConfig_customName_flag}",
-            "${autoSnapConfig_customName}",
-            "--snapsToKeep ${autoSnapConfig_snapRetention}",
-        ]
-    elif templateName == 'RsyncTask':
-        return [
-            "--source ${rsyncConfig_local_path}",
-            "--direction ${rsyncConfig_direction}",
-            "--host=${rsyncConfig_target_info_host}",
-            "--port=${rsyncConfig_target_info_port}",
-            "--user=${rsyncConfig_target_info_user}",
-            "--target ${rsyncConfig_target_info_path}",
-            "${rsyncConfig_rsyncOptions_archive_flag}",
-            "${rsyncConfig_rsyncOptions_recursive_flag}",
-            "${rsyncConfig_rsyncOptions_compressed_flag}",
-            "${rsyncConfig_rsyncOptions_delete_flag}",
-            "${rsyncConfig_rsyncOptions_quiet_flag}",
-            "${rsyncConfig_rsyncOptions_times_flag}",
-            "${rsyncConfig_rsyncOptions_hardlinks_flag}",
-            "${rsyncConfig_rsyncOptions_permissions_flag}",
-            "${rsyncConfig_rsyncOptions_xattr_flag}",
-            "--bandwidth=${rsyncConfig_rsyncOptions_bandwidth_limit_kbps}",
-            "--include=${rsyncConfig_rsyncOptions_include_pattern}",
-            "--exclude=${rsyncConfig_rsyncOptions_exclude_pattern}",
-            "${rsyncConfig_rsyncOptions_parallel_flag}",
-            "--threads=${rsyncConfig_rsyncOptions_parallel_threads}",
-            "${rsyncConfig_rsyncOptions_custom_args}"
-        ]
-    elif templateName == 'SmartTest':
-        return [
-            "--disks ${smartTestConfig_disks}",
-            "--type ${smartTestConfig_testType}"
-        ]
-    elif templateName == 'ScrubTask':
-        return [
-            "${scrubConfig_pool_pool}"
-        ]
-    # elif templateName == 'CloudSyncTask':
-    #     return [
-            
-    #     ]
-    # elif templateName == 'CronJobTask':
-    #     return [
-            
-    #     ]
-    else:
-        return []
-
 def generate_exec_start(templateName, parameters, scriptPath):
     base_python_command = f"python3 {scriptPath}"
-    options = selectParameterOptions(templateName)
     
-    exec_start = []
     if templateName == 'ScrubTask':
-        exec_start.append('zpool scrub')   
+        return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
     else:
-        exec_start.append(base_python_command)
-        
-    for option in options:
-        # Use regex to extract the placeholder name from ${placeholder}
-        match = re.search(r'\$\{(.+?)\}', option)
-        if match:
-            placeholder = match.group(1)
-            if placeholder in parameters and parameters[placeholder]:
-                exec_start.append(option)
-    return " ".join(exec_start)
+        return(base_python_command)
 
 def read_schedule_json(file_path):
     logging.debug(f'Reading schedule JSON file: {file_path}')

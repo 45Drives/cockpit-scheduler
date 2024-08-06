@@ -1,6 +1,6 @@
 import subprocess
-import argparse
 import sys
+import os
 
 def build_rsync_command(options):
     command = ['rsync', '-h', '-i', '-v', '--progress']
@@ -26,7 +26,7 @@ def build_rsync_command(options):
         for arg in cleaned_custom_args:
             command.append(arg)
     
-    if options['bandwidthLimit'] > 0:
+    if int(options['bandwidthLimit']) > 0:
         command.append(f'--bwlimit={options["bandwidthLimit"]}')
     
     if options['includePattern']:
@@ -40,9 +40,9 @@ def build_rsync_command(options):
             command.append(f'--exclude={pattern.strip()}')
     
     if options['targetHost']:
-        if options['targetPort'] and options['targetPort'] != 22:
-            ssh_command = f"ssh -p {options['targetPort']}"
-            command.append(f"-e '{ssh_command}'")
+        if options['targetPort'] and int(options['targetPort']) != 22:
+            remote_command = f"ssh -p {options['targetPort']}"
+            command.append(f"-e {remote_command}")
         else:
             command.append("-e 'ssh'")
     
@@ -66,7 +66,7 @@ def construct_paths(localPath, direction, targetPath, targetHost, targetUser):
     return src, dest
 
 def execute_command(command, src, dest, isParallel=False, parallelThreads=0):
-    if isParallel and parallelThreads > 0:
+    if isParallel and int(parallelThreads) > 0:
         print(f'Transferring using {parallelThreads} parallel threads from {src} to {dest}')
         rsync_command = " ".join(command)
         parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {src} {dest}'
@@ -113,56 +113,34 @@ def execute_rsync(options):
         print(f"send error: {e}")
         sys.exit(1)
 
+def str_to_bool(value):
+    return str(value).lower() in ('true', '1', 't', 'yes', 'y')
+
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Rsync Script')
-    parser.add_argument('--source', type=str, required=True, help='source/local directory')
-    parser.add_argument('--direction', type=str, required=True, choices=['push', 'pull'], help='direction of transfer (push/pull)')
-    parser.add_argument('--host', type=str, nargs='?', default='', help='hostname or ip of ssh connection')
-    parser.add_argument('--port', type=int, default=22, help='port to connect via ssh (22)')
-    parser.add_argument('--user', type=str, nargs='?', default='root', help='user of ssh connection (root)')
-    parser.add_argument('--target', type=str, required=True, help='target/remote directory')
-    parser.add_argument('--archive', action='store_true', help='archive mode')
-    parser.add_argument('--recursive', action='store_true', help='recurse into directories')
-    parser.add_argument('--compressed', action='store_true', help='compress file data during transfer')
-    parser.add_argument('--delete', action='store_true', help='delete extraneous files from destination dirs')
-    parser.add_argument('--quiet', action='store_true', help='suppress non-error message')
-    parser.add_argument('--times', action='store_true', help='preserve modification times')
-    parser.add_argument('--hardLinks', action='store_true', help='preserve hard links')
-    parser.add_argument('--permissions', action='store_true', help='preserve permissions')
-    parser.add_argument('--xattr', action='store_true', help='preserve extended attributes')
-    parser.add_argument('--bandwidth', type=int, nargs='?', default=0, help='limit I/O bandwidth; KBytes per second')
-    parser.add_argument('--include', type=str, nargs='?', default='', help='include pattern')
-    parser.add_argument('--exclude', type=str, nargs='?', default='', help='exclude pattern')
-    parser.add_argument('--parallel', action='store_true', help='parallel transfer')
-    parser.add_argument('--threads', type=int, nargs='?', default=0, help='number of parallel threads')
-    parser.add_argument('--customArgs', type=str, nargs=argparse.REMAINDER, help='additional custom arguments')
-
-    args = parser.parse_args()
-    
     return {
-        'localPath': args.source,
-        'direction': args.direction,
-        'targetHost': args.host,
-        'targetPort': args.port,
-        'targetUser': args.user,
-        'targetPath': args.target,
-        'isArchive': args.archive,
-        'isRecursive': args.recursive,
-        'isCompressed': args.compressed,
-        'isDelete': args.delete,
-        'isQuiet': args.quiet,
-        'preserveTimes': args.times,
-        'preserveHardLinks': args.hardLinks,
-        'preservePerms': args.permissions,
-        'preserveXattrs': args.xattr,
-        'bandwidthLimit': args.bandwidth,
-        'includePattern': args.include,
-        'excludePattern': args.exclude,
-        'isParallel': args.parallel,
-        'parallelThreads': args.threads,
-        'customArgs': args.customArgs,
+        'localPath': os.environ.get('rsyncConfig_local_path', ''),
+        'direction': os.environ.get('rsyncConfig_direction', 'push'),
+        'targetHost': os.environ.get('rsyncConfig_target_info_host', ''),
+        'targetPort': int(os.environ.get('rsyncConfig_target_info_port', 22)),
+        'targetUser': os.environ.get('rsyncConfig_target_info_user', 'root'),
+        'targetPath': os.environ.get('rsyncConfig_target_info_path', ''),
+        'isArchive': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_archive_flag', 'True')),
+        'isRecursive': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_recursive_flag', 'False')),
+        'isCompressed': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_compressed_flag', 'False')),
+        'isDelete': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_delete_flag', 'False')),
+        'isQuiet': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_quiet_flag', 'False')),
+        'preserveTimes': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_times_flag', 'False')),
+        'preserveHardLinks': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_hardLinks_flag', 'False')),
+        'preservePerms': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_permissions_flag', 'False')),
+        'preserveXattrs': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_xattr_flag', 'False')),
+        'bandwidthLimit': int(os.environ.get('rsyncConfig_rsyncOptions_bandwidth_limit_kbps', 0)),
+        'includePattern': os.environ.get('rsyncConfig_rsyncOptions_include_pattern', ''),
+        'excludePattern': os.environ.get('rsyncConfig_rsyncOptions_exclude_pattern', ''),
+        'isParallel': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_parallel_flag', 'False')),
+        'parallelThreads': int(os.environ.get('rsyncConfig_rsyncOptions_parallel_threads', 0)),
+        'customArgs': os.environ.get('rsyncConfig_rsyncOptions_custom_args', ''),
     }
-
+    
 def main():
     options = parse_arguments()
     execute_rsync(options)
