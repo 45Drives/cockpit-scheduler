@@ -1,3 +1,10 @@
+cockpit-scheduler (1.2.1-1focal) focal; urgency=medium
+
+  * Improves task creation + execution modifications to exclusively use env file
+    data without placeholders + removes reliance of old task template files (removed)
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 06 Aug 2024 08:23:50 -0300
+
 cockpit-scheduler (1.2.0-3focal) focal; urgency=medium
 
   * Fixing issue with edit task data not storing

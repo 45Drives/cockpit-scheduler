@@ -28,6 +28,9 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Tue Aug 06 2024 Jordan Keough <jkeough@45drives.com> 1.2.1-1
+- Improves task creation + execution modifications to exclusively use env file data
+  without placeholders + removes reliance of old task template files (removed)
 * Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-3
 - Fixing issue with edit task data not storing
 * Mon Aug 05 2024 Jordan Keough <jkeough@45drives.com> 1.2.0-2
