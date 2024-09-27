@@ -5,6 +5,7 @@ export class ParameterNode implements ParameterNodeType {
     key: string;
     children: ParameterNode[];
     value: any;
+    // onProviderChange: ((newProvider: string) => void) | undefined;
 
     constructor(label: string, key: string) {
         this.label = label;
@@ -15,6 +16,10 @@ export class ParameterNode implements ParameterNodeType {
     addChild(child: ParameterNode) {
         this.children.push(child);
         return this;
+    }
+
+    getChild(key: string): ParameterNode | undefined {
+        return this.children.find(child => child.key === key);
     }
 
     asEnvKeyValues(): string[] {
@@ -64,10 +69,10 @@ export class BoolParameter extends ParameterNode implements BoolParameterType {
 }
 
 export class SelectionOption implements SelectionOptionType {
-    value: string | number | boolean;
+    value: string | number | boolean | any;
     label: string;
 
-    constructor(value: string | number | boolean, label: string) {
+    constructor(value: string | number | boolean | any, label: string) {
         this.value = value;
         this.label = label;
     }
@@ -205,7 +210,7 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
     }
 }
 
-export class ObjectParameter extends ParameterNode {
+export class ObjectParameter extends ParameterNode implements ParameterNodeType {
     constructor(label: string, key: string, obj: { [key: string]: any }) {
         super(label, key);
         Object.entries(obj).forEach(([childKey, value]) => {

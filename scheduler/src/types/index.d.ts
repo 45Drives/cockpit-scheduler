@@ -112,7 +112,6 @@ interface TaskExecutionResultType {
 
 type ConfirmationCallback = (param?: any) => void;
 
-
 interface DiskData {
 	name: string;
 	capacity: string;
@@ -129,4 +128,29 @@ interface DiskData {
 interface DiskDetails {
 	diskName: string;
 	diskPath: string;
+}
+
+interface CloudSyncRemoteType {
+	name: string;
+	type: string;
+	authParams: CloudAuthParameter;
+}
+
+// interface RemoteManagerType {
+// 	cloudSyncRemotes: CloudSyncRemoteType[];
+
+// 	async getRemotes(): void;
+// 	createRemote(label: string, key: string, name: string, type: string): CloudSyncRemote;
+// 	editRemote(key: string, newLabel: string, newType: string): CloudSyncRemote | undefined;
+// 	deleteRemote(key: string): boolean;
+// 	authorizeRemote(key: string): boolean;
+// }
+interface RemoteManagerType {
+	cloudSyncRemotes: CloudSyncRemoteType[];
+
+	async getRemotes(): void;
+	createRemote(label: string, key: string, name: string, type: string): CloudSyncRemote;
+	editRemote(key: string, newLabel: string, newType: string): CloudSyncRemote | undefined;
+	deleteRemote(key: string): boolean;
+	authorizeRemote(key: string): boolean;
 }

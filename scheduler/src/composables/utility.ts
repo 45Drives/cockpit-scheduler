@@ -308,4 +308,3 @@ export function splitAndClean(inputString: string, isDisk: boolean) {
   
     return cleanedParts;
 }
-

@@ -37,7 +37,6 @@ export class TaskExecutionLog {
             return false;
         }
     }
-    
 
     async getLatestEntryFor(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -64,11 +63,12 @@ export class TaskExecutionLog {
                 output = logResult.stdout;
             } else {
                 output = "Task hasn't run since boot or is disabled.";
+                
                 // Fallback to get the most recent log entries if no start time is available
-                // const logCommand = ['journalctl', '-r', '-u', fullTaskName, '--no-pager', '--all', '-n', '1']; // Limit to the most recent log entry
-                // const logState = useSpawn(logCommand, {superuser: 'try'});
-                // const logResult = await logState.promise();
-                // output = logResult.stdout || "Task hasn't run since boot or is disabled.";
+              /*   const logCommand = ['journalctl', '-r', '-u', fullTaskName, '--no-pager', '--all', '-n', '1']; // Limit to the most recent log entry
+                const logState = useSpawn(logCommand, {superuser: 'try'});
+                const logResult = await logState.promise();
+                output = logResult.stdout || "Task hasn't run since boot or is disabled."; */
             }
     
             const latestEntry = new TaskExecutionResult(exitCode, output, startTime, finishTime);

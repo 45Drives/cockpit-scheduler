@@ -124,7 +124,6 @@ export class Scheduler implements SchedulerType {
                 } else if (envObject['zfsRepConfig_sendOptions_compressed_flag'] === 'true') {
                     envObject['zfsRepConfig_sendOptions_raw_flag'] = '';
                 }
-
                 break;
 
             case 'RsyncTask':

@@ -1,4 +1,5 @@
 import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
+import { cloudSyncProviders, CloudSyncRemote, createCloudAuthParameter } from './CloudSync';
 
 export class TaskInstance implements TaskInstanceType {
     name: string;
@@ -100,11 +101,10 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
 export class RsyncTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Rsync Task";
-        const push = new SelectionOption('push', 'Push');
-        const pull = new SelectionOption('pull', 'Pull');
-        const directionSelection = [] as any as SelectionOption[];
-        directionSelection.push(push);
-        directionSelection.push(pull);
+        const directionSelection = [
+            new SelectionOption('push', 'Push'),
+            new SelectionOption('pull', 'Pull')
+        ];
         const parameterSchema = new ParameterNode("Rsync Task Config", "rsyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', ''))
         .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
@@ -166,16 +166,44 @@ export class SmartTestTemplate extends TaskTemplate {
     }
 }
 
-export class CloudSyncTemplate extends TaskTemplate {
+export class CloudSyncTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Cloud Sync Task";
+
+        const providerSelectionOptions = Object.keys(cloudSyncProviders).map(providerKey => {
+            const provider = cloudSyncProviders[providerKey];
+            return new SelectionOption(providerKey, provider.name);
+        });
+
+        const directionSelection = [
+            new SelectionOption('push', 'Push'),
+            new SelectionOption('pull', 'Pull')
+        ];
+
+        const transferModeSelection = [
+            new SelectionOption('copy', 'Copy'),
+            new SelectionOption('move', 'Move'),
+            new SelectionOption('Sync', 'Sync'),
+        ]
+
         const parameterSchema = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
-        // .addChild(new ())
+            .addChild(new StringParameter('Local Path', 'local_path', ''))
+            .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
+            .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
+            .addChild(new SelectionParameter('Provider', 'provider', providerSelectionOptions[0].value, providerSelectionOptions))
+            .addChild(new CloudSyncRemote('', providerSelectionOptions[0].value, createCloudAuthParameter(providerSelectionOptions[0].value)))
+            .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
+                .addChild(new BoolParameter('Follow Symbolic Links', 'symlinks_flag', false))
+                .addChild(new IntParameter('Number of Transfers', 'transfers', 1))
+                .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
+                .addChild(new StringParameter('Exclude', 'exclude_pattern', ''))
+                .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))
+            );
 
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CloudSyncTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CloudSyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }

@@ -132,13 +132,9 @@ const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provid
 
 const selectedTask = ref<TaskInstanceType>();
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
-// const taskTableRow = ref();
 
 async function updateStatusAndTime(task: TaskInstanceType, index: number) {
-    // console.log('taskTableRow ref:', taskTableRow.value);
     const target = taskTableRow.value[index];
-    // await taskTableRow.value!.updateTaskStatus(task);
-    // await taskTableRow.value!.fetchLatestLog(task);
     await target.updateTaskStatus(task);
     await target.fetchLatestLog(task);
 }
@@ -297,11 +293,13 @@ async function viewLogsBtn(task) {
     await loadLogViewComponent();
     showLogView.value = true;
 }
+
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
+
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
 }
@@ -315,6 +313,7 @@ const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
     field: null,
     order: 1,
 });
+
 const filteredAndSortedTasks = computed(() => {
     let filteredTasks = taskInstances.value;
 
@@ -339,6 +338,7 @@ const filteredAndSortedTasks = computed(() => {
 
     return sortTasks(filteredTasks);
 });
+
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     if (!sort.value.field) return tasksToSort;
 
@@ -360,6 +360,7 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
         return factor * ((valueA as number) - (valueB as number));
     });
 };
+
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -369,6 +370,7 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
+
 function sortIconFlip() {
     if (sort.value.order == 1) {
         sortMode.value = 'asc';
