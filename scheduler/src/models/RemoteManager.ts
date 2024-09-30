@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { CloudSyncRemote, createCloudAuthParameter} from "./CloudSync";
+import { CloudSyncProvider, CloudSyncRemote, createCloudAuthParameter, cloudSyncProviders, CloudAuthParameter} from "./CloudSync";
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 //@ts-ignore
@@ -106,14 +106,31 @@ export class RemoteManager implements RemoteManagerType {
                     console.error("Malformed remote object:", remote);
                     return;
                 }
-                
-                let authParams;
 
-                // Parse the authParams using the createCloudAuthParameter function
+                let authParams;
+                let provider: CloudSyncProvider;
+
+                // Handle S3 remotes by checking the provider
                 if (remote.type === 's3') {
-                    const provider = remote.parameters.provider; // Fallback to "AWS" if provider is missing
-                    authParams = createCloudAuthParameter(remote.type, provider);
+                    const providerKey = `s3-${remote.parameters.provider}`;  // Default to AWS if provider is not specified
+                    provider = cloudSyncProviders[providerKey];
+
+                    if (!provider) {
+                        console.error(`Unsupported S3 provider: ${remote.parameters.provider}`);
+                        return;
+                    }
+
+                    // Create auth parameters for S3
+                    authParams = createCloudAuthParameter(remote.type, remote.parameters.provider);
                 } else {
+                    provider = cloudSyncProviders[remote.type];
+
+                    if (!provider) {
+                        console.error(`Unsupported remote type: ${remote.type}`);
+                        return;
+                    }
+
+                    // Create auth parameters for other providers
                     authParams = createCloudAuthParameter(remote.type);
                 }
 
@@ -146,7 +163,8 @@ export class RemoteManager implements RemoteManagerType {
                 const newRemote = new CloudSyncRemote(
                     remote.name,            // Remote name
                     remote.type,            // Remote type (e.g., drive, s3, dropbox)
-                    authParams              // Remote parameters structured as ParameterNodes
+                    authParams,             // Remote parameters structured as ParameterNodes
+                    provider                // CloudSyncProvider object containing provider info
                 );
 
                 // Add the new remote to the list of cloud sync remotes
@@ -160,13 +178,44 @@ export class RemoteManager implements RemoteManagerType {
     }
 
 
-    createRemote(name: string, type: string): CloudSyncRemote {
-        //IMPLEMENT PROPERLY
-        const authParams = createCloudAuthParameter(type);
-        const remote = new CloudSyncRemote(name, type, authParams);
+    createRemote(name: string, type: string, providerKey?: string): CloudSyncRemote {
+        let authParams: CloudAuthParameter;
+        let provider: CloudSyncProvider;
+
+        // Handle the case where the type is 's3' and provider is passed
+        if (type === 's3') {
+            if (!providerKey) {
+                throw new Error('Provider key is required for S3 remote');
+            }
+
+            provider = cloudSyncProviders[`s3-${providerKey}`];
+
+            if (!provider) {
+                throw new Error(`Unsupported S3 provider: ${providerKey}`);
+            }
+
+            // Create auth parameters for S3 provider
+            authParams = createCloudAuthParameter(type, providerKey);
+        } else {
+            provider = cloudSyncProviders[type];
+
+            if (!provider) {
+                throw new Error(`Unsupported remote type: ${type}`);
+            }
+
+            // Create auth parameters for other providers
+            authParams = createCloudAuthParameter(type);
+        }
+
+        // Create the new CloudSyncRemote with the appropriate provider and authParams
+        const remote = new CloudSyncRemote(name, type, authParams, provider);
+
+        // Add the new remote to the list
         this.cloudSyncRemotes.push(remote);
+
         return remote;
     }
+
 
     editRemote(newName: string, newType: string): CloudSyncRemote | undefined {
         //IMPLEMENT PROPERLY

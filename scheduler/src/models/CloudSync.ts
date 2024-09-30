@@ -144,7 +144,6 @@ export class CloudAuthParameter extends ParameterNode implements ParameterNodeTy
 }
 
 
-
 export function createCloudAuthParameter(type: string, s3_provider?: string): CloudAuthParameter {
     if (type === 's3') {
         // Ensure s3_provider is defined and use it to look up the correct provider in cloudSyncProviders
@@ -175,15 +174,18 @@ export function createCloudAuthParameter(type: string, s3_provider?: string): Cl
 //         this.authParams = authParams;
 //     }
 // }
+
 export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteType {
     name: string;
     type: string;
+    provider: CloudSyncProvider;
     authParams: CloudAuthParameter;
 
-    constructor(name: string, type: string, authParams: CloudAuthParameter) {
+    constructor(name: string, type: string, authParams: CloudAuthParameter, provider: CloudSyncProvider) {
         super(`RemoteName-${name}`, `remoteType-${type}`);
         this.name = name;
         this.type = type;
         this.authParams = authParams;
+        this.provider = provider;
     }
 }

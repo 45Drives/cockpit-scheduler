@@ -22,7 +22,7 @@
                 <select id="existing-remote-selection" v-model="selectedRemote" name="existing-remote-selection"
                     class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 col-span-1">
                     <option :value="undefined">Select Remote</option>
-                    <option v-for="remote, idx in existingRemotes" :key="idx" :value="remote.name">
+                    <option v-for="remote, idx in existingRemotes" :key="idx" :value="remote">
                         {{ remote.name}}
                     </option>
                 </select>
@@ -32,14 +32,21 @@
                         Create New Remote
                     </button>
                     <button @click.stop="" id="manage-remotes-btn" name="manage-remotes-btn"
-                        class="mt-1 btn btn-secondary h-fit w-full">
+                        class="mt-1 btn btn-primary h-fit w-full">
                         Manage Existing Remotes
                     </button>
                 </div>
                 <!-- Change button based on remote's provider/type (Remote Name, and provider Logo + Color) -->
-                <button @click.stop="authenticateRemoteBtn(selectedRemote!)" id="authenticate-selected-remote-btn"
-                    name="authenticate-selected-remote-btn" class="mt-1 btn btn-danger h-fit w-full col-span-2">
-                    Authenticate (REMOTE NAME) (LOGO)
+                <button v-if="!selectedRemote" class="mt-1 btn h-fit w-full col-span-2 bg-gray-400 text-gray-200"
+                    disabled>
+                    Select a Remote to Authenticate
+                </button>
+
+                <button v-else @click.stop="authenticateRemoteBtn(selectedRemote)"
+                    class="mt-1 btn h-fit w-full col-span-2 btn btn-secondary text-default">
+                    Authenticate {{ selectedRemote.name }}
+                    <img :src="getProviderLogo(selectedRemote)" alt="provider-logo"
+                        class="inline-block h-5 ml-2 mb-0.5" />
                 </button>
             </div>
 
@@ -53,7 +60,7 @@
                         <!-- <ExclamationCircleIcon v-if="selectedRemoteErrorTag" class="mt-1 w-5 h-5 text-danger" /> -->
                     </div>
                     <div class="">
-                        <select id="existing-remote-selection" v-model="selectedRemote" name="existing-remote-selection"
+                        <select id="existing-remote-selection" v-model="remoteType" name="existing-remote-selection"
                             class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                             <option :value="undefined">Select Type of Rclone Transfer</option>
                             <option :value="'copy'">Copy</option>
@@ -213,13 +220,13 @@
     </div>
 
     <div v-if="showCreateRemote">
-        <component :is="createRemoteComponent" :id-key="'create-remote-modal'"/>
+        <component :is="createRemoteComponent" :id-key="'create-remote-modal'" />
     </div>
 </template>
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, inject, provide } from 'vue';
+import { ref, Ref, onMounted, inject, provide, watch } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
@@ -242,8 +249,19 @@ const initialParameters = ref({});
 const directionSwitched = ref(false)
 
 const selectedRemote = ref<CloudSyncRemote>();
+const remoteType = ref('');
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 
+
+onMounted(() => {
+    console.log("Component mounted");
+    console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
+});
+
+// Watch for changes in selectedRemote
+watch(selectedRemote, (newVal) => {
+    console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
+});
 
 function authenticateRemoteBtn(selectedRemote: CloudSyncRemote) {
 
@@ -256,48 +274,58 @@ interface ProviderLogo {
 
 const providerLogos: { [key: string]: ProviderLogo } = {
     "s3-AWS": {
-        logo: "/public/img/s3-amazon.svg",
+        logo: "./img/s3-amazon.svg",
         color: "#E05243"
     },
     "s3-Wasabi": {
-        logo: "/public/img/s3-wasabi.svg",
+        logo: "./img/s3-wasabi.svg",
         color: "#01CE3F"
     },
     "b2": {
-        logo: "/public/img/backblaze.svg",
+        logo: "./img/backblaze.svg",
         color: "#D2202F"
     },
     "dropbox": {
-        logo: "/public/img/dropbox.svg",
+        logo: "./img/dropbox.svg",
         color: "#0061FF"
     },
     "drive": {
-        logo: "/public/img/google-drive.svg",
+        logo: "./img/google-drive.svg",
         color: "#FF4329"
     },
     "onedrive": {
-        logo: "/public/img/onedrive.svg",
+        logo: "./img/onedrive.svg",
         color: "#4F8AD8"
     },
     "google cloud storage": {
-        logo: "/public/img/google-cloud.svg",
+        logo: "./img/google-cloud.svg",
         color: "#FF7E56"
     },
     "azureblob": {
-        logo: "/public/img/azure.svg",
+        logo: "./img/azure.svg",
         color: "#00BCF2"
     }
 };
 
 // Function to fetch logo and color
-function getProviderLogo(providerKey: string): ProviderLogo | undefined {
-    return providerLogos[providerKey];
+function getProviderLogo(selectedRemote: CloudSyncRemote): string {
+    console.log('selectedRemote:', selectedRemote);
+    if (selectedRemote.type === "s3") {
+        return providerLogos[`${selectedRemote.type}-${selectedRemote.provider.parameters.provider!}`]?.logo || "";
+    } else {
+        return providerLogos[selectedRemote.type]?.logo || "";
+    }
 }
 
-// Example usage
-const awsLogo = getProviderLogo("s3-AWS");
-console.log(awsLogo?.logo, awsLogo?.color);
 
+function getProviderColor(selectedRemote: CloudSyncRemote): string {
+    console.log('selectedRemote:', selectedRemote);
+    if (selectedRemote.type == "s3") {
+        return providerLogos[`${selectedRemote.type}-${selectedRemote.provider.parameters.provider!}`].color;
+    } else {
+        return providerLogos[selectedRemote.type].color || "#000000";
+    }
+}
 
 const showCreateRemote = ref(false);
 async function createRemoteBtn() {
