@@ -1,0 +1,48 @@
+interface ProviderLogo {
+    logo: string;
+    mainColor: string;
+    hoverColor: string;
+}
+
+export const providerLogos: { [key: string]: ProviderLogo } = {
+    "s3-AWS": {
+        logo: "./img/s3-amazon.svg",
+        mainColor: "#E05243",
+        hoverColor: "#9E271A"
+    },
+    "s3-Wasabi": {
+        logo: "./img/s3-wasabi.svg",
+        mainColor: "#01CE3F",
+        hoverColor: "#005B1C"
+    },
+    "b2": {
+        logo: "./img/backblaze.svg",
+        mainColor: "#D2202F",
+        hoverColor: "#610F16"
+    },
+    "dropbox": {
+        logo: "./img/dropbox.svg",
+        mainColor: "#0061FF",
+        hoverColor: "#00235C"
+    },
+    "drive": {
+        logo: "./img/google-drive.svg",
+        mainColor: "#FF4329",
+        hoverColor: "#DB1B00"
+    },
+    "onedrive": {
+        logo: "./img/onedrive.svg",
+        mainColor: "#4F8AD8",
+        hoverColor: "#C21800"
+    },
+    "google cloud storage": {
+        logo: "./img/google-cloud.svg",
+        mainColor: "#FA3B00",
+        hoverColor: "#9E2500"
+    },
+    "azureblob": {
+        logo: "./img/azure.svg",
+        mainColor: "#00BCF2",
+        hoverColor: "#004357"
+    }
+};

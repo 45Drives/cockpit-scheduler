@@ -3,6 +3,7 @@ import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-help
 import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
+import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';;
 
@@ -293,6 +294,17 @@ export class Scheduler implements SchedulerType {
         let state = useSpawn(command, { superuser: 'try' });
         await state.promise();
     }
+
+
+    async unregisterTaskInstance(taskInstance: TaskInstanceType) {
+        //delete task + associated files
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        await removeTask(fullTaskName);
+        console.log(`${fullTaskName} removed`);
+    }
     
     async runTaskNow(taskInstance: TaskInstanceType) {
         //execute service file now
@@ -306,24 +318,206 @@ export class Scheduler implements SchedulerType {
         // return TaskExecutionResult;
     }
 
-    async unregisterTaskInstance(taskInstance: TaskInstanceType) {
-        //delete task + associated files
+/*     async runTaskNow(taskInstance: TaskInstanceType) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
-        await removeTask(fullTaskName);
-        console.log(`${fullTaskName} removed`);
-    }
+        console.log(`Running ${fullTaskName}...`);
 
-    async getTaskStatusFor(taskInstance: TaskInstanceType) {
+        // Start task in the background
+        runTask(fullTaskName).then(() => {
+            // When the task finishes, update the UI
+            console.log(`Task ${fullTaskName} completed.`);
+        }).catch(err => {
+            console.error(`Task ${fullTaskName} failed:`, err);
+        });
+
+        // Close modal, notify the user
+        return { status: 'started', taskName: fullTaskName };
+    } */
+
+
+    // async runTaskNow(taskInstance: TaskInstanceType): Promise<TaskExecutionResult> {
+    //     const houstonSchedulerPrefix = 'houston_scheduler_';
+    //     const templateName = formatTemplateName(taskInstance.template.name);
+    //     const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+    //     console.log(`Running ${fullTaskName}...`);
+
+    //     const startDate = new Date().toISOString();
+
+    //     try {
+    //         const output = await runTask(fullTaskName); // Assuming `runTask` captures the script's output
+    //         const finishDate = new Date().toISOString();
+    //         console.log(`Task ${fullTaskName} completed.`);
+    //         return new TaskExecutionResult(0, output, startDate, finishDate); // 0 for success
+    //     } catch (error: any) {
+    //         const finishDate = new Date().toISOString();
+    //         console.error(`Task ${fullTaskName} failed: ${error.message}`);
+    //         return new TaskExecutionResult(1, error.message, startDate, finishDate); // 1 for failure
+    //     }
+    // }
+
+    // async runTaskNow(taskInstance: TaskInstance): Promise<TaskExecutionResult> {
+    //     const houstonSchedulerPrefix = 'houston_scheduler_';
+    //     const templateName = formatTemplateName(taskInstance.template.name);
+    //     const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+    //     console.log(`Running ${fullTaskName}...`);
+
+    //     const startDate = new Date().toISOString();
+    //     taskInstance.status = 'Running';  // Set status to 'Running'
+
+    //     try {
+    //         const output = await runTask(fullTaskName); // Assuming `runTask` captures the script's output
+    //         const finishDate = new Date().toISOString();
+    //         taskInstance.status = 'Completed';  // Set status to 'Completed'
+
+    //         // Store the execution result in the task instance
+    //         const result = new TaskExecutionResult(0, output, startDate, finishDate);
+    //         taskInstance.lastExecutionResult = result;
+
+    //         console.log(`Task ${fullTaskName} completed.`);
+    //         return result;
+    //     } catch (error: any) {
+    //         const finishDate = new Date().toISOString();
+    //         taskInstance.status = 'Failed';  // Set status to 'Failed'
+
+    //         // Store the execution result in case of failure
+    //         const result = new TaskExecutionResult(1, error.message, startDate, finishDate);
+    //         taskInstance.lastExecutionResult = result;
+
+    //         console.error(`Task ${fullTaskName} failed: ${error.message}`);
+    //         return result;
+    //     }
+    // }
+
+    
+    // async runTaskNow(taskInstance: TaskInstanceType): Promise<string> {
+    //     const houstonSchedulerPrefix = 'houston_scheduler_';
+    //     const templateName = formatTemplateName(taskInstance.template.name);
+    //     const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+    //     try {
+    //         // Run the task and capture both stdout and stderr
+    //         const output = await runTask(fullTaskName);
+    //         return output;  // Ensure the output is returned
+    //     } catch (error : any) {
+    //         console.error("Task execution failed:", error);
+    //         return `ERROR: ${error.message}`;  // Return a string with the error
+    //     }
+    // }
+  
+    async getTimerStatus(taskInstance: TaskInstanceType) {
+        const taskLog = new TaskExecutionLog([]);
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
 
-        let result, output;
         try {
             const command = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
+            const state = useSpawn(command, { superuser: 'try' });
+            const result = await state.promise();
+            const output = result.stdout;
+
+            return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
+        } catch (error) {
+            console.error(`Error checking timer status:`, error);
+            return 'Error checking timer status';
+        }
+    }
+
+    async getServiceStatus(taskInstance: TaskInstanceType) {
+        const taskLog = new TaskExecutionLog([]);
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+        try {
+            const command = ['systemctl', 'status', `${fullTaskName}.service`, '--no-pager', '--output=cat'];
+            const state = useSpawn(command, { superuser: 'try' });
+            const result = await state.promise();
+            const output = result.stdout;
+
+            // Return the parsed status based on stdout
+            return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
+        } catch (error: any) {
+            // Only log real errors, not status-related cases
+            // console.error(`Error checking service status:`, error);
+            return this.parseTaskStatus(error.stdout || '', fullTaskName, taskLog, taskInstance); // Use error.stdout if available
+        }
+    }
+
+
+    async parseTaskStatus(output: string, fullTaskName: string, taskLog: TaskExecutionLog, taskInstance: TaskInstanceType) {
+        try {
+            let status = '';
+            const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
+            const activeStatusMatch = output.match(activeStatusRegex);
+            const succeededRegex = new RegExp(`${fullTaskName}.service: Succeeded`, 'm');
+
+            if (activeStatusMatch) {
+                const systemdState = activeStatusMatch[1].trim();
+
+                // Match the systemctl state to internal task states
+                switch (systemdState) {
+                    case 'activating (start)':
+                        status = 'Starting...';
+                        break;
+                    case 'active (waiting)':
+                        status = 'Active (Pending)';
+                        break;
+                    case 'active (running)':
+                        status = 'Active (Running)';
+                        break;
+                    case 'inactive (dead)':
+                        // Check if the task has succeeded
+                        if (succeededRegex.test(output)) {
+                            status = 'Completed';
+                        } else {
+                            const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
+                            status = recentlyCompleted ? 'Completed' : 'Inactive (Disabled)';
+                        }
+                        break;
+                    case 'failed (result)':
+                        status = 'Failed';
+                        break;
+                    default:
+                        status = systemdState;  // Fallback to systemctl state if nothing matches
+                }
+            } else {
+                // No valid status found
+                status = "Unit inactive or not found.";
+            }
+
+            console.log(`Status for ${fullTaskName}`, status);
+            return status;
+        } catch (error) {
+            console.error(`Error parsing status for ${fullTaskName}:`, error);
+            return false;
+        }
+    }
+
+
+
+    /* 
+    async getTaskStatusFor(taskInstance: TaskInstanceType, runNow?: boolean) {
+        const taskLog = new TaskExecutionLog([]);
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+        let result, output, unit_type;
+
+        if (runNow) {
+            unit_type = 'service';
+        } else {
+            unit_type = 'timer';
+        }
+        
+        try {
+            const command = ['systemctl', 'status', `${fullTaskName}.${unit_type}`, '--no-pager', '--output=cat'];
             const state = useSpawn(command, { superuser: 'try'});
             result = await state.promise();
             output = result.stdout;
@@ -331,7 +525,7 @@ export class Scheduler implements SchedulerType {
         } catch (error) {
             // console.error(errorString(error));
             // return false;
-            return 'Not scheduled';
+            return `Error checking ${unit_type} status`;
         }
 
         try {
@@ -339,18 +533,273 @@ export class Scheduler implements SchedulerType {
             const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
             const activeStatusMatch = output.match(activeStatusRegex);
 
+            // if (activeStatusMatch) {
+            //     status = activeStatusMatch[1].trim();
+            // } else {
+            //     status = "No schedule found.";
+            // }
+
             if (activeStatusMatch) {
-                status = activeStatusMatch[1].trim();
+                const systemdState = activeStatusMatch[1].trim();
+
+                // Define intermediate states based on the systemctl state
+                switch (systemdState) {
+                    case 'activating (start)':
+                        status = 'Starting...';
+                        break;
+                    case 'active (waiting)':
+                        status = 'Active (Queued)';
+                        break;
+                    case 'active (running)':
+                        status = 'Active (Running)';
+                        break;
+                    case 'inactive (dead)':
+                        // Check if the task has been completed recently
+                        const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
+                        status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
+                        break;
+                    case 'failed (result)':
+                        status = 'Failed';
+                        break;
+                    default:
+                        status = systemdState;  // Fallback to systemctl state if nothing matches
+                }
             } else {
-                status = "No schedule found.";
+                // No valid status found
+                status = "Service inactive or not found.";
             }
-            // console.log(`Status for ${fullTaskName}`, status);
+            console.log(`Status for ${fullTaskName}`, status);
             return status;
         } catch (error) {
             console.error(errorString(error));
             return false;
         }
     }
+ */
+    /* async getTaskStatusFor(taskInstance: TaskInstanceType, runNow?: boolean) {
+        const taskLog = new TaskExecutionLog([]);
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+        let result, output, unit_type;
+
+        if (runNow) {
+            unit_type = 'service';  // When runNow, it must be the service.
+        } else {
+            unit_type = 'timer';  // For scheduled tasks, use the timer.
+        }
+
+        try {
+            const command = ['systemctl', 'status', `${fullTaskName}.${unit_type}`, '--no-pager', '--output=cat'];
+            const state = useSpawn(command, { superuser: 'try' });
+            result = await state.promise();
+            output = result.stdout;
+            console.log(`status for task ${taskInstance.name} (${unit_type}) is ${output}`);
+        } catch (error) {
+            console.error(`Error checking ${unit_type} status:`, error);
+            return `Error checking ${unit_type} status`;
+        }
+
+        // Status parsing
+        try {
+            let status = '';
+            const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
+            const activeStatusMatch = output.match(activeStatusRegex);
+
+            if (activeStatusMatch) {
+                const systemdState = activeStatusMatch[1].trim();
+
+                // Match the systemctl state to internal task states
+                switch (systemdState) {
+                    case 'activating (start)':
+                        status = 'Starting...';
+                        break;
+                    case 'active (waiting)':
+                        status = 'Active (Pending)';
+                        break;
+                    case 'active (running)':
+                        status = 'Active (Running)';
+                        break;
+                    case 'inactive (dead)':
+                        // Check if the task has been completed recently
+                        const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
+                        status = recentlyCompleted ? 'Completed' : 'Inactive (Disabled)';
+                        break;
+                    case 'failed (result)':
+                        status = 'Failed';
+                        break;
+                    default:
+                        status = systemdState;  // Fallback to systemctl state if nothing matches
+                }
+            } else {
+                // No valid status found
+                status = runNow ? "Service inactive or not found." : "Timer inactive or not found.";
+            }
+
+            console.log(`Status for ${fullTaskName}`, status);
+            return status;
+        } catch (error) {
+            console.error(`Error parsing status for ${fullTaskName}:`, error);
+            return false;
+        }
+    } */
+
+
+    // async getTaskStatusFor(taskInstance: TaskInstanceType) {
+    //     const taskLog = new TaskExecutionLog([]);
+    //     const houstonSchedulerPrefix = 'houston_scheduler_';
+    //     const templateName = formatTemplateName(taskInstance.template.name);
+    //     const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+    //     let result, output, status = '';
+
+    //     try {
+    //         // First, check the .service status to see if it's running
+    //         const commandService = ['systemctl', 'status', `${fullTaskName}.service`, '--no-pager', '--output=cat'];
+    //         const stateService = useSpawn(commandService, { superuser: 'try' });
+    //         result = await stateService.promise();
+    //         output = result.stdout;
+
+    //         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
+    //         const activeStatusMatchService = output.match(activeStatusRegex);
+
+    //         if (activeStatusMatchService) {
+    //             const systemdState = activeStatusMatchService[1].trim();
+    //             switch (systemdState) {
+    //                 case 'activating (start)':
+    //                     status = 'Starting...';
+    //                     break;
+    //                 case 'active (waiting)':
+    //                     status = 'Pending...';
+    //                     break;
+    //                 case 'active (running)':
+    //                     status = 'Running...';
+    //                     break;
+    //                 case 'inactive (dead)':
+    //                     // Check if the task has been completed recently
+    //                     const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
+    //                     status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
+    //                     break;
+    //                 case 'failed (result)':
+    //                     status = 'Failed';
+    //                     break;
+    //                 default:
+    //                     status = systemdState;  // Fallback to systemctl state if nothing matches
+    //             }
+    //             return status;  // Prioritize the service status if the task is being manually run
+    //         }
+    //     } catch (error) {
+    //         console.log("No active service status found, checking timer status...");
+    //     }
+
+    //     // If there's no active service, check the timer status for scheduled tasks
+    //     try {
+    //         const commandTimer = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
+    //         const stateTimer = useSpawn(commandTimer, { superuser: 'try' });
+    //         result = await stateTimer.promise();
+    //         output = result.stdout;
+
+    //         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
+    //         const activeStatusMatchTimer = output.match(activeStatusRegex);
+    //         if (activeStatusMatchTimer) {
+    //             const systemdState = activeStatusMatchTimer[1].trim();
+    //             switch (systemdState) {
+    //                 case 'activating (start)':
+    //                     status = 'Starting...';
+    //                     break;
+    //                 case 'active (waiting)':
+    //                     status = 'Pending...';
+    //                     break;
+    //                 case 'active (running)':
+    //                     status = 'Running...';
+    //                     break;
+    //                 case 'inactive (dead)':
+    //                     // Check if the task has been completed recently
+    //                     const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
+    //                     status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
+    //                     break;
+    //                 case 'failed (result)':
+    //                     status = 'Failed';
+    //                     break;
+    //                 default:
+    //                     status = systemdState;  // Fallback to systemctl state if nothing matches
+    //             }
+    //             return status;
+    //         }
+    //     } catch (error) {
+    //         console.error("Error fetching timer status:", error);
+    //     }
+
+    //     return status || 'Unknown status';
+    // }
+
+
+    // async getTaskStatusFor(taskInstance: TaskInstanceType) {
+    //     const taskLog = new TaskExecutionLog([]);
+    //     const houstonSchedulerPrefix = 'houston_scheduler_';
+    //     const templateName = formatTemplateName(taskInstance.template.name);
+    //     const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+    //     let output;
+    //     try {
+    //         console.log(`Checking status for: ${fullTaskName}.service`);
+
+    //         const command = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
+    //         const state = useSpawn(command, { superuser: 'try' });
+
+    //         const result = await state.promise();
+    //         const output = result.stdout;
+
+    //         // Log the output for debugging
+    //         console.log('Service status output:', output);
+    //         if (result.stderr) {
+    //             console.error('Service status error output:', result.stderr);
+    //         }
+    //     } catch (error) {
+    //         console.error(`Error getting status for ${fullTaskName}:`, errorString(error));
+    //         return 'Service not found';
+    //     }
+
+    //     try {
+    //         let status = '';
+    //         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
+    //         const activeStatusMatch = output.match(activeStatusRegex);
+
+    //         if (activeStatusMatch) {
+    //             const systemdState = activeStatusMatch[1].trim();
+
+    //             // Define intermediate states based on the systemctl state
+    //             switch (systemdState) {
+    //                 case 'activating (start)':
+    //                     status = 'Starting...';
+    //                     break;
+    //                 case 'active (running)':
+    //                     status = 'Running...';
+    //                     break;
+    //                 case 'inactive (dead)':
+    //                     // Check if the task has been completed recently
+    //                     const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
+    //                     status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
+    //                     break;
+    //                 case 'failed (result)':
+    //                     status = 'Failed';
+    //                     break;
+    //                 default:
+    //                     status = systemdState;  // Fallback to systemctl state if nothing matches
+    //             }
+    //         } else {
+    //             // No valid status found
+    //             status = "Service inactive or not found.";
+    //         }
+
+    //         return status;
+    //     } catch (error) {
+    //         console.error(`Error parsing status for ${fullTaskName}:`, errorString(error));
+    //         return 'Error retrieving status';
+    //     }
+    // }
+
 
     async enableSchedule(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -392,13 +841,18 @@ export class Scheduler implements SchedulerType {
             await reloadState.promise();
             
             // Stop and Disable the timer
+            let stopCommand = ['sudo', 'systemctl', 'stop', timerName];
+            let stopState = useSpawn(stopCommand, { superuser: 'try' });
+            await stopState.promise();
+
             let disableCommand = ['sudo', 'systemctl', 'disable', timerName];
-            let state = useSpawn(disableCommand, { superuser: 'try' });
-            await state.promise();
+            let disableState = useSpawn(disableCommand, { superuser: 'try' });
+            await disableState.promise();
     
             console.log(`${timerName} has been stopped and disabled`);
             taskInstance.schedule.enabled = false;
             console.log('taskInstance after disable:', taskInstance);
+
             await this.updateSchedule(taskInstance);
     
         } catch (error) {

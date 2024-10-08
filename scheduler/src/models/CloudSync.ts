@@ -45,67 +45,6 @@ interface CloudAuthParameterOptions {
     customParameters?: { [key: string]: any };  // <- New addition to allow arbitrary parameters
 }
 
-/* 
-export class CloudAuthParameter extends ParameterNode implements ParameterNodeType {
-    constructor(label: string, key: string, options: CloudAuthParameterOptions = {}) {
-        super(label, key);
-
-        if (options.account !== undefined) {
-            this.addChild(new StringParameter("Account", "account", options.account));
-        }
-
-        if (options.key !== undefined) {
-            this.addChild(new StringParameter("Key", "key", options.key));
-        }
-
-        if (options.hard_delete !== undefined) {
-            this.addChild(new BoolParameter("Hard Delete", "hard_delete", options.hard_delete));
-        }
-
-        if (options.token !== undefined) {
-            this.addChild(new ObjectParameter("Token", "token", options.token));
-        }
-
-        if (options.scope !== undefined) {
-            this.addChild(new StringParameter("Scope", "scope", options.scope));
-        }
-
-        if (options.provider !== undefined) {
-            this.addChild(new StringParameter("Provider", "provider", options.provider));
-        }
-
-        if (options.access_key_id !== undefined) {
-            this.addChild(new StringParameter("Access Key ID", "access_key_id", options.access_key_id));
-        }
-
-        if (options.secret_access_key !== undefined) {
-            this.addChild(new StringParameter("Secret Access Key", "secret_access_key", options.secret_access_key));
-        }
-
-        if (options.region !== undefined) {
-            this.addChild(new StringParameter("Region", "region", options.region));
-        }
-
-        if (options.endpoint !== undefined) {
-            this.addChild(new StringParameter("Endpoint", "endpoint", options.endpoint));
-        }
-
-        // Handle custom/advanced parameters
-        if (options.customParameters) {
-            Object.keys(options.customParameters).forEach(paramKey => {
-                const paramValue = options.customParameters![paramKey];
-                // Dynamically add as a string, boolean, or object parameter
-                if (typeof paramValue === 'string') {
-                    this.addChild(new StringParameter(paramKey, paramKey, paramValue));
-                } else if (typeof paramValue === 'boolean') {
-                    this.addChild(new BoolParameter(paramKey, paramKey, paramValue));
-                } else if (typeof paramValue === 'object') {
-                    this.addChild(new ObjectParameter(paramKey, paramKey, paramValue));
-                }
-            });
-        }
-    }
-} */
 
 export class CloudAuthParameter extends ParameterNode implements ParameterNodeType {
     constructor(label: string, key: string, options: CloudAuthParameterOptions = {}) {
@@ -163,17 +102,6 @@ export function createCloudAuthParameter(type: string, s3_provider?: string): Cl
     }
 }
 
-// export class CloudSyncRemote implements CloudSyncRemoteType {
-//     name: string;
-//     type: string;
-//     authParams: CloudAuthParameter;
-
-//     constructor(name: string, type: string, authParams: CloudAuthParameter) {
-//         this.name = name;
-//         this.type = type;
-//         this.authParams = authParams;
-//     }
-// }
 
 export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteType {
     name: string;

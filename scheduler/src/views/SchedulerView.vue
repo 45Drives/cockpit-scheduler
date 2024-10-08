@@ -123,11 +123,13 @@ import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
+import { pushNotification, Notification } from 'houston-common-ui';
+import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
+const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
@@ -139,6 +141,11 @@ async function updateStatusAndTime(task: TaskInstanceType, index: number) {
     await target.fetchLatestLog(task);
 }
 
+// async function updateRunNowStatusAndTime(task: TaskInstanceType, index: number, runNow: boolean) {
+//     const target = taskTableRow.value[index];
+//     await target.updateTaskStatus(task, runNow);
+//     await target.fetchLatestLog(task);
+// }
 
 /* Refresh Display */
 async function refreshBtn() {
@@ -199,20 +206,104 @@ async function showRunNowDialog() {
     await loadConfirmationDialog(runNowDialog);
     showRunNowPrompt.value = true;
 }
-const runNowYes: ConfirmationCallback = async () => {
-    running.value = true;
-    await myScheduler.runTaskNow(selectedTask.value!);
-    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-    updateShowRunNowPrompt(false);
-    running.value = false;
-}
-const runNowNo: ConfirmationCallback = async () => {
-    updateShowRunNowPrompt(false);
-}
+
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
+
+const runNowNo: ConfirmationCallback = async () => {
+    updateShowRunNowPrompt(false);
+}
+
+
+// const runNowYes: ConfirmationCallback = async () => {
+//     running.value = true;
+//     await myScheduler.runTaskNow(selectedTask.value!)
+//     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+//     await updateStatusAndTime(selectedTask.value!, taskIndex);
+//     updateShowRunNowPrompt(false);
+//     running.value = false;
+// }
+
+
+
+const runNowYes: ConfirmationCallback = async () => {
+    running.value = true;
+    const runNow = true;
+    // Push a notification that the task has started
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
+    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false); // Close the modal
+    // Start the task and close the modal immediately
+    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
+        // Push a success notification when task finishes
+        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
+    }).catch((error) => {
+        // Push a failure notification if the task fails
+        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
+    });
+
+    // const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false); // Close the modal
+    running.value = false;
+};
+
+
+// const runNowYes: ConfirmationCallback = async () => {
+//     running.value = true;
+//     const task = selectedTask.value!;
+
+//     // Run the task and get the result
+//     const result = await myScheduler.runTaskNow(task);
+
+//     // Now `task.status` holds the current status, and `task.lastExecutionResult` holds the result
+//     console.log(`Task ${task.name} current status: ${task.status}`);
+//     console.log(`Task ${task.name} result:`, task.lastExecutionResult);
+
+//     // You can display the task result in the UI
+//     // if (task.lastExecutionResult) {
+//     //     task.latestTaskExecution = `Start: ${task.lastExecutionResult.startDate}, Finish: ${task.lastExecutionResult.finishDate}, Output: ${task.lastExecutionResult.output}`;
+//     // }
+
+//     updateShowRunNowPrompt(false);
+//     running.value = false;
+// };
+
+
+/* 
+const runNowYes: ConfirmationCallback = async () => {
+    running.value = true;
+
+    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+
+    // Optimistically update the status to "Running"
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    // Now actually run the task
+    const result = await myScheduler.runTaskNow(selectedTask.value!);
+    console.log("Task result:", result);
+
+    // Ensure result is well-defined before checking its properties
+    const taskFailed = !result.success || result.error;
+
+    // Update the task status and time after the task is executed
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false);
+    running.value = false;
+
+    // Show notifications based on the result
+    if (taskFailed) {
+        pushNotification(new Notification('Task Failed', `Task failed with errors: ${result.error}. Check Logs for details.`, 'error', 8000));
+    } else {
+        pushNotification(new Notification('Task Successful', `Task has successfully been run.`, 'success', 8000));
+    }
+}; */
+
 
 
 /* Remove Task */

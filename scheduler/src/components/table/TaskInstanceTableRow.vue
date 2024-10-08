@@ -1,89 +1,65 @@
 <template>
-	<tr 
-		:class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : ''"
+	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : ''"
 		class="border border-default border-collapse grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
-		<td
-			:title="taskInstance.name" class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+		<td :title="taskInstance.name"
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
 			{{ taskInstance.name }}
 		</td>
-		<td v-if="taskInstance.schedule.enabled"
-			:title="taskStatus ?
-				upperCaseWord(taskStatus) : 'N/A' || 'n/a'" 
-				class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+		<td v-if="taskInstance.schedule.enabled" :title="taskStatus"
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
 			<span :class="taskStatusClass(taskStatus)">
-				{{ taskStatus ?
-					upperCaseWord(taskStatus) : 'N/A' || 'n/a' }}
+				{{ taskStatus || 'N/A' }}
 			</span>
 		</td>
-		<td v-if="!taskInstance.schedule.enabled"
-			:title="'Disabled'" 
-				class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass('Disabled')">
-				Disabled
+		<td v-if="!taskInstance.schedule.enabled" :title="'Disabled'"
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+			<span :class="taskStatusClass(taskStatus)">
+				{{ taskStatus || 'N/A' }}
 			</span>
 		</td>
-		<td
-			:title="latestTaskExecution" 
-			class="truncate font-medium border-r border-default text-left ml-4 col-span-2"
-			:class="latestTaskExecution.includes('disabled') ? 'text-muted text-sm' : 'text-default text-base'">
+		<td :title="latestTaskExecution" class="truncate font-medium border-r border-default text-left ml-4 col-span-2">
 			<span>
 				{{ latestTaskExecution }}
 			</span>
 		</td>
+
 		<td class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-			<input
-				v-if="taskInstance.schedule.intervals.length > 0"
-				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`"
-				type="checkbox"
-				:checked="taskInstance.schedule.enabled"
-				@click.prevent="toggleTaskSchedule"
-				class="ml-2 h-4 w-4 rounded"
-			/>
-			<input
-				v-else
-				disabled
-				type="checkbox"
-				:title="'No Schedule Found'"
-				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400"
-			/>
+			<input v-if="taskInstance.schedule.intervals.length > 0"
+				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
+				:checked="taskInstance.schedule.enabled" @click.prevent="toggleTaskSchedule"
+				class="ml-2 h-4 w-4 rounded" />
+			<input v-else disabled type="checkbox" :title="'No Schedule Found'"
+				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
 		</td>
-		<td
-			class="truncate text-base font-medium text-default border-default m-1 col-span-1">
+		<td class="truncate text-base font-medium text-default border-default m-1 col-span-1">
 			<button v-if="isExpanded" @click="toggleTaskDetails()"
 				class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close
 				Details</button>
-			<button v-else @click="toggleTaskDetails()"
-				class="btn btn-secondary">View Details</button>
+			<button v-else @click="toggleTaskDetails()" class="btn btn-secondary">View Details</button>
 		</td>
-		<td v-if="isExpanded"
-			class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
+		<td v-if="isExpanded" class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
-				<TaskInstanceDetails :task="taskInstance"/>
+				<TaskInstanceDetails :task="taskInstance" />
 			</div>
 
 			<div class="button-group-row justify-center col-span-5 mt-2">
-				<button @click="runTaskBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
+				<button @click="runTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
 					Run Now
 					<PlayIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="editTaskBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+				<button @click="editTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					Edit Task
 					<PencilIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="manageScheduleBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+				<button @click="manageScheduleBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					Manage Schedule
 					<CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="viewLogsBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+				<button @click="viewLogsBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					View Logs
 					<TableCellsIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="removeTaskBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+				<button @click="removeTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Remove
 					<TrashIcon class="h-5 ml-2 mt-0.5" />
 				</button>
@@ -128,10 +104,20 @@ const latestTaskExecution = ref<string>('');
 const taskStatus = ref<string>('');
 
 const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails']);
+// const runningNow = ref(false);
 
-function runTaskBtn() {
+// function runTaskBtn() {
+// 	emit('runTask', props.task);
+// }
+async function runTaskBtn() {
+	// runningNow.value = true;
 	emit('runTask', props.task);
+	// await myScheduler.runTaskNow(taskInstance.value);
+	// await updateTaskStatus(taskInstance.value);
+	// await fetchLatestLog(taskInstance.value);
+	// runningNow.value = false;
 }
+
 
 function manageScheduleBtn() {
 	emit('manageSchedule', props.task);
@@ -185,7 +171,7 @@ const enableYes = async () => {
 	enabling.value = true;
 	console.log('enabling schedule for:', taskInstance.value.name);
 	await myScheduler.enableSchedule(taskInstance.value);
-	await updateTaskStatus(taskInstance.value);
+	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	updateShowEnablePrompt(false);
 	enabling.value = false;
 };
@@ -221,7 +207,7 @@ const disableYes = async () => {
 	disabling.value = true;
 	console.log('disabling schedule for:', taskInstance.value.name);
 	await myScheduler.disableSchedule(taskInstance.value);
-	await updateTaskStatus(taskInstance.value);
+	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	updateShowDisablePrompt(false);
 	disabling.value = false;
 };
@@ -257,37 +243,72 @@ async function toggleTaskSchedule(event) {
 }
 
 /* Getting Task Status + Last Run Time */
+// onMounted(async () => {
+// 	await updateTaskStatus(taskInstance.value);
+// 	await fetchLatestLog(taskInstance.value);
+	
+// 	// Polling within each component instance
+// 	const intervalId = setInterval(async () => {
+// 		await updateTaskStatus(taskInstance.value);
+// 		await fetchLatestLog(taskInstance.value);
+// 	}, 5000);
+// 	onUnmounted(() => clearInterval(intervalId));
+// });
+
 onMounted(async () => {
-	await updateTaskStatus(taskInstance.value);
+	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	await fetchLatestLog(taskInstance.value);
-	// Polling within each component instance
+
 	const intervalId = setInterval(async () => {
-		await updateTaskStatus(taskInstance.value);
+		await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 		await fetchLatestLog(taskInstance.value);
-	}, 10000);
+	}, 1500);
+
 	onUnmounted(() => clearInterval(intervalId));
 });
 
+
 // Ensure updates when taskInstance changes
 watch(taskInstance, async (newTask) => {
-	await updateTaskStatus(newTask);
+	await updateTaskStatus(newTask, taskInstance.value.schedule.enabled);
 	await fetchLatestLog(newTask);
 });
 
-async function updateTaskStatus(task) {
-	const status = await myScheduler.getTaskStatusFor(task);
+// async function updateTaskStatus(task) {
+// 	const status = await myScheduler.getTaskStatusFor(task);
+// 	taskStatus.value = status.toString();
+// 	// console.log(`Status for ${task.name}:`, status);
+// }
+async function updateTaskStatus(task, timerEnabled) {
+	// let status = await myScheduler.getTaskStatusFor(task);
+	
+	// Add a check for unscheduled tasks (no systemd timer)
+	// if (task.schedule.intervals.length === 0 && !task.schedule.enabled) {
+	// 	status = 'Unscheduled';
+	// } else if (!task.schedule.enabled) {
+	// 	status = 'Disabled';
+	// }
+
+	let status;
+
+	if (timerEnabled) {
+		status = await myScheduler.getTimerStatus(task);
+	} else {
+		status = await myScheduler.getServiceStatus(task);
+	}
+
 	taskStatus.value = status.toString();
-	// console.log(`Status for ${task.name}:`, status);
 }
+
 
 // change color of status text
 function taskStatusClass(status) {
 	if (status) {
-		if (status.includes('active')) {
+		if (status.includes('active') || status.includes('Active') || status.includes('Starting') || status.includes('Completed')) {
 			return 'text-success';
-		} else if (status.includes('inactive')) {
+		} else if (status.includes('inactive') || status.includes('Disabled')) {
 			return 'text-warning';
-		} else if (status.includes('failed')) {
+		} else if (status.includes('failed') || status.includes('Failed')) {
 			return 'text-danger';
 		} else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
 			return 'text-muted';
@@ -301,18 +322,20 @@ async function fetchLatestLog(task) {
 	try {
 		const latestLog = await myTaskLog.getLatestEntryFor(task);
 		if (latestLog) {
+			// Update the latestTaskExecution to reflect the start time or output
 			if (latestLog.startDate) {
 				latestTaskExecution.value = latestLog.startDate;
 			} else {
-				latestTaskExecution.value = latestLog.output;
+				latestTaskExecution.value = latestLog.output || "Task hasn't run yet.";
 			}
-			
+		} else {
+			latestTaskExecution.value = "Task hasn't run yet.";
 		}
-		// console.log(`Last execution of ${task.name}:`, latestLog);
 	} catch (error) {
 		console.error("Failed to fetch logs:", error);
 	}
-};
+}
+
 
 defineExpose({
 	updateTaskStatus,

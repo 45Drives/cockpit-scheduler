@@ -14,85 +14,12 @@ export class RemoteManager implements RemoteManagerType {
         this.cloudSyncRemotes = cloudSyncRemotes;
     }
 
-    /* async getRemotes() {
-        this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);
-        try {
-            const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_rclone_remotes_script], { superuser: 'try' });
-            const remotesOutput = (await state.promise()).stdout;
-            console.log('Raw remotesOutput:', remotesOutput);
-            const remotesData = JSON.parse(remotesOutput);
-
-            remotesData.forEach(remote => {
-                // Create a new CloudSyncRemote instance for each remote
-                const newRemote = new CloudSyncRemote(
-                    remote.name,            // Remote name
-                    remote.type,            // Remote type (e.g., drive, s3, dropbox)
-                    remote.parameters       // Remote parameters (e.g., token, account, key, etc.)
-                );
-
-                // Add the new remote to the list of cloud sync remotes
-                this.cloudSyncRemotes.push(newRemote);
-            });
-
-        } catch (state) {
-            console.error(errorString(state));
-            return null;
-        }
-    } */
-
-
-  /*   async getRemotes() {
-        this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);
-        try {
-            const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_rclone_remotes_script], { superuser: 'try' });
-            const remotesOutput = (await state.promise()).stdout;
-            console.log('Raw remotesOutput:', remotesOutput);
-            const remotesData = JSON.parse(remotesOutput);
-
-            remotesData.forEach(remote => {
-                // Parse the authParams using the createCloudAuthParameter function
-                // This assumes that remote.type has a corresponding provider in cloudSyncProviders
-                const authParams = createCloudAuthParameter(remote.type);
-
-                // Map the authParams from JSON to their respective ParameterNode subclasses
-                Object.entries(remote.authParams).forEach(([key, value]) => {
-                    if (authParams.hasOwnProperty(key)) {
-                        let param = authParams[key]; // Get the existing parameter node
-                        if (param instanceof ObjectParameter && typeof value === 'object') {
-                            Object.entries(value!).forEach(([childKey, childValue]) => {
-                                param.addChild(new StringParameter(childKey, childKey, childValue));
-                            });
-                        } else {
-                            // For simple types, directly set the value
-                            param.value = value; // This is illustrative; actual implementation may vary based on your classes
-                        }
-                    }
-                });
-
-                // Create a new CloudSyncRemote instance for each remote
-                const newRemote = new CloudSyncRemote(
-                    remote.name,            // Remote name
-                    remote.type,            // Remote type (e.g., drive, s3, dropbox)
-                    authParams              // Remote parameters structured as ParameterNodes
-                );
-
-                // Add the new remote to the list of cloud sync remotes
-                this.cloudSyncRemotes.push(newRemote);
-            });
-
-        } catch (state) {
-            console.error(errorString(state));
-            return null;
-        }
-    }
- */
-
     async getRemotes() {
         this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_rclone_remotes_script], { superuser: 'try' });
             const remotesOutput = (await state.promise()).stdout;
-            console.log('Raw remotesOutput:', remotesOutput);
+            // console.log('Raw remotesOutput:', remotesOutput);
 
             const remotesData = JSON.parse(remotesOutput);  // Parse the remotes
 

@@ -62,6 +62,7 @@ def main():
         stop_systemd_timer(unit_name)
     remove_systemd_service(unit_name)
     delete_task_files(unit_name)
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
 if __name__ == "__main__":
     main()

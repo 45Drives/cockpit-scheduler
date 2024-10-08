@@ -12,3 +12,4 @@ export const taskInstancesInjectionKey: InjectionKey<Ref<TaskInstance[]>> = Symb
 export const taskTemplatesInjectionKey: InjectionKey<TaskTemplate[]> = Symbol('task-templates');
 export const remoteManagerInjectionKey: InjectionKey<RemoteManager> = Symbol('remote-manager');
 export const rcloneRemotesInjectionKey: InjectionKey<Ref<CloudSyncRemote[]>> = Symbol('existing-remotes');
+export const truncateTextInjectionKey: InjectionKey<Ref<string>> = Symbol('truncate-text');

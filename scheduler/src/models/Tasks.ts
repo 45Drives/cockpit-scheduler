@@ -1,17 +1,22 @@
 import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
 import { cloudSyncProviders, CloudSyncRemote, createCloudAuthParameter } from './CloudSync';
+import { TaskExecutionResult } from "./TaskLog";
 
 export class TaskInstance implements TaskInstanceType {
     name: string;
     template: TaskTemplate;
     parameters: ParameterNode;
     schedule: TaskSchedule;
+    // status: string;
+    // lastExecutionResult: TaskExecutionResult | null;
 
     constructor(name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) {
         this.name = name;
         this.template = template;
         this.parameters = parameters;
         this.schedule = schedule;
+        // this.status = 'Pending';  // Default status
+        // this.lastExecutionResult = null;  // No result initially
     }
 }
 
@@ -191,7 +196,7 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
             .addChild(new SelectionParameter('Provider', 'provider', providerSelectionOptions[0].value, providerSelectionOptions))
-            .addChild(new CloudSyncRemote('', providerSelectionOptions[0].value, createCloudAuthParameter(providerSelectionOptions[0].value)))
+            .addChild(new CloudSyncRemote('', providerSelectionOptions[0].value, createCloudAuthParameter(providerSelectionOptions[0].value), cloudSyncProviders[0]))
             .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
                 .addChild(new BoolParameter('Follow Symbolic Links', 'symlinks_flag', false))
                 .addChild(new IntParameter('Number of Transfers', 'transfers', 1))

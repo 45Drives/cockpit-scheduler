@@ -8,7 +8,9 @@ interface SchedulerType {
 	async updateTaskInstance(taskInstance: TaskInstanceType): void;
 	async runTaskNow(taskInstance: TaskInstanceType): void;
 	async unregisterTaskInstance(taskInstance: TaskInstanceType): void;
-	async getTaskStatusFor(taskInstance: TaskInstanceType): Promise<string | false>;
+	// async getTaskStatusFor(taskInstance: TaskInstanceType): Promise<string | false>;
+	async getServiceStatus(taskInstance: TaskInstanceType): Promise<string | false>
+	async getTimerStatus(taskInstance: TaskInstanceType): Promise<string | false>
 	async enableSchedule(taskInstance: TaskInstanceType): void;
 	async disableSchedule(taskInstance: TaskInstanceType): void;
 	async updateSchedule(taskInstance: TaskInstanceType): void;
@@ -27,6 +29,8 @@ interface TaskInstanceType {
 	template: TaskTemplateType;
 	parameters: ParameterNodeType;
 	schedule: TaskScheduleType;
+	// status: string;
+	// lastExecutionResult: TaskExecutionResultType | null;
 }
 
 type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
@@ -100,7 +104,7 @@ interface TaskExecutionLogType {
 	entries: TaskExecutionResultType[];
 
 	async getEntriesFor(taskInstance: TaskInstance, untilTime: string): string;
-	async getLatestEntryFor(taskInstance: TaskInstance): string;
+	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
 }
 
 interface TaskExecutionResultType {

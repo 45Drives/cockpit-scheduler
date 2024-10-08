@@ -17,7 +17,7 @@ import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
-import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey, taskTemplatesInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey } from './keys/injection-keys';
+import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey, taskTemplatesInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from './keys/injection-keys';
 import { RemoteManager } from './models/RemoteManager';
 import { CloudSyncRemote } from './models/CloudSync';
 
@@ -46,6 +46,7 @@ const cloudSyncRemotes = ref<CloudSyncRemote[]>([]);
 const myScheduler = new Scheduler(taskTemplates, taskInstances.value);
 const myRemoteManager = new RemoteManager(cloudSyncRemotes.value);
 const loading = ref(false);
+const truncateText = ref('overflow-hidden whitespace-nowrap text-ellipsis');
 
 const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
@@ -65,4 +66,5 @@ provide(rcloneRemotesInjectionKey, cloudSyncRemotes);
 provide(logInjectionKey, myTaskLog);
 provide(taskInstancesInjectionKey, taskInstances);
 provide(taskTemplatesInjectionKey, taskTemplates);
+provide(truncateTextInjectionKey, truncateText);
 </script>
