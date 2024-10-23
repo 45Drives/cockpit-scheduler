@@ -140,15 +140,6 @@ interface CloudSyncRemoteType {
 	authParams: CloudAuthParameter;
 }
 
-// interface RemoteManagerType {
-// 	cloudSyncRemotes: CloudSyncRemoteType[];
-
-// 	async getRemotes(): void;
-// 	createRemote(label: string, key: string, name: string, type: string): CloudSyncRemote;
-// 	editRemote(key: string, newLabel: string, newType: string): CloudSyncRemote | undefined;
-// 	deleteRemote(key: string): boolean;
-// 	authorizeRemote(key: string): boolean;
-// }
 interface RemoteManagerType {
 	cloudSyncRemotes: CloudSyncRemoteType[];
 
@@ -158,3 +149,4 @@ interface RemoteManagerType {
 	deleteRemote(key: string): boolean;
 	authorizeRemote(key: string): boolean;
 }
+

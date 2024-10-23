@@ -28,7 +28,7 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
  
 	# Sleep for 5 seconds to slow down execution for debugging
 	# time.sleep(5)
-	# return new_snap
+	return new_snap
 
 def get_local_snapshots(filesystem):
 	command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]

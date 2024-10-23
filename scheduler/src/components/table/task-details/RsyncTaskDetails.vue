@@ -21,12 +21,12 @@
             </p>
             <p class="my-2"
                 v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">
-                <p class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'target_info', 'host')}`">
+                <span class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'target_info', 'host')}`">
                     Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'target_info', 'host') }}</b>
-                </p>
-                <p class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'target_info', 'port')}`">
+                </span>
+                <span class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'target_info', 'port')}`">
                     Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'target_info', 'port') }}</b>
-                </p>
+                </span>
             </p>
         </div>
         <div class="col-span-1">

@@ -258,7 +258,15 @@ async function toggleTaskSchedule(event) {
 onMounted(async () => {
 	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	await fetchLatestLog(taskInstance.value);
-
+	
+	// let intervalId; 
+	// if (taskInstance.value.schedule.enabled) {
+	// 	intervalId = setInterval(async () => {
+	// 		await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
+	// 		await fetchLatestLog(taskInstance.value);
+	// 	}, 1500);
+		
+	// }
 	const intervalId = setInterval(async () => {
 		await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 		await fetchLatestLog(taskInstance.value);

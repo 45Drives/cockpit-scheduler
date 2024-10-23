@@ -491,7 +491,7 @@ export class Scheduler implements SchedulerType {
                 status = "Unit inactive or not found.";
             }
 
-            console.log(`Status for ${fullTaskName}`, status);
+            // console.log(`Status for ${fullTaskName}`, status);
             return status;
         } catch (error) {
             console.error(`Error parsing status for ${fullTaskName}:`, error);
