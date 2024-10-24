@@ -39,7 +39,7 @@
                             <b>Authenticate with OAuth 2.0</b> - <i>Enter credentials in next window</i>
                         </label>
                         <button @click.stop="oAuthBtn(selectedProvider)"
-                            class="flex flex-row items-center text-center h-fit w-full  btn btn-secondary text-default"
+                            class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
                             :style="{ backgroundColor: getProviderColor(selectedProvider) }">
                             <span class="flex-grow text-center mt-0.5">
                                 Authenticate with {{selectedProvider.name}}
@@ -50,26 +50,10 @@
                             </div>
                         </button>
                     </div>
-                    <div class="flex flex-row justify-between items-center text-center mt-2">
-                        <label for="cloud-provider-parameters" class="block text-base leading-6 text-default mt-1">
-                            <b>Manually Configure Parameters</b> - <i>Leave blank for default values where appropriate</i>
-                        </label>
-                        <!--  <div v-if="selectedProvider.parameters.oAuthSupported" class="">
-                            <button @click.stop="oAuthBtn(selectedProvider)"
-                                class="flex flex-row items-center text-center h-fit w-full  btn btn-secondary text-default"
-                                :style="{ backgroundColor: getProviderColor(selectedProvider) }">
-                                <span class="flex-grow text-center mt-0.5">
-                                    Authenticate with OAuth
-                                </span>
-                                <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                                    <img :src="getProviderLogo(selectedProvider)" alt="provider-logo"
-                                        class="inline-block h-4" />
-                                </div>
-                            </button>
-                        </div> -->
+                    <div class="block text-base leading-6 text-default mt-3">
+                        <b>Manually Configure Parameters</b> - <i>Leave blank for default values where appropriate</i>
                     </div>
-
-                    <div v-for="([key, parameter], index) in basicParameters" :key="key" class="mt-4 text-default">
+                    <div v-for="([key, parameter], index) in basicParameters" :key="key" class="mt-1 text-default">
                         <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
                         <input v-if="parameter.type === 'string' && selectedProvider.type !== 's3'" type="text"
                             v-model="parameter.value" :id="String(key)" class="block w-full mt-1 input-textlike"
@@ -248,7 +232,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
     // window.open(ngrokUrl, '_blank');
     const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=700');
 
-    /* // Listen for a message back from the auth window when authentication is done
+    // Listen for a message back from the auth window when authentication is done
     window.addEventListener('message', (event) => {
         if (event.origin !== 'https://seemingly-settling-stud.ngrok-free.app') return; // Ensure it's from your trusted origin
         if (event.data === 'authSuccess') {
@@ -261,9 +245,10 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 console.log('token retrieved:', token);
             }
         }
-    }); */
+    });
+
     // Poll to check when the auth window is closed
-    const checkAuthWindowClosed = setInterval(() => {
+   /*  const checkAuthWindowClosed = setInterval(() => {
         if (authWindow && authWindow.closed) {
             clearInterval(checkAuthWindowClosed);
             console.log('Auth window closed');
@@ -275,7 +260,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 }
             });
         }
-    }, 500); // Check every 500ms if the window is closed
+    }, 500); // Check every 500ms if the window is closed */
 }
 
 
