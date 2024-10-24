@@ -31,12 +31,12 @@
                 No Snapshot Limit Set (Keep All)
             </p>
             <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
-            <p class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'destDataset', 'host')}`">
-                Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'destDataset', 'host') }}</b>
-            </p>
-            <p class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'destDataset', 'port')}`">
-                Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'destDataset', 'port') }}</b>
-            </p>
+                <span class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'destDataset', 'host')}`">
+                    Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'destDataset', 'host') }}</b>
+                </span>
+                <span class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'destDataset', 'port')}`">
+                    Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'destDataset', 'port') }}</b>
+                </span>
             </p>
         </div>
         <div class="col-span-1">
