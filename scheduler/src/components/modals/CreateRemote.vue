@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showCreateRemote" :margin-top="'mt-24'" :width="'w-2/5'"
+    <Modal @close="closeModal" :isOpen="showCreateRemote" :margin-top="'mt-24'" :width="'w-6/12'"
         :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false"
         :closeConfirm="closeBtn">
         <template v-slot:title>
@@ -11,8 +11,8 @@
                     <div class="flex flex-row justify-between items-center">
                         <div class="flex flex-row justify-between items-center">
                             <label class="block text-sm leading-6 text-default">Remote Name</label>
-                            <!-- <InfoTile class="ml-1"
-                                title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save." /> -->
+                            <InfoTile class="ml-1"
+                                title="Name can have letters, numbers, underscore (_), hyphen (-), period (.), plus (+), asperand (@), and spaces. Cannot start with - or space, or end with space." />
                         </div>
                         <ExclamationCircleIcon v-if="remoteNameErrorTag" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -39,17 +39,6 @@
                             <b>Authenticate with OAuth 2.0</b> - <i>Enter credentials in next window</i>
                         </label>
                         <div class="button-group-row justify-between">
-                            <!-- <button @click.stop="oAuthBtn(selectedProvider)"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
-                                :style="{ backgroundColor: getProviderColor(selectedProvider) }">
-                                <span class="flex-grow text-center mt-0.5">
-                                    Authenticate with {{ selectedProvider.name }}
-                                </span>
-                                <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                                    <img :src="getProviderLogo(selectedProvider)" alt="provider-logo"
-                                        class="inline-block h-4" />
-                                </div>
-                            </button> -->
                             <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
                                 class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
                                 <span class="flex-grow text-center mt-0.5">
@@ -74,9 +63,7 @@
                                         class="inline-block w-4 h-4" />
                                 </div>
                             </button>
-
                         </div>
-
 
                     </div>
                     <div v-if="selectedProvider.parameters.oAuthSupported"
@@ -88,27 +75,30 @@
                             <b>Manually Configure Parameters</b> - <i>Leave blank for default values where
                                 appropriate</i>
                         </div>
-                        <div v-for="([key, parameter], index) in basicParameters" :key="key" class="mt-1 text-default">
+                        <div v-for="([key, parameter], index) in providerParameters" :key="key"
+                            class="mt-1 text-default">
                             <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
 
                             <input
                                 v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
                                 type="text" v-model="parameter.value" :id="String(key)"
-                                class="block w-full mt-1 input-textlike" :placeholder="getPlaceholder(parameter)" />
+                                class="block w-full mt-1 input-textlike"
+                                :placeholder="`Default is ${parameter.defaultValue}`" />
 
                             <input
                                 v-if="parameter.type === 'string' && selectedProvider.type === 's3' && key === 'provider'"
                                 type="text" v-model="parameter.value" :id="String(key)" disabled
-                                class="block w-full mt-1 input-textlike" :placeholder="getPlaceholder(parameter)" />
+                                class="block w-full mt-1 input-textlike"
+                                :placeholder="`Default is ${parameter.defaultValue}`" />
 
                             <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
                                 :id="String(key)"
                                 class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"
-                                :placeholder="getPlaceholder(parameter)" />
+                                :placeholder="`Default is ${parameter.defaultValue}`" />
 
                             <input v-else-if=" parameter.type==='int'" type=" number" v-model="parameter.value"
                                 :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder="getPlaceholder(parameter)" />
+                                :placeholder="`Default is ${parameter.defaultValue}`" />
 
                             <select v-else-if="parameter.type === 'select'" v-model="parameter.value" :id="String(key)"
                                 class="block w-full mt-1 input-textlike">
@@ -119,7 +109,7 @@
 
                             <textarea v-else-if="parameter.type === 'object'" v-model="parameter.value" rows="4"
                                 :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder="getPlaceholder(parameter)"></textarea>
+                                :placeholder="`Default is ${parameter.defaultValue}`"></textarea>
 
                         </div>
                     </div>
@@ -190,38 +180,11 @@ const remoteNameErrorTag = ref('');
 const creating = ref(false);
 const oAuthenticated = ref(false);
 
-const basicParameters = computed(() => {
+const providerParameters = computed(() => {
     if (!selectedProvider.value) return [];
     return Object.entries(selectedProvider.value.parameters.parameters)
         .filter(([_, parameter]) => !parameter.advanced);
 });
-
-const advancedParameters = computed(() => {
-    if (!selectedProvider.value) return [];
-    return Object.entries(selectedProvider.value.parameters.parameters)
-        .filter(([_, parameter]) => parameter.advanced);
-});
-
-const getPlaceholder = (parameter) => {
-    const defaultValue = parameter.defaultValue;
-
-    // Check if the default value is an object and if it's an empty object
-    // if (typeof defaultValue === 'object' && defaultValue !== null && Object.keys(defaultValue).length === 0) {
-    //     return 'Default is empty string ("")'; // Return an empty string if it's an empty object
-    // }
-
-    // Check if the default value is a string and not empty
-    if (typeof defaultValue === 'string' && defaultValue !== "") {
-        return `Default is ${defaultValue}`;
-    }
-
-    // Check if the default value is a primitive (number, boolean)
-    if (typeof defaultValue === 'number' || typeof defaultValue === 'boolean') {
-        return `Default is ${defaultValue}`;
-    }
-
-    return 'Default is empty string ("")';
-};
 
 const createRemoteBtn = async () => {
     
