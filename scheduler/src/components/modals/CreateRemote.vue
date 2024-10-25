@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showCreateRemote" :margin-top="'mt-24'" :width="'w-3/5'"
+    <Modal @close="closeModal" :isOpen="showCreateRemote" :margin-top="'mt-24'" :width="'w-2/5'"
         :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false"
         :closeConfirm="closeBtn">
         <template v-slot:title>
@@ -33,94 +33,96 @@
                         </option>
                     </select>
                 </div>
-                <div v-if="selectedProvider" class="">
-                    <div v-if="selectedProvider.parameters.oAuthSupported" class="w-full mt-2">
+                <div v-if="selectedProvider" class="grid grid-cols-2">
+                    <div v-if="selectedProvider.parameters.oAuthSupported" class="col-span-2 w-full mt-2">
                         <label for="use-oauth" class="block text-base leading-6 text-default mt-1">
                             <b>Authenticate with OAuth 2.0</b> - <i>Enter credentials in next window</i>
                         </label>
-                        <button @click.stop="oAuthBtn(selectedProvider)"
-                            class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
-                            :style="{ backgroundColor: getProviderColor(selectedProvider) }">
-                            <span class="flex-grow text-center mt-0.5">
-                                Authenticate with {{selectedProvider.name}}
-                            </span>
-                            <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                                <img :src="getProviderLogo(selectedProvider)" alt="provider-logo"
-                                    class="inline-block h-4" />
-                            </div>
-                        </button>
-                    </div>
-                    <div class="block text-base leading-6 text-default mt-3">
-                        <b>Manually Configure Parameters</b> - <i>Leave blank for default values where appropriate</i>
-                    </div>
-                    <div v-for="([key, parameter], index) in basicParameters" :key="key" class="mt-1 text-default">
-                        <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
-                        <input v-if="parameter.type === 'string' && selectedProvider.type !== 's3'" type="text"
-                            v-model="parameter.value" :id="String(key)" class="block w-full mt-1 input-textlike"
-                            :placeholder="getPlaceholder(parameter)" />
-                        <input v-if="parameter.type === 'string' && selectedProvider.type == 's3'" type="text"
-                            v-model="parameter.value" :id="String(key)" disabled
-                            class="block w-full mt-1 input-textlike" :placeholder="getPlaceholder(parameter)" />
-                        <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
-                            :id="String(key)"
-                            class="mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"
-                            :placeholder="getPlaceholder(parameter)" />
-                        <input v-else-if=" parameter.type==='int'" type=" number" v-model="parameter.value"
-                            :id="String(key)" class="block w-full mt-1 input-textlike"
-                            :placeholder="getPlaceholder(parameter)" />
-                        <select v-else-if="parameter.type === 'select'" v-model="parameter.value" :id="String(key)"
-                            class="block w-full mt-1 input-textlike">
-                            <option v-for="option in parameter.allowedValues" :key="option" :value="option">
-                                {{ option }}
-                            </option>
-                        </select>
-                        <textarea v-else-if="parameter.type === 'object'" v-model="parameter.value" :id="String(key)"
-                            class="block w-full mt-1 input-textlike"
-                            :placeholder="getPlaceholder(parameter)"></textarea>
-                    </div>
+                        <div class="button-group-row justify-between">
+                            <!-- <button @click.stop="oAuthBtn(selectedProvider)"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
+                                :style="{ backgroundColor: getProviderColor(selectedProvider) }">
+                                <span class="flex-grow text-center mt-0.5">
+                                    Authenticate with {{ selectedProvider.name }}
+                                </span>
+                                <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
+                                    <img :src="getProviderLogo(selectedProvider)" alt="provider-logo"
+                                        class="inline-block h-4" />
+                                </div>
+                            </button> -->
+                            <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
+                                <span class="flex-grow text-center mt-0.5">
+                                    Reset OAuth Data
+                                </span>
+                            </button>
+                            <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
+                                <span class="flex-grow text-center mt-0.5">
+                                    Reset OAuth Data
+                                </span>
+                            </button>
+                            <button @click.stop="oAuthBtn(selectedProvider)" @mouseenter="handleMouseEnter"
+                                @mouseleave="handleMouseLeave"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
+                                :style="getButtonStyles(isHovered, selectedProvider, undefined)">
+                                <span class="flex-grow text-center mt-0.5">
+                                    Authenticate with {{ selectedProvider.name }}
+                                </span>
+                                <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
+                                    <img :src="getProviderLogo(selectedProvider, undefined)" alt="provider-logo"
+                                        class="inline-block w-4 h-4" />
+                                </div>
+                            </button>
 
-                    <!-- Disclosure for advanced parameters -->
-                    <!-- <div class="bg-well rounded-md text-default">
-                        <Disclosure v-slot="{ open }" :defaultOpen="false">
-                            <DisclosureButton
-                                class="bg-well mt-2 w-full justify-start text-center rounded-md flex flex-row">
-                                <div class="m-1">
-                                    <ChevronUpIcon class="h-7 w-7 text-default transition-all duration-200 transform"
-                                        :class="{ 'rotate-90': !open, 'rotate-180': open, }" />
-                                </div>
-                                <div class="ml-3 mt-1.5">
-                                    <span class="text-start whitespace-nowrap text-base text-default">
-                                        <b>Advanced Config Parameters</b>
-                                    </span>
-                                </div>
-                            </DisclosureButton>
-                            <DisclosurePanel class="bg-well rounded-md p-2">
-                                <div v-for="([key, parameter], index) in advancedParameters" :key="key" class="mt-4">
-                                    <label :for="String(key)" class="block text-sm font-medium text-default">{{ key
-                                        }}</label>
-                                    <input v-if="parameter.type === 'string'" type="text" v-model="parameter.value"
-                                        :id="String(key)" class="block w-full mt-1 input-textlike"
-                                        :placeholder="getPlaceholder(parameter)" />
-                                    <input v-else-if="parameter.type === 'bool'" type="checkbox"
-                                        v-model="parameter.value" :id="String(key)"
-                                        class="mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"
-                                        :placeholder="getPlaceholder(parameter)" />
-                                    <input v-else-if="parameter.type === 'int'" type="number" v-model="parameter.value"
-                                        :id="String(key)" class="block w-full mt-1 input-textlike"
-                                        :placeholder="getPlaceholder(parameter)" />
-                                    <select v-else-if="parameter.type === 'select'" v-model="parameter.value"
-                                        :id="String(key)" class="block w-full mt-1 input-textlike">
-                                        <option v-for="option in parameter.allowedValues" :key="option" :value="option">
-                                            {{ option }}
-                                        </option>
-                                    </select>
-                                    <textarea v-else-if="parameter.type === 'object'" v-model="parameter.value"
-                                        :id="String(key)" class="block w-full mt-1 input-textlike"
-                                        :placeholder="getPlaceholder(parameter)"></textarea>
-                                </div>
-                            </DisclosurePanel>
-                        </Disclosure>
-                    </div> -->
+                        </div>
+
+
+                    </div>
+                    <div v-if="selectedProvider.parameters.oAuthSupported"
+                        class="w-full col-span-2 text-default text-center items-center mt-3">
+                        --- OR ---
+                    </div>
+                    <div class="col-span-2 w-full mt-2">
+                        <div class="block text-base leading-6 text-default">
+                            <b>Manually Configure Parameters</b> - <i>Leave blank for default values where
+                                appropriate</i>
+                        </div>
+                        <div v-for="([key, parameter], index) in basicParameters" :key="key" class="mt-1 text-default">
+                            <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
+
+                            <input
+                                v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
+                                type="text" v-model="parameter.value" :id="String(key)"
+                                class="block w-full mt-1 input-textlike" :placeholder="getPlaceholder(parameter)" />
+
+                            <input
+                                v-if="parameter.type === 'string' && selectedProvider.type === 's3' && key === 'provider'"
+                                type="text" v-model="parameter.value" :id="String(key)" disabled
+                                class="block w-full mt-1 input-textlike" :placeholder="getPlaceholder(parameter)" />
+
+                            <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
+                                :id="String(key)"
+                                class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"
+                                :placeholder="getPlaceholder(parameter)" />
+
+                            <input v-else-if=" parameter.type==='int'" type=" number" v-model="parameter.value"
+                                :id="String(key)" class="block w-full mt-1 input-textlike"
+                                :placeholder="getPlaceholder(parameter)" />
+
+                            <select v-else-if="parameter.type === 'select'" v-model="parameter.value" :id="String(key)"
+                                class="block w-full mt-1 input-textlike">
+                                <option v-for="option in parameter.allowedValues" :key="option" :value="option">
+                                    {{ option }}
+                                </option>
+                            </select>
+
+                            <textarea v-else-if="parameter.type === 'object'" v-model="parameter.value" rows="4"
+                                :id="String(key)" class="block w-full mt-1 input-textlike"
+                                :placeholder="getPlaceholder(parameter)"></textarea>
+
+                        </div>
+                    </div>
                 </div>
             </div>
         </template>
@@ -173,10 +175,11 @@ import { RemoteManager } from '../../models/RemoteManager';
 import { CloudSyncProvider, CloudSyncRemote } from "../../models/CloudSync";
 import { pushNotification, Notification } from 'houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
-import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey } from '../../keys/injection-keys';
-import { cloudSyncProviders } from '../../models/CloudSync';
-import { providerLogos } from '../../utils/providerLogos';
+import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
+import { cloudSyncProviders, getButtonStyles, getProviderLogo } from '../../models/CloudSync';
 
+
+const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
@@ -185,6 +188,7 @@ const selectedProvider = ref<CloudSyncProvider>();
 const remoteName = ref(''); 
 const remoteNameErrorTag = ref('');
 const creating = ref(false);
+const oAuthenticated = ref(false);
 
 const basicParameters = computed(() => {
     if (!selectedProvider.value) return [];
@@ -220,101 +224,105 @@ const getPlaceholder = (parameter) => {
 };
 
 const createRemoteBtn = async () => {
-
+    
 }
+
+function clearOAuthBtn() {
+    oAuthenticated.value = false;
+    selectedProvider.value!.parameters.parameters['token'].value = "";
+}
+
+const accessToken = ref<string | null>(null);
+const refreshToken = ref<string | null>(null);
+const userId = ref<string | null>(null);
+const tokenExpiry = ref<string | null>(null);
 
 function oAuthBtn(selectedProvider: CloudSyncProvider) {
-    // console.log('selectedProvider:', selectedProvider.name); 
-    const ngrokUrl = `https://seemingly-settling-stud.ngrok-free.app/auth/${selectedProvider.type}`;
-
-    // Redirect the user to the ngrok URL to start the Google OAuth process
-    // window.location.href = ngrokUrl;
-    // window.open(ngrokUrl, '_blank');
-    const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=700');
-
-    // Listen for a message back from the auth window when authentication is done
-    window.addEventListener('message', (event) => {
-        if (event.origin !== 'https://seemingly-settling-stud.ngrok-free.app') return; // Ensure it's from your trusted origin
-        if (event.data === 'authSuccess') {
-            authWindow!.close();
-            // Fetch and process the token if needed
-            // const token = localStorage.getItem('oauthToken');
-            const token = fetchToken();
-            if (token) {
-                // Use the token
-                console.log('token retrieved:', token);
-            }
-        }
-    });
-
-    // Poll to check when the auth window is closed
-   /*  const checkAuthWindowClosed = setInterval(() => {
-        if (authWindow && authWindow.closed) {
-            clearInterval(checkAuthWindowClosed);
-            console.log('Auth window closed');
-            // Fetch the token after the window is closed
-            fetchToken().then((token) => {
-                if (token) {
-                    console.log('Token retrieved after auth window closed:', token);
-                    // Handle the token (e.g., store it, use it, etc.)
-                }
-            });
-        }
-    }, 500); // Check every 500ms if the window is closed */
-}
-
-
-async function fetchToken() {
     try {
-        const response = await fetch('/api/proxy-get-tokens', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'same-origin' // Ensure cookies are sent if using sessions
-        });
+        const ngrokUrl = `https://seemingly-settling-stud.ngrok-free.app/auth/${selectedProvider.type}`;
+        const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=700');
 
-        if (response.ok) {
-            const data = await response.json();
-            const token = data.token;
-            console.log('token:', token);
-            return token;
-        } else {
-            console.error('Token not available');
+        if (!authWindow) {
+            throw new Error('Failed to open authentication window. Please check your popup settings.');
         }
-    } catch (error) {
-        console.error('Error fetching token:', error);
+
+        window.addEventListener('message', async (event) => {
+            try {
+                // Check the origin of the message for security
+                if (event.origin !== 'https://seemingly-settling-stud.ngrok-free.app') return;
+
+                // Extract the token data
+                const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
+
+                if (token && refresh && id) {
+                    // Update the reactive state variables
+                    accessToken.value = token;
+                    refreshToken.value = refresh;
+                    userId.value = id;
+
+                    // Fetch the token expiry asynchronously and update the state
+                    const expiry = await getTokenExpiry();
+                    if (expiry) {
+                        tokenExpiry.value = expiry;
+                    }
+
+                    console.log('accessToken:', accessToken.value);
+                    console.log('refreshToken:', refreshToken.value);
+                    // console.log('userId:', userId.value);
+                    console.log('tokenExpiry:', tokenExpiry.value);
+
+                    const fullToken = {
+                        "access_token": accessToken.value,
+                        "expiry": tokenExpiry.value,
+                        "refresh_token": refreshToken.value
+                    }
+
+                    oAuthenticated.value = true;
+                    selectedProvider.parameters.parameters.token!.value = JSON.stringify(fullToken);
+                    pushNotification(new Notification('Authentication Successful', `Token retrieved successfully`, 'success', 8000));
+                } else {
+                    throw new Error('Authentication failed. Token data is missing or incomplete.');
+                }
+            } catch (error: any) {
+                console.error('Error during authentication:', error);
+                oAuthenticated.value = false;
+                pushNotification(new Notification('Authentication Failed', `${error.message}`, 'error', 8000));
+            }
+        });
+    } catch (error: any) {
+        console.error('Error initializing OAuth:', error);
+        pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 8000));
     }
 }
 
 
-
-// Function to fetch logo and color
-function getProviderLogo(selectedProvider: CloudSyncProvider): string {
-    if (selectedProvider.type === "s3") {
-        return providerLogos[`${selectedProvider.type}-${selectedProvider.parameters.provider!}`]?.logo || "";
-    } else {
-        return providerLogos[selectedProvider.type]?.logo || "";
-    }
+async function getTokenExpiry(): Promise<string> {
+  // Assume a standard 1-hour lifespan for Google access tokens
+  const currentTime = new Date();
+  return new Date(currentTime.getTime() + 3600 * 1000).toISOString();
 }
 
-function getProviderColor(selectedProvider: CloudSyncProvider): string {
-    if (selectedProvider.type == "s3") {
-        return providerLogos[`${selectedProvider.type}-${selectedProvider.parameters.provider!}`].mainColor;
-    } else {
-        return providerLogos[selectedProvider.type].mainColor || "#000000";
-    }
+const isHovered = ref(false);
+
+function handleMouseEnter() {
+    isHovered.value = true;
+}
+
+function handleMouseLeave() {
+    isHovered.value = false;
 }
 
 
 const emit = defineEmits(['close']);
 const showCreateRemote = inject<Ref<boolean>>('show-create-remote')!;
 
-    console.log('REMOTES:', existingRemotes)!;
+console.log('REMOTES:', existingRemotes)!;
 
 const errorList = ref<string[]>([]);
 
 const closeModal = () => {
+    oAuthenticated.value = false;
+    selectedProvider.value!.parameters.parameters['token'].value = "";
     showCreateRemote.value = false;
     emit('close');
 }

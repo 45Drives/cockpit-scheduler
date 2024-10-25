@@ -42,14 +42,15 @@
                         No Remote Selected
                     </button>
 
-                    <button v-else @click.stop="authenticateRemoteBtn(selectedRemote)"
+                    <button v-else @click.stop="authenticateRemoteBtn(selectedRemote)" @mouseenter="handleMouseEnter"
+                        @mouseleave="handleMouseLeave"
                         class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-default"
-                        :style="{ backgroundColor: getProviderColor(selectedRemote) }">
+                        :style="getButtonStyles(isHovered, undefined, selectedRemote)">
                         <span class="flex-grow text-center">
                             Authenticate {{ selectedRemote.name }}
                         </span>
                         <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                            <img :src="getProviderLogo(selectedRemote)" alt="provider-logo" class="inline-block h-4" />
+                            <img :src="getProviderLogo(undefined, selectedRemote)" alt="provider-logo" class="inline-block w-4 h-4" />
                         </div>
                     </button>
                 </div>
@@ -238,11 +239,11 @@ import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@h
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter, ObjectParameter } from '../../../models/Parameters';
-import { CloudAuthParameter, cloudSyncProviders, CloudSyncProvider, CloudSyncRemote, createCloudAuthParameter } from '../../../models/CloudSync';
+import { CloudAuthParameter, cloudSyncProviders, CloudSyncProvider, CloudSyncRemote, createCloudAuthParameter, getButtonStyles, getProviderLogo } from '../../../models/CloudSync';
 import { injectWithCheck, testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
-import { providerLogos } from '../../../utils/providerLogos';
+
 
 interface CloudSyncParamsProps {
     parameterSchema: ParameterNodeType;
@@ -261,6 +262,16 @@ const remoteType = ref(undefined);
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 
 
+const isHovered = ref(false);
+
+function handleMouseEnter() {
+    isHovered.value = true;
+}
+
+function handleMouseLeave() {
+    isHovered.value = false;
+}
+
 onMounted(() => {
     console.log("Component mounted");
     console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
@@ -273,24 +284,6 @@ watch(selectedRemote, (newVal) => {
 
 function authenticateRemoteBtn(selectedRemote: CloudSyncRemote) {
 
-}
-
-
-// Function to fetch logo and color
-function getProviderLogo(selectedRemote: CloudSyncRemote): string {
-    if (selectedRemote.type === "s3") {
-        return providerLogos[`${selectedRemote.type}-${selectedRemote.provider.parameters.provider!}`]?.logo || "";
-    } else {
-        return providerLogos[selectedRemote.type]?.logo || "";
-    }
-}
-
-function getProviderColor(selectedRemote: CloudSyncRemote): string {
-    if (selectedRemote.type == "s3") {
-        return providerLogos[`${selectedRemote.type}-${selectedRemote.provider.parameters.provider!}`].mainColor;
-    } else {
-        return providerLogos[selectedRemote.type].mainColor || "#000000";
-    }
 }
 
 

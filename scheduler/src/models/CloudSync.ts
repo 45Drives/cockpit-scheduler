@@ -1,4 +1,5 @@
 import { ParameterNode, StringParameter, BoolParameter, IntParameter, ObjectParameter, } from "./Parameters";
+import { providerLogos } from '../utils/providerLogos';
 
 export class CloudSyncProvider {
     name: string;
@@ -22,41 +23,42 @@ export class CloudSyncProvider {
 export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
     "dropbox": new CloudSyncProvider("Dropbox", "dropbox", {
         parameters: {
+            token: { value: {}, type: 'object', defaultValue: {} },
             client_id: { value: "", type: 'string', defaultValue: "" },
-            client_secret: { value: "", type: 'string', defaultValue: "" },
-            token: { value: {}, type: 'object', advanced: true, defaultValue: "" }
+            client_secret: { value: "", type: 'string', defaultValue: "" }
         },
         oAuthSupported: true
     }),
     "drive": new CloudSyncProvider("Google Drive", "drive", {
         parameters: {
+            token: { value: {}, type: 'object', defaultValue: {} },
+            scope: { value: "drive", type: 'select', allowedValues: ["drive", "drive.readonly", "drive.file", "drive.appfolder", "drive.metadata.readonly"], defaultValue: "drive" },
             client_id: { value: "", type: 'string', defaultValue: "" },
             client_secret: { value: "", type: 'string', defaultValue: "" },
-            scope: { value: "drive", type: 'select', allowedValues: ["drive", "drive.readonly", "drive.file", "drive.appfolder", "drive.metadata.readonly"], defaultValue: "drive" },
             root_folder_id: { value: "", type: 'string', defaultValue: "" },
-            service_account_file: { value: "", type: 'string', defaultValue: "" },
-            token: { value: {}, type: 'object', advanced: true, defaultValue: {} }
+            service_account_file: { value: "", type: 'string', defaultValue: "" }
         },
         oAuthSupported: true
     }),
     "google cloud storage": new CloudSyncProvider("Google Cloud", "google cloud storage", {
         parameters: {
+            token: { value: {}, type: 'object', defaultValue: {} },
             client_id: { value: "", type: 'string', defaultValue: "" },
             client_secret: { value: "", type: 'string', defaultValue: "" },
             project_number: { value: "", type: 'string', defaultValue: "" },
             service_account_file: { value: "", type: 'string', defaultValue: "" },
             anonymous: { value: false, type: 'bool', defaultValue: false },
-            object_acl: { value: "", type: 'string', allowedValues: ["authenticatedRead", "bucketOwnerFullControl", "bucketOwnerRead", "private", "projectPrivate", "publicRead"], defaultValue: "" },
-            bucket_acl: { value: "", type: 'string', allowedValues: ["authenticatedRead", "private", "projectPrivate", "publicRead", "publicReadWrite"], defaultValue: "" }
+            object_acl: { value: "private", type: 'select', allowedValues: ["authenticatedRead", "bucketOwnerFullControl", "bucketOwnerRead", "private", "projectPrivate", "publicRead"], defaultValue: "private" },
+            bucket_acl: { value: "private", type: 'select', allowedValues: ["authenticatedRead", "private", "projectPrivate", "publicRead", "publicReadWrite"], defaultValue: "private" }
         },
         oAuthSupported: true
     }),
     "onedrive": new CloudSyncProvider("Microsoft OneDrive", "onedrive", {
         parameters: {
+            token: { value: {}, type: 'object', defaultValue: {} },
             client_id: { value: "", type: 'string', defaultValue: "" },
             client_secret: { value: "", type: 'string', defaultValue: "" },
-            region: { value: "global", type: 'string', allowedValues: ["global", "us", "de", "cn"], defaultValue: "global" },
-            token: { value: {}, type: 'object', advanced: true, defaultValue: "" }
+            region: { value: "global", type: 'select', allowedValues: ["global", "us", "de", "cn"], defaultValue: "global" }
         },
         oAuthSupported: true
     }),
@@ -83,8 +85,8 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
             env_auth: { value: false, type: 'bool', defaultValue: false },
             access_key_id: { value: "", type: 'string', defaultValue: "" },
             secret_access_key: { value: "", type: 'string', defaultValue: "" },
-            region: { value: "", type: 'string', allowedValues: ["", "other-v2-signature"], defaultValue: "" },
             endpoint: { value: "", type: 'string', defaultValue: "" },
+            region: { value: "", type: 'string', allowedValues: ["", "other-v2-signature"], defaultValue: "" },
             location_constraint: { value: "", type: 'string', defaultValue: "" },
             acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
         },
@@ -96,8 +98,8 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
             env_auth: { value: false, type: 'bool', defaultValue: false },
             access_key_id: { value: "", type: 'string', defaultValue: "" },
             secret_access_key: { value: "", type: 'string', defaultValue: "" },
-            region: { value: "", type: 'string', allowedValues: ["", "other-v2-signature"], defaultValue: "" },
             endpoint: { value: "", type: 'string', defaultValue: "" },
+            region: { value: "", type: 'string', allowedValues: ["", "other-v2-signature"], defaultValue: "" },
             location_constraint: { value: "", type: 'string', defaultValue: "" },
             acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
         },
@@ -106,22 +108,6 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
 
 };
 
-
-// interface CloudAuthParameterOptions {
-//     parameters: {
-//         [key: string]: {
-//             value: any;
-//             // type: 'string' | 'bool' | 'int' | 'object';
-//             type: 'string' | 'bool' | 'int' | 'select' | 'size' | 'duration' | 'object';
-//             advanced?: boolean; // Flag to indicate if this is an advanced option
-//             allowedValues?: string[] | number[];
-//             defaultValue?: string | number | boolean | object;
-//             minValue?: number;
-//             maxValue?: number;
-//         };
-//     },
-//     provider?: string
-// }
 
 interface CloudAuthParameterOptions {
     parameters: {
@@ -177,41 +163,6 @@ export class CloudAuthParameter extends ParameterNode {
         });
     }
 }
-// export class CloudAuthParameter extends ParameterNode implements ParameterNodeType {
-//     constructor(label: string, key: string, options: CloudAuthParameterOptions = { parameters: {}}) {
-//         super(label, key);
-
-//         // Function to check if a child parameter with the same key already exists
-//         const findChild = (key: string) => {
-//             return this.children.find(child => child.key === key);
-//         };
-
-//         // Dynamically add parameters from options
-//         Object.entries(options).forEach(([key, value]) => {
-//             let existingChild = findChild(key);
-
-//             if (existingChild) {
-//                 // If the parameter already exists, update its value
-//                 if (existingChild instanceof StringParameter) {
-//                     existingChild.value = value as string;
-//                 } else if (existingChild instanceof BoolParameter) {
-//                     existingChild.value = value as boolean;
-//                 } else if (existingChild instanceof ObjectParameter) {
-//                     existingChild.value = value;
-//                 }
-//             } else {
-//                 // If the parameter does not exist, add it as a new child
-//                 if (typeof value === 'string') {
-//                     this.addChild(new StringParameter(key, key, value));
-//                 } else if (typeof value === 'boolean') {
-//                     this.addChild(new BoolParameter(key, key, value));
-//                 } else if (typeof value === 'object') {
-//                     this.addChild(new ObjectParameter(key, key, value));
-//                 }
-//             }
-//         });
-//     }
-// }
 
 
 export function createCloudAuthParameter(type: string, s3_provider?: string): CloudAuthParameter {
@@ -248,3 +199,118 @@ export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteTyp
         this.provider = provider;
     }
 }
+
+// Function to fetch logo and color
+export function getProviderLogo(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
+    // Determine the type and parameters based on whether it's a provider or a remote
+    const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
+    const provider = selectedProvider
+        ? selectedProvider.parameters.provider
+        : selectedRemote?.provider.parameters.provider;
+
+    if (type === "s3" && provider) {
+        return providerLogos[`${type}-${provider}`]?.logo || "";
+    } else if (type) {
+        return providerLogos[type]?.logo || "";
+    }
+
+    return "";
+}
+
+export function getProviderColor(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
+    const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
+    const provider = selectedProvider
+        ? selectedProvider.parameters.provider
+        : selectedRemote?.provider.parameters.provider;
+
+    if (type === "s3" && provider) {
+        return providerLogos[`${type}-${provider}`]?.mainColor;
+    } else if (type) {
+        return providerLogos[type]?.mainColor;
+    }
+    return "#000000"; // Default color
+}
+
+export function getProviderHoverColor(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
+    const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
+    const provider = selectedProvider
+        ? selectedProvider.parameters.provider
+        : selectedRemote?.provider.parameters.provider;
+
+    if (type === "s3" && provider) {
+        return providerLogos[`${type}-${provider}`]?.hoverColor;
+    } else if (type) {
+        return providerLogos[type]?.hoverColor;
+    }
+    return "#000000"; // Default color
+}
+
+export function getButtonStyles(hovered: boolean, selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote) {
+    const mainColor = getProviderColor(selectedProvider, selectedRemote);
+    const hoverColor = getProviderHoverColor(selectedProvider, selectedRemote);
+
+    return {
+        backgroundColor: hovered ? hoverColor : mainColor,
+        transition: 'background-color 0.01s ease',
+    };
+}
+
+
+
+
+// function getProviderLogo(selectedRemote: CloudSyncRemote): string {
+//     if (selectedRemote.type === "s3") {
+//         return providerLogos[`${selectedRemote.type}-${selectedRemote.provider.parameters.provider!}`]?.logo || "";
+//     } else {
+//         return providerLogos[selectedRemote.type]?.logo || "";
+//     }
+// }
+
+// function getProviderColor(selectedRemote: CloudSyncRemote): string {
+//     if (selectedRemote.type == "s3") {
+//         return providerLogos[`${selectedRemote.type}-${selectedRemote.provider.parameters.provider!}`].mainColor;
+//     } else {
+//         return providerLogos[selectedRemote.type].mainColor || "#000000";
+//     }
+// }
+
+
+// export function getProviderLogo(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
+//     if (selectedProvider) {
+//         if (selectedProvider.type === "s3") {
+//             return providerLogos[`${selectedProvider.type}-${selectedProvider.parameters.provider!}`]?.logo || "";
+//         } else {
+//             return providerLogos[selectedProvider.type]?.logo || "";
+//         }
+//     } else if (selectedRemote) {
+        
+//     }
+   
+// }
+
+// export function getProviderColor(selectedProvider: CloudSyncProvider): string {
+//     if (selectedProvider.type == "s3") {
+//         return providerLogos[`${selectedProvider.type}-${selectedProvider.parameters.provider!}`].mainColor;
+//     } else {
+//         return providerLogos[selectedProvider.type].mainColor || "#000000";
+//     }
+// }
+
+// export function getProviderHoverColor(selectedProvider: CloudSyncProvider): string {
+//     if (selectedProvider.type == "s3") {
+//         return providerLogos[`${selectedProvider.type}-${selectedProvider.parameters.provider!}`].hoverColor;
+//     } else {
+//         return providerLogos[selectedProvider.type].hoverColor || "#000000";
+//     }
+// }
+
+// export function getButtonStyles(selectedProvider: CloudSyncProvider, hovered: boolean) {
+//     const mainColor = getProviderColor(selectedProvider);
+//     const hoverColor = getProviderHoverColor(selectedProvider);
+
+//     return {
+//         backgroundColor: hovered ? hoverColor : mainColor,
+//         transition: 'background-color 0.01s ease',
+//     };
+// }
+

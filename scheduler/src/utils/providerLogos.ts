@@ -33,7 +33,7 @@ export const providerLogos: { [key: string]: ProviderLogo } = {
     "onedrive": {
         logo: "./img/onedrive.svg",
         mainColor: "#4F8AD8",
-        hoverColor: "#C21800"
+        hoverColor: "#1866AC"
     },
     "google cloud storage": {
         logo: "./img/google-cloud.svg",
