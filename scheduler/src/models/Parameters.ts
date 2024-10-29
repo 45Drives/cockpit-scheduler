@@ -5,7 +5,6 @@ export class ParameterNode implements ParameterNodeType {
     key: string;
     children: ParameterNode[];
     value: any;
-    // onProviderChange: ((newProvider: string) => void) | undefined;
 
     constructor(label: string, key: string) {
         this.label = label;

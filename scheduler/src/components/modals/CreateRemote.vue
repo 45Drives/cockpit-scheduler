@@ -35,8 +35,8 @@
                 </div>
                 <div v-if="selectedProvider" class="grid grid-cols-2">
                     <div v-if="selectedProvider.parameters.oAuthSupported" class="col-span-2 w-full mt-2">
-                        <label for="use-oauth" class="block text-base leading-6 text-default mt-1">
-                            <b>Authenticate with OAuth 2.0</b> - <i>Enter credentials in next window</i>
+                        <label for="use-oauth" class="block text-base leading-6 text-default mt-1 border-b-2 mb-2">
+                            <b>Authenticate with OAuth 2.0</b> - <i class="text-sm">Enter credentials in next window</i>
                         </label>
                         <div class="button-group-row justify-between">
                             <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
@@ -71,45 +71,68 @@
                         --- OR ---
                     </div>
                     <div class="col-span-2 w-full mt-2">
-                        <div class="block text-base leading-6 text-default">
-                            <b>Manually Configure Parameters</b> - <i>Leave blank for default values where
-                                appropriate</i>
+                        <div class="block text-base leading-6 text-default border-b-2 mb-2">
+                            <b>Manually Configure Parameters</b> - <i class="text-sm">Blank fields will be left out of
+                                config or set with defaults (if applicable)</i>
                         </div>
                         <div v-for="([key, parameter], index) in providerParameters" :key="key"
                             class="mt-1 text-default">
                             <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
 
-                            <input
+                            <!-- <input
                                 v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
                                 type="text" v-model="parameter.value" :id="String(key)"
                                 class="block w-full mt-1 input-textlike"
-                                :placeholder="`Default is ${parameter.defaultValue}`" />
+                                :placeholder='`Default is "${parameter.defaultValue}"`' />
 
                             <input
                                 v-if="parameter.type === 'string' && selectedProvider.type === 's3' && key === 'provider'"
                                 type="text" v-model="parameter.value" :id="String(key)" disabled
                                 class="block w-full mt-1 input-textlike"
-                                :placeholder="`Default is ${parameter.defaultValue}`" />
+                                :placeholder='`Default is "${parameter.defaultValue}"`' />
 
                             <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
                                 :id="String(key)"
-                                class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2"
-                                :placeholder="`Default is ${parameter.defaultValue}`" />
+                                class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2" />
 
-                            <input v-else-if=" parameter.type==='int'" type=" number" v-model="parameter.value"
+                            <input v-else-if="parameter.type === 'int'" type=" number" v-model="parameter.value"
                                 :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder="`Default is ${parameter.defaultValue}`" />
+                                :placeholder='`Default is "${parameter.defaultValue}"`' />
 
                             <select v-else-if="parameter.type === 'select'" v-model="parameter.value" :id="String(key)"
                                 class="block w-full mt-1 input-textlike">
                                 <option v-for="option in parameter.allowedValues" :key="option" :value="option">
                                     {{ option }}
                                 </option>
+                            </select> -->
+                            <input
+                                v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
+                                type="text" v-model="providerValues[key]" :id="String(key)"
+                                class="block w-full mt-1 input-textlike"
+                                :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
+
+                            <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="providerValues[key]"
+                                :id="String(key)"
+                                class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />
+
+                            <input v-else-if="parameter.type === 'int'" type="number" v-model="providerValues[key]"
+                                :id="String(key)" class="block w-full mt-1 input-textlike"
+                                :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
+
+                            <select v-else-if="parameter.type === 'select'" v-model="providerValues[key]"
+                                :id="String(key)" class="block w-full mt-1 input-textlike">
+                                <option v-for="option in parameter.allowedValues" :key="option" :value="option">
+                                    {{ option }}
+                                </option>
                             </select>
 
-                            <textarea v-else-if="parameter.type === 'object'" v-model="parameter.value" rows="4"
-                                :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder="`Default is ${parameter.defaultValue}`"></textarea>
+                            <textarea v-else-if="parameter.type === 'object' && key !== 'token'"
+                                v-model="parameter.value" rows="4" :id="String(key)"
+                                class="block w-full mt-1 input-textlike"
+                                :placeholder='`Default is empty object`'></textarea>
+                            <textarea v-else-if="parameter.type === 'object' && key === 'token'" v-model="displayValue"
+                                rows="4" :id="String(key)" class="block w-full mt-1 input-textlike"
+                                :placeholder='`Default is empty object`'></textarea>
 
                         </div>
                     </div>
@@ -155,7 +178,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { inject, provide, ref, Ref, watch, computed } from 'vue';
+import { inject, provide, ref, Ref, watch, computed, reactive } from 'vue';
 import { Menu, MenuButton, MenuItem, MenuItems, Switch, Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
@@ -168,6 +191,11 @@ import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
 import { cloudSyncProviders, getButtonStyles, getProviderLogo } from '../../models/CloudSync';
 
+interface CreateRemoteProps {
+
+}
+
+const props = defineProps<CreateRemoteProps>();
 
 const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
@@ -175,19 +203,142 @@ const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not 
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 
 const selectedProvider = ref<CloudSyncProvider>();
-const remoteName = ref(''); 
+const providerValues = reactive<any>({});
+
+const remoteName = ref('');
 const remoteNameErrorTag = ref('');
 const creating = ref(false);
 const oAuthenticated = ref(false);
+const emit = defineEmits(['close']);
+const showCreateRemote = inject<Ref<boolean>>('show-create-remote')!;
+
+console.log('REMOTES:', existingRemotes)!;
+
+
+watch(selectedProvider, (newProvider) => {
+    // console.log('selectedProvider:', selectedProvider.value);
+    if (newProvider) {
+        console.log('newProvider:', newProvider);
+        // Initialize providerValues with a shallow copy of the selectedProvider parameters
+        for (const [key, param] of Object.entries(newProvider.parameters.parameters)) {
+            providerValues[key] = param.value ?? param.defaultValue; // Use defaultValue if no current value
+        }
+    }
+});
+
+const errorList = ref<string[]>([]);
+
+const closeModal = () => {
+    oAuthenticated.value = false;
+
+    providerValues.token = "" ;
+    showCreateRemote.value = false;
+    emit('close');
+}
+
+const cancelingAddRemote = ref(false);
+const showCloseConfirmation = ref(false);
+const closeConfirmationComponent = ref();
+async function loadCloseConfirmationComponent() {
+    const module = await import('../common/ConfirmationDialog.vue');
+    closeConfirmationComponent.value = module.default;
+}
+
+const closeBtn = async () => {
+    await loadCloseConfirmationComponent();
+    showCloseConfirmation.value = true;
+};
+
+const updateShowCloseConfirmation = (newVal) => {
+    showCloseConfirmation.value = newVal;
+}
+
+const confirmCancel: ConfirmationCallback = async () => {
+    closeModal();
+}
+
+const cancelCancel: ConfirmationCallback = async () => {
+    updateShowCloseConfirmation(false);
+}
 
 const providerParameters = computed(() => {
     if (!selectedProvider.value) return [];
-    return Object.entries(selectedProvider.value.parameters.parameters)
-        .filter(([_, parameter]) => !parameter.advanced);
+    return Object.entries(selectedProvider.value.parameters.parameters);
+});
+
+
+// Computed property with token existence check
+const displayValue = computed({
+    get: () => {
+        if (selectedProvider.value) {
+            const token = providerValues.token; // Use providerValues instead of selectedProvider
+            if (!token) {
+                return ''; // Return empty or a placeholder if token is missing
+            }
+            // Convert token to JSON string for display if it’s an object
+            return typeof token === 'object'
+                ? JSON.stringify(token, null, 2)
+                : token;
+        }
+    },
+    set: (newValue: string) => {
+        if (selectedProvider.value) {
+            try {
+                // Parse JSON and update token if valid in providerValues
+                providerValues.token = JSON.parse(newValue);
+            } catch {
+                // If parsing fails, keep as string in providerValues
+                providerValues.token = newValue;
+            }
+        }
+    }
 });
 
 const createRemoteBtn = async () => {
-    
+    try {
+        if (!remoteName.value) {
+            throw Error('Remote name required');
+        }
+        if (!selectedProvider.value) {
+            throw Error('No provider selected');
+        }
+
+        if (providerValues.token) {
+            // Validate that token is JSON
+            const tokenParam = providerValues.token;
+            if (typeof tokenParam === 'string') {
+                try {
+                    providerValues.token = JSON.parse(tokenParam); // Convert to JSON if necessary
+                } catch {
+                    throw new Error('Token parameter is invalid JSON.');
+                }
+            }
+            console.log('token value:', providerValues.token);
+        }
+        // console.log('remoteName:', remoteName.value);
+        // console.log('selectedProvider.type:', selectedProvider.value.type);
+        // console.log('selectedProvider.value.parameters:', selectedProvider.value.parameters.parameters);
+        // console.log('selectedProvider.value.parameters.provider:', selectedProvider.value.parameters.parameters.provider.value);
+        // myRemoteManager.createRemote(remoteName.value, selectedProvider.value!.type, selectedProvider.value.parameters);
+
+        
+        // Use providerValues as the data source and filter out empty parameters
+        const parametersToSave = Object.fromEntries(
+            Object.entries(providerValues).filter(([key, value]) => {
+                // Check if value is not empty (not null, undefined, or an empty string)
+                return value !== null && value !== undefined && value !== '';
+            })
+        );
+
+        const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
+        console.log('newRemote:', newRemote);
+        pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
+    } catch (error: any) {
+        console.error('Error during save:', error);
+        pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
+    }
+
+   
 }
 
 function clearOAuthBtn() {
@@ -229,10 +380,10 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                         tokenExpiry.value = expiry;
                     }
 
-                    console.log('accessToken:', accessToken.value);
-                    console.log('refreshToken:', refreshToken.value);
                     // console.log('userId:', userId.value);
-                    console.log('tokenExpiry:', tokenExpiry.value);
+                    // console.log('accessToken:', accessToken.value);
+                    // console.log('refreshToken:', refreshToken.value);
+                    // console.log('tokenExpiry:', tokenExpiry.value);
 
                     const fullToken = {
                         "access_token": accessToken.value,
@@ -241,7 +392,15 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     }
 
                     oAuthenticated.value = true;
-                    selectedProvider.parameters.parameters.token!.value = JSON.stringify(fullToken);
+                    // selectedProvider.parameters.parameters.token!.value = JSON.stringify(fullToken);
+
+                    // Ensure token is stored as an object in providerValues
+                    providerValues.token = typeof fullToken === 'string'
+                        ? JSON.parse(fullToken)
+                        : fullToken;
+
+                    console.log('providerValues', providerValues);
+
                     pushNotification(new Notification('Authentication Successful', `Token retrieved successfully`, 'success', 8000));
                 } else {
                     throw new Error('Authentication failed. Token data is missing or incomplete.');
@@ -260,9 +419,9 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
 
 async function getTokenExpiry(): Promise<string> {
-  // Assume a standard 1-hour lifespan for Google access tokens
-  const currentTime = new Date();
-  return new Date(currentTime.getTime() + 3600 * 1000).toISOString();
+    // Assume a standard 1-hour lifespan for Google access tokens
+    const currentTime = new Date();
+    return new Date(currentTime.getTime() + 3600 * 1000).toISOString();
 }
 
 const isHovered = ref(false);
@@ -276,42 +435,5 @@ function handleMouseLeave() {
 }
 
 
-const emit = defineEmits(['close']);
-const showCreateRemote = inject<Ref<boolean>>('show-create-remote')!;
 
-console.log('REMOTES:', existingRemotes)!;
-
-const errorList = ref<string[]>([]);
-
-const closeModal = () => {
-    oAuthenticated.value = false;
-    selectedProvider.value!.parameters.parameters['token'].value = "";
-    showCreateRemote.value = false;
-    emit('close');
-}
-
-const cancelingAddRemote = ref(false);
-const showCloseConfirmation = ref(false);
-const closeConfirmationComponent = ref();
-async function loadCloseConfirmationComponent() {
-    const module = await import('../common/ConfirmationDialog.vue');
-    closeConfirmationComponent.value = module.default;
-}
-
-const closeBtn = async () => {
-    await loadCloseConfirmationComponent();
-    showCloseConfirmation.value = true;
-};
-
-const updateShowCloseConfirmation = (newVal) => {
-    showCloseConfirmation.value = newVal;
-}
-
-const confirmCancel: ConfirmationCallback = async () => {
-    closeModal();
-}
-
-const cancelCancel: ConfirmationCallback = async () => {
-    updateShowCloseConfirmation(false);
-}
 </script>

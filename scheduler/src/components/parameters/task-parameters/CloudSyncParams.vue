@@ -239,7 +239,7 @@ import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@h
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter, ObjectParameter } from '../../../models/Parameters';
-import { CloudAuthParameter, cloudSyncProviders, CloudSyncProvider, CloudSyncRemote, createCloudAuthParameter, getButtonStyles, getProviderLogo } from '../../../models/CloudSync';
+import { CloudAuthParameter, cloudSyncProviders, CloudSyncProvider, CloudSyncRemote, getButtonStyles, getProviderLogo } from '../../../models/CloudSync';
 import { injectWithCheck, testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';

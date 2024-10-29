@@ -1,5 +1,5 @@
 import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
-import { cloudSyncProviders, CloudSyncRemote, createCloudAuthParameter } from './CloudSync';
+import { cloudSyncProviders, CloudSyncRemote } from './CloudSync';
 import { TaskExecutionResult } from "./TaskLog";
 
 export class TaskInstance implements TaskInstanceType {
@@ -170,7 +170,6 @@ export class SmartTestTemplate extends TaskTemplate {
         return TaskInstance;
     }
 }
-
 export class CloudSyncTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Cloud Sync Task";
@@ -188,15 +187,18 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
         const transferModeSelection = [
             new SelectionOption('copy', 'Copy'),
             new SelectionOption('move', 'Move'),
-            new SelectionOption('Sync', 'Sync'),
-        ]
+            new SelectionOption('sync', 'Sync'),
+        ];
+
+        const initialProviderKey = providerSelectionOptions[0].value;
+        const initialProvider = cloudSyncProviders[initialProviderKey];
 
         const parameterSchema = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
             .addChild(new StringParameter('Local Path', 'local_path', ''))
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
-            .addChild(new SelectionParameter('Provider', 'provider', providerSelectionOptions[0].value, providerSelectionOptions))
-            .addChild(new CloudSyncRemote('', providerSelectionOptions[0].value, createCloudAuthParameter(providerSelectionOptions[0].value), cloudSyncProviders[0]))
+            .addChild(new SelectionParameter('Provider', 'provider', initialProviderKey, providerSelectionOptions))
+            .addChild(new CloudSyncRemote('', initialProviderKey, initialProvider.parameters, initialProvider))
             .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
                 .addChild(new BoolParameter('Follow Symbolic Links', 'symlinks_flag', false))
                 .addChild(new IntParameter('Number of Transfers', 'transfers', 1))

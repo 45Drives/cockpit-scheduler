@@ -137,16 +137,46 @@ interface DiskDetails {
 interface CloudSyncRemoteType {
 	name: string;
 	type: string;
-	authParams: CloudAuthParameter;
+	authParams: CloudAuthParameterType;
+}
+
+interface CloudAuthParameterType {
+	parameters: {
+		[key: string]: CloudSyncParameter;
+	};
+	provider?: string;
+	oAuthSupported?: boolean;
+}
+
+interface CloudSyncParameterType {
+	value: any;
+	type: 'string' | 'bool' | 'int' | 'select' | 'object';
+	allowedValues?: string[];
+	defaultValue?: string | number | boolean | object;
 }
 
 interface RemoteManagerType {
 	cloudSyncRemotes: CloudSyncRemoteType[];
 
 	async getRemotes(): void;
-	createRemote(label: string, key: string, name: string, type: string): CloudSyncRemote;
+	createRemote(label: string, key: string, name: string, type: string, parameters: any): CloudSyncRemote;
 	editRemote(key: string, newLabel: string, newType: string): CloudSyncRemote | undefined;
 	deleteRemote(key: string): boolean;
 	authorizeRemote(key: string): boolean;
 }
+
+// interface CloudAuthParameterOptions {
+// 	parameters: {
+// 		[key: string]: CloudSyncParameter;
+// 	};
+// 	provider?: string;
+// 	oAuthSupported?: boolean;
+// }
+
+// interface CloudSyncParameter {
+// 	value: any;
+// 	type: 'string' | 'bool' | 'int' | 'select' | 'object';
+// 	allowedValues?: string[] | number[];
+// 	defaultValue?: string | number | boolean | object;
+// }
 

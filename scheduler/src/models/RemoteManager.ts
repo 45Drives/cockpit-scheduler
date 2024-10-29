@@ -1,11 +1,12 @@
 import { ref } from 'vue';
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { CloudSyncProvider, CloudSyncRemote, createCloudAuthParameter, cloudSyncProviders, CloudAuthParameter} from "./CloudSync";
+import { CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, CloudAuthParameter, CloudSyncParameter} from "./CloudSync";
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 //@ts-ignore
 import get_rclone_remotes_script from '../scripts/get-rclone-remotes.py?raw';
-
+//@ts-ignore
+import create_rclone_remote_script from '../scripts/create-rclone-remote.py?raw';
 
 export class RemoteManager implements RemoteManagerType {
     cloudSyncRemotes: CloudSyncRemote[];
@@ -14,12 +15,12 @@ export class RemoteManager implements RemoteManagerType {
         this.cloudSyncRemotes = cloudSyncRemotes;
     }
 
+ 
     async getRemotes() {
         this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_rclone_remotes_script], { superuser: 'try' });
             const remotesOutput = (await state.promise()).stdout;
-            // console.log('Raw remotesOutput:', remotesOutput);
 
             const remotesData = JSON.parse(remotesOutput);  // Parse the remotes
 
@@ -34,111 +35,103 @@ export class RemoteManager implements RemoteManagerType {
                     return;
                 }
 
-                let authParams;
                 let provider: CloudSyncProvider;
 
-                // Handle S3 remotes by checking the provider
+                // Determine the provider based on remote type or specific provider key for 's3'
                 if (remote.type === 's3') {
-                    const providerKey = `s3-${remote.parameters.provider}`;  // Default to AWS if provider is not specified
+                    const providerKey = `s3-${remote.parameters.provider}`;
                     provider = cloudSyncProviders[providerKey];
-
-                    if (!provider) {
-                        console.error(`Unsupported S3 provider: ${remote.parameters.provider}`);
-                        return;
-                    }
-
-                    // Create auth parameters for S3
-                    authParams = createCloudAuthParameter(remote.type, remote.parameters.provider);
                 } else {
                     provider = cloudSyncProviders[remote.type];
-
-                    if (!provider) {
-                        console.error(`Unsupported remote type: ${remote.type}`);
-                        return;
-                    }
-
-                    // Create auth parameters for other providers
-                    authParams = createCloudAuthParameter(remote.type);
                 }
 
-                // Dynamically assign each key/value from remote.parameters into authParams
-                Object.entries(remote.parameters).forEach(([key, value]) => {
-                    let existingChild = authParams.children.find(child => child.key === key);
+                if (!provider) {
+                    console.error(`Unsupported remote type or provider: ${remote.type}`);
+                    return;
+                }
 
-                    if (existingChild) {
-                        // If a parameter with the same key exists, update its value
-                        if (existingChild instanceof StringParameter && typeof value === 'string') {
-                            existingChild.value = value as string;
-                        } else if (existingChild instanceof BoolParameter && typeof value === 'boolean') {
-                            existingChild.value = value as boolean;
-                        } else if (existingChild instanceof ObjectParameter && typeof value === 'object') {
-                            existingChild.value = value as object;
+                // Create a deep copy of provider parameters for this remote
+                const authParams: CloudAuthParameter = JSON.parse(JSON.stringify(provider.parameters));
+
+                // Dynamically update each key/value from remote.parameters
+                Object.entries(remote.parameters).forEach(([key, value]) => {
+                    const param = authParams.parameters[key];
+
+                    if (param) {
+                        // If the parameter exists, update its value
+                        if (param.type === 'string' && typeof value === 'string') {
+                            param.value = value;
+                        } else if (param.type === 'bool' && typeof value === 'boolean') {
+                            param.value = value;
+                        } else if (param.type === 'int' && typeof value === 'number') {
+                            param.value = value;
+                        } else if (param.type === 'object' && typeof value === 'object') {
+                            param.value = value;
                         }
                     } else {
-                        // Dynamically add new parameters not predefined
-                        if (typeof value === 'string') {
-                            authParams.addChild(new StringParameter(key, key, value));
-                        } else if (typeof value === 'boolean') {
-                            authParams.addChild(new BoolParameter(key, key, value));
-                        } else if (typeof value === 'object') {
-                            authParams.addChild(new ObjectParameter(key, key, value!));
-                        }
+                        // If the parameter is not predefined, add it dynamically
+                        authParams.parameters[key] = { value, type: typeof value } as CloudSyncParameter;
                     }
                 });
 
                 // Create a new CloudSyncRemote instance for each remote
                 const newRemote = new CloudSyncRemote(
-                    remote.name,            // Remote name
-                    remote.type,            // Remote type (e.g., drive, s3, dropbox)
-                    authParams,             // Remote parameters structured as ParameterNodes
-                    provider                // CloudSyncProvider object containing provider info
+                    remote.name,
+                    remote.type,
+                    authParams,
+                    provider
                 );
 
                 // Add the new remote to the list of cloud sync remotes
                 this.cloudSyncRemotes.push(newRemote);
             });
-
         } catch (error) {
             console.error("Error fetching remotes:", error);
-            return null;
         }
     }
 
 
-    createRemote(name: string, type: string, providerKey?: string): CloudSyncRemote {
-        let authParams: CloudAuthParameter;
-        let provider: CloudSyncProvider;
 
+    async createRemote(name: string, type: string, parameters: any): Promise<CloudSyncRemote> {
+        let provider: CloudSyncProvider;
         // Handle the case where the type is 's3' and provider is passed
         if (type === 's3') {
-            if (!providerKey) {
-                throw new Error('Provider key is required for S3 remote');
-            }
-
-            provider = cloudSyncProviders[`s3-${providerKey}`];
+           
+            provider = cloudSyncProviders[`s3-${parameters.parameters.provider.value}`];
 
             if (!provider) {
-                throw new Error(`Unsupported S3 provider: ${providerKey}`);
+                throw new Error(`Unsupported S3 provider: ${parameters.parameters.provider.value}`);
             }
 
-            // Create auth parameters for S3 provider
-            authParams = createCloudAuthParameter(type, providerKey);
         } else {
             provider = cloudSyncProviders[type];
 
             if (!provider) {
                 throw new Error(`Unsupported remote type: ${type}`);
             }
-
-            // Create auth parameters for other providers
-            authParams = createCloudAuthParameter(type);
         }
+
+        const authParams: CloudAuthParameter = parameters;
+        // console.log('authParams', authParams);
 
         // Create the new CloudSyncRemote with the appropriate provider and authParams
         const remote = new CloudSyncRemote(name, type, authParams, provider);
+        // console.log('newRemote:', remote);
 
-        // Add the new remote to the list
-        this.cloudSyncRemotes.push(remote);
+        // Convert CloudSyncRemote object to JSON string
+        const remoteJsonString = JSON.stringify(remote);
+        console.log('remoteJsonString:', remoteJsonString);
+
+        try {
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', create_rclone_remote_script, '--data', remoteJsonString], { superuser: 'try' });
+            const newRemoteOutput = (await state.promise()).stdout;
+
+            console.log('newRemoteOutput:', newRemoteOutput);
+            this.cloudSyncRemotes.push(remote);
+
+        } catch (error) {
+            console.error("Error fetching remotes:", error);
+        }
 
         return remote;
     }
