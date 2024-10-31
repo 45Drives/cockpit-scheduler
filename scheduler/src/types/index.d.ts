@@ -160,23 +160,8 @@ interface RemoteManagerType {
 
 	async getRemotes(): void;
 	createRemote(label: string, key: string, name: string, type: string, parameters: any): CloudSyncRemote;
-	editRemote(key: string, newLabel: string, newType: string): CloudSyncRemote | undefined;
-	deleteRemote(key: string): boolean;
+	editRemote(key: string, newLabel: string, oldName: string, newType: string, parameters: any): CloudSyncRemote
+	deleteRemote(key: string): Promise<boolean>;
 	authorizeRemote(key: string): boolean;
 }
-
-// interface CloudAuthParameterOptions {
-// 	parameters: {
-// 		[key: string]: CloudSyncParameter;
-// 	};
-// 	provider?: string;
-// 	oAuthSupported?: boolean;
-// }
-
-// interface CloudSyncParameter {
-// 	value: any;
-// 	type: 'string' | 'bool' | 'int' | 'select' | 'object';
-// 	allowedValues?: string[] | number[];
-// 	defaultValue?: string | number | boolean | object;
-// }
 

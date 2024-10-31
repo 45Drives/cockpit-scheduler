@@ -198,7 +198,7 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
             .addChild(new SelectionParameter('Provider', 'provider', initialProviderKey, providerSelectionOptions))
-            .addChild(new CloudSyncRemote('', initialProviderKey, initialProvider.parameters, initialProvider))
+            .addChild(new CloudSyncRemote('', initialProviderKey, initialProvider.authParams, initialProvider))
             .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
                 .addChild(new BoolParameter('Follow Symbolic Links', 'symlinks_flag', false))
                 .addChild(new IntParameter('Number of Transfers', 'transfers', 1))

@@ -4,16 +4,16 @@ import { providerLogos } from '../utils/providerLogos';
 export class CloudSyncProvider {
     name: string;
     type: string;
-    parameters: CloudAuthParameter;
+    providerParams: CloudAuthParameter;
 
-    constructor(name: string, type: string, parameters: CloudAuthParameter) {
+    constructor(name: string, type: string, providerParams: CloudAuthParameter) {
         this.name = name;
         this.type = type;
-        this.parameters = parameters;
+        this.providerParams = providerParams;
     }
 
     getProviderParameters() {
-        return Object.entries(this.parameters.parameters)
+        return Object.entries(this.providerParams.parameters)
             .map(([key, param]) => ({ key, ...param }));
     }
 
@@ -110,7 +110,6 @@ export interface CloudAuthParameter {
     parameters: {
         [key: string]: CloudSyncParameter;
     };
-    provider?: string;
     oAuthSupported?: boolean;
 }
 
@@ -137,14 +136,14 @@ export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteTyp
     }
 }
 
-// Function to fetch logo and color
+// Functions to fetch logo and color
 export function getProviderLogo(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
-    // Determine the type and parameters based on whether it's a provider or a remote
+    // Determine the type and provider, using optional chaining to prevent undefined errors
     const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
-    const provider = selectedProvider
-        ? selectedProvider.parameters.provider
-        : selectedRemote?.provider.parameters.provider;
+    const provider = selectedProvider?.providerParams?.parameters?.provider?.value
+        || selectedRemote?.provider?.providerParams?.parameters?.provider?.value;
 
+    // Construct the key for providerLogos and return the appropriate logo
     if (type === "s3" && provider) {
         return providerLogos[`${type}-${provider}`]?.logo || "";
     } else if (type) {
@@ -156,9 +155,8 @@ export function getProviderLogo(selectedProvider?: CloudSyncProvider, selectedRe
 
 export function getProviderColor(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
     const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
-    const provider = selectedProvider
-        ? selectedProvider.parameters.provider
-        : selectedRemote?.provider.parameters.provider;
+    const provider = selectedProvider?.providerParams?.parameters?.provider?.value
+        || selectedRemote?.provider?.providerParams?.parameters?.provider?.value;
 
     if (type === "s3" && provider) {
         return providerLogos[`${type}-${provider}`]?.mainColor;
@@ -170,9 +168,8 @@ export function getProviderColor(selectedProvider?: CloudSyncProvider, selectedR
 
 export function getProviderHoverColor(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
     const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
-    const provider = selectedProvider
-        ? selectedProvider.parameters.provider
-        : selectedRemote?.provider.parameters.provider;
+    const provider = selectedProvider?.providerParams?.parameters?.provider?.value
+        || selectedRemote?.provider?.providerParams?.parameters?.provider?.value;
 
     if (type === "s3" && provider) {
         return providerLogos[`${type}-${provider}`]?.hoverColor;
@@ -185,6 +182,8 @@ export function getProviderHoverColor(selectedProvider?: CloudSyncProvider, sele
 export function getButtonStyles(hovered: boolean, selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote) {
     const mainColor = getProviderColor(selectedProvider, selectedRemote);
     const hoverColor = getProviderHoverColor(selectedProvider, selectedRemote);
+
+    // console.log(`Hovered: ${hovered}, Main Color: ${mainColor}, Hover Color: ${hoverColor}`);
 
     return {
         backgroundColor: hovered ? hoverColor : mainColor,

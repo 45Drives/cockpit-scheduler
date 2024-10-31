@@ -31,7 +31,7 @@
                         class="mt-1 btn btn-primary h-fit w-full" :class=truncateText>
                         Create New
                     </button>
-                    <button @click.stop="" id="manage-remotes-btn" name="manage-remotes-btn"
+                    <button @click.stop="manageRemotesBtn()" id="manage-remotes-btn" name="manage-remotes-btn"
                         class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
                         Manage Existing
                     </button>
@@ -50,7 +50,8 @@
                             Authenticate {{ selectedRemote.name }}
                         </span>
                         <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                            <img :src="getProviderLogo(undefined, selectedRemote)" alt="provider-logo" class="inline-block w-4 h-4" />
+                            <img :src="getProviderLogo(undefined, selectedRemote)" alt="provider-logo"
+                                class="inline-block w-4 h-4" />
                         </div>
                     </button>
                 </div>
@@ -229,6 +230,10 @@
     <div v-if="showCreateRemote">
         <component :is="createRemoteComponent" :id-key="'create-remote-modal'" />
     </div>
+
+    <div v-if="showManageRemotes">
+        <component :is="manageRemotesComponent" :id-key="'manage-remotes-modal'" />
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -273,7 +278,7 @@ function handleMouseLeave() {
 }
 
 onMounted(() => {
-    console.log("Component mounted");
+    // console.log("Component mounted");
     console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
 });
 
@@ -296,6 +301,18 @@ const createRemoteComponent = ref();
 async function loadCreateRemoteComponent() {
     const module = await import('../../modals/CreateRemote.vue');
     createRemoteComponent.value = module.default;
+}
+
+const showManageRemotes = ref(false);
+async function manageRemotesBtn() {
+    await loadManageRemotesComponent();
+    showManageRemotes.value = true;
+}
+
+const manageRemotesComponent = ref();
+async function loadManageRemotesComponent() {
+    const module = await import('../../modals/ManageRemotes.vue');
+    manageRemotesComponent.value = module.default;
 }
 
 
@@ -413,4 +430,5 @@ defineExpose({
 });
 
 provide('show-create-remote', showCreateRemote);
+provide('show-manage-remotes', showManageRemotes);
 </script>

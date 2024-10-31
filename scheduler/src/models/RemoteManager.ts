@@ -7,6 +7,10 @@ import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTas
 import get_rclone_remotes_script from '../scripts/get-rclone-remotes.py?raw';
 //@ts-ignore
 import create_rclone_remote_script from '../scripts/create-rclone-remote.py?raw';
+//@ts-ignore
+import delete_rclone_remote_script from '../scripts/delete-rclone-remote.py?raw';
+//@ts-ignore
+import update_rclone_remote_script from '../scripts/update-rclone-remote.py?raw';
 
 export class RemoteManager implements RemoteManagerType {
     cloudSyncRemotes: CloudSyncRemote[];
@@ -15,7 +19,6 @@ export class RemoteManager implements RemoteManagerType {
         this.cloudSyncRemotes = cloudSyncRemotes;
     }
 
- 
     async getRemotes() {
         this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
         try {
@@ -23,6 +26,7 @@ export class RemoteManager implements RemoteManagerType {
             const remotesOutput = (await state.promise()).stdout;
 
             const remotesData = JSON.parse(remotesOutput);  // Parse the remotes
+            console.log('remotesData JSON:', remotesData);
 
             if (!Array.isArray(remotesData)) {
                 console.error("Unexpected remotes data format:", remotesData);
@@ -35,14 +39,12 @@ export class RemoteManager implements RemoteManagerType {
                     return;
                 }
 
-                let provider: CloudSyncProvider;
+                let provider = cloudSyncProviders[remote.type];
 
-                // Determine the provider based on remote type or specific provider key for 's3'
-                if (remote.type === 's3') {
+                // Handle 's3' provider type, which has specific subtypes
+                if (remote.type === 's3' && remote.parameters.provider) {
                     const providerKey = `s3-${remote.parameters.provider}`;
                     provider = cloudSyncProviders[providerKey];
-                } else {
-                    provider = cloudSyncProviders[remote.type];
                 }
 
                 if (!provider) {
@@ -50,29 +52,22 @@ export class RemoteManager implements RemoteManagerType {
                     return;
                 }
 
-                // Create a deep copy of provider parameters for this remote
-                const authParams: CloudAuthParameter = JSON.parse(JSON.stringify(provider.parameters));
+                // Deep copy providerParams to authParams
+                const authParams = JSON.parse(JSON.stringify(provider.providerParams));
 
-                // Dynamically update each key/value from remote.parameters
-                Object.entries(remote.parameters).forEach(([key, value]) => {
+                // Update authParams with actual values from remote.parameters
+                for (const [key, value] of Object.entries(remote.parameters)) {
+                    // Check if the parameter exists in the provider-defined parameters
                     const param = authParams.parameters[key];
 
                     if (param) {
-                        // If the parameter exists, update its value
-                        if (param.type === 'string' && typeof value === 'string') {
-                            param.value = value;
-                        } else if (param.type === 'bool' && typeof value === 'boolean') {
-                            param.value = value;
-                        } else if (param.type === 'int' && typeof value === 'number') {
-                            param.value = value;
-                        } else if (param.type === 'object' && typeof value === 'object') {
-                            param.value = value;
-                        }
+                        // Update the value based on the type
+                        param.value = value;
                     } else {
-                        // If the parameter is not predefined, add it dynamically
-                        authParams.parameters[key] = { value, type: typeof value } as CloudSyncParameter;
+                        // Add dynamically if not predefined in provider
+                        authParams.parameters[key] = { value, type: typeof value };
                     }
-                });
+                }
 
                 // Create a new CloudSyncRemote instance for each remote
                 const newRemote = new CloudSyncRemote(
@@ -96,11 +91,11 @@ export class RemoteManager implements RemoteManagerType {
         let provider: CloudSyncProvider;
         // Handle the case where the type is 's3' and provider is passed
         if (type === 's3') {
-           
-            provider = cloudSyncProviders[`s3-${parameters.parameters.provider.value}`];
+            console.log('parameters:', parameters)
+            provider = cloudSyncProviders[`s3-${parameters.provider}`];
 
             if (!provider) {
-                throw new Error(`Unsupported S3 provider: ${parameters.parameters.provider.value}`);
+                throw new Error(`Unsupported S3 provider: ${parameters.provider}`);
             }
 
         } else {
@@ -120,7 +115,7 @@ export class RemoteManager implements RemoteManagerType {
 
         // Convert CloudSyncRemote object to JSON string
         const remoteJsonString = JSON.stringify(remote);
-        console.log('remoteJsonString:', remoteJsonString);
+        // console.log('remoteJsonString:', remoteJsonString);
 
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', create_rclone_remote_script, '--data', remoteJsonString], { superuser: 'try' });
@@ -137,26 +132,75 @@ export class RemoteManager implements RemoteManagerType {
     }
 
 
-    editRemote(newName: string, newType: string): CloudSyncRemote | undefined {
-        //IMPLEMENT PROPERLY
-        const remote = this.cloudSyncRemotes.find(r => r.name);
-        // if (remote) {
-        //     remote.name = newName;
-        //     remote.type = newType;
-        //     remote.authParams = createCloudAuthParameter(newType); // Simplified to directly set the new params
-        // }
+    async editRemote(oldName: string, newName: string, newType: string, newParams: any) {
+        let provider;
+
+        // Handle the case where the type is 's3' and provider is passed
+        if (newType === 's3') {
+            console.log('parameters:', newParams);
+            provider = cloudSyncProviders[`s3-${newParams.provider.value}`];
+
+            if (!provider) {
+                throw new Error(`Unsupported S3 provider: ${newParams.provider.value}`);
+            }
+        } else {
+            provider = cloudSyncProviders[newType];
+
+            if (!provider) {
+                throw new Error(`Unsupported remote type: ${newType}`);
+            }
+        }
+
+        const authParams = newParams;
+        const remote = new CloudSyncRemote(newName, newType, authParams, provider);
+        const newParamsJson = JSON.stringify(newParams);  // Convert params to JSON for the Python script
+
+        try {
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', update_rclone_remote_script, 
+                oldName, newName, newType, newParamsJson
+            ], { superuser: 'try' });
+
+            const editRemoteOutput = (await state.promise()).stdout;
+            console.log('editRemoteOutput:', editRemoteOutput);
+
+            // Update the local list of remotes with the new data
+            const index = this.cloudSyncRemotes.findIndex(remote => remote.name === oldName);
+            if (index !== -1) {
+                this.cloudSyncRemotes.splice(index, 1, remote);  // Replace the old remote with the updated one
+            } else {
+                console.warn(`Remote with name '${oldName}' not found in cloudSyncRemotes list`);
+                this.cloudSyncRemotes.push(remote);  // Add the new remote if old one was not found
+            }
+        } catch (error) {
+            console.error("Error editing remote:", error);
+        }
+
         return remote;
     }
 
-    deleteRemote(name: string): boolean {
-    //IMPLEMENT PROPERLY
-        // const index = this.cloudSyncRemotes.findIndex(r => r.name === name);
-        // if (index !== -1) {
-        //     this.cloudSyncRemotes.splice(index, 1);
-        //     return true;
-        // }
-        return false;
+    async deleteRemote(remoteName) {
+        // Remove the remote from the list
+        const index = this.cloudSyncRemotes.findIndex(r => r.name === remoteName);
+        if (index !== -1) {
+            this.cloudSyncRemotes.splice(index, 1);
+        } else {
+            console.error("Remote not found in the array:", remoteName);
+            return false;
+        }
+
+        // Run the Python script to delete the remote from the rclone config
+        try {
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', delete_rclone_remote_script, remoteName], { superuser: 'try' });
+            const deleteOutput = (await state.promise()).stdout;
+
+            console.log("Delete script output:", deleteOutput);
+            return true;
+        } catch (error) {
+            console.error("Error deleting remote:", error);
+            return false;
+        }
     }
+
 
     authorizeRemote(name: string): boolean {
         // Authorization logic

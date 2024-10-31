@@ -1,9 +1,13 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showCreateRemote" :margin-top="'mt-24'" :width="'w-6/12'"
+    <Modal @close="closeModal" :isOpen="showCreateRemote" :margin-top="'mt-14'" :width="'w-6/12'"
         :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false"
         :closeConfirm="closeBtn">
         <template v-slot:title>
-            Create Rclone Remote
+            <div class="items-center">
+                Create Rclone Remote
+                <img v-if="selectedProvider" :src="getProviderLogo(selectedProvider, undefined)" alt="provider-logo"
+                    class="inline-block w-4 h-4 ml-2" />
+            </div>
         </template>
         <template v-slot:content>
             <div>
@@ -34,18 +38,18 @@
                     </select>
                 </div>
                 <div v-if="selectedProvider" class="grid grid-cols-2">
-                    <div v-if="selectedProvider.parameters.oAuthSupported" class="col-span-2 w-full mt-2">
+                    <div v-if="selectedProvider.providerParams.oAuthSupported" class="col-span-2 w-full mt-2">
                         <label for="use-oauth" class="block text-base leading-6 text-default mt-1 border-b-2 mb-2">
                             <b>Authenticate with OAuth 2.0</b> - <i class="text-sm">Enter credentials in next window</i>
                         </label>
                         <div class="button-group-row justify-between">
-                            <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
+                            <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
                                 class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
                                 <span class="flex-grow text-center mt-0.5">
                                     Reset OAuth Data
                                 </span>
                             </button>
-                            <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
+                            <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
                                 class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
                                 <span class="flex-grow text-center mt-0.5">
                                     Reset OAuth Data
@@ -66,7 +70,7 @@
                         </div>
 
                     </div>
-                    <div v-if="selectedProvider.parameters.oAuthSupported"
+                    <div v-if="selectedProvider.providerParams.oAuthSupported"
                         class="w-full col-span-2 text-default text-center items-center mt-3">
                         --- OR ---
                     </div>
@@ -78,33 +82,6 @@
                         <div v-for="([key, parameter], index) in providerParameters" :key="key"
                             class="mt-1 text-default">
                             <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
-
-                            <!-- <input
-                                v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
-                                type="text" v-model="parameter.value" :id="String(key)"
-                                class="block w-full mt-1 input-textlike"
-                                :placeholder='`Default is "${parameter.defaultValue}"`' />
-
-                            <input
-                                v-if="parameter.type === 'string' && selectedProvider.type === 's3' && key === 'provider'"
-                                type="text" v-model="parameter.value" :id="String(key)" disabled
-                                class="block w-full mt-1 input-textlike"
-                                :placeholder='`Default is "${parameter.defaultValue}"`' />
-
-                            <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
-                                :id="String(key)"
-                                class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2" />
-
-                            <input v-else-if="parameter.type === 'int'" type=" number" v-model="parameter.value"
-                                :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder='`Default is "${parameter.defaultValue}"`' />
-
-                            <select v-else-if="parameter.type === 'select'" v-model="parameter.value" :id="String(key)"
-                                class="block w-full mt-1 input-textlike">
-                                <option v-for="option in parameter.allowedValues" :key="option" :value="option">
-                                    {{ option }}
-                                </option>
-                            </select> -->
                             <input
                                 v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
                                 type="text" v-model="providerValues[key]" :id="String(key)"
@@ -143,11 +120,11 @@
             <div class="w-full">
                 <div class="button-group-row w-full justify-between">
                     <div class="button-group-row">
-                        <button @click.stop="closeBtn()" id="close-add-task-btn" name="close-add-task-btn"
-                            class="mt-1 btn btn-danger h-fit w-full">Cancel</button>
+                        <button @click.stop="closeBtn()" id="close-create-remote-btn" name="close-create-remote-btn"
+                            class="btn btn-danger h-fit w-full">Cancel</button>
                     </div>
                     <div class="button-group-row">
-                        <button disabled v-if="creating" id="adding-task-btn" type="button"
+                        <button disabled v-if="creating" id="creating-task-btn" type="button"
                             class="btn btn-primary h-fit w-full">
                             <svg aria-hidden="true" role="status"
                                 class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
@@ -159,11 +136,11 @@
                                     d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
                                     fill="text-success" />
                             </svg>
-                            Adding...
+                            Saving...
                         </button>
-                        <button v-else-if="!creating && selectedProvider" id="add-task-btn"
+                        <button v-else-if="!creating && selectedProvider" id="create-remote-btn"
                             class="btn btn-primary h-fit w-full" @click="createRemoteBtn">Save Remote</button>
-                        <button v-else disabled id="add-task-btn-error" class="btn btn-primary h-fit w-full"
+                        <button v-else disabled id="create-remote-btn-error" class="btn btn-primary h-fit w-full"
                             @click="createRemoteBtn">Save Remote</button>
                     </div>
                 </div>
@@ -178,24 +155,14 @@
     </div>
 </template>
 <script setup lang="ts">
-import { inject, provide, ref, Ref, watch, computed, reactive } from 'vue';
-import { Menu, MenuButton, MenuItem, MenuItems, Switch, Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
+import { inject, ref, Ref, watch, computed, reactive } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from '../parameters/ParameterInput.vue';
-import { ExclamationCircleIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
-import { RemoteManager } from '../../models/RemoteManager';
-import { CloudSyncProvider, CloudSyncRemote } from "../../models/CloudSync";
 import { pushNotification, Notification } from 'houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
-import { cloudSyncProviders, getButtonStyles, getProviderLogo } from '../../models/CloudSync';
-
-interface CreateRemoteProps {
-
-}
-
-const props = defineProps<CreateRemoteProps>();
+import { CloudSyncProvider, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
 
 const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
@@ -215,12 +182,12 @@ const showCreateRemote = inject<Ref<boolean>>('show-create-remote')!;
 console.log('REMOTES:', existingRemotes)!;
 
 
-watch(selectedProvider, (newProvider) => {
-    // console.log('selectedProvider:', selectedProvider.value);
-    if (newProvider) {
-        console.log('newProvider:', newProvider);
+watch(selectedProvider, (newlySelectedProvider) => {
+    console.log('selectedProvider:', selectedProvider.value);
+    if (newlySelectedProvider) {
+        console.log('newlySelectedProvider:', newlySelectedProvider);
         // Initialize providerValues with a shallow copy of the selectedProvider parameters
-        for (const [key, param] of Object.entries(newProvider.parameters.parameters)) {
+        for (const [key, param] of Object.entries(newlySelectedProvider.providerParams.parameters)) {
             providerValues[key] = param.value ?? param.defaultValue; // Use defaultValue if no current value
         }
     }
@@ -245,8 +212,12 @@ async function loadCloseConfirmationComponent() {
 }
 
 const closeBtn = async () => {
-    await loadCloseConfirmationComponent();
-    showCloseConfirmation.value = true;
+    if (!selectedProvider.value) {
+        closeModal();
+    } else {
+        await loadCloseConfirmationComponent();
+        showCloseConfirmation.value = true;
+    }
 };
 
 const updateShowCloseConfirmation = (newVal) => {
@@ -263,7 +234,7 @@ const cancelCancel: ConfirmationCallback = async () => {
 
 const providerParameters = computed(() => {
     if (!selectedProvider.value) return [];
-    return Object.entries(selectedProvider.value.parameters.parameters);
+    return Object.entries(selectedProvider.value.providerParams.parameters);
 });
 
 
@@ -321,7 +292,7 @@ const createRemoteBtn = async () => {
         // console.log('selectedProvider.value.parameters.provider:', selectedProvider.value.parameters.parameters.provider.value);
         // myRemoteManager.createRemote(remoteName.value, selectedProvider.value!.type, selectedProvider.value.parameters);
 
-        
+        creating.value = true;
         // Use providerValues as the data source and filter out empty parameters
         const parametersToSave = Object.fromEntries(
             Object.entries(providerValues).filter(([key, value]) => {
@@ -333,6 +304,8 @@ const createRemoteBtn = async () => {
         const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
         console.log('newRemote:', newRemote);
         pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
+        creating.value = false;
+        showCreateRemote.value = false;
     } catch (error: any) {
         console.error('Error during save:', error);
         pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
@@ -343,7 +316,7 @@ const createRemoteBtn = async () => {
 
 function clearOAuthBtn() {
     oAuthenticated.value = false;
-    selectedProvider.value!.parameters.parameters['token'].value = "";
+    providerValues.token = "";
 }
 
 const accessToken = ref<string | null>(null);
@@ -353,55 +326,65 @@ const tokenExpiry = ref<string | null>(null);
 
 function oAuthBtn(selectedProvider: CloudSyncProvider) {
     try {
-        const ngrokUrl = `https://seemingly-settling-stud.ngrok-free.app/auth/${selectedProvider.type}`;
-        const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=700');
+        let providerAuthUrlSuffix;
+
+        switch (selectedProvider.type) {
+            case 'dropbox':
+                providerAuthUrlSuffix = 'dropbox';
+                break;
+            case 'drive':
+                providerAuthUrlSuffix = 'drive';
+                // providerAuthUrlSuffix = 'google?service=drive';
+                break;
+            case 'google cloud storage':
+                providerAuthUrlSuffix = 'cloud';
+                // providerAuthUrlSuffix = 'google?service=cloud';
+                break;
+            case 'onedrive':
+                providerAuthUrlSuffix = 'onedrive';
+                break;
+            default:
+                providerAuthUrlSuffix = '';
+                break;
+
+        }
+
+        const ngrokUrl = `https://seemingly-settling-stud.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
+        const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
             throw new Error('Failed to open authentication window. Please check your popup settings.');
         }
 
-        window.addEventListener('message', async (event) => {
+        const handleAuthMessage = async (event) => {
             try {
-                // Check the origin of the message for security
                 if (event.origin !== 'https://seemingly-settling-stud.ngrok-free.app') return;
 
-                // Extract the token data
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 
                 if (token && refresh && id) {
-                    // Update the reactive state variables
                     accessToken.value = token;
                     refreshToken.value = refresh;
                     userId.value = id;
 
-                    // Fetch the token expiry asynchronously and update the state
                     const expiry = await getTokenExpiry();
                     if (expiry) {
                         tokenExpiry.value = expiry;
                     }
 
-                    // console.log('userId:', userId.value);
-                    // console.log('accessToken:', accessToken.value);
-                    // console.log('refreshToken:', refreshToken.value);
-                    // console.log('tokenExpiry:', tokenExpiry.value);
-
                     const fullToken = {
                         "access_token": accessToken.value,
                         "expiry": tokenExpiry.value,
                         "refresh_token": refreshToken.value
-                    }
+                    };
 
                     oAuthenticated.value = true;
-                    // selectedProvider.parameters.parameters.token!.value = JSON.stringify(fullToken);
+                    providerValues.token = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
 
-                    // Ensure token is stored as an object in providerValues
-                    providerValues.token = typeof fullToken === 'string'
-                        ? JSON.parse(fullToken)
-                        : fullToken;
+                    pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
 
-                    console.log('providerValues', providerValues);
-
-                    pushNotification(new Notification('Authentication Successful', `Token retrieved successfully`, 'success', 8000));
+                    // Remove the event listener after it has been handled
+                    window.removeEventListener('message', handleAuthMessage);
                 } else {
                     throw new Error('Authentication failed. Token data is missing or incomplete.');
                 }
@@ -410,7 +393,10 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 oAuthenticated.value = false;
                 pushNotification(new Notification('Authentication Failed', `${error.message}`, 'error', 8000));
             }
-        });
+        };
+
+        // Attach the event listener once
+        window.addEventListener('message', handleAuthMessage);
     } catch (error: any) {
         console.error('Error initializing OAuth:', error);
         pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 8000));

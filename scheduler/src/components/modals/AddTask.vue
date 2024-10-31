@@ -111,8 +111,12 @@ async function loadCloseConfirmationComponent() {
 }
 
 const closeBtn = async () => {
-    await loadCloseConfirmationComponent();
-    showCloseConfirmation.value = true;
+    if (!selectedTemplate.value) {
+        closeModal();
+    } else {
+        await loadCloseConfirmationComponent();
+        showCloseConfirmation.value = true;
+    }
 };
 
 const updateShowCloseConfirmation = (newVal) => {
