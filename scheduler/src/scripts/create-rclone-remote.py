@@ -19,13 +19,12 @@ def save_remote_to_conf(remote):
     # Add new remote section
     config.add_section(name)
     config.set(name, 'type', remote_type)
-
+        
     for key, value in auth_params.items():
-        if isinstance(value, dict):  # Convert dict to JSON string for complex types like token
-            value = json.dumps(value)
-        # elif value == "":  # Handle empty strings explicitly
-        #     value = '""'
-        config.set(name, key, str(value))
+        if isinstance(value, dict):
+            value = value.get("value", "")
+        if value:  # Skip empty values
+            config.set(name, key, str(value))
 
     # Write changes to the config file in write mode to avoid duplication
     with open(RCLONE_CONF_PATH, 'w') as configfile:

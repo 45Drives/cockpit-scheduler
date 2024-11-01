@@ -151,7 +151,8 @@
                                     class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
                                     :style="getButtonStyles(isHovered(loadedEditableRemoteParams.name), loadedEditableRemoteProvider! as CloudSyncProvider, undefined)">
                                     <span class="flex-grow text-center mt-0.5">
-                                        Authenticate with {{ (loadedEditableRemoteProvider! as CloudSyncProvider).name }}
+                                        Authenticate with {{ (loadedEditableRemoteProvider! as CloudSyncProvider).name
+                                        }}
                                     </span>
                                     <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
                                         <img :src="getProviderLogo(loadedEditableRemoteProvider! as CloudSyncProvider, undefined)"
@@ -171,11 +172,11 @@
                                     of
                                     config or set with defaults (if applicable)</i>
                             </div>
-                            <div v-for="(parameter, key) in loadedEditableRemoteParams.value.parameters" :key="String(key)"
-                                class="mt-1 text-default">
+                            <div v-for="(parameter, key) in loadedEditableRemoteParams.value.parameters"
+                                :key="String(key)" class="mt-1 text-default">
                                 <!-- find way to skip rendering for 'provider' label -->
-                                <label v-if="String(key) !== 'provider'" :for="String(key)" class="block text-sm font-medium text-default">
-                                    {{ key}}</label>
+                                <label :for="String(key)" class="block text-sm font-medium text-default">
+                                    {{ key }}</label>
                                 <input
                                     v-if="parameter.type === 'string' && (loadedEditableRemoteProvider!.type !== 's3' || String(key) !== 'provider')"
                                     type="text" v-model="parameter.value" :id="String(key)"
@@ -242,8 +243,7 @@
                         </svg>
                         Saving...
                     </button>
-                    <button v-if="!saving" id="add-task-btn" class="btn btn-primary h-fit"
-                        @click="saveEditedRemoteBtn">
+                    <button v-if="!saving" id="add-task-btn" class="btn btn-primary h-fit" @click="saveEditedRemoteBtn">
                         Save Changes
                     </button>
                     <!-- <button v-if="saving" disabled id="add-task-btn-error" class="btn btn-primary h-fit w-full"
@@ -462,6 +462,7 @@ async function saveEditedRemoteBtn() {
     } else {
         saving.value = true;
         await myRemoteManager.editRemote(selectedRemote.value!.name, loadedEditableRemoteName.value!, loadedEditableRemoteProvider.value!.type, loadedEditableRemoteParams.value!);
+        pushNotification(new Notification('Remote Updated', `Remote changes have been saved successfully.`, 'success', 8000));
         saving.value = false;
         editMode.value = false;
         loadRemotes();

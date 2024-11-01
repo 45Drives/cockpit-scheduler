@@ -134,14 +134,14 @@ export class RemoteManager implements RemoteManagerType {
 
     async editRemote(oldName: string, newName: string, newType: string, newParams: any) {
         let provider;
-
+        console.log(`oldName: ${oldName}, newName: ${newName}, newType: ${newType}`);
+        console.log('newParams:', newParams);
         // Handle the case where the type is 's3' and provider is passed
         if (newType === 's3') {
-            console.log('parameters:', newParams);
-            provider = cloudSyncProviders[`s3-${newParams.provider.value}`];
+            provider = cloudSyncProviders[`s3-${newParams.parameters.provider.value}`];
 
             if (!provider) {
-                throw new Error(`Unsupported S3 provider: ${newParams.provider.value}`);
+                throw new Error(`Unsupported S3 provider: ${newParams.parameters.provider.value}`);
             }
         } else {
             provider = cloudSyncProviders[newType];
@@ -151,13 +151,13 @@ export class RemoteManager implements RemoteManagerType {
             }
         }
 
-        const authParams = newParams;
+        const authParams = newParams.parameters;
         const remote = new CloudSyncRemote(newName, newType, authParams, provider);
-        const newParamsJson = JSON.stringify(newParams);  // Convert params to JSON for the Python script
-
+        const remoteJson = JSON.stringify(remote);
+        console.log('newly edited remote:', remote);
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', update_rclone_remote_script, 
-                oldName, newName, newType, newParamsJson
+                '--old_name', oldName, '--data', remoteJson
             ], { superuser: 'try' });
 
             const editRemoteOutput = (await state.promise()).stdout;

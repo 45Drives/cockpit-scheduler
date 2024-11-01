@@ -1,50 +1,56 @@
 #!/usr/bin/env python3
-
+import argparse
 import configparser
-import sys
 import json
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
 
-def update_rclone_remote(old_name, new_name, new_type, new_params):
-    # Load the existing rclone config
+def edit_remote_in_conf(old_name, updated_remote):
     config = configparser.ConfigParser()
     config.read(RCLONE_CONF_PATH)
 
-    # Check if the old_name exists in the config
-    if old_name not in config:
-        print(f"Remote '{old_name}' not found in {RCLONE_CONF_PATH}")
-        return False
+    new_name = updated_remote["name"]
+    remote_type = updated_remote["type"]
+    auth_params = updated_remote["authParams"]
 
-    # Remove the old section if the name has changed
+    # Check if the old remote exists
+    if not config.has_section(old_name):
+        raise ValueError(f"Remote '{old_name}' not found")
+
+    # Rename the section if the name has changed
     if old_name != new_name:
+        config[new_name] = config[old_name]
         config.remove_section(old_name)
 
-    # Add or update the section with new name
-    config[new_name] = {
-        'type': new_type
-    }
-    # Update with new parameters
-    for key, value in new_params.items():
-        config[new_name][key] = json.dumps(value) if isinstance(value, dict) else str(value)
+    # Set the type of the remote
+    config.set(new_name, 'type', remote_type)
 
-    # Write changes back to rclone.conf
+    # Process and set each parameter from authParams, skipping empty values
+    for key, value in auth_params.items():
+        if isinstance(value, dict):
+            value = value.get("value", "")
+        if value:  # Skip empty values
+            config.set(new_name, key, str(value))
+
+    # Write changes to the config file
     with open(RCLONE_CONF_PATH, 'w') as configfile:
         config.write(configfile)
 
-    print(f"Remote '{old_name}' updated successfully as '{new_name}' in {RCLONE_CONF_PATH}")
-    return True
+    print(f"Remote '{old_name}' successfully edited and saved as '{new_name}' in {RCLONE_CONF_PATH}")
 
-def parse_arguments():
-    if len(sys.argv) < 5:
-        print("Usage: update_rclone_remote.py <old_name> <new_name> <new_type> <json_data>")
-        sys.exit(1)
-    old_name = sys.argv[1]
-    new_name = sys.argv[2]
-    new_type = sys.argv[3]
-    new_params = json.loads(sys.argv[4])  # Use json.loads to convert JSON string to dictionary
-    return old_name, new_name, new_type, new_params
+def main():
+    parser = argparse.ArgumentParser(description="Edit an existing CloudSyncRemote in rclone.conf")
+    parser.add_argument('--old_name', type=str, required=True, help="Existing remote name to be edited")
+    parser.add_argument('--data', type=str, required=True, help="JSON string of updated CloudSyncRemote data")
+
+    args = parser.parse_args()
+    try:
+        updated_remote_data = json.loads(args.data)  # Parse JSON string to dictionary
+        edit_remote_in_conf(args.old_name, updated_remote_data)
+    except ValueError as e:
+        print(e)
+    except json.JSONDecodeError:
+        print("Invalid JSON format for --data argument")
 
 if __name__ == "__main__":
-    old_name, new_name, new_type, new_params = parse_arguments()
-    update_rclone_remote(old_name, new_name, new_type, new_params)
+    main()
