@@ -2,7 +2,8 @@
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
             <div class="px-4 sm:px-0 sm:flex-auto">
-                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.</p>
+                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.
+                </p>
             </div>
             <div class="flex flex-row justify-between">
                 <div class="px-3">
@@ -33,7 +34,7 @@
                         <h2>No Tasks Found</h2>
                     </div>
                     <div v-else class="relative">
-	                    <div class="overflow-x-auto">
+                        <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
                                     <tr class="border border-default border-collapse grid grid-cols-8 w-full">
@@ -68,14 +69,17 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div  v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
-                                        <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
-                                       @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
-                                       @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
-                                        ref="taskTableRow" :attr="taskInstance"
-                                        />
+                                    <div v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
+                                        <TaskInstanceTableRow :task="taskInstance"
+                                            :isExpanded="expandedTaskName === taskInstance.name"
+                                            @runTask="(task) => runTaskBtn(task)"
+                                            @editTask="(task) => editTaskBtn(task)"
+                                            @manageSchedule="(task) => manageScheduleBtn(task)"
+                                            @removeTask="(task) => removeTaskBtn(task)"
+                                            @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
+                                            ref="taskTableRow" :attr="taskInstance" />
                                     </div>
-                                       
+
                                 </tbody>
                             </table>
                         </div>
@@ -86,11 +90,11 @@
     </div>
 
     <div v-if="showTaskWizard">
-        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler"/>
+        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler" />
     </div>
 
     <div v-if="showEditTaskWizard">
-        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!"/>
+        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!" />
     </div>
 
     <div v-if="showThisScheduleWizard">
@@ -123,26 +127,23 @@ import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
+import { pushNotification, Notification } from 'houston-common-ui';
+import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
+const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
-// const taskTableRow = ref();
 
 async function updateStatusAndTime(task: TaskInstanceType, index: number) {
-    // console.log('taskTableRow ref:', taskTableRow.value);
     const target = taskTableRow.value[index];
-    // await taskTableRow.value!.updateTaskStatus(task);
-    // await taskTableRow.value!.fetchLatestLog(task);
     await target.updateTaskStatus(task);
     await target.fetchLatestLog(task);
 }
-
 
 /* Refresh Display */
 async function refreshBtn() {
@@ -153,7 +154,7 @@ async function refreshBtn() {
 
 const expandedTaskName = ref(null);
 function toggleDetails(taskName) {
-  expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
+    expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
 }
 
 /* Add New Task */
@@ -203,20 +204,41 @@ async function showRunNowDialog() {
     await loadConfirmationDialog(runNowDialog);
     showRunNowPrompt.value = true;
 }
-const runNowYes: ConfirmationCallback = async () => {
-    running.value = true;
-    await myScheduler.runTaskNow(selectedTask.value!);
-    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-    updateShowRunNowPrompt(false);
-    running.value = false;
-}
-const runNowNo: ConfirmationCallback = async () => {
-    updateShowRunNowPrompt(false);
-}
+
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
+
+const runNowNo: ConfirmationCallback = async () => {
+    updateShowRunNowPrompt(false);
+}
+
+
+const runNowYes: ConfirmationCallback = async () => {
+    running.value = true;
+    const runNow = true;
+    // Push a notification that the task has started
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
+    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false); // Close the modal
+    // Start the task and close the modal immediately
+    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
+        // Push a success notification when task finishes
+        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
+    }).catch((error) => {
+        // Push a failure notification if the task fails
+        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
+    });
+
+    // const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false); // Close the modal
+    running.value = false;
+};
+
 
 
 /* Remove Task */
@@ -297,11 +319,13 @@ async function viewLogsBtn(task) {
     await loadLogViewComponent();
     showLogView.value = true;
 }
+
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
+
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
 }
@@ -315,6 +339,7 @@ const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
     field: null,
     order: 1,
 });
+
 const filteredAndSortedTasks = computed(() => {
     let filteredTasks = taskInstances.value;
 
@@ -339,6 +364,7 @@ const filteredAndSortedTasks = computed(() => {
 
     return sortTasks(filteredTasks);
 });
+
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     if (!sort.value.field) return tasksToSort;
 
@@ -360,6 +386,7 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
         return factor * ((valueA as number) - (valueB as number));
     });
 };
+
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -369,6 +396,7 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
+
 function sortIconFlip() {
     if (sort.value.order == 1) {
         sortMode.value = 'asc';

@@ -24,6 +24,7 @@ def parse_env_file(parameter_env_file_path):
         
     logging.debug('Env file parsed successfully')
     return parameters
+
 def generate_exec_start(templateName, parameters, scriptPath):
     base_python_command = f"python3 {scriptPath}"
     

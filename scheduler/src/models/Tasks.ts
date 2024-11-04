@@ -1,20 +1,25 @@
 import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
+import { TaskExecutionResult } from "./TaskLog";
 
 export class TaskInstance implements TaskInstanceType {
     name: string;
     template: TaskTemplate;
     parameters: ParameterNode;
     schedule: TaskSchedule;
+    // status: string;
+    // lastExecutionResult: TaskExecutionResult | null;
 
     constructor(name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) {
         this.name = name;
         this.template = template;
         this.parameters = parameters;
         this.schedule = schedule;
+        // this.status = 'Pending';  // Default status
+        // this.lastExecutionResult = null;  // No result initially
     }
 }
 
-export class TaskSchedule implements TaskScheduleType{
+export class TaskSchedule implements TaskScheduleType {
     enabled: boolean;
     intervals: TaskScheduleInterval[];
 
@@ -22,7 +27,7 @@ export class TaskSchedule implements TaskScheduleType{
         this.enabled = enabled;
         this.intervals = intervals;
     }
-    
+
 }
 
 export class TaskScheduleInterval implements TaskScheduleIntervalType {
@@ -87,7 +92,7 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
             .addChild(new StringParameter('Custom Name', 'customName', ''))
             .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)
-        );
+            );
         super(name, parameterSchema);
     }
 
@@ -100,32 +105,31 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
 export class RsyncTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Rsync Task";
-        const push = new SelectionOption('push', 'Push');
-        const pull = new SelectionOption('pull', 'Pull');
-        const directionSelection = [] as any as SelectionOption[];
-        directionSelection.push(push);
-        directionSelection.push(pull);
+        const directionSelection = [
+            new SelectionOption('push', 'Push'),
+            new SelectionOption('pull', 'Pull')
+        ];
         const parameterSchema = new ParameterNode("Rsync Task Config", "rsyncConfig")
-        .addChild(new StringParameter('Local Path', 'local_path', ''))
-        .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
-        .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
-        .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
-            .addChild(new BoolParameter('Archive', 'archive_flag', true))
-            .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
-            .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
-            .addChild(new BoolParameter('Delete', 'delete_flag', false))
-            .addChild(new BoolParameter('Quiet', 'quiet_flag', false))
-            .addChild(new BoolParameter('Preserve Times', 'times_flag', false))
-            .addChild(new BoolParameter('Preserve Hard Links', 'hardLinks_flag', false))
-            .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', false))
-            .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', false))
-            .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
-            .addChild(new StringParameter('Include', 'include_pattern', ''))
-            .addChild(new StringParameter('Exclude', 'exclude_pattern', ''))
-            .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))
-            .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', false))
-            .addChild(new IntParameter('Threads', 'parallel_threads', 0))
-        );
+            .addChild(new StringParameter('Local Path', 'local_path', ''))
+            .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
+            .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
+            .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
+                .addChild(new BoolParameter('Archive', 'archive_flag', true))
+                .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+                .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
+                .addChild(new BoolParameter('Delete', 'delete_flag', false))
+                .addChild(new BoolParameter('Quiet', 'quiet_flag', false))
+                .addChild(new BoolParameter('Preserve Times', 'times_flag', false))
+                .addChild(new BoolParameter('Preserve Hard Links', 'hardLinks_flag', false))
+                .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', false))
+                .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', false))
+                .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
+                .addChild(new StringParameter('Include', 'include_pattern', ''))
+                .addChild(new StringParameter('Exclude', 'exclude_pattern', ''))
+                .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))
+                .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', false))
+                .addChild(new IntParameter('Threads', 'parallel_threads', 0))
+            );
         super(name, parameterSchema);
     }
 
@@ -139,7 +143,7 @@ export class ScrubTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Scrub Task";
         const parameterSchema = new ParameterNode("Scrub Task Config", "scrubConfig")
-        .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', '', ''));
+            .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', '', ''));
 
         super(name, parameterSchema);
     }
@@ -154,8 +158,8 @@ export class SmartTestTemplate extends TaskTemplate {
     constructor() {
         const name = "SMART Test";
         const parameterSchema = new ParameterNode("SMART Test Config", "smartTestConfig")
-        .addChild(new StringParameter('Disks', 'disks', ''))
-        .addChild(new StringParameter('Test Type', 'testType', ''))
+            .addChild(new StringParameter('Disks', 'disks', ''))
+            .addChild(new StringParameter('Test Type', 'testType', ''))
 
         super(name, parameterSchema);
     }

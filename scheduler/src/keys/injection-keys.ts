@@ -8,3 +8,4 @@ export const schedulerInjectionKey: InjectionKey<Scheduler> = Symbol('scheduler'
 export const logInjectionKey: InjectionKey<TaskExecutionLog> = Symbol('log');
 export const taskInstancesInjectionKey: InjectionKey<Ref<TaskInstance[]>> = Symbol('task-instances');
 export const taskTemplatesInjectionKey: InjectionKey<TaskTemplate[]> = Symbol('task-templates');
+export const truncateTextInjectionKey: InjectionKey<Ref<string>> = Symbol('truncate-text');
