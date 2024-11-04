@@ -195,15 +195,18 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
 
         const parameterSchema = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
             .addChild(new StringParameter('Local Path', 'local_path', ''))
+            .addChild(new StringParameter('Target Path', 'target_path', ''))
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
             .addChild(new SelectionParameter('Provider', 'provider', initialProviderKey, providerSelectionOptions))
-            .addChild(new CloudSyncRemote('', initialProviderKey, initialProvider.authParams, initialProvider))
+            .addChild(new CloudSyncRemote('', initialProviderKey, initialProvider.providerParams, initialProvider))
             .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
                 .addChild(new BoolParameter('Follow Symbolic Links', 'symlinks_flag', false))
                 .addChild(new IntParameter('Number of Transfers', 'transfers', 1))
                 .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
+                .addChild(new StringParameter('Include', 'exclude_pattern', ''))
                 .addChild(new StringParameter('Exclude', 'exclude_pattern', ''))
+                .addChild(new BoolParameter('Dry Run', 'dry_run', false))
                 .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))
             );
 

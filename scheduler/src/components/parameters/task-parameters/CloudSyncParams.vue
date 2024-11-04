@@ -16,27 +16,37 @@
                 <div class="flex flex-row justify-between items-center col-span-2">
                     <label class="mt-1 block text-sm leading-6 text-default">
                         Select Existing Remote
-                        <InfoTile class="ml-1" title="" />
+                        <!-- <InfoTile class="ml-1" title="" /> -->
                     </label>
                 </div>
-                <select id="existing-remote-selection" v-model="selectedRemote" name="existing-remote-selection"
+                <select v-if="existingRemotes.length > 0" id="existing-remote-selection" v-model="selectedRemote"
+                    name="existing-remote-selection"
                     class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 col-span-1">
                     <option :value="undefined">Select Remote</option>
                     <option v-for="remote, idx in existingRemotes" :key="idx" :value="remote">
-                        {{ remote.name}}
+                        {{ remote.name }}
                     </option>
+                </select>
+                <select v-else disabled id="existing-remote-selection" v-model="selectedRemote"
+                    name="existing-remote-selection"
+                    class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6 col-span-1">
+                    <option :value="undefined">No Remotes Found</option>
                 </select>
                 <div class="col-span-1 button-group-row mt-0.5">
                     <button @click.stop="createRemoteBtn()" id="new-remote-btn" name="new-remote-btn"
                         class="mt-1 btn btn-primary h-fit w-full" :class=truncateText>
                         Create New
                     </button>
-                    <button @click.stop="manageRemotesBtn()" id="manage-remotes-btn" name="manage-remotes-btn"
-                        class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
+                    <button v-if="existingRemotes.length > 0" @click.stop="manageRemotesBtn()" id="manage-remotes-btn"
+                        name="manage-remotes-btn" class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
+                        Manage Existing
+                    </button>
+                    <button v-else disabled @click.stop="manageRemotesBtn()" id="manage-remotes-btn"
+                        name="manage-remotes-btn" class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
                         Manage Existing
                     </button>
                 </div>
-                <div class="mt-1 col-span-2">
+                <!-- <div class="mt-1 col-span-2">
                     <button v-if="!selectedRemote"
                         class="mt-1 btn h-fit w-full col-span-2 btn btn-secondary text-default" disabled>
                         No Remote Selected
@@ -54,8 +64,7 @@
                                 class="inline-block w-4 h-4" />
                         </div>
                     </button>
-                </div>
-
+                </div> -->
             </div>
 
             <div name="transfer-config" class="grid grid-cols-2 col-span-2 gap-x-2">
@@ -63,7 +72,7 @@
                     <div class="flex flex-row justify-between items-center">
                         <label class="block text-sm leading-6 text-default">
                             Transfer Type
-                            <InfoTile class="ml-1" title="" />
+                            <!-- <InfoTile class="ml-1" title="" /> -->
                         </label>
                         <!-- <ExclamationCircleIcon v-if="selectedRemoteErrorTag" class="mt-1 w-5 h-5 text-danger" /> -->
                     </div>
@@ -113,6 +122,38 @@
                             </div>
                             <span class="text-default">Cloud Remote</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+            <div name="directory-config" class="grid grid-cols-2 col-span-2 gap-x-2">
+                <div name="source-path">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">
+                            Local Path
+                            <InfoTile class="ml-1" title="" />
+                        </label>
+                        <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <div>
+                        <input type="text" v-model="sourcePath"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            :class="[sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                            placeholder="Specify Local Path" />
+                    </div>
+                </div>
+                <div name="destination-path">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">
+                            Target Path
+                            <InfoTile class="ml-1" title="" />
+                        </label>
+                        <ExclamationCircleIcon v-if="destPathErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <div>
+                        <input type="text" v-model="destPath"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            :class="[destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                            placeholder="Specify Target Path" />
                     </div>
                 </div>
             </div>
@@ -237,7 +278,6 @@
 </template>
 
 <script setup lang="ts">
-
 import { ref, Ref, onMounted, inject, provide, watch } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
@@ -248,7 +288,6 @@ import { CloudAuthParameter, cloudSyncProviders, CloudSyncProvider, CloudSyncRem
 import { injectWithCheck, testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
-
 
 interface CloudSyncParamsProps {
     parameterSchema: ParameterNodeType;
@@ -266,16 +305,13 @@ const selectedRemote = ref<CloudSyncRemote>();
 const remoteType = ref(undefined);
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 
+const errorList = ref<string[]>([]);
 
-const isHovered = ref(false);
+const sourcePath = ref('');
+const sourcePathErrorTag = ref(false);
+const destPath = ref('');
+const destPathErrorTag = ref(false);
 
-function handleMouseEnter() {
-    isHovered.value = true;
-}
-
-function handleMouseLeave() {
-    isHovered.value = false;
-}
 
 onMounted(() => {
     // console.log("Component mounted");
@@ -286,6 +322,16 @@ onMounted(() => {
 watch(selectedRemote, (newVal) => {
     console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
 });
+
+const isHovered = ref(false);
+
+function handleMouseEnter() {
+    isHovered.value = true;
+}
+
+function handleMouseLeave() {
+    isHovered.value = false;
+}
 
 function authenticateRemoteBtn(selectedRemote: CloudSyncRemote) {
 

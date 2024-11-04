@@ -43,18 +43,6 @@
                             <b>Authenticate with OAuth 2.0</b> - <i class="text-sm">Enter credentials in next window</i>
                         </label>
                         <div class="button-group-row justify-between">
-                            <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
-                                <span class="flex-grow text-center mt-0.5">
-                                    Reset OAuth Data
-                                </span>
-                            </button>
-                            <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
-                                <span class="flex-grow text-center mt-0.5">
-                                    Reset OAuth Data
-                                </span>
-                            </button>
                             <button @click.stop="oAuthBtn(selectedProvider)" @mouseenter="handleMouseEnter"
                                 @mouseleave="handleMouseLeave"
                                 class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
@@ -66,6 +54,18 @@
                                     <img :src="getProviderLogo(selectedProvider, undefined)" alt="provider-logo"
                                         class="inline-block w-4 h-4" />
                                 </div>
+                            </button>
+                            <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
+                                <span class="flex-grow text-center mt-0.5">
+                                    Reset OAuth Data
+                                </span>
+                            </button>
+                            <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
+                                <span class="flex-grow text-center mt-0.5">
+                                    Reset OAuth Data
+                                </span>
                             </button>
                         </div>
 
