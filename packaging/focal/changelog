@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.2-1focal) focal; urgency=medium
+
+  * Stable Release
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 04 Nov 2024 07:11:21 -0400
+
 cockpit-scheduler (1.2.1-1focal) focal; urgency=medium
 
   * Improves task creation + execution modifications to exclusively use env file
