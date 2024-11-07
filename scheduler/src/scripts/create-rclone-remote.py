@@ -19,10 +19,11 @@ def save_remote_to_conf(remote):
     # Add new remote section
     config.add_section(name)
     config.set(name, 'type', remote_type)
-        
+
     for key, value in auth_params.items():
         if isinstance(value, dict):
-            value = value.get("value", "")
+            # Convert dictionary to JSON string
+            value = json.dumps(value)
         if value:  # Skip empty values
             config.set(name, key, str(value))
 
@@ -31,6 +32,7 @@ def save_remote_to_conf(remote):
         config.write(configfile)
 
     print(f"Remote '{name}' successfully created and saved to {RCLONE_CONF_PATH}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Save a CloudSyncRemote to rclone.conf")

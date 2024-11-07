@@ -107,11 +107,11 @@ export class RemoteManager implements RemoteManagerType {
         }
 
         const authParams: CloudAuthParameter = parameters;
-        // console.log('authParams', authParams);
+        console.log('authParams', authParams);
 
         // Create the new CloudSyncRemote with the appropriate provider and authParams
         const remote = new CloudSyncRemote(name, type, authParams, provider);
-        // console.log('newRemote:', remote);
+        console.log('newRemote:', remote);
 
         // Convert CloudSyncRemote object to JSON string
         const remoteJsonString = JSON.stringify(remote);

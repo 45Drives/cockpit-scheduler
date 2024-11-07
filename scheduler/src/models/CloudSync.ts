@@ -122,19 +122,31 @@ export interface CloudSyncParameter {
 
 
 export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteType {
-    name: string;
-    type: string;
-    provider: CloudSyncProvider;
-    authParams: CloudAuthParameter;
+    key: string;
+    name: string;  // Name of the remote
+    type: string;  // Type of the remote
+    provider: CloudSyncProvider;  // Cloud provider details
+    authParams: CloudAuthParameter;  // Authentication parameters
 
+    // Separate key and name in the constructor
     constructor(name: string, type: string, authParams: CloudAuthParameter, provider: CloudSyncProvider) {
         super(`RemoteName-${name}`, `remoteType-${type}`);
-        this.name = name;
+        this.key = 'cloud-sync-remote';
+        this.name = name;  // Assigning the remote's name
         this.type = type;
         this.authParams = authParams;
         this.provider = provider;
     }
+
+    getAuthParameter(paramKey: string) {
+        return this.authParams.parameters[paramKey]?.value;
+    }
+
+    getProviderType() {
+        return this.provider.type;
+    }
 }
+
 
 // Functions to fetch logo and color
 export function getProviderLogo(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {

@@ -28,7 +28,7 @@
 				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
 				:checked="taskInstance.schedule.enabled" @click.prevent="toggleTaskSchedule"
 				class="ml-2 h-4 w-4 rounded" />
-			<input v-else disabled type="checkbox" :title="'No Schedule Found'"
+			<input v-else disabled type="checkbox" :title="'No Schedule Found, Manage Schedule + add intervals to Enable'"
 				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
 		</td>
 		<td class="truncate text-base font-medium text-default border-default m-1 col-span-1">

@@ -186,6 +186,8 @@ watch(selectedProvider, (newlySelectedProvider) => {
     console.log('selectedProvider:', selectedProvider.value);
     if (newlySelectedProvider) {
         console.log('newlySelectedProvider:', newlySelectedProvider);
+        Object.keys(providerValues).forEach((key) => delete providerValues[key]); // Clear previous values
+
         // Initialize providerValues with a shallow copy of the selectedProvider parameters
         for (const [key, param] of Object.entries(newlySelectedProvider.providerParams.parameters)) {
             providerValues[key] = param.value ?? param.defaultValue; // Use defaultValue if no current value
@@ -286,11 +288,6 @@ const createRemoteBtn = async () => {
             }
             console.log('token value:', providerValues.token);
         }
-        // console.log('remoteName:', remoteName.value);
-        // console.log('selectedProvider.type:', selectedProvider.value.type);
-        // console.log('selectedProvider.value.parameters:', selectedProvider.value.parameters.parameters);
-        // console.log('selectedProvider.value.parameters.provider:', selectedProvider.value.parameters.parameters.provider.value);
-        // myRemoteManager.createRemote(remoteName.value, selectedProvider.value!.type, selectedProvider.value.parameters);
 
         creating.value = true;
         // Use providerValues as the data source and filter out empty parameters
@@ -300,12 +297,37 @@ const createRemoteBtn = async () => {
                 return value !== null && value !== undefined && value !== '';
             })
         );
-
+        console.log('parametersToSave:', parametersToSave);
         const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
         console.log('newRemote:', newRemote);
         pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
         creating.value = false;
         showCreateRemote.value = false;
+
+        // if (!remoteName.value) throw new Error('Remote name required');
+        // if (!selectedProvider.value) throw new Error('No provider selected');
+
+        // if (providerValues.token && typeof providerValues.token === 'string') {
+        //     try {
+        //         providerValues.token = JSON.parse(providerValues.token); // Parse token if needed
+        //     } catch {
+        //         throw new Error('Token parameter is invalid JSON.');
+        //     }
+        // }
+
+        // creating.value = true;
+        // const parametersToSave = Object.fromEntries(
+        //     Object.entries(providerValues).filter(([key, value]) => value)
+        // );
+
+        // const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, {
+        //     ...parametersToSave,
+        // });
+
+        // console.log('newRemote:', newRemote);
+        // pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
+        // creating.value = false;
+        // showCreateRemote.value = false;
     } catch (error: any) {
         console.error('Error during save:', error);
         pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
@@ -334,11 +356,9 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 break;
             case 'drive':
                 providerAuthUrlSuffix = 'drive';
-                // providerAuthUrlSuffix = 'google?service=drive';
                 break;
             case 'google cloud storage':
                 providerAuthUrlSuffix = 'cloud';
-                // providerAuthUrlSuffix = 'google?service=cloud';
                 break;
             case 'onedrive':
                 providerAuthUrlSuffix = 'onedrive';

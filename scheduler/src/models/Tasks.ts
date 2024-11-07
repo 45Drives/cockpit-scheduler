@@ -170,6 +170,7 @@ export class SmartTestTemplate extends TaskTemplate {
         return TaskInstance;
     }
 }
+
 export class CloudSyncTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Cloud Sync Task";
@@ -190,6 +191,12 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
             new SelectionOption('sync', 'Sync'),
         ];
 
+        const cutoffModeSelection = [
+            new SelectionOption('hard', 'Hard'),
+            new SelectionOption('soft', 'Soft'),
+            new SelectionOption('cautious', 'Cautious'),
+        ];
+
         const initialProviderKey = providerSelectionOptions[0].value;
         const initialProvider = cloudSyncProviders[initialProviderKey];
 
@@ -199,17 +206,36 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
             .addChild(new SelectionParameter('Provider', 'provider', initialProviderKey, providerSelectionOptions))
-            .addChild(new CloudSyncRemote('', initialProviderKey, initialProvider.providerParams, initialProvider))
+            .addChild(new CloudSyncRemote('',initialProviderKey, initialProvider.providerParams, initialProvider))
             .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
-                .addChild(new BoolParameter('Follow Symbolic Links', 'symlinks_flag', false))
+                .addChild(new BoolParameter('Check First', 'check_first_flag', false))
+                .addChild(new BoolParameter('Checksum', 'checksum_flag', false))
+                .addChild(new BoolParameter('Update', 'update_flag', false))
+                .addChild(new BoolParameter('Ignore Existing', 'ignore_existing_flag', false))
+                .addChild(new BoolParameter('Dry Run', 'dry_run_flag', false))
                 .addChild(new IntParameter('Number of Transfers', 'transfers', 1))
-                .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
-                .addChild(new StringParameter('Include', 'exclude_pattern', ''))
-                .addChild(new StringParameter('Exclude', 'exclude_pattern', ''))
-                .addChild(new BoolParameter('Dry Run', 'dry_run', false))
+                .addChild(new StringParameter('Include Pattern', 'include_pattern', ''))
+                .addChild(new StringParameter('Exclude Pattern', 'exclude_pattern', ''))
                 .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))
-            );
-
+                .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', 0))
+                .addChild(new BoolParameter('Ignore Size', 'ignore_size_flag', false))
+                .addChild(new BoolParameter('Inplace', 'inplace_flag', false))
+                .addChild(new IntParameter('Multi-Thread Chunk Size', 'multithread_chunk_size', 0))
+                .addChild(new StringParameter('Multi-Thread Chunk Size Unit', 'multithread_chunk_size_unit', 'MiB'))
+                .addChild(new IntParameter('Multi-Thread Cutoff', 'multithread_cutoff', 0))
+                .addChild(new StringParameter('Multi-Thread Cutoff Unit', 'multithread_cutoff_unit', 'MiB'))
+                .addChild(new IntParameter('Multi-Thread Streams', 'multithread_streams', 0))
+                .addChild(new IntParameter('Multi-Thread Write Buffer Size', 'multithread_write_buffer_size', 0))
+                .addChild(new StringParameter('Multi-Thread Write Buffer Size Unit', 'multithread_write_buffer_size_unit', 'KiB'))
+                .addChild(new StringParameter('Files From', 'include_from_path', ''))
+                .addChild(new StringParameter('Exclude From', 'exclude_from_path', ''))
+                .addChild(new IntParameter('Max Transfer Size', 'max_transfer_size', 0))
+                .addChild(new IntParameter('Max Transfer Size Unit', 'max_transfer_size_unit', 0))
+                .addChild(new SelectionParameter('Cutoff Mode', 'cutoff_mode', 'HARD', cutoffModeSelection))
+                .addChild(new BoolParameter('No Traverse', 'no_traverse_flag', false))
+                .addChild(new BoolParameter('Preserve Metadata', 'metadata_flag', false))
+            )
+            
         super(name, parameterSchema);
     }
 

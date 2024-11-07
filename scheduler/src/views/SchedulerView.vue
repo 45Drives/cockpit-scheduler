@@ -68,7 +68,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div  v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
+                                    <div  v-for="taskInstance, index in sortedTasks" :key="index">
                                         <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
                                        @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
                                        @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
@@ -129,7 +129,6 @@ import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
-const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
@@ -216,17 +215,6 @@ const runNowNo: ConfirmationCallback = async () => {
 }
 
 
-// const runNowYes: ConfirmationCallback = async () => {
-//     running.value = true;
-//     await myScheduler.runTaskNow(selectedTask.value!)
-//     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-//     await updateStatusAndTime(selectedTask.value!, taskIndex);
-//     updateShowRunNowPrompt(false);
-//     running.value = false;
-// }
-
-
-
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     const runNow = true;
@@ -251,59 +239,6 @@ const runNowYes: ConfirmationCallback = async () => {
     updateShowRunNowPrompt(false); // Close the modal
     running.value = false;
 };
-
-
-// const runNowYes: ConfirmationCallback = async () => {
-//     running.value = true;
-//     const task = selectedTask.value!;
-
-//     // Run the task and get the result
-//     const result = await myScheduler.runTaskNow(task);
-
-//     // Now `task.status` holds the current status, and `task.lastExecutionResult` holds the result
-//     console.log(`Task ${task.name} current status: ${task.status}`);
-//     console.log(`Task ${task.name} result:`, task.lastExecutionResult);
-
-//     // You can display the task result in the UI
-//     // if (task.lastExecutionResult) {
-//     //     task.latestTaskExecution = `Start: ${task.lastExecutionResult.startDate}, Finish: ${task.lastExecutionResult.finishDate}, Output: ${task.lastExecutionResult.output}`;
-//     // }
-
-//     updateShowRunNowPrompt(false);
-//     running.value = false;
-// };
-
-
-/* 
-const runNowYes: ConfirmationCallback = async () => {
-    running.value = true;
-
-    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-
-    // Optimistically update the status to "Running"
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-
-    // Now actually run the task
-    const result = await myScheduler.runTaskNow(selectedTask.value!);
-    console.log("Task result:", result);
-
-    // Ensure result is well-defined before checking its properties
-    const taskFailed = !result.success || result.error;
-
-    // Update the task status and time after the task is executed
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-
-    updateShowRunNowPrompt(false);
-    running.value = false;
-
-    // Show notifications based on the result
-    if (taskFailed) {
-        pushNotification(new Notification('Task Failed', `Task failed with errors: ${result.error}. Check Logs for details.`, 'error', 8000));
-    } else {
-        pushNotification(new Notification('Task Successful', `Task has successfully been run.`, 'success', 8000));
-    }
-}; */
-
 
 
 /* Remove Task */
@@ -405,7 +340,7 @@ const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
     order: 1,
 });
 
-const filteredAndSortedTasks = computed(() => {
+const sortedTasks = computed(() => {
     let filteredTasks = taskInstances.value;
 
     if (searchItem.value) {
@@ -420,11 +355,6 @@ const filteredAndSortedTasks = computed(() => {
             }
             return false;
         });
-    }
-
-    if (filterItem.value && filterItem.value !== 'no_filter') {
-        // filter based on status (need to figure out and program what status is first)
-        // filteredTasks = filteredTasks.filter(task => formatStatus(task.active) === filterItem.value);
     }
 
     return sortTasks(filteredTasks);

@@ -122,7 +122,7 @@
                                 class="block w-full mt-1 input-textlike"
                                 :placeholder='`Default is empty object`'></textarea>
                             <textarea disabled v-else-if="parameter.type === 'object' && String(key) === 'token'"
-                                v-model="parameter.value" rows="4" :id="String(key)"
+                                v-model="displayValue" rows="4" :id="String(key)" 
                                 class="block w-full mt-1 input-textlike"
                                 :placeholder='`Default is empty object`'></textarea>
                         </div>
@@ -134,18 +134,6 @@
                                     window</i>
                             </label>
                             <div class="button-group-row justify-between">
-                                <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
-                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
-                                    <span class="flex-grow text-center mt-0.5">
-                                        Reset OAuth Data
-                                    </span>
-                                </button>
-                                <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
-                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
-                                    <span class="flex-grow text-center mt-0.5">
-                                        Reset OAuth Data
-                                    </span>
-                                </button>
                                 <button @click.stop="oAuthBtn(loadedEditableRemoteProvider! as CloudSyncProvider)"
                                     @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
                                     class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
@@ -158,6 +146,18 @@
                                         <img :src="getProviderLogo(loadedEditableRemoteProvider! as CloudSyncProvider, undefined)"
                                             alt="provider-logo" class="inline-block w-4 h-4" />
                                     </div>
+                                </button>
+                                <button v-if="oAuthenticated" @click.stop="clearOAuthBtn()"
+                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
+                                    <span class="flex-grow text-center mt-0.5">
+                                        Reset OAuth Data
+                                    </span>
+                                </button>
+                                <button v-if="!oAuthenticated" @click.stop="clearOAuthBtn()" disabled
+                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-danger text-default">
+                                    <span class="flex-grow text-center mt-0.5">
+                                        Reset OAuth Data
+                                    </span>
                                 </button>
                             </div>
 
@@ -203,7 +203,7 @@
                                     class="block w-full mt-1 input-textlike"
                                     :placeholder='`Default is empty object`'></textarea>
                                 <textarea v-else-if="parameter.type === 'object' && String(key) === 'token'"
-                                    v-model="parameter.value" rows="4" :id="String(key)"
+                                    v-model="displayValue" rows="4" :id="String(key)"
                                     class="block w-full mt-1 input-textlike"
                                     :placeholder='`Default is empty object`'></textarea>
                             </div>
@@ -220,7 +220,7 @@
 
                 <!-- Delete and Edit Buttons in the middle -->
                 <div v-if="selectedRemote" class="flex flex-row gap-2 flex-grow justify-center">
-                    <button v-if="editMode" id="delete-remote-btn" type="button" @click.stop="deleteRemoteBtn()"
+                    <button id="delete-remote-btn" type="button" @click.stop="deleteRemoteBtn()"
                         class="btn btn-danger h-fit w-full">Delete Remote</button>
                     <button v-if="editMode" id="edit-remote-btn" type="button" @click.stop="editRemoteBtn()"
                         class="btn btn-secondary h-fit w-full">Cancel Edit</button>
@@ -484,10 +484,15 @@ async function showDeleteRemoteDialog() {
 
 const deleteRemoteYes: ConfirmationCallback = async () => {
     deleting.value = true;
-    await myRemoteManager.deleteRemote(selectedRemote.value!.name);
+    const remoteName = selectedRemote.value!.name;
+    await myRemoteManager.deleteRemote(remoteName);
     loading.value = true;
     await myRemoteManager.getRemotes();
+    pushNotification(new Notification('Remote Deleted', `Remote ${remoteName} has been deleted successfully.`, 'success', 8000));
     loading.value = false;
+    // clearValues();
+    editMode.value = false;
+    selectedRemote.value = undefined;
     deleting.value = false;
     updateShowDeleteRemotePrompt(false);
 }
@@ -503,6 +508,33 @@ function clearOAuthBtn() {
     oAuthenticated.value = false;
     loadedEditableRemoteParams.token = "";
 }
+
+// Computed property with token existence check
+const displayValue = computed({
+    get: () => {
+        if (loadedEditableRemoteProvider.value) {
+            const token = loadedEditableRemoteParams.value.parameters.token.value;
+            if (!token) {
+                return ''; // Return empty or a placeholder if token is missing
+            }
+            // Convert token to JSON string for display if it’s an object
+            return typeof token === 'object'
+                ? JSON.stringify(token, null, 2)
+                : token;
+        }
+    },
+    set: (newValue: string) => {
+        if (loadedEditableRemoteProvider.value) {
+            try {
+                // Parse JSON and update token if valid in loadedEditableRemoteParams
+                loadedEditableRemoteParams.value.parameters.token.value = JSON.parse(newValue);
+            } catch {
+                // If parsing fails, keep as string in loadedEditableRemoteParams
+                loadedEditableRemoteParams.value.parameters.token.value = newValue;
+            }
+        }
+    }
+});
 
 const accessToken = ref<string | null>(null);
 const refreshToken = ref<string | null>(null);
@@ -545,6 +577,9 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 
+                // Log the received token data
+                // console.log('OAuth response received:', event.data);
+
                 if (token && refresh && id) {
                     accessToken.value = token;
                     refreshToken.value = refresh;
@@ -561,8 +596,11 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                         "refresh_token": refreshToken.value
                     };
 
+                    // Log the assembled full token
+                    // console.log('Assembled full token:', fullToken);
+
                     oAuthenticated.value = true;
-                    loadedEditableRemoteParams.token = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
+                    loadedEditableRemoteParams.value.parameters.token.value = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
 
                     pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
 
@@ -591,55 +629,6 @@ async function getTokenExpiry(): Promise<string> {
     const currentTime = new Date();
     return new Date(currentTime.getTime() + 3600 * 1000).toISOString();
 }
-
-
-/* const createRemoteBtn = async () => {
-    try {
-        if (!remoteName.value) {
-            throw Error('Remote name required');
-        }
-        if (!selectedProvider.value) {
-            throw Error('No provider selected');
-        }
-
-        if (providerValues.token) {
-            // Validate that token is JSON
-            const tokenParam = providerValues.token;
-            if (typeof tokenParam === 'string') {
-                try {
-                    providerValues.token = JSON.parse(tokenParam); // Convert to JSON if necessary
-                } catch {
-                    throw new Error('Token parameter is invalid JSON.');
-                }
-            }
-            console.log('token value:', providerValues.token);
-        }
-        // console.log('remoteName:', remoteName.value);
-        // console.log('selectedProvider.type:', selectedProvider.value.type);
-        // console.log('selectedProvider.value.parameters:', selectedProvider.value.parameters.parameters);
-        // console.log('selectedProvider.value.parameters.provider:', selectedProvider.value.parameters.parameters.provider.value);
-        // myRemoteManager.createRemote(remoteName.value, selectedProvider.value!.type, selectedProvider.value.parameters);
-
-        creating.value = true;
-        // Use providerValues as the data source and filter out empty parameters
-        const parametersToSave = Object.fromEntries(
-            Object.entries(providerValues).filter(([key, value]) => {
-                // Check if value is not empty (not null, undefined, or an empty string)
-                return value !== null && value !== undefined && value !== '';
-            })
-        );
-
-        const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
-        console.log('newRemote:', newRemote);
-        pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
-        creating.value = false;
-        showCreateRemote.value = false;
-    } catch (error: any) {
-        console.error('Error during save:', error);
-        pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
-    }
-} */
-
 
 const hoverStates = reactive({});
 

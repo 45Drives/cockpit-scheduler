@@ -308,3 +308,56 @@ export function splitAndClean(inputString: string, isDisk: boolean) {
   
     return cleanedParts;
 }
+
+
+export async function checkLocalPathExists(localPathStr: string) {
+    try {
+        console.log('localPathStr:', localPathStr);
+
+        // Run 'test -e <path>'
+        const state = useSpawn(['test', '-e', localPathStr]);
+
+        // Await the promise and handle the exit code to determine existence
+        const output = await state.promise();
+
+        // If the command succeeds, the path exists
+        return true;
+    } catch (error: any) {
+        // If 'test' fails, it usually means the path does not exist
+        if (error.status === 1) {
+            console.log('Path does not exist');
+            return false;
+        }
+
+        // Log other types of errors
+        console.error('Unexpected error:', errorString(error));
+        return false;
+    }
+}
+
+
+export async function checkRemotePathExists(remoteName: string, remotePathStr: string) {
+    try {
+        console.log('remotePathStr:', remotePathStr);
+
+        // Use 'rclone lsf' to list the remote path
+        const state = useSpawn(['rclone', 'lsf', `${remoteName}:${remotePathStr}`]);
+
+        // Await the promise and handle the exit code
+        await state.promise();
+        console.log('path exists');
+
+        // If rclone lsf succeeds, the path exists
+        return true;
+    } catch (error: any) {
+        // If 'rclone lsf' fails with exit code 1, it means the path does not exist
+        if (error.status === 1) {
+            console.log('Path does not exist');
+            return false;
+        }
+
+        // Log unexpected errors
+        console.error('Unexpected error:', JSON.stringify(error));
+        return false;
+    }
+}
