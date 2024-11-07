@@ -3,8 +3,7 @@ import re
 import json
 import subprocess
 
-currentTaskTemplates = ['ZfsReplicationTask', 'AutomatedSnapshotTask', 'ScrubTask', 'RsyncTask', 'SmartTest']
-# , 'CloudSyncTask'
+currentTaskTemplates = ['ZfsReplicationTask', 'AutomatedSnapshotTask', 'ScrubTask', 'RsyncTask', 'SmartTest', 'CloudSyncTask']
 
 
 class TaskScheduleInterval:
