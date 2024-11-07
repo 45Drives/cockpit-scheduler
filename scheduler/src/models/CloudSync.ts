@@ -1,4 +1,4 @@
-import { ParameterNode, StringParameter, BoolParameter, IntParameter, ObjectParameter, } from "./Parameters";
+import { ParameterNode, StringParameter, BoolParameter, IntParameter, ObjectParameter, SelectionParameter, SelectionOption, } from "./Parameters";
 import { providerLogos } from '../utils/providerLogos';
 
 export class CloudSyncProvider {
@@ -16,7 +16,6 @@ export class CloudSyncProvider {
         return Object.entries(this.providerParams.parameters)
             .map(([key, param]) => ({ key, ...param }));
     }
-
 }
 
 export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
@@ -120,7 +119,6 @@ export interface CloudSyncParameter {
     defaultValue?: string | number | boolean | object;
 }
 
-
 export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteType {
     key: string;
     name: string;  // Name of the remote
@@ -128,11 +126,10 @@ export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteTyp
     provider: CloudSyncProvider;  // Cloud provider details
     authParams: CloudAuthParameter;  // Authentication parameters
 
-    // Separate key and name in the constructor
     constructor(name: string, type: string, authParams: CloudAuthParameter, provider: CloudSyncProvider) {
-        super(`RemoteName-${name}`, `remoteType-${type}`);
-        this.key = 'cloud-sync-remote';
-        this.name = name;  // Assigning the remote's name
+        super(`Rclone Remote`, `remoteType-${type}`);
+        this.key = 'cloud_sync_remote';
+        this.name = name;
         this.type = type;
         this.authParams = authParams;
         this.provider = provider;
@@ -144,6 +141,21 @@ export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteTyp
 
     getProviderType() {
         return this.provider.type;
+    }
+
+    // asEnvKeyValues(): string[] {
+    //     // Serialize the entire CloudSyncRemote as a JSON string
+    //     const remoteData = JSON.stringify({
+    //         name: this.name,
+    //         type: this.type,
+    //         provider: this.provider,
+    //         authParams: this.authParams,
+    //     });
+    //     return [`${this.key}=${remoteData}`];
+    // }
+    asEnvKeyValues(): string[] {
+        // Only store the name of the remote
+        return [`${this.key}=${this.name}`];
     }
 }
 

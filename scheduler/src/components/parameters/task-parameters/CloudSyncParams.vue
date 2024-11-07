@@ -567,7 +567,7 @@ import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption } from '../../../models/Parameters';
 import { CloudSyncRemote, getProviderLogo, getButtonStyles, CloudSyncProvider, CloudAuthParameter, cloudSyncProviders } from '../../../models/CloudSync';
 import { injectWithCheck, checkLocalPathExists } from '../../../composables/utility';
-import { rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
+import { rcloneRemotesInjectionKey, remoteManagerInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
 
 interface CloudSyncParamsProps {
     parameterSchema: ParameterNodeType;
@@ -598,7 +598,7 @@ const initialParameters = ref({});
 //     dummyDropboxProvider         // The Dropbox provider instance
 // );
 // const dummyRemote = ref(dummyCloudSyncRemote);
-
+const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 const errorList = inject<Ref<string[]>>('errors')!;
 const errorTags = ref({
@@ -681,8 +681,8 @@ async function initializeData() {
             directionSwitched.value = false;
         }
         transferType.value = params.find(p => p.key === 'type')!.value;
-        selectedRemote.value = params.find(p => p.key === 'cloud_sync_remote')!.value;
-
+        const remoteName = params.find(p => p.key === 'rclone_remote')!.value;
+        selectedRemote.value = await myRemoteManager.getRemoteByName(remoteName) || undefined;
         const rcloneOptions = params.find(p => p.key === 'rcloneOptions')!.value;
         checkFirst.value = rcloneOptions.find(p => p.key === '')!.value;
         checksum.value = rcloneOptions.find(p => p.key === '')!.value;
@@ -1004,7 +1004,7 @@ function setParams() {
         .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value))
         .addChild(new SelectionParameter('Transfer Type', 'type', transferType.value))
         .addChild(new SelectionParameter('Provider', 'provider', selectedRemote.value!.type))
-        .addChild(new CloudSyncRemote(selectedRemote.value!.name, selectedRemote.value!.type, selectedRemote.value!.authParams, selectedRemote.value!.provider))
+        .addChild(new StringParameter('Rclone Remote', 'rclone_remote', selectedRemote.value!.name))
         .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
             .addChild(new BoolParameter('Check First', 'check_first_flag', checkFirst.value))
             .addChild(new BoolParameter('Checksum', 'checksum_flag', checksum.value))

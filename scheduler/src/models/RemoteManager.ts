@@ -4,13 +4,13 @@ import { CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, CloudAuthParame
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 //@ts-ignore
-import get_rclone_remotes_script from '../scripts/get-rclone-remotes.py?raw';
+import get_cloud_sync_remotes_script from '../scripts/get-rclone-remotes.py?raw';
 //@ts-ignore
-import create_rclone_remote_script from '../scripts/create-rclone-remote.py?raw';
+import create_cloud_sync_remote_script from '../scripts/create-rclone-remote.py?raw';
 //@ts-ignore
-import delete_rclone_remote_script from '../scripts/delete-rclone-remote.py?raw';
+import delete_cloud_sync_remote_script from '../scripts/delete-rclone-remote.py?raw';
 //@ts-ignore
-import update_rclone_remote_script from '../scripts/update-rclone-remote.py?raw';
+import update_cloud_sync_remote_script from '../scripts/update-rclone-remote.py?raw';
 
 export class RemoteManager implements RemoteManagerType {
     cloudSyncRemotes: CloudSyncRemote[];
@@ -22,7 +22,7 @@ export class RemoteManager implements RemoteManagerType {
     async getRemotes() {
         this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
         try {
-            const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_rclone_remotes_script], { superuser: 'try' });
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_cloud_sync_remotes_script], { superuser: 'try' });
             const remotesOutput = (await state.promise()).stdout;
 
             const remotesData = JSON.parse(remotesOutput);  // Parse the remotes
@@ -85,7 +85,20 @@ export class RemoteManager implements RemoteManagerType {
         }
     }
 
+    async getRemoteByName(remoteName: string): Promise<CloudSyncRemote | null> {
+        await this.getRemotes();  // Ensure remotes are loaded
 
+        // Find the remote by name
+        const remote = this.cloudSyncRemotes.find(remote => remote.name === remoteName);
+
+        if (remote) {
+            console.log(`Found remote: ${remote.name}`);
+            return remote;
+        } else {
+            console.error(`Remote with name "${remoteName}" not found`);
+            return null;
+        }
+    }
 
     async createRemote(name: string, type: string, parameters: any): Promise<CloudSyncRemote> {
         let provider: CloudSyncProvider;
@@ -118,7 +131,7 @@ export class RemoteManager implements RemoteManagerType {
         // console.log('remoteJsonString:', remoteJsonString);
 
         try {
-            const state = useSpawn(['/usr/bin/env', 'python3', '-c', create_rclone_remote_script, '--data', remoteJsonString], { superuser: 'try' });
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', create_cloud_sync_remote_script, '--data', remoteJsonString], { superuser: 'try' });
             const newRemoteOutput = (await state.promise()).stdout;
 
             console.log('newRemoteOutput:', newRemoteOutput);
@@ -156,7 +169,7 @@ export class RemoteManager implements RemoteManagerType {
         const remoteJson = JSON.stringify(remote);
         console.log('newly edited remote:', remote);
         try {
-            const state = useSpawn(['/usr/bin/env', 'python3', '-c', update_rclone_remote_script, 
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', update_cloud_sync_remote_script, 
                 '--old_name', oldName, '--data', remoteJson
             ], { superuser: 'try' });
 
@@ -190,7 +203,7 @@ export class RemoteManager implements RemoteManagerType {
 
         // Run the Python script to delete the remote from the rclone config
         try {
-            const state = useSpawn(['/usr/bin/env', 'python3', '-c', delete_rclone_remote_script, remoteName], { superuser: 'try' });
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', delete_cloud_sync_remote_script, remoteName], { superuser: 'try' });
             const deleteOutput = (await state.promise()).stdout;
 
             console.log("Delete script output:", deleteOutput);

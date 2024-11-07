@@ -1,9 +1,10 @@
 import { ref } from 'vue';
 import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
-import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from './Tasks';
-import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter } from './Parameters';
+import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate } from './Tasks';
+import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
+
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';;
 
@@ -36,9 +37,13 @@ export class Scheduler implements SchedulerType {
                     newTaskTemplate.value = new ScrubTaskTemplate;
                 } else if (task.template == 'SmartTest') {
                     newTaskTemplate.value = new SmartTestTemplate;
+                } else if (task.template == 'CloudSyncTask') {
+                    newTaskTemplate.value = new CloudSyncTaskTemplate;
                 }
 
                 const parameters = task.parameters;
+                console.log("SCHEDULER - Parameters before parsing:", parameters);
+
                 const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.value.parameterSchema, parameters);
                 const taskIntervals : TaskScheduleInterval[] = [];
 
@@ -49,6 +54,8 @@ export class Scheduler implements SchedulerType {
 
                 const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
                 const newTaskInstance = new TaskInstance(task.name, newTaskTemplate.value, parameterNodeStructure, newSchedule); 
+                console.log("SCHEDULER - TaskInstance:", newTaskInstance);
+
                 this.taskInstances.push(newTaskInstance);
             });
 
@@ -61,19 +68,67 @@ export class Scheduler implements SchedulerType {
     }
         
     // Main function to create a ParameterNode from JSON parameters based on a schema
+    // createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
+    //     // Create a deep clone of the schema to fill in values without modifying the original schema
+    //     function cloneSchema(node: ParameterNode): ParameterNode {
+    //         let newNode: ParameterNode;
+    //         // Check node type to instantiate correct parameter type
+    //         if (node instanceof StringParameter) {
+    //             newNode = new StringParameter(node.label, node.key);
+    //         } else if (node instanceof IntParameter) {
+    //             newNode = new IntParameter(node.label, node.key);
+    //         } else if (node instanceof BoolParameter) {
+    //             newNode = new BoolParameter(node.label, node.key);
+    //         } else if (node instanceof SelectionParameter){
+    //             newNode = new SelectionParameter(node.label, node.key)
+    //         } else {
+    //             newNode = new ParameterNode(node.label, node.key);
+    //         }
+
+    //         node.children.forEach(child => {
+    //             newNode.addChild(cloneSchema(child));
+    //         });
+    //         return newNode;
+    //     }
+    //     const parameterRoot = cloneSchema(schema);
+
+    //     // Function to assign values from JSON to the corresponding ParameterNode
+    //     function assignValues(node: ParameterNode, prefix = ''): void {
+    //         const currentPrefix = prefix ? prefix + '_' : '';
+    //         const fullKey = currentPrefix + node.key;
+    //         if (parameters.hasOwnProperty(fullKey)) {
+    //             let value = parameters[fullKey];
+    //             if (node instanceof StringParameter || node instanceof SelectionParameter) {
+    //                 node.value = value;
+    //             } else if (node instanceof IntParameter) {
+    //                 node.value = parseInt(value);
+    //             } else if (node instanceof BoolParameter) {
+    //                 node.value = value === 'true';
+    //             } else if (node instanceof ObjectParameter) {
+    //                 // Parse as JSON if not already an object
+    //                 node.value = typeof value === 'string' ? JSON.parse(value) : value;
+    //             }
+    //         }
+    //         node.children.forEach(child => assignValues(child, fullKey));
+    //     }
+
+    //     // Start the assignment from the root
+    //     assignValues(parameterRoot);
+    //     return parameterRoot;
+    // }
+    
     createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
-        // Create a deep clone of the schema to fill in values without modifying the original schema
         function cloneSchema(node: ParameterNode): ParameterNode {
             let newNode: ParameterNode;
-            // Check node type to instantiate correct parameter type
+
             if (node instanceof StringParameter) {
                 newNode = new StringParameter(node.label, node.key);
             } else if (node instanceof IntParameter) {
                 newNode = new IntParameter(node.label, node.key);
             } else if (node instanceof BoolParameter) {
                 newNode = new BoolParameter(node.label, node.key);
-            } else if (node instanceof SelectionParameter){
-                newNode = new SelectionParameter(node.label, node.key)
+            } else if (node instanceof SelectionParameter) {
+                newNode = new SelectionParameter(node.label, node.key);
             } else {
                 newNode = new ParameterNode(node.label, node.key);
             }
@@ -81,18 +136,19 @@ export class Scheduler implements SchedulerType {
             node.children.forEach(child => {
                 newNode.addChild(cloneSchema(child));
             });
+
             return newNode;
         }
+
         const parameterRoot = cloneSchema(schema);
 
-        // Function to assign values from JSON to the corresponding ParameterNode
         function assignValues(node: ParameterNode, prefix = ''): void {
             const currentPrefix = prefix ? prefix + '_' : '';
             const fullKey = currentPrefix + node.key;
-            // console.log(`Assigning value for key: ${fullKey}`);  // Debug log to see which keys are being processed
+
             if (parameters.hasOwnProperty(fullKey)) {
                 let value = parameters[fullKey];
-                // console.log(`Found value: ${value} for key: ${fullKey}`);  // Debug log to confirm values
+
                 if (node instanceof StringParameter || node instanceof SelectionParameter) {
                     node.value = value;
                 } else if (node instanceof IntParameter) {
@@ -104,10 +160,10 @@ export class Scheduler implements SchedulerType {
             node.children.forEach(child => assignValues(child, fullKey));
         }
 
-        // Start the assignment from the root
         assignValues(parameterRoot);
         return parameterRoot;
     }
+
 
     parseEnvKeyValues(envKeyValues: string[], templateName: string) {
         let envObject = envKeyValues.reduce((acc, curr) => {
@@ -117,6 +173,15 @@ export class Scheduler implements SchedulerType {
         }, {});
 
         console.log('templateName:', templateName);
+
+        function formatEnvOption(envObject, key, emptyValue = '', excludeValues = [0, '0', "''"], resetKeys: string[] = []) {
+            if (envObject[key] && !excludeValues.includes(envObject[key])) {
+                envObject[key] = `${envObject[key]}`;
+            } else {
+                envObject[key] = emptyValue;
+                resetKeys.forEach(resetKey => envObject[resetKey] = emptyValue);
+            }
+        }
 
         switch (templateName) {
             case 'ZfsReplicationTask':
@@ -133,30 +198,26 @@ export class Scheduler implements SchedulerType {
                     envObject['rsyncConfig_target_info_port'] = '';
                     envObject['rsyncConfig_target_info_user'] = '';
                 }
+                formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_bandwidth_limit_kbps');
+                formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_include_pattern');
+                formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_exclude_pattern');
+                formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_custom_args');
+                break;
 
-                if (envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] !== '0' && envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] !== 0) {
-                    envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = `${envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps']}`;
-                } else {
-                    envObject['rsyncConfig_rsyncOptions_bandwidth_limit_kbps'] = '';
-                }
 
-                if (envObject['rsyncConfig_rsyncOptions_include_pattern'] && envObject['rsyncConfig_rsyncOptions_include_pattern'] !== "''") {
-                    envObject['rsyncConfig_rsyncOptions_include_pattern'] = `${envObject['rsyncConfig_rsyncOptions_include_pattern']}`;
-                } else {
-                    envObject['rsyncConfig_rsyncOptions_include_pattern'] = '';
-                }
-
-                if (envObject['rsyncConfig_rsyncOptions_exclude_pattern'] && envObject['rsyncConfig_rsyncOptions_exclude_pattern'] !== "''") {
-                    envObject['rsyncConfig_rsyncOptions_exclude_pattern'] = `${envObject['rsyncConfig_rsyncOptions_exclude_pattern']}`;
-                } else {
-                    envObject['rsyncConfig_rsyncOptions_exclude_pattern'] = '';
-                }
-
-                if (envObject['rsyncConfig_rsyncOptions_custom_args'] && envObject['rsyncConfig_rsyncOptions_custom_args'] !== "''") {
-                    envObject['rsyncConfig_rsyncOptions_custom_args'] = `${envObject['rsyncConfig_rsyncOptions_custom_args']}`;
-                } else {
-                    envObject['rsyncConfig_rsyncOptions_custom_args'] = '';
-                }
+            case 'CloudSyncTask':
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_bandwidth_limit_kbps');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_include_pattern');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_exclude_pattern');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_custom_args');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_transfers');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_max_transfer_size', '', [0, '0', "''"], ['cloudSyncConfig_rcloneOptions_max_transfer_size_unit']);
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_include_from_path');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_exclude_from_path');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_multithread_chunk_size', '', [0, '0', "''"], ['cloudSyncConfig_rcloneOptions_multithread_chunk_size_unit']);
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_multithread_cutoff', '', [0, '0', "''"], ['cloudSyncConfig_rcloneOptions_multithread_cutoff_unit']);
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_multithread_streams');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_multithread_write_buffer_size', '', [0, '0', "''"], ['cloudSyncConfig_rcloneOptions_multithread_write_buffer_size_unit']);
                 break;
 
             default:
@@ -165,6 +226,7 @@ export class Scheduler implements SchedulerType {
         console.log('envObject After:', envObject);
         return envObject;
     }
+
 
     getScriptFromTemplateName(templateName: string) {
         switch (templateName) {
@@ -176,6 +238,8 @@ export class Scheduler implements SchedulerType {
                 return 'rsync-script';
             case 'SmartTest':
                 return 'smart-test-script';
+            case 'CloudSyncTask':
+                return 'cloudsync-script';
             default:
                 console.error('no script provided');
                 break;
@@ -203,8 +267,9 @@ export class Scheduler implements SchedulerType {
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
-        
+
         console.log('envFilePath:', envFilePath);
+        // console.log('envKeyValuesString:', envKeyValuesString);
 
         const file = new BetterCockpitFile(envFilePath, {
             superuser: 'try',
@@ -317,97 +382,6 @@ export class Scheduler implements SchedulerType {
         console.log(`Task ${fullTaskName} completed.`);
         // return TaskExecutionResult;
     }
-
-/*     async runTaskNow(taskInstance: TaskInstanceType) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
-        console.log(`Running ${fullTaskName}...`);
-
-        // Start task in the background
-        runTask(fullTaskName).then(() => {
-            // When the task finishes, update the UI
-            console.log(`Task ${fullTaskName} completed.`);
-        }).catch(err => {
-            console.error(`Task ${fullTaskName} failed:`, err);
-        });
-
-        // Close modal, notify the user
-        return { status: 'started', taskName: fullTaskName };
-    } */
-
-
-    // async runTaskNow(taskInstance: TaskInstanceType): Promise<TaskExecutionResult> {
-    //     const houstonSchedulerPrefix = 'houston_scheduler_';
-    //     const templateName = formatTemplateName(taskInstance.template.name);
-    //     const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
-    //     console.log(`Running ${fullTaskName}...`);
-
-    //     const startDate = new Date().toISOString();
-
-    //     try {
-    //         const output = await runTask(fullTaskName); // Assuming `runTask` captures the script's output
-    //         const finishDate = new Date().toISOString();
-    //         console.log(`Task ${fullTaskName} completed.`);
-    //         return new TaskExecutionResult(0, output, startDate, finishDate); // 0 for success
-    //     } catch (error: any) {
-    //         const finishDate = new Date().toISOString();
-    //         console.error(`Task ${fullTaskName} failed: ${error.message}`);
-    //         return new TaskExecutionResult(1, error.message, startDate, finishDate); // 1 for failure
-    //     }
-    // }
-
-    // async runTaskNow(taskInstance: TaskInstance): Promise<TaskExecutionResult> {
-    //     const houstonSchedulerPrefix = 'houston_scheduler_';
-    //     const templateName = formatTemplateName(taskInstance.template.name);
-    //     const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
-    //     console.log(`Running ${fullTaskName}...`);
-
-    //     const startDate = new Date().toISOString();
-    //     taskInstance.status = 'Running';  // Set status to 'Running'
-
-    //     try {
-    //         const output = await runTask(fullTaskName); // Assuming `runTask` captures the script's output
-    //         const finishDate = new Date().toISOString();
-    //         taskInstance.status = 'Completed';  // Set status to 'Completed'
-
-    //         // Store the execution result in the task instance
-    //         const result = new TaskExecutionResult(0, output, startDate, finishDate);
-    //         taskInstance.lastExecutionResult = result;
-
-    //         console.log(`Task ${fullTaskName} completed.`);
-    //         return result;
-    //     } catch (error: any) {
-    //         const finishDate = new Date().toISOString();
-    //         taskInstance.status = 'Failed';  // Set status to 'Failed'
-
-    //         // Store the execution result in case of failure
-    //         const result = new TaskExecutionResult(1, error.message, startDate, finishDate);
-    //         taskInstance.lastExecutionResult = result;
-
-    //         console.error(`Task ${fullTaskName} failed: ${error.message}`);
-    //         return result;
-    //     }
-    // }
-
-    
-    // async runTaskNow(taskInstance: TaskInstanceType): Promise<string> {
-    //     const houstonSchedulerPrefix = 'houston_scheduler_';
-    //     const templateName = formatTemplateName(taskInstance.template.name);
-    //     const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
-    //     try {
-    //         // Run the task and capture both stdout and stderr
-    //         const output = await runTask(fullTaskName);
-    //         return output;  // Ensure the output is returned
-    //     } catch (error : any) {
-    //         console.error("Task execution failed:", error);
-    //         return `ERROR: ${error.message}`;  // Return a string with the error
-    //     }
-    // }
   
     async getTimerStatus(taskInstance: TaskInstanceType) {
         const taskLog = new TaskExecutionLog([]);
@@ -498,307 +472,6 @@ export class Scheduler implements SchedulerType {
             return false;
         }
     }
-
-
-
-    /* 
-    async getTaskStatusFor(taskInstance: TaskInstanceType, runNow?: boolean) {
-        const taskLog = new TaskExecutionLog([]);
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
-
-        let result, output, unit_type;
-
-        if (runNow) {
-            unit_type = 'service';
-        } else {
-            unit_type = 'timer';
-        }
-        
-        try {
-            const command = ['systemctl', 'status', `${fullTaskName}.${unit_type}`, '--no-pager', '--output=cat'];
-            const state = useSpawn(command, { superuser: 'try'});
-            result = await state.promise();
-            output = result.stdout;
-            // console.log(`status for task ${taskInstance.name} is ${output}`);
-        } catch (error) {
-            // console.error(errorString(error));
-            // return false;
-            return `Error checking ${unit_type} status`;
-        }
-
-        try {
-            let status = '';
-            const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
-            const activeStatusMatch = output.match(activeStatusRegex);
-
-            // if (activeStatusMatch) {
-            //     status = activeStatusMatch[1].trim();
-            // } else {
-            //     status = "No schedule found.";
-            // }
-
-            if (activeStatusMatch) {
-                const systemdState = activeStatusMatch[1].trim();
-
-                // Define intermediate states based on the systemctl state
-                switch (systemdState) {
-                    case 'activating (start)':
-                        status = 'Starting...';
-                        break;
-                    case 'active (waiting)':
-                        status = 'Active (Queued)';
-                        break;
-                    case 'active (running)':
-                        status = 'Active (Running)';
-                        break;
-                    case 'inactive (dead)':
-                        // Check if the task has been completed recently
-                        const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
-                        status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
-                        break;
-                    case 'failed (result)':
-                        status = 'Failed';
-                        break;
-                    default:
-                        status = systemdState;  // Fallback to systemctl state if nothing matches
-                }
-            } else {
-                // No valid status found
-                status = "Service inactive or not found.";
-            }
-            console.log(`Status for ${fullTaskName}`, status);
-            return status;
-        } catch (error) {
-            console.error(errorString(error));
-            return false;
-        }
-    }
- */
-    /* async getTaskStatusFor(taskInstance: TaskInstanceType, runNow?: boolean) {
-        const taskLog = new TaskExecutionLog([]);
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
-
-        let result, output, unit_type;
-
-        if (runNow) {
-            unit_type = 'service';  // When runNow, it must be the service.
-        } else {
-            unit_type = 'timer';  // For scheduled tasks, use the timer.
-        }
-
-        try {
-            const command = ['systemctl', 'status', `${fullTaskName}.${unit_type}`, '--no-pager', '--output=cat'];
-            const state = useSpawn(command, { superuser: 'try' });
-            result = await state.promise();
-            output = result.stdout;
-            console.log(`status for task ${taskInstance.name} (${unit_type}) is ${output}`);
-        } catch (error) {
-            console.error(`Error checking ${unit_type} status:`, error);
-            return `Error checking ${unit_type} status`;
-        }
-
-        // Status parsing
-        try {
-            let status = '';
-            const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
-            const activeStatusMatch = output.match(activeStatusRegex);
-
-            if (activeStatusMatch) {
-                const systemdState = activeStatusMatch[1].trim();
-
-                // Match the systemctl state to internal task states
-                switch (systemdState) {
-                    case 'activating (start)':
-                        status = 'Starting...';
-                        break;
-                    case 'active (waiting)':
-                        status = 'Active (Pending)';
-                        break;
-                    case 'active (running)':
-                        status = 'Active (Running)';
-                        break;
-                    case 'inactive (dead)':
-                        // Check if the task has been completed recently
-                        const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
-                        status = recentlyCompleted ? 'Completed' : 'Inactive (Disabled)';
-                        break;
-                    case 'failed (result)':
-                        status = 'Failed';
-                        break;
-                    default:
-                        status = systemdState;  // Fallback to systemctl state if nothing matches
-                }
-            } else {
-                // No valid status found
-                status = runNow ? "Service inactive or not found." : "Timer inactive or not found.";
-            }
-
-            console.log(`Status for ${fullTaskName}`, status);
-            return status;
-        } catch (error) {
-            console.error(`Error parsing status for ${fullTaskName}:`, error);
-            return false;
-        }
-    } */
-
-
-    // async getTaskStatusFor(taskInstance: TaskInstanceType) {
-    //     const taskLog = new TaskExecutionLog([]);
-    //     const houstonSchedulerPrefix = 'houston_scheduler_';
-    //     const templateName = formatTemplateName(taskInstance.template.name);
-    //     const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
-
-    //     let result, output, status = '';
-
-    //     try {
-    //         // First, check the .service status to see if it's running
-    //         const commandService = ['systemctl', 'status', `${fullTaskName}.service`, '--no-pager', '--output=cat'];
-    //         const stateService = useSpawn(commandService, { superuser: 'try' });
-    //         result = await stateService.promise();
-    //         output = result.stdout;
-
-    //         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
-    //         const activeStatusMatchService = output.match(activeStatusRegex);
-
-    //         if (activeStatusMatchService) {
-    //             const systemdState = activeStatusMatchService[1].trim();
-    //             switch (systemdState) {
-    //                 case 'activating (start)':
-    //                     status = 'Starting...';
-    //                     break;
-    //                 case 'active (waiting)':
-    //                     status = 'Pending...';
-    //                     break;
-    //                 case 'active (running)':
-    //                     status = 'Running...';
-    //                     break;
-    //                 case 'inactive (dead)':
-    //                     // Check if the task has been completed recently
-    //                     const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
-    //                     status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
-    //                     break;
-    //                 case 'failed (result)':
-    //                     status = 'Failed';
-    //                     break;
-    //                 default:
-    //                     status = systemdState;  // Fallback to systemctl state if nothing matches
-    //             }
-    //             return status;  // Prioritize the service status if the task is being manually run
-    //         }
-    //     } catch (error) {
-    //         console.log("No active service status found, checking timer status...");
-    //     }
-
-    //     // If there's no active service, check the timer status for scheduled tasks
-    //     try {
-    //         const commandTimer = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
-    //         const stateTimer = useSpawn(commandTimer, { superuser: 'try' });
-    //         result = await stateTimer.promise();
-    //         output = result.stdout;
-
-    //         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
-    //         const activeStatusMatchTimer = output.match(activeStatusRegex);
-    //         if (activeStatusMatchTimer) {
-    //             const systemdState = activeStatusMatchTimer[1].trim();
-    //             switch (systemdState) {
-    //                 case 'activating (start)':
-    //                     status = 'Starting...';
-    //                     break;
-    //                 case 'active (waiting)':
-    //                     status = 'Pending...';
-    //                     break;
-    //                 case 'active (running)':
-    //                     status = 'Running...';
-    //                     break;
-    //                 case 'inactive (dead)':
-    //                     // Check if the task has been completed recently
-    //                     const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
-    //                     status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
-    //                     break;
-    //                 case 'failed (result)':
-    //                     status = 'Failed';
-    //                     break;
-    //                 default:
-    //                     status = systemdState;  // Fallback to systemctl state if nothing matches
-    //             }
-    //             return status;
-    //         }
-    //     } catch (error) {
-    //         console.error("Error fetching timer status:", error);
-    //     }
-
-    //     return status || 'Unknown status';
-    // }
-
-
-    // async getTaskStatusFor(taskInstance: TaskInstanceType) {
-    //     const taskLog = new TaskExecutionLog([]);
-    //     const houstonSchedulerPrefix = 'houston_scheduler_';
-    //     const templateName = formatTemplateName(taskInstance.template.name);
-    //     const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
-
-    //     let output;
-    //     try {
-    //         console.log(`Checking status for: ${fullTaskName}.service`);
-
-    //         const command = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
-    //         const state = useSpawn(command, { superuser: 'try' });
-
-    //         const result = await state.promise();
-    //         const output = result.stdout;
-
-    //         // Log the output for debugging
-    //         console.log('Service status output:', output);
-    //         if (result.stderr) {
-    //             console.error('Service status error output:', result.stderr);
-    //         }
-    //     } catch (error) {
-    //         console.error(`Error getting status for ${fullTaskName}:`, errorString(error));
-    //         return 'Service not found';
-    //     }
-
-    //     try {
-    //         let status = '';
-    //         const activeStatusRegex = /^\s*Active:\s*(\w+\s*\([^)]*\))/m;
-    //         const activeStatusMatch = output.match(activeStatusRegex);
-
-    //         if (activeStatusMatch) {
-    //             const systemdState = activeStatusMatch[1].trim();
-
-    //             // Define intermediate states based on the systemctl state
-    //             switch (systemdState) {
-    //                 case 'activating (start)':
-    //                     status = 'Starting...';
-    //                     break;
-    //                 case 'active (running)':
-    //                     status = 'Running...';
-    //                     break;
-    //                 case 'inactive (dead)':
-    //                     // Check if the task has been completed recently
-    //                     const recentlyCompleted = await taskLog.wasTaskRecentlyCompleted(taskInstance);
-    //                     status = recentlyCompleted ? 'Completed' : 'Inactive (Pending)';
-    //                     break;
-    //                 case 'failed (result)':
-    //                     status = 'Failed';
-    //                     break;
-    //                 default:
-    //                     status = systemdState;  // Fallback to systemctl state if nothing matches
-    //             }
-    //         } else {
-    //             // No valid status found
-    //             status = "Service inactive or not found.";
-    //         }
-
-    //         return status;
-    //     } catch (error) {
-    //         console.error(`Error parsing status for ${fullTaskName}:`, errorString(error));
-    //         return 'Error retrieving status';
-    //     }
-    // }
 
 
     async enableSchedule(taskInstance) {
