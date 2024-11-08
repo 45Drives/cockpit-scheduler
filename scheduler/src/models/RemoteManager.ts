@@ -86,7 +86,7 @@ export class RemoteManager implements RemoteManagerType {
     }
 
     async getRemoteByName(remoteName: string): Promise<CloudSyncRemote | null> {
-        await this.getRemotes();  // Ensure remotes are loaded
+        // await this.getRemotes();  // Ensure remotes are loaded
 
         // Find the remote by name
         const remote = this.cloudSyncRemotes.find(remote => remote.name === remoteName);

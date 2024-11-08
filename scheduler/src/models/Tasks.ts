@@ -214,7 +214,7 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
                 .addChild(new BoolParameter('Update', 'update_flag', false))
                 .addChild(new BoolParameter('Ignore Existing', 'ignore_existing_flag', false))
                 .addChild(new BoolParameter('Dry Run', 'dry_run_flag', false))
-                .addChild(new IntParameter('Number of Transfers', 'transfers', 1))
+                .addChild(new IntParameter('Number of Transfers', 'transfers', 4))
                 .addChild(new StringParameter('Include Pattern', 'include_pattern', ''))
                 .addChild(new StringParameter('Exclude Pattern', 'exclude_pattern', ''))
                 .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', ''))

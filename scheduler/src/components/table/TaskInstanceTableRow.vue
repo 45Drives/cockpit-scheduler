@@ -104,18 +104,9 @@ const latestTaskExecution = ref<string>('');
 const taskStatus = ref<string>('');
 
 const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails']);
-// const runningNow = ref(false);
 
-// function runTaskBtn() {
-// 	emit('runTask', props.task);
-// }
 async function runTaskBtn() {
-	// runningNow.value = true;
 	emit('runTask', props.task);
-	// await myScheduler.runTaskNow(taskInstance.value);
-	// await updateTaskStatus(taskInstance.value);
-	// await fetchLatestLog(taskInstance.value);
-	// runningNow.value = false;
 }
 
 
@@ -135,19 +126,16 @@ function viewLogsBtn() {
 	emit('viewLogs', props.task);
 }
 
-
 /* Toggle task details */
 function toggleTaskDetails() {
 	emit('toggleDetails', taskInstance.value.name);
 }
-
 
 /* Generic loading function for Confirmation Dialogs */
 async function loadConfirmationDialog(dialogRef) {
 	const module = await import('../../components/common/ConfirmationDialog.vue');
 	dialogRef.value = module.default;
 }
-
 
 // Enable Task Dialog Logic
 const showEnablePrompt = ref(false);
@@ -312,19 +300,20 @@ async function updateTaskStatus(task, timerEnabled) {
 // change color of status text
 function taskStatusClass(status) {
 	if (status) {
-		if (status.includes('active') || status.includes('Active') || status.includes('Starting') || status.includes('Completed')) {
+		const statusLower = status.toLowerCase(); // Normalize casing
+		if (statusLower.includes('active') || statusLower.includes('starting') || statusLower.includes('completed')) {
 			return 'text-success';
-		} else if (status.includes('inactive') || status.includes('Disabled')) {
+		} else if (statusLower.includes('inactive') || statusLower.includes('disabled')) {
 			return 'text-warning';
-		} else if (status.includes('failed') || status.includes('Failed')) {
+		} else if (statusLower.includes('failed')) {
 			return 'text-danger';
-		} else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
+		} else if (statusLower.includes('no schedule found') || statusLower.includes('not scheduled')) {
 			return 'text-muted';
-		} else if (status == 'Disabled') {
-			return 'text-45d';
 		}
 	}
+	return '';
 }
+
 
 async function fetchLatestLog(task) {
 	try {

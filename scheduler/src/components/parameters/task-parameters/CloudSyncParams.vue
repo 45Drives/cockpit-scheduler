@@ -16,9 +16,10 @@
                 <div class="flex flex-row justify-between items-center col-span-2">
                     <label class="mt-1 block text-sm leading-6 text-default">
                         Select Existing Remote
-                        <!-- <InfoTile class="ml-1" title="" /> -->
+                        <InfoTile class="ml-1"
+                            title="Choose a preconfigured Rclone remote connection to use for this task." />
                         <img v-if="selectedRemote" :src="getProviderLogo(undefined, selectedRemote)" alt="provider-logo"
-                            class="inline-block w-5 h-5 ml-2" />
+                            class="inline-block w-5 h-5 ml-2" :title="selectedRemote.getProviderName()" />
                     </label>
                     <ExclamationCircleIcon v-if="errorTags.selectedRemote" class="mt-1 w-5 h-5 text-danger" />
                 </div>
@@ -38,15 +39,18 @@
                 </select>
                 <div class="col-span-1 button-group-row mt-0.5">
                     <button @click.stop="createRemoteBtn()" id="new-remote-btn" name="new-remote-btn"
-                        class="mt-1 btn btn-primary h-fit w-full" :class=truncateText>
+                        class="mt-1 btn btn-primary h-fit w-full" :class=truncateText
+                        :title="'Create a new Rclone remote.'">
                         Create New
                     </button>
                     <button v-if="existingRemotes.length > 0" @click.stop="manageRemotesBtn()" id="manage-remotes-btn"
-                        name="manage-remotes-btn" class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
+                        :title="'Edit or delete an existing Rclone remote.'" name="manage-remotes-btn"
+                        class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
                         Manage Existing
                     </button>
                     <button v-else disabled @click.stop="manageRemotesBtn()" id="manage-remotes-btn"
-                        name="manage-remotes-btn" class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
+                        :title="'No existing Rclone remotes detected.'" name="manage-remotes-btn"
+                        class="mt-1 btn btn-secondary h-fit w-full" :class=truncateText>
                         Manage Existing
                     </button>
                 </div>
@@ -56,7 +60,7 @@
                         No Remote Selected
                     </button> -->
 
-                    <!-- <button v-if="selectedRemote" @click.stop="authenticateRemoteBtn(selectedRemote)"
+                <!-- <button v-if="selectedRemote" @click.stop="authenticateRemoteBtn(selectedRemote)"
                         @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
                         class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-default"
                         :style="getButtonStyles(isHovered, undefined, selectedRemote)">
@@ -89,7 +93,8 @@
                     <div class="flex flex-row justify-between items-center">
                         <label class="block text-sm leading-6 text-default">
                             Transfer Type
-                            <InfoTile class="ml-1" title="" />
+                            <InfoTile class="ml-1"
+                                :title="`COPY: Copy files from source to dest, skipping already copied.\nMOVE: Move files from source to dest.\nSYNC: Make source and dest identical, modifying destination only.`" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.transferType" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -98,9 +103,9 @@
                             :class="[errorTags.transferType ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                             class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                             <option :value="undefined">Select Type of Rclone Transfer</option>
-                            <option :value="'copy'">Copy</option>
-                            <option :value="'move'">Move</option>
-                            <option :value="'sync'">Sync</option>
+                            <option :value="'copy'">COPY</option>
+                            <option :value="'move'">MOVE</option>
+                            <option :value="'sync'">SYNC</option>
                         </select>
                     </div>
                 </div>
@@ -121,7 +126,7 @@
                         </Switch>
                     </div>
                     <div class="w-full mt-1.5 justify-center items-center">
-                        <div
+                        <div @click="directionSwitched = !directionSwitched"
                             class="flex flex-row justify-around text-center items-center space-x-1 bg-plugin-header rounded-lg p-2">
                             <span class="text-default">Local Directory</span>
                             <div class="relative flex items-center justify-around">
@@ -148,7 +153,8 @@
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Local Path
-                            <InfoTile class="ml-1" title="" />
+                            <InfoTile class="ml-1"
+                                :title="`Specify the path to a directory or file.\n- With a trailing slash (/): transfers only the contents of the directory, not the folder itself.\n- Without a trailing slash: transfers the folder and its contents.\n- For files, use the full file path (no trailing slash).`" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.localPath" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -156,14 +162,16 @@
                         <input type="text" v-model="localPath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[errorTags.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify Local Path" />
+                            placeholder="Specify Local Path"
+                            :title="`Specify the path to a directory or file.\n- With a trailing slash (/): transfers only the contents of the directory, not the folder itself.\n- Without a trailing slash: transfers the folder and its contents.\n- For files, use the full file path (no trailing slash).`" />
                     </div>
                 </div>
                 <div name="destination-path">
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Target Path
-                            <InfoTile class="ml-1" title="" />
+                            <InfoTile class="ml-1"
+                                :title="`Specify the path on the remote with 'remoteName:' as a prefix (e.g., remoteName:path/to/folder).\n- With a trailing slash (/): transfers filesinto the specified folder on the remote.\n- Without a trailing slash: creates the folder itself on the remote, including its contents. Avoid starting the path with /, as this may cause errors.`" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.targetPath" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -171,7 +179,8 @@
                         <input type="text" v-model="targetPath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[errorTags.targetPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify Target Path" />
+                            placeholder="Specify Target Path"
+                            :title="`Specify the path on the remote with 'remoteName:' as a prefix (e.g., remoteName:path/to/folder).\n- With a trailing slash (/): transfers filesinto the specified folder on the remote.\n- Without a trailing slash: creates the folder itself on the remote, including its contents. Avoid starting the path with /, as this may cause errors.`" />
                     </div>
                 </div>
             </div>
@@ -184,59 +193,60 @@
             <label class="mt-1 block text-base leading-6 text-default">Rclone Options</label>
             <!-- Basic options -->
             <div class="grid grid-cols-4 gap-4 mt-2">
-                <div class="col-span-1">
+                <div class="col-span-1 pl-1">
+                    <div name="options-parallel-threads" class="col-span-1 mt-1">
+                        <label class="mt-1 block text-sm leading-6 text-default">
+                            Number of Transfers
+                            <InfoTile class="ml-1"
+                                :title="`Limit the number of simultaneous file transfers. Higher values may speed up transfers but require more system resources.\nDefault is 4.`" />
+                        </label>
+                        <ExclamationCircleIcon v-if="errorTags.numberOfTransfers" class="mt-1 w-5 h-5 text-danger" />
+                        <input type="number" min='1' v-model="numberOfTransfers"
+                            title="Limit the number of simultaneous file transfers. Higher values may speed up transfers but require more system resources."
+                            :class="[errorTags.numberOfTransfers ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            placeholder="Default is 4" />
+                    </div>
                     <div name="options-check-first"
-                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                        <label class="text-sm leading-6 text-default"
-                            title="Do all the checks before starting transfers">
+                        class="flex flex-row justify-between items-center mt-2 col-span-1 col-start-1">
+                        <label class="text-sm leading-6 text-default">
                             Check First
-                            <InfoTile class="ml-1" title="" />
+                            <InfoTile class="ml-1"
+                                title="Perform a check before transferring files to compare the source and destination. Useful for validating integrity." />
                         </label>
                         <input type="checkbox" v-model="checkFirst" class="ml-2 h-4 w-4 rounded" />
                     </div>
-                    <div name="options-checksum"
-                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                        <label class="text-sm leading-6 text-default" title="Check for changes with size & checksum">
-                            Checksum
-                            <InfoTile class="ml-1" title="" />
-                        </label>
-                        <input type="checkbox" v-model="checksum" class="ml-2 h-4 w-4 rounded" />
-                    </div>
-                    <div name="options-update" title=""
+
+                    <div name="options-update"
                         class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
                             Update
-                            <InfoTile class="ml-1" title="" />
+                            <InfoTile class="ml-1"
+                                title="Transfer only updated files, skipping files that are already up-to-date in the destination." />
                         </label>
                         <input type="checkbox" v-model="update" class=" h-4 w-4 rounded" />
                     </div>
-                    <div name="options-ignore-existing"
-                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                        <label class="text-sm leading-6 text-default" title="Skip all files that exist on destination">
-                            Ignore Existing
-                            <InfoTile class="ml-1" title="" />
-                        </label>
-                        <input type="checkbox" v-model="ignoreExisting" class="ml-2 h-4 w-4 rounded" />
-                    </div>
-                    <div name="options-dry-run" title=""
+
+                    <div name="options-dry-run"
                         class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
                             Dry Run
-                            <InfoTile class="ml-1" title="" />
+                            <InfoTile class="ml-1"
+                                title="Simulate the operation without making any actual changes. Ideal for testing command behavior." />
                         </label>
                         <input type="checkbox" v-model="dryRun" class=" h-4 w-4 rounded" />
                     </div>
 
                 </div>
 
-                <div class="-mt-1 col-span-3 grid grid-cols-2 gap-2">
+                <div class="-mt-1 col-span-3 grid grid-cols-2 gap-2 pr-1">
                     <div class="grid grid-cols-2 col-span-2 gap-2 w-full justify-center items-center text-center">
                         <div name="options-include" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="mt-1 block text-sm leading-6 text-default">
                                     Include Pattern
                                     <InfoTile class="ml-1"
-                                        title="Pattern applying to specific directories/files to include. Separate patterns with commas (,)." />
+                                        :title="`Specify a pattern of files to include in the transfer.\n(E.g., *.txt includes all text files.)\n- Separate patterns with commas (,).`" />
                                 </label>
                                 <ExclamationCircleIcon v-if="errorTags.includePattern"
                                     class="mt-1 w-5 h-5 text-danger" />
@@ -244,14 +254,15 @@
                             <input type="text" v-model="includePattern"
                                 :class="[errorTags.includePattern ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. */, *.txt" />
+                                placeholder="Eg. */, *.txt"
+                                :title="`Specify a pattern of files to include in the transfer.\n(E.g., *.txt includes all text files.)\n- Separate patterns with commas (,).`" />
                         </div>
                         <div name="options-exclude" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="mt-1 block text-sm leading-6 text-default">
                                     Exclude Pattern
                                     <InfoTile class="ml-1"
-                                        title="Pattern applying to specific directories/files to exclude. Separate patterns with commas (,)." />
+                                        :title="`Specify a pattern of files to exclude in the transfer.\n(E.g., *.log excludes all log files.)\n- Separate patterns with commas (,).`" />
                                 </label>
                                 <ExclamationCircleIcon v-if="errorTags.excludePattern"
                                     class="mt-1 w-5 h-5 text-danger" />
@@ -259,34 +270,25 @@
                             <input type="text" v-model="excludePattern"
                                 :class="[errorTags.excludePattern ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. */, *.txt" />
+                                placeholder="Eg. */, *.txt"
+                                :title="`Specify a pattern of files to exclude in the transfer.\n(E.g., *.log excludes all log files.)\n- Separate patterns with commas (,).`" />
                         </div>
                     </div>
 
-                    <div name="options-parallel-threads" class="col-span-1">
-                        <label class="mt-1 block text-sm leading-6 text-default">
-                            Number of Transfers
-                            <InfoTile class="ml-1" title="" />
-                        </label>
-                        <ExclamationCircleIcon v-if="errorTags.numberOfTransfers" class="mt-1 w-5 h-5 text-danger" />
-                        <input type="number" min='0' v-model="numberOfTransfers"
-                            :class="[errorTags.numberOfTransfers ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            placeholder="Default is 1" />
-                    </div>
-                    <div name="options-extra-params" class="col-span-1">
+                    <div name="options-extra-params" class="col-span-2">
                         <div class="flex flex-row justify-between items-center">
                             <label class="block text-sm leading-6 text-default">
                                 Extra Parameters
                                 <InfoTile class="ml-1"
-                                    title="Separate any extra parameters, flags or options you wish to include with commas (,)." />
+                                    :title="`Specify any additional Rclone parameters not covered by other options.\n(E.g., --ignore-checksum.)\n- Separate any extra parameters, flags or options you wish to include with commas (,).`" />
                             </label>
                             <ExclamationCircleIcon v-if="errorTags.customArgs" class="mt-1 w-5 h-5 text-danger" />
                         </div>
                         <textarea v-model="customArgs" rows="1"
                             :class="[errorTags.customArgs ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            placeholder="Eg. -I, --ignore-checksum, etc." />
+                            placeholder="Eg. -I, --ignore-checksum, etc."
+                            :title="`Specify any additional Rclone parameters not covered by other options.\n(E.g., --ignore-checksum.)\n- Separate any extra parameters, flags or options you wish to include with commas (,).`" />
                     </div>
                 </div>
 
@@ -305,11 +307,30 @@
                         <DisclosurePanel>
                             <div class="w-full grid grid-cols-4 gap-4 bg-default p-3 -mt-1">
                                 <div class="col-span-1 grid grid-cols-1 px-1 -mt-1">
+                                    <div name="options-checksum"
+                                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
+                                        <label class="text-sm leading-6 text-default">
+                                            Checksum
+                                            <InfoTile class="ml-1"
+                                                title="Use checksums to verify file integrity, where possible. Note that this may increase transfer time." />
+                                        </label>
+                                        <input type="checkbox" v-model="checksum" class="ml-2 h-4 w-4 rounded" />
+                                    </div>
+                                    <div name="options-ignore-existing"
+                                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
+                                        <label class="text-sm leading-6 text-default">
+                                            Ignore Existing
+                                            <InfoTile class="ml-1"
+                                                title="Skip files that already exist on the destination without verifying their integrity." />
+                                        </label>
+                                        <input type="checkbox" v-model="ignoreExisting" class="ml-2 h-4 w-4 rounded" />
+                                    </div>
                                     <div name="options-ignore-size" title=""
                                         class="flex flex-row justify-between items-center col-span-1 col-start-1">
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             Ignore Size
-                                            <InfoTile class="ml-1" title="" />
+                                            <InfoTile class="ml-1"
+                                                title="Ignore file sizes during the transfer, transferring files regardless of their size difference between source and destination." />
                                         </label>
                                         <input type="checkbox" v-model="ignoreSize" class=" h-4 w-4 rounded" />
                                     </div>
@@ -317,7 +338,8 @@
                                         class="flex flex-row justify-between items-center col-span-1 col-start-1">
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             Inplace
-                                            <InfoTile class="ml-1" title="" />
+                                            <InfoTile class="ml-1"
+                                                title="Write files directly to the destination, instead of using temporary files. This option may speed up transfers but can risk partial data if interrupted." />
                                         </label>
                                         <input type="checkbox" v-model="inplace" class=" h-4 w-4 rounded" />
                                     </div>
@@ -325,7 +347,8 @@
                                         class="flex flex-row justify-between items-center col-span-1 col-start-1">
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             No Traverse
-                                            <InfoTile class="ml-1" title="" />
+                                            <InfoTile class="ml-1"
+                                                title="Do not traverse the destination folder. Useful for remote systems where directory listing is slow." />
                                         </label>
                                         <input type="checkbox" v-model="noTraverse" class=" h-4 w-4 rounded" />
                                     </div>
@@ -333,7 +356,8 @@
                                         class="flex flex-row justify-between items-center col-span-1 col-start-1">
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             Preserve Metadata
-                                            <InfoTile class="ml-1" title="" />
+                                            <InfoTile class="ml-1"
+                                                title="Attempt to preserve metadata (e.g., timestamps, permissions) on the destination files if supported." />
                                         </label>
                                         <input type="checkbox" v-model="preserveMetadata" class=" h-4 w-4 rounded" />
                                     </div>
@@ -343,7 +367,8 @@
                                     <div name="options-limit-bw" class="col-span-1">
                                         <label class="mt-1 text-sm leading-6 text-default">
                                             Limit Bandwidth (Kbps)
-                                            <InfoTile class="ml-1" title="Limit I/O bandwidth; KBytes per second" />
+                                            <InfoTile class="ml-1"
+                                                title="Throttle bandwidth usage in kilobytes per second to control transfer speed and reduce network load." />
                                         </label>
                                         <ExclamationCircleIcon v-if="errorTags.limitBandwidthKbps"
                                             class="mt-1 w-5 h-5 text-danger" />
@@ -352,28 +377,11 @@
                                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                             placeholder="Default is None" />
                                     </div>
-
-
-                                    <div name="options-cutoff-mode" class="col-span-1">
-                                        <label class="mt-1 text-sm leading-6 text-default">
-                                            Cutoff Mode
-                                            <InfoTile class="ml-1"
-                                                title="Mode to stop transfers when reaching max transfer limit (Default is HARD)" />
-                                        </label>
-                                        <select v-model="cutoffMode"
-                                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default">
-                                            <option value=undefined>Select Mode</option>
-                                            <option value="HARD">HARD</option>
-                                            <option value="SOFT">SOFT</option>
-                                            <option value="CAUTIOUS">CAUTIOUS</option>
-                                        </select>
-                                    </div>
-
                                     <div name="options-limit-bw" class="col-span-1">
                                         <label class="mt-1 text-sm leading-6 text-default">
                                             Max Transfer Size
                                             <InfoTile class="ml-1"
-                                                title="Sets a cap on transfer size. Default is None" />
+                                                :title="`Set a maximum size limit for files to be transferred. Files larger than this size will be skipped.\nDefault is None.`" />
                                         </label>
                                         <ExclamationCircleIcon v-if="errorTags.maxTransferSize"
                                             class="mt-1 w-5 h-5 text-danger" />
@@ -393,6 +401,23 @@
                                             </select>
                                         </div>
                                     </div>
+                                    <div name="options-cutoff-mode" class="col-span-1">
+                                        <label class="mt-1 text-sm leading-6 text-default">
+                                            Cutoff Mode
+                                            <InfoTile class="ml-1"
+                                                :title="`(Requires Max Transfer Size)\nSpecify the cutoff mode to use when reaching max transfer limit.\nDefault is HARD.`" />
+                                        </label>
+                                        <select v-model="cutoffMode"
+                                            :title="`(Requires Max Transfer Size)\nSpecify the cutoff mode to use when reaching max transfer limit.\nDefault is HARD.`"
+                                            :disabled="!maxTransferSize || maxTransferSize <= 0"
+                                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default">
+                                            <option value=undefined>Select Mode</option>
+                                            <option value="HARD">HARD</option>
+                                            <option value="SOFT">SOFT</option>
+                                            <option value="CAUTIOUS">CAUTIOUS</option>
+                                        </select>
+                                    </div>
+
                                     <div
                                         class="col-span-3 row-start-2 grid grid-cols-2 gap-2 w-full justify-center items-center text-center">
                                         <div name="options-include-files-from-path" class="col-span-1">
@@ -400,12 +425,13 @@
                                                 <label class="mt-1 block text-sm leading-6 text-default">
                                                     Include Files from Path
                                                     <InfoTile class="ml-1"
-                                                        title="Reads file paths or patterns to include from an external file." />
+                                                        title="Specify a file containing a list of files to include in the transfer." />
                                                 </label>
                                                 <ExclamationCircleIcon v-if="errorTags.includeFromPath"
                                                     class="mt-1 w-5 h-5 text-danger" />
                                             </div>
                                             <input type="text" v-model="includeFromPath"
+                                                title="Specify a file containing a list of files to include in the transfer."
                                                 :class="[errorTags.includeFromPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                                 placeholder="Eg. '/path/to/included_file_paths.txt'" />
@@ -415,12 +441,13 @@
                                                 <label class="mt-1 block text-sm leading-6 text-default">
                                                     Exclude Files from Path
                                                     <InfoTile class="ml-1"
-                                                        title="Reads file paths or patterns to exclude from an external file." />
+                                                        title="Specify a file containing a list of files to exclude from the transfer." />
                                                 </label>
                                                 <ExclamationCircleIcon v-if="errorTags.excludeFromPath"
                                                     class="mt-1 w-5 h-5 text-danger" />
                                             </div>
                                             <input type="text" v-model="excludeFromPath"
+                                                title="Specify a file containing a list of files to exclude from the transfer."
                                                 :class="[errorTags.excludeFromPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                                 placeholder="Eg. '/path/to/excluded_files.txt'" />
@@ -428,10 +455,10 @@
                                     </div>
                                 </div>
 
-
                                 <div name="multi-thread-options"
                                     class="col-span-4 grid grid-cols-2 gap-1 border border-default rounded-md p-2 bg-accent">
-                                    <label class="w-fit col-span-2 mt-1 block text-base leading-6 text-default items-center">
+                                    <label
+                                        class="w-fit col-span-2 mt-1 block text-base leading-6 text-default items-center">
                                         Use Multiple Threads
                                         <input type="checkbox" v-model="multiThreadOptions"
                                             class="ml-4 mb-0.5 h-4 w-4 rounded" />
@@ -439,10 +466,10 @@
 
                                     <div name="options-multi-thread-chunk-size">
                                         <div class="flex flex-row items-center justify-between mt-1">
-                                            <label class="block text-sm leading-6 text-default"
-                                                title="Chunk size for multi-thread downloads/uploads. Default is 64MiB">
+                                            <label class="block text-sm leading-6 text-default">
                                                 Chunk Size
-                                                <InfoTile class="ml-1" title="" />
+                                                <InfoTile class="ml-1"
+                                                    :title="`Set the size of chunks for chunked transfers. This option may improve performance for large files.\nDefault is 64MiB.`" />
                                             </label>
                                             <ExclamationCircleIcon v-if="errorTags.multiThreadChunkSize"
                                                 class="ml-1 w-5 h-5 text-danger" />
@@ -450,6 +477,7 @@
                                         <div class="flex items-center">
                                             <input type="number" min="0" v-model="multiThreadChunkSize"
                                                 :disabled="!multiThreadOptions"
+                                                :title="`Set the size of chunks for chunked transfers. This option may improve performance for large files.\nDefault is 64MiB.`"
                                                 :class="[errorTags.multiThreadChunkSize ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                                 placeholder="Default is 64 MiB" />
@@ -467,10 +495,10 @@
 
                                     <div name="options-multi-thread-cutoff">
                                         <div class="flex flex-row items-center justify-between mt-1">
-                                            <label class="block text-sm leading-6 text-default "
-                                                title="Use multi-thread downloads for files above this size. Default is 256MiB">
+                                            <label class="block text-sm leading-6 text-default">
                                                 Cutoff Size
-                                                <InfoTile class="ml-1" title="" />
+                                                <InfoTile class="ml-1"
+                                                    :title="`Specify a maximum file size for which chunking will be used. Files above this size will not be chunked.\nDefault is 256MiB.`" />
                                             </label>
                                             <ExclamationCircleIcon v-if="errorTags.multiThreadCutoff"
                                                 class="mt-1 w-5 h-5 text-danger" />
@@ -478,6 +506,7 @@
                                         <div class="flex items-center">
                                             <input type="number" min='0' v-model="multiThreadCutoff"
                                                 :disabled="!multiThreadOptions"
+                                                :title="`Specify a maximum file size for which chunking will be used. Files above this size will not be chunked.\nDefault is 256MiB.`"
                                                 :class="[errorTags.multiThreadCutoff ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                                 placeholder="Default is 256 MiB" />
@@ -494,10 +523,10 @@
                                     </div>
                                     <div name="options-multi-thread-streams">
                                         <div class="flex flex-row items-center justify-between mt-1">
-                                            <label class="block text-sm leading-6 text-default"
-                                                title="Number of streams to use for multi-thread downloads. Default is 4">
+                                            <label class="block text-sm leading-6 text-default">
                                                 Number of Streams
-                                                <InfoTile class="ml-1" title="" />
+                                                <InfoTile class="ml-1"
+                                                    :title="`Set the number of streams (threads) to be used for chunked transfers, where supported.\nDefault is 4.`" />
                                             </label>
                                             <ExclamationCircleIcon v-if="errorTags.multiThreadStreams"
                                                 class="mt-1 w-5 h-5 text-danger" />
@@ -505,6 +534,7 @@
 
                                         <input type="number" v-model="multiThreadStreams" min="1"
                                             :disabled="!multiThreadOptions"
+                                            :title="`Set the number of streams (threads) to be used for chunked transfers, where supported.\nDefault is 4.`"
                                             :class="[errorTags.multiThreadStreams ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                             placeholder="Default is 4 Streams" />
@@ -513,10 +543,10 @@
                                     <div name="options-multi-thread-write-buffer-size">
                                         <div class="flex flex-row items-center justify-between mt-1">
                                             <label class="block text-sm leading-6 text-default"
-                                                :disabled="!multiThreadOptions"
-                                                title="In-memory buffer size for writing in multi-thread mode. Default is 128KiB">
+                                                :disabled="!multiThreadOptions">
                                                 Write Buffer Size
-                                                <InfoTile class="ml-1" title="" />
+                                                <InfoTile class="ml-1"
+                                                    :title="`Specify the buffer size for writing data, potentially improving performance for high-throughput transfers.\nDefault is 128KiB.`" />
                                             </label>
                                             <ExclamationCircleIcon v-if="errorTags.multiThreadWriteBufferSize"
                                                 class="mt-1 w-5 h-5 text-danger" />
@@ -524,6 +554,7 @@
                                         <div class="flex items-center">
                                             <input type="number" min='0' v-model="multiThreadWriteBufferSize"
                                                 :disabled="!multiThreadOptions"
+                                                :title="`Specify the buffer size for writing data, potentially improving performance for high-throughput transfers.\nDefault is 128KiB.`"
                                                 :class="[errorTags.multiThreadWriteBufferSize ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                                 placeholder="Default is 128 KiB" />
@@ -598,6 +629,7 @@ const initialParameters = ref({});
 //     dummyDropboxProvider         // The Dropbox provider instance
 // );
 // const dummyRemote = ref(dummyCloudSyncRemote);
+
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 const errorList = inject<Ref<string[]>>('errors')!;
@@ -668,6 +700,7 @@ onMounted(async () => {
 
 async function initializeData() {
     if (props.task) {
+        console.log('loading task:', props.task);
         loading.value = true;
 
         const params = props.task.parameters.children;
@@ -681,22 +714,24 @@ async function initializeData() {
             directionSwitched.value = false;
         }
         transferType.value = params.find(p => p.key === 'type')!.value;
+
         const remoteName = params.find(p => p.key === 'rclone_remote')!.value;
         selectedRemote.value = await myRemoteManager.getRemoteByName(remoteName) || undefined;
-        const rcloneOptions = params.find(p => p.key === 'rcloneOptions')!.value;
-        checkFirst.value = rcloneOptions.find(p => p.key === '')!.value;
-        checksum.value = rcloneOptions.find(p => p.key === '')!.value;
-        update.value = rcloneOptions.find(p => p.key === '')!.value;
-        ignoreExisting.value = rcloneOptions.find(p => p.key === '')!.value;
-        dryRun.value = rcloneOptions.find(p => p.key === '')!.value;
-        numberOfTransfers.value = rcloneOptions.find(p => p.key === '')!.value;
-        includePattern.value = rcloneOptions.find(p => p.key === '')!.value;
-        excludePattern.value = rcloneOptions.find(p => p.key === '')!.value;
-        customArgs.value = rcloneOptions.find(p => p.key === '')!.value;
 
-        limitBandwidthKbps.value = rcloneOptions.find(p => p.key === '')!.value;
-        ignoreSize.value = rcloneOptions.find(p => p.key === '')!.value;
-        inplace.value = rcloneOptions.find(p => p.key === '')!.value;
+        const rcloneOptions = params.find(p => p.key === 'rcloneOptions')!.children;
+        checkFirst.value = rcloneOptions.find(p => p.key === 'check_first_flag')!.value;
+        checksum.value = rcloneOptions.find(p => p.key === 'checksum_flag')!.value;
+        update.value = rcloneOptions.find(p => p.key === 'update_flag')!.value;
+        ignoreExisting.value = rcloneOptions.find(p => p.key === 'ignore_existing_flag')!.value;
+        dryRun.value = rcloneOptions.find(p => p.key === 'dry_run_flag')!.value;
+        numberOfTransfers.value = rcloneOptions.find(p => p.key === 'transfers')!.value;
+        includePattern.value = rcloneOptions.find(p => p.key === 'include_pattern')!.value;
+        excludePattern.value = rcloneOptions.find(p => p.key === 'exclude_pattern')!.value;
+        customArgs.value = rcloneOptions.find(p => p.key === 'custom_args')!.value;
+
+        limitBandwidthKbps.value = rcloneOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
+        ignoreSize.value = rcloneOptions.find(p => p.key === 'ignore_size_flag')!.value;
+        inplace.value = rcloneOptions.find(p => p.key === 'inplace_flag')!.value;
         
         multiThreadChunkSize.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size')!.value;
         multiThreadChunkSizeUnit.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size_unit')!.value;
@@ -792,6 +827,31 @@ function hasChanges() {
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
+watch(selectedRemote, (newVal, oldVal) => {
+    if (newVal && selectedRemote.value) {
+        targetPath.value = `${selectedRemote.value!.name}:`;
+    }
+});
+
+watch([update, ignoreExisting, multiThreadOptions], () => handleMutuallyExclusiveOptions());
+
+function handleMutuallyExclusiveOptions() {
+    if (update.value && ignoreExisting.value) {
+        ignoreExisting.value = false;
+    }
+    if (multiThreadOptions.value) {
+        multiThreadChunkSize.value = multiThreadChunkSize.value || 64;
+        multiThreadCutoff.value = multiThreadCutoff.value || 256;
+        multiThreadStreams.value = multiThreadStreams.value || 4;
+        multiThreadWriteBufferSize.value = multiThreadWriteBufferSize.value || 128;
+    } else {
+        multiThreadChunkSize.value = undefined;
+        multiThreadCutoff.value = undefined;
+        multiThreadStreams.value = undefined;
+        multiThreadWriteBufferSize.value = undefined;
+    }
+}
+
 
 // Watch for changes in selectedRemote
 watch(selectedRemote, (newVal) => {
@@ -841,12 +901,6 @@ async function loadManageRemotesComponent() {
 }
 
 
-function validatePath(path) {
-    // Regular expression to validate a UNIX-like file path
-    const pathRegex = /^(\/[^/ ]*)+\/?$/;
-    return pathRegex.test(path);
-}
-
 async function validateLocalPath() {
     if (!localPath.value) {
         errorList.value.push("Local path is required.");
@@ -870,11 +924,12 @@ function validateDestinationPath() {
         errorTags.value.targetPath = true;
         return false;
     }
+
     if (validatePath(targetPath.value)) {
         errorTags.value.targetPath = false;
-        if (!targetPath.value.endsWith('/')) {
-            targetPath.value += '/';
-        }
+        // if (!targetPath.value.endsWith('/')) {
+        //     targetPath.value += '/';
+        // }
         console.log("Valid destination path: " + targetPath.value);
         return true;
     } else {
@@ -883,6 +938,13 @@ function validateDestinationPath() {
         return false;
     }
 }
+
+function validatePath(path) {
+    // Allow paths without leading /, and allow alphanumeric paths with optional / at the end
+    const pathRegex = /^([^/ ]+\/?)+$/;
+    return pathRegex.test(path);
+}
+
 
 function validateAllValues() {
     if (!selectedRemote.value) {

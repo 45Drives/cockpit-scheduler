@@ -369,7 +369,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         }
 
-        const ngrokUrl = `https://seemingly-settling-stud.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
+        const ngrokUrl = `https://7e03-142-177-145-42.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
         const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
@@ -378,7 +378,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                if (event.origin !== 'https://seemingly-settling-stud.ngrok-free.app') return;
+                if (event.origin !== 'https://7e03-142-177-145-42.ngrok-free.app') return;
 
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 
@@ -399,7 +399,8 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     };
 
                     oAuthenticated.value = true;
-                    providerValues.token = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
+                    // providerValues.token = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
+                    providerValues.token = JSON.stringify(fullToken);
 
                     pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
 

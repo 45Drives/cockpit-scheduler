@@ -42,7 +42,7 @@ export class Scheduler implements SchedulerType {
                 }
 
                 const parameters = task.parameters;
-                console.log("SCHEDULER - Parameters before parsing:", parameters);
+                // console.log("SCHEDULER - Parameters before parsing:", parameters);
 
                 const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.value.parameterSchema, parameters);
                 const taskIntervals : TaskScheduleInterval[] = [];
@@ -54,7 +54,7 @@ export class Scheduler implements SchedulerType {
 
                 const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
                 const newTaskInstance = new TaskInstance(task.name, newTaskTemplate.value, parameterNodeStructure, newSchedule); 
-                console.log("SCHEDULER - TaskInstance:", newTaskInstance);
+                // console.log("SCHEDULER - TaskInstance:", newTaskInstance);
 
                 this.taskInstances.push(newTaskInstance);
             });
@@ -68,55 +68,6 @@ export class Scheduler implements SchedulerType {
     }
         
     // Main function to create a ParameterNode from JSON parameters based on a schema
-    // createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
-    //     // Create a deep clone of the schema to fill in values without modifying the original schema
-    //     function cloneSchema(node: ParameterNode): ParameterNode {
-    //         let newNode: ParameterNode;
-    //         // Check node type to instantiate correct parameter type
-    //         if (node instanceof StringParameter) {
-    //             newNode = new StringParameter(node.label, node.key);
-    //         } else if (node instanceof IntParameter) {
-    //             newNode = new IntParameter(node.label, node.key);
-    //         } else if (node instanceof BoolParameter) {
-    //             newNode = new BoolParameter(node.label, node.key);
-    //         } else if (node instanceof SelectionParameter){
-    //             newNode = new SelectionParameter(node.label, node.key)
-    //         } else {
-    //             newNode = new ParameterNode(node.label, node.key);
-    //         }
-
-    //         node.children.forEach(child => {
-    //             newNode.addChild(cloneSchema(child));
-    //         });
-    //         return newNode;
-    //     }
-    //     const parameterRoot = cloneSchema(schema);
-
-    //     // Function to assign values from JSON to the corresponding ParameterNode
-    //     function assignValues(node: ParameterNode, prefix = ''): void {
-    //         const currentPrefix = prefix ? prefix + '_' : '';
-    //         const fullKey = currentPrefix + node.key;
-    //         if (parameters.hasOwnProperty(fullKey)) {
-    //             let value = parameters[fullKey];
-    //             if (node instanceof StringParameter || node instanceof SelectionParameter) {
-    //                 node.value = value;
-    //             } else if (node instanceof IntParameter) {
-    //                 node.value = parseInt(value);
-    //             } else if (node instanceof BoolParameter) {
-    //                 node.value = value === 'true';
-    //             } else if (node instanceof ObjectParameter) {
-    //                 // Parse as JSON if not already an object
-    //                 node.value = typeof value === 'string' ? JSON.parse(value) : value;
-    //             }
-    //         }
-    //         node.children.forEach(child => assignValues(child, fullKey));
-    //     }
-
-    //     // Start the assignment from the root
-    //     assignValues(parameterRoot);
-    //     return parameterRoot;
-    // }
-    
     createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
         function cloneSchema(node: ParameterNode): ParameterNode {
             let newNode: ParameterNode;

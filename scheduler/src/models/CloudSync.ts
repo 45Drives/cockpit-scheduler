@@ -140,19 +140,17 @@ export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteTyp
     }
 
     getProviderType() {
-        return this.provider.type;
+        if (this.provider.type == 's3') {
+            return `${this.provider.type}-${this.provider.providerParams.parameters.provider.value}`
+        } else {
+            return this.provider.type;
+        }
     }
 
-    // asEnvKeyValues(): string[] {
-    //     // Serialize the entire CloudSyncRemote as a JSON string
-    //     const remoteData = JSON.stringify({
-    //         name: this.name,
-    //         type: this.type,
-    //         provider: this.provider,
-    //         authParams: this.authParams,
-    //     });
-    //     return [`${this.key}=${remoteData}`];
-    // }
+    getProviderName() {
+        return this.provider.name;
+    }
+
     asEnvKeyValues(): string[] {
         // Only store the name of the remote
         return [`${this.key}=${this.name}`];
