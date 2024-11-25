@@ -352,15 +352,6 @@
                                         </label>
                                         <input type="checkbox" v-model="noTraverse" class=" h-4 w-4 rounded" />
                                     </div>
-                                    <div name="options-preserve-metadata" title=""
-                                        class="flex flex-row justify-between items-center col-span-1 col-start-1">
-                                        <label class="block text-sm leading-6 text-default mt-0.5">
-                                            Preserve Metadata
-                                            <InfoTile class="ml-1"
-                                                title="Attempt to preserve metadata (e.g., timestamps, permissions) on the destination files if supported." />
-                                        </label>
-                                        <input type="checkbox" v-model="preserveMetadata" class=" h-4 w-4 rounded" />
-                                    </div>
                                 </div>
 
                                 <div class="col-span-3 grid grid-cols-3 grid-rows-2 gap-2">
@@ -411,7 +402,7 @@
                                             :title="`(Requires Max Transfer Size)\nSpecify the cutoff mode to use when reaching max transfer limit.\nDefault is HARD.`"
                                             :disabled="!maxTransferSize || maxTransferSize <= 0"
                                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default">
-                                            <option value=undefined>Select Mode</option>
+                                            <option :value="undefined">Select Mode</option>
                                             <option value="HARD">HARD</option>
                                             <option value="SOFT">SOFT</option>
                                             <option value="CAUTIOUS">CAUTIOUS</option>
@@ -685,7 +676,6 @@ const maxTransferSize = ref(0);
 const maxTransferSizeUnit = ref('MiB');
 const cutoffMode = ref();
 const noTraverse = ref(false);
-const preserveMetadata = ref(false);
 
 onMounted(async () => {
     //for development only
@@ -700,6 +690,7 @@ onMounted(async () => {
 
 async function initializeData() {
     if (props.task) {
+        enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
         console.log('loading task:', props.task);
         loading.value = true;
 
@@ -734,12 +725,12 @@ async function initializeData() {
         inplace.value = rcloneOptions.find(p => p.key === 'inplace_flag')!.value;
         
         multiThreadChunkSize.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size')!.value;
-        multiThreadChunkSizeUnit.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size_unit')!.value;
+        multiThreadChunkSizeUnit.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size_unit')!.value || 'MiB';
         multiThreadCutoff.value = rcloneOptions.find(p => p.key === 'multithread_cutoff')!.value;
-        multiThreadCutoffUnit.value = rcloneOptions.find(p => p.key === 'multithread_cutoff_unit')!.value;
+        multiThreadCutoffUnit.value = rcloneOptions.find(p => p.key === 'multithread_cutoff_unit')!.value || 'MiB';
         multiThreadStreams.value = rcloneOptions.find(p => p.key === 'multithread_streams')!.value;
         multiThreadWriteBufferSize.value = rcloneOptions.find(p => p.key === 'multithread_write_buffer_size')!.value;
-        multiThreadWriteBufferSizeUnit.value = rcloneOptions.find(p => p.key === 'multithread_write_buffer_size_unit')!.value;
+        multiThreadWriteBufferSizeUnit.value = rcloneOptions.find(p => p.key === 'multithread_write_buffer_size_unit')!.value || 'KiB';
 
         // Enable multiThreadOptions if any multi-thread-related parameter is non-default
         multiThreadOptions.value = (
@@ -752,10 +743,9 @@ async function initializeData() {
         includeFromPath.value = rcloneOptions.find(p => p.key === 'include_from_path')!.value;
         excludeFromPath.value = rcloneOptions.find(p => p.key === 'exclude_from_path')!.value;
         maxTransferSize.value = rcloneOptions.find(p => p.key === 'max_transfer_size')!.value;
-        maxTransferSizeUnit.value = rcloneOptions.find(p => p.key === 'max_transfer_size_unit')!.value;
-        cutoffMode.value = rcloneOptions.find(p => p.key === 'cutoff_mode')!.value;
+        maxTransferSizeUnit.value = rcloneOptions.find(p => p.key === 'max_transfer_size_unit')!.value || 'MiB';
+        cutoffMode.value = rcloneOptions.find(p => p.key === 'cutoff_mode')!.value || 'HARD';
         noTraverse.value = rcloneOptions.find(p => p.key === 'no_traverse_flag')!.value;
-        preserveMetadata.value = rcloneOptions.find(p => p.key === 'metadata_flag')!.value;
 
         initialParameters.value = JSON.parse(JSON.stringify({
             localPath: localPath.value,
@@ -785,10 +775,10 @@ async function initializeData() {
             maxTransferSizeUnit: maxTransferSizeUnit.value,
             cutoffMode: cutoffMode.value,
             noTraverse: noTraverse.value,
-            preserveMetadata: preserveMetadata.value,
         }));
 
         loading.value = false;
+        enableTargetPathWatcher.value = true; // Re-enable watcher
     }
 }
 
@@ -821,14 +811,17 @@ function hasChanges() {
         maxTransferSizeUnit: maxTransferSizeUnit.value,
         cutoffMode: cutoffMode.value,
         noTraverse: noTraverse.value,
-        preserveMetadata: preserveMetadata.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
+// Define a flag to control watcher activation
+const enableTargetPathWatcher = ref(true);
+
 watch(selectedRemote, (newVal, oldVal) => {
-    if (newVal && selectedRemote.value) {
+    console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
+    if (enableTargetPathWatcher.value && newVal && selectedRemote.value) {
         targetPath.value = `${selectedRemote.value!.name}:`;
     }
 });
@@ -853,10 +846,6 @@ function handleMutuallyExclusiveOptions() {
 }
 
 
-// Watch for changes in selectedRemote
-watch(selectedRemote, (newVal) => {
-    console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
-});
 
 // const isHovered = ref(false);
 
@@ -901,18 +890,40 @@ async function loadManageRemotesComponent() {
 }
 
 
+// async function validateLocalPath() {
+//     if (!localPath.value) {
+//         errorList.value.push("Local path is required.");
+//         errorTags.value.localPath = true;
+//         return false;
+//     }
+//     if (await checkLocalPathExists(localPath.value) && validatePath(localPath.value)) {
+//         errorTags.value.localPath = false;
+//         console.log("Valid source path.");
+//         return true;
+//     } else {
+//         errorList.value.push("Source path is invalid.");
+//         errorTags.value.localPath = true;
+//         return false;
+//     }
+// }
+
+
 async function validateLocalPath() {
     if (!localPath.value) {
-        errorList.value.push("Local path is required.");
+        console.log("Local path is required.");
         errorTags.value.localPath = true;
         return false;
     }
-    if (await checkLocalPathExists(localPath.value) && validatePath(localPath.value)) {
+    const pathExists = await checkLocalPathExists(localPath.value);
+    const validPath = validatePath(localPath.value);
+    console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
+
+    if (pathExists && validPath) {
         errorTags.value.localPath = false;
         console.log("Valid source path.");
         return true;
     } else {
-        errorList.value.push("Source path is invalid.");
+        console.log("Source path is invalid.");
         errorTags.value.localPath = true;
         return false;
     }
@@ -942,6 +953,7 @@ function validateDestinationPath() {
 function validatePath(path) {
     // Allow paths without leading /, and allow alphanumeric paths with optional / at the end
     const pathRegex = /^([^/ ]+\/?)+$/;
+    // const pathRegex = /^\/?[\w\s\/.-]+$/;
     return pathRegex.test(path);
 }
 
@@ -1093,7 +1105,6 @@ function setParams() {
             .addChild(new IntParameter('Max Transfer Size', 'max_transfer_size', maxTransferSize.value))
             .addChild(new SelectionParameter('Cutoff Mode', 'cutoff_mode', cutoffMode.value))
             .addChild(new BoolParameter('No Traverse', 'no_traverse_flag', noTraverse.value))
-            .addChild(new BoolParameter('Preserve Metadata', 'metadata_flag', preserveMetadata.value))
         );
 
     parameters.value = newParams;

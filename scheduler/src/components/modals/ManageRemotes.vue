@@ -564,7 +564,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         }
 
-        const ngrokUrl = `https://7e03-142-177-145-42.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
+        const ngrokUrl = `https://a04c-142-177-145-42.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
         const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
@@ -573,7 +573,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                if (event.origin !== 'https://7e03-142-177-145-42.ngrok-free.app') return;
+                if (event.origin !== 'https://a04c-142-177-145-42.ngrok-free.app') return;
 
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 

@@ -92,7 +92,7 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
             .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
             .addChild(new StringParameter('Custom Name', 'customName', ''))
-            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)
+            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 0)
         );
         super(name, parameterSchema);
     }
@@ -234,7 +234,6 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
                 .addChild(new IntParameter('Max Transfer Size Unit', 'max_transfer_size_unit', 0))
                 .addChild(new SelectionParameter('Cutoff Mode', 'cutoff_mode', 'HARD', cutoffModeSelection))
                 .addChild(new BoolParameter('No Traverse', 'no_traverse_flag', false))
-                .addChild(new BoolParameter('Preserve Metadata', 'metadata_flag', false))
             )
             
         super(name, parameterSchema);

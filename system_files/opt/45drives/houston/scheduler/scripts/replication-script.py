@@ -16,10 +16,9 @@ def create_snapshot(filesystem, is_recursive, custom_name=None):
 	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
  
 	if custom_name:
-		new_snap = (f'{filesystem}@{custom_name}-{timestamp}')
+		new_snap = (f'{filesystem}@scheduler-{custom_name}-{timestamp}')
 	else:
-		
-		new_snap = (f'{filesystem}@{timestamp}')
+		new_snap = (f'{filesystem}@scheduler-{timestamp}')
   
 	command.append(new_snap)
 	
@@ -35,7 +34,7 @@ def prune_snapshots(filesystem, max_retain_count, remoteUser="", remoteHost="", 
 	else:
 		snapshots = get_local_snapshots(filesystem)
 
-	if max_retain_count is not 0:
+	if max_retain_count is not '0' and max_retain_count is not 0:
 		if len(snapshots) is not 0:
 			snapshots.sort(key=lambda x: x.creation)
 

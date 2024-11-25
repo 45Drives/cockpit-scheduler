@@ -14,8 +14,8 @@
                 Local Path: <b>{{ findValue(taskInstance.parameters, 'local_path', 'local_path') }}</b>
             </p>
             <p class="my-2 truncate"
-                :title="`Target Remote: ${findValue(taskInstance.parameters, 'cloud_sync_remote', 'cloud_sync_remote')}`">
-                Target Remote: <b>{{ findValue(taskInstance.parameters, 'cloud_sync_remote', 'cloud_sync_remote') }}</b>
+                :title="`Target Remote: ${findValue(taskInstance.parameters, 'rclone_remote', 'rclone_remote')}`">
+                Target Remote: <b>{{ findValue(taskInstance.parameters, 'rclone_remote', 'rclone_remote') }}</b>
             </p>
             <p class="my-2 truncate"
                 :title="`Target Path: ${findValue(taskInstance.parameters, 'target_info', 'path')}`">

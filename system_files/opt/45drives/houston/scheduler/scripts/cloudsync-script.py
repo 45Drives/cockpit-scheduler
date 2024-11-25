@@ -3,7 +3,7 @@ import sys
 import os
 
 def build_rclone_command(options):
-    print("Building rclone command with options:", options)
+    # print("Building rclone command with options:", options)
     
     command = ['rclone', options['type'], '-v']
     
@@ -16,7 +16,6 @@ def build_rclone_command(options):
         'ignore_size_flag': '--ignore-size',
         'inplace_flag': '--inplace',
         'no_traverse_flag': '--no-traverse',
-        'metadata_flag': '--metadata'
     }
     
     for key, flag in option_flags.items():
@@ -58,11 +57,11 @@ def build_rclone_command(options):
     if options['cutoff_mode']:
         command.append(f'--cutoff-mode={options["cutoff_mode"].upper()}')
         
-    print("Constructed rclone command:", " ".join(command))
+    # print("Constructed rclone command:", " ".join(command))
     return command
     
 def construct_paths(localPath, direction, targetPath):
-    print(f"Constructing paths with localPath='{localPath}', direction='{direction}', targetPath='{targetPath}'")
+    # print(f"Constructing paths with localPath='{localPath}', direction='{direction}', targetPath='{targetPath}'")
     if direction == 'push':
         src = localPath
         dest = targetPath
@@ -70,8 +69,8 @@ def construct_paths(localPath, direction, targetPath):
         src = targetPath
         dest = localPath
         
-    print(f"Constructed source path: {src}")
-    print(f"Constructed destination path: {dest}")
+    # print(f"Constructed source path: {src}")
+    # print(f"Constructed destination path: {dest}")
     return src, dest
 
 
@@ -96,7 +95,7 @@ def execute_command(command, src, dest):
 
 def execute_rclone(options):
     try:
-        print("Starting rclone execution with options:", options)
+        # print("Starting rclone execution with options:", options)
         command = build_rclone_command(options)
         src, dest = construct_paths(options['local_path'], options['direction'], options['target_path'])
         execute_command(command, src, dest)
@@ -140,9 +139,8 @@ def parse_arguments():
         'max_transfer_size_unit': os.environ.get('cloudSyncConfig_rcloneOptions_max_transfer_size_unit', 'MiB'),
         'cutoff_mode': os.environ.get('cloudSyncConfig_rcloneOptions_cutoff_mode', 'HARD').lower(),
         'no_traverse_flag': str_to_bool(os.environ.get('cloudSyncConfig_rcloneOptions_no_traverse_flag', 'False')),
-        'metadata_flag': str_to_bool(os.environ.get('cloudSyncConfig_rcloneOptions_metadata_flag', 'False')),
     }
-    print("Parsed arguments:", options)
+    # print("Parsed arguments:", options)
     return options
 
 
