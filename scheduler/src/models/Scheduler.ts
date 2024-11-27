@@ -20,11 +20,11 @@ export class Scheduler implements SchedulerType {
     async loadTaskInstances() {
         this.taskInstances.splice(0, this.taskInstances.length);
         try {
-            const state = useSpawn(['/usr/bin/env','python3', '-c', get_tasks_script], {superuser: 'try'});
+            const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_tasks_script], { superuser: 'try' });
             const tasksOutput = (await state.promise()).stdout;
             // console.log('Raw tasksOutput:', tasksOutput);
             const tasksData = JSON.parse(tasksOutput);
-       
+
             tasksData.forEach(task => {
                 const newTaskTemplate = ref();
                 if (task.template == 'ZfsReplicationTask') {
@@ -45,7 +45,7 @@ export class Scheduler implements SchedulerType {
                 // console.log("SCHEDULER - Parameters before parsing:", parameters);
 
                 const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.value.parameterSchema, parameters);
-                const taskIntervals : TaskScheduleInterval[] = [];
+                const taskIntervals: TaskScheduleInterval[] = [];
 
                 task.schedule.intervals.forEach(interval => {
                     const thisInterval = new TaskScheduleInterval(interval);
@@ -60,13 +60,13 @@ export class Scheduler implements SchedulerType {
             });
 
             console.log('this.taskInstances:', this.taskInstances);
-             
+
         } catch (state) {
             console.error(errorString(state));
             return null;
         }
     }
-        
+
     // Main function to create a ParameterNode from JSON parameters based on a schema
     createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode {
         function cloneSchema(node: ParameterNode): ParameterNode {
@@ -197,13 +197,15 @@ export class Scheduler implements SchedulerType {
         }
     }
 
-    async registerTaskInstance(taskInstance : TaskInstance) {
+    async registerTaskInstance(taskInstance: TaskInstance) {
         //generate env file with key/value pairs (Task Parameters)
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         console.log('envKeyVals Before Parse:', envKeyValues);
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
+        envObject['taskName'] = taskInstance.name;
+
         const scriptFileName = this.getScriptFromTemplateName(templateName);
         const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
 
@@ -219,6 +221,7 @@ export class Scheduler implements SchedulerType {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
 
+
         console.log('envFilePath:', envFilePath);
         // console.log('envKeyValuesString:', envKeyValuesString);
 
@@ -229,7 +232,7 @@ export class Scheduler implements SchedulerType {
         file.replace(envKeyValuesString).then(() => {
             console.log('env file created and content written successfully');
             file.close();
-            
+
         }).catch(error => {
             console.error("Error writing content to the file:", error);
             file.close();
@@ -242,9 +245,9 @@ export class Scheduler implements SchedulerType {
         if (taskInstance.schedule.intervals.length < 1) {
             //ignore schedule for now
             console.log('No schedules found, parameter file generated.');
-            
+
             await createStandaloneTask(templateName, scriptPath, envFilePath);
-            
+
         } else {
             //generate json file with enabled boolean + intervals (Schedule Intervals)
             // requires schedule data object
@@ -253,7 +256,7 @@ export class Scheduler implements SchedulerType {
             const file2 = new BetterCockpitFile(jsonFilePath, {
                 superuser: 'try',
             });
-            
+
             const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
 
             file2.replace(jsonString).then(() => {
@@ -266,8 +269,8 @@ export class Scheduler implements SchedulerType {
 
             await createTaskFiles(templateName, scriptPath, envFilePath, templateTimerPath, jsonFilePath);
         }
-    }   
-    
+    }
+
     async updateTaskInstance(taskInstance) {
         //populate data from env file and then delete + recreate task files
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
@@ -275,6 +278,8 @@ export class Scheduler implements SchedulerType {
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
+        envObject['taskName'] = taskInstance.name;
+
         const scriptFileName = this.getScriptFromTemplateName(templateName);
         const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
 
@@ -288,7 +293,7 @@ export class Scheduler implements SchedulerType {
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
-        
+
         console.log('envFilePath:', envFilePath);
 
         const file = new BetterCockpitFile(envFilePath, {
@@ -327,7 +332,7 @@ export class Scheduler implements SchedulerType {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-        
+
         console.log(`Running ${fullTaskName}...`);
         await runTask(fullTaskName);
         console.log(`Task ${fullTaskName} completed.`);
@@ -353,6 +358,7 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+
     async getServiceStatus(taskInstance: TaskInstanceType) {
         const taskLog = new TaskExecutionLog([]);
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -373,6 +379,7 @@ export class Scheduler implements SchedulerType {
             return this.parseTaskStatus(error.stdout || '', fullTaskName, taskLog, taskInstance); // Use error.stdout if available
         }
     }
+
 
 
     async parseTaskStatus(output: string, fullTaskName: string, taskLog: TaskExecutionLog, taskInstance: TaskInstanceType) {
@@ -416,6 +423,7 @@ export class Scheduler implements SchedulerType {
                 status = "Unit inactive or not found.";
             }
 
+
             // console.log(`Status for ${fullTaskName}`, status);
             return status;
         } catch (error) {
@@ -451,23 +459,24 @@ export class Scheduler implements SchedulerType {
             return false;
         }
     }
-    
+
     async disableSchedule(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-    
+
         const timerName = `${fullTaskName}.timer`;
         try {
             // Reload systemd daemon
             let reloadCommand = ['sudo', 'systemctl', 'daemon-reload'];
             let reloadState = useSpawn(reloadCommand, { superuser: 'try' });
             await reloadState.promise();
-            
+
             // Stop and Disable the timer
             let stopCommand = ['sudo', 'systemctl', 'stop', timerName];
             let stopState = useSpawn(stopCommand, { superuser: 'try' });
             await stopState.promise();
+
 
             let disableCommand = ['sudo', 'systemctl', 'disable', timerName];
             let disableState = useSpawn(disableCommand, { superuser: 'try' });
@@ -477,17 +486,18 @@ export class Scheduler implements SchedulerType {
             taskInstance.schedule.enabled = false;
             console.log('taskInstance after disable:', taskInstance);
 
+
             await this.updateSchedule(taskInstance);
-    
+
         } catch (error) {
             console.error(errorString(error));
             return false;
         }
     }
-    
+
     async updateSchedule(taskInstance) {
         const templateName = formatTemplateName(taskInstance.template.name);
-  
+
         const templateTimerPath = `/opt/45drives/houston/scheduler/templates/Schedule.timer`;
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
@@ -498,7 +508,7 @@ export class Scheduler implements SchedulerType {
         const file = new BetterCockpitFile(jsonFilePath, {
             superuser: 'try',
         });
-        
+
         const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
 
         file.replace(jsonString).then(() => {
@@ -525,13 +535,13 @@ export class Scheduler implements SchedulerType {
 
     parseIntervalIntoString(interval) {
         const elements: string[] = [];
-    
+
         function getMonthName(number) {
             const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                            'July', 'August', 'September', 'October', 'November', 'December'];
+                'July', 'August', 'September', 'October', 'November', 'December'];
             return months[number - 1] || 'undefined';
         }
-    
+
         function getDaySuffix(day) {
             if (day > 3 && day < 21) return 'th';
             switch (day % 10) {
@@ -541,11 +551,11 @@ export class Scheduler implements SchedulerType {
                 default: return 'th';
             }
         }
-    
+
         function formatUnit(value, type) {
             if (value === '*') {
                 return type === 'minute' ? 'every minute' :
-                       type === 'hour' ? 'every hour' : `every ${type}`;
+                    type === 'hour' ? 'every hour' : `every ${type}`;
             } else if (value.startsWith('*/')) {
                 const interval = value.slice(2);
                 return `every ${interval} ${type}${interval > 1 ? 's' : ''}`;
@@ -566,10 +576,10 @@ export class Scheduler implements SchedulerType {
             }
             return `at ${value} ${type}`;
         }
-    
+
         const formattedMinute = interval.minute ? formatUnit(interval.minute.value.toString(), 'minute') : null;
         const formattedHour = interval.hour ? formatUnit(interval.hour.value.toString(), 'hour') : null;
-    
+
         // Special case for "at midnight"
         if (formattedMinute === null && formattedHour === 'at midnight') {
             elements.push('at midnight');
@@ -577,22 +587,20 @@ export class Scheduler implements SchedulerType {
             if (formattedMinute) elements.push(formattedMinute);
             if (formattedHour) elements.push(formattedHour);
         }
-    
+
         const day = interval.day ? formatUnit(interval.day.value.toString(), 'day') : "every day";
         const month = interval.month ? formatUnit(interval.month.value.toString(), 'month') : "every month";
         const year = interval.year ? formatUnit(interval.year.value.toString(), 'year') : "every year";
-    
+
         // Push only non-null values
-        if(day) elements.push(day);
-        if(month) elements.push(month);
-        if(year) elements.push(year)
-    
+        if (day) elements.push(day);
+        if (month) elements.push(month);
+        if (year) elements.push(year)
+
         if (interval.dayOfWeek && interval.dayOfWeek.length > 0) {
             elements.push(`on ${interval.dayOfWeek.join(', ')}`);
         }
-    
+
         return elements.filter(e => e).join(', ');
     }
-
-    
 }

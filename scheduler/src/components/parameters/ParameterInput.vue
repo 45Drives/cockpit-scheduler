@@ -34,8 +34,8 @@ const props = defineProps<ParameterInputProps>();
 const template = computed(() => props.selectedTemplate);
 const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams | typeof ScrubTaskParams | typeof SmartTestTaskParams | typeof CloudSyncParams> | null>(null);
 
-function validation() {
-    activeComponent.value?.validateParams();
+async function validation() {
+    await activeComponent.value?.validateParams();
 }
 
 function clearTaskParamErrorTags() {

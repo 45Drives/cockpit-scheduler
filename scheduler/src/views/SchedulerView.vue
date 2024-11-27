@@ -2,7 +2,8 @@
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
             <div class="px-4 sm:px-0 sm:flex-auto">
-                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.</p>
+                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.
+                </p>
             </div>
             <div class="flex flex-row justify-between">
                 <div class="px-3">
@@ -33,7 +34,7 @@
                         <h2>No Tasks Found</h2>
                     </div>
                     <div v-else class="relative">
-	                    <div class="overflow-x-auto">
+                        <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
                                     <tr class="border border-default border-collapse grid grid-cols-8 w-full">
@@ -75,7 +76,7 @@
                                         ref="taskTableRow" :attr="taskInstance"
                                         />
                                     </div>
-                                       
+
                                 </tbody>
                             </table>
                         </div>
@@ -86,11 +87,11 @@
     </div>
 
     <div v-if="showTaskWizard">
-        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler"/>
+        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler" />
     </div>
 
     <div v-if="showEditTaskWizard">
-        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!"/>
+        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!" />
     </div>
 
     <div v-if="showThisScheduleWizard">
@@ -129,6 +130,7 @@ import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
+const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
@@ -155,7 +157,7 @@ async function refreshBtn() {
 
 const expandedTaskName = ref(null);
 function toggleDetails(taskName) {
-  expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
+    expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
 }
 
 /* Add New Task */
@@ -206,6 +208,7 @@ async function showRunNowDialog() {
     showRunNowPrompt.value = true;
 }
 
+
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
@@ -222,6 +225,21 @@ const runNowYes: ConfirmationCallback = async () => {
     pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
     await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false); // Close the modal
+    // Start the task and close the modal immediately
+    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
+        // Push a success notification when task finishes
+        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
+    }).catch((error) => {
+        // Push a failure notification if the task fails
+        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
+    });
+
+    // const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false); // Close the modal
 
     updateShowRunNowPrompt(false); // Close the modal
     // Start the task and close the modal immediately
@@ -259,11 +277,11 @@ async function showRemoveTaskDialog() {
 const removeTaskYes: ConfirmationCallback = async () => {
     removing.value = true;
     await myScheduler.unregisterTaskInstance(selectedTask.value!);
+    removing.value = false;
+    updateShowRemoveTaskPrompt(false);
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
-    removing.value = false;
-    updateShowRemoveTaskPrompt(false);
 }
 const removeTaskNo: ConfirmationCallback = async () => {
     updateShowRemoveTaskPrompt(false);
@@ -320,11 +338,13 @@ async function viewLogsBtn(task) {
     showLogView.value = true;
 }
 
+
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
+
 
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
@@ -360,6 +380,7 @@ const sortedTasks = computed(() => {
     return sortTasks(filteredTasks);
 });
 
+
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     if (!sort.value.field) return tasksToSort;
 
@@ -382,6 +403,7 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     });
 };
 
+
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -391,6 +413,7 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
+
 
 function sortIconFlip() {
     if (sort.value.order == 1) {

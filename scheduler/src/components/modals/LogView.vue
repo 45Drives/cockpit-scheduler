@@ -1,5 +1,6 @@
 <template>
-     <Modal @close="closeModal" :isOpen="showLogView" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="true">
+    <Modal @close="closeModal" :isOpen="showLogView" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'"
+        :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="true">
         <template v-slot:title>
             <div class="text-lg font-semibold text-default mb-4">
                 <h3>Latest Task Exection Result for <span class="italic">{{ props.task.name }}</span></h3>
@@ -8,7 +9,8 @@
         <template v-slot:content>
             <div>
                 <div v-if="loadingLogs" class="flex items-center justify-center">
-                    <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                    <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
+                        :fillColor="'fill-gray-500'" />
                 </div>
                 <div v-else>
                     <div v-if="thisLogEntry !== undefined">
@@ -20,51 +22,69 @@
                                     <p class="text-sm font-medium">Exit Code: {{ thisLogEntry.exitCode }}</p>
                                 </div>
                                 <div class="col-span-1 w-fit flex flex-row gap-2 mb-4">
-                                    <label class="mt-1 block text-sm font-medium leading-6 text-default">Show All Logs</label>
-                                    <Switch v-model="viewMoreLogs" :class="[viewMoreLogs ? 'bg-secondary' : 'bg-default', 'mt-1 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2']">
+                                    <label class="mt-1 block text-sm font-medium leading-6 text-default">Show All
+                                        Logs</label>
+                                    <Switch v-model="viewMoreLogs"
+                                        :class="[viewMoreLogs ? 'bg-secondary' : 'bg-default', 'mt-1 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2']">
                                         <span class="sr-only">Use setting</span>
-                                        <span :class="[viewMoreLogs ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none relative inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out']">
-                                            <span :class="[viewMoreLogs ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in', 'absolute inset-0 flex h-full w-full items-center justify-center transition-opacity']" aria-hidden="true">
+                                        <span
+                                            :class="[viewMoreLogs ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none relative inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out']">
+                                            <span
+                                                :class="[viewMoreLogs ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in', 'absolute inset-0 flex h-full w-full items-center justify-center transition-opacity']"
+                                                aria-hidden="true">
                                                 <svg class="h-3 w-3 text-muted" fill="none" viewBox="0 0 12 12">
-                                                    <path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                                    <path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round"
+                                                        stroke-linejoin="round" />
                                                 </svg>
                                             </span>
-                                            <span :class="[viewMoreLogs ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out', 'absolute inset-0 flex h-full w-full items-center justify-center transition-opacity']" aria-hidden="true">
-                                                <svg class="h-3 w-3 text-primary" fill="currentColor" viewBox="0 0 12 12">
-                                                    <path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" />
+                                            <span
+                                                :class="[viewMoreLogs ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out', 'absolute inset-0 flex h-full w-full items-center justify-center transition-opacity']"
+                                                aria-hidden="true">
+                                                <svg class="h-3 w-3 text-primary" fill="currentColor"
+                                                    viewBox="0 0 12 12">
+                                                    <path
+                                                        d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" />
                                                 </svg>
                                             </span>
                                         </span>
                                     </Switch>
                                 </div>
                             </div>
-                           
+
                             <div class="bg-plugin-header p-4 rounded-lg">
                                 <ul role="list" class="divide-y divide-default h-96 overflow-y-scroll">
-                                    <li v-for="line, idx in (thisLogEntry.output).split('\n')" :key="idx" class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
+                                    <li v-for="line, idx in (thisLogEntry.output).split('\n')" :key="idx"
+                                        class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
                                         {{ line }}
                                     </li>
-                                    <li v-if="viewMoreLogs && !loadingMoreLogs" class="m-1 block text-sm leading-6 text-default bold italic text-center bg-default">Previous Logs</li>
-                                    <li v-if="viewMoreLogs && !loadingMoreLogs" v-for="line, idx in (allLogsForThisTask).split('\n')" :key="idx" class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
+                                    <li v-if="viewMoreLogs && !loadingMoreLogs"
+                                        class="m-1 block text-sm leading-6 text-default bold italic text-center bg-default">
+                                        Previous Logs</li>
+                                    <li v-if="viewMoreLogs && !loadingMoreLogs"
+                                        v-for="line, idx in (allLogsForThisTask).split('\n')" :key="idx"
+                                        class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
                                         {{ line }}
                                     </li>
                                     <li v-if="loadingMoreLogs" class="flex items-center justify-center">
-                                        <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'"/>
+                                        <CustomLoadingSpinner :width="'w-20'" :height="'h-20'"
+                                            :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
                                     </li>
                                 </ul>
                             </div>
                         </div>
                     </div>
                 </div>
-              
+
             </div>
         </template>
         <template v-slot:footer>
             <div class="w-full">
-				<div class="button-group-row w-full justify-between">
-                    <button @click.stop="closeModal" id="close-view-logs-btn" name="close-view-logs-btn" class="btn btn-danger h-fit w-full">Close</button>
-				</div>
-			</div>
+                <div class="button-group-row w-full justify-between">
+                    <button @click.stop="closeModal" id="close-view-logs-btn" name="close-view-logs-btn"
+                        class="btn btn-danger h-fit w-full">Close</button>
+                </div>
+            </div>
         </template>
     </Modal>
 

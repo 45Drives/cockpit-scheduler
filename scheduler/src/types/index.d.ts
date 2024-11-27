@@ -3,7 +3,7 @@ interface SchedulerType {
 	taskInstances: TaskInstanceType[];
 
 	async loadTaskInstances(): void;
-	createParameterNodeFromSchema(schema: ParameterNode, parameters: any) : ParameterNode;
+	createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode;
 	async registerTaskInstance(taskInstance: TaskInstanceType): void;
 	async updateTaskInstance(taskInstance: TaskInstanceType): void;
 	async runTaskNow(taskInstance: TaskInstanceType): void;
@@ -46,9 +46,9 @@ interface TaskScheduleType {
 }
 
 type TaskScheduleIntervalType = {
-    [K in TimeUnit]?: TimeComponentType;
+	[K in TimeUnit]?: TimeComponentType;
 } & {
-    dayOfWeek?: (DayOfWeek)[];
+	dayOfWeek?: (DayOfWeek)[];
 };
 
 interface LocationType {
@@ -78,8 +78,8 @@ interface SelectionParameterType extends ParameterNodeType {
 }
 
 interface SelectionOptionType {
-    value: string | number | boolean;
-    label: string;
+	value: string | number | boolean;
+	label: string;
 }
 
 interface StringParameterType extends ParameterNodeType {
@@ -104,6 +104,7 @@ interface TaskExecutionLogType {
 	entries: TaskExecutionResultType[];
 
 	async getEntriesFor(taskInstance: TaskInstance, untilTime: string): string;
+	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
 	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
 }
 

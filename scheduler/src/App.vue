@@ -2,10 +2,10 @@
 	<HoustonAppContainer moduleName="Task Scheduler">
 		<CenteredCardColumn>
 			<CardContainer>
-				<SchedulerView/>
+				<SchedulerView />
 			</CardContainer>
 		</CenteredCardColumn>
-	</HoustonAppContainer>		
+	</HoustonAppContainer>
 </template>
 
 <script setup lang="ts">
@@ -66,5 +66,6 @@ provide(rcloneRemotesInjectionKey, cloudSyncRemotes);
 provide(logInjectionKey, myTaskLog);
 provide(taskInstancesInjectionKey, taskInstances);
 provide(taskTemplatesInjectionKey, taskTemplates);
+provide(truncateTextInjectionKey, truncateText);
 provide(truncateTextInjectionKey, truncateText);
 </script>

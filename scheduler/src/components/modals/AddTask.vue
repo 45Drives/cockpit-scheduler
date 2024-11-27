@@ -159,7 +159,7 @@ async function validateTaskName() {
 async function validateComponentParams() {
     clearAllErrors();
     await validateTaskName();
-    parameterInputComponent.value.validation();
+    await parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
        pushNotification(new Notification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
