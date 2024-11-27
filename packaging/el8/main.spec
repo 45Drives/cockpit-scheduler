@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Nov 27 2024 Jordan Keough <jkeough@45drives.com> 1.2.3-1
+- Introduces time-based snapshot retention policies
 * Mon Nov 04 2024 Jordan Keough <jkeough@45drives.com> 1.2.2-1
 - Stable Release
 * Tue Aug 06 2024 Jordan Keough <jkeough@45drives.com> 1.2.1-1

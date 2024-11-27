@@ -1,3 +1,3 @@
-## task scheduler 1.2.2-1
+## task scheduler 1.2.3-1
 
-* Stable Release
+* Introduces time-based snapshot retention policies

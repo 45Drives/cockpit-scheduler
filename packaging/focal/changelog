@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.3-1focal) focal; urgency=medium
+
+  * Introduces time-based snapshot retention policies
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 27 Nov 2024 09:21:40 -0400
+
 cockpit-scheduler (1.2.2-1focal) focal; urgency=medium
 
   * Stable Release
