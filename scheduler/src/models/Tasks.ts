@@ -1,4 +1,4 @@
-import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
+import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter, SnapshotRetentionParameter } from "./Parameters";
 import { TaskExecutionResult } from "./TaskLog";
 
 export class TaskInstance implements TaskInstanceType {
@@ -70,9 +70,9 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
                 .addChild(new StringParameter('Custom Name', 'customName', ''))
             )
-            .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
-                .addChild(new IntParameter('Source', 'source', 5))
-                .addChild(new IntParameter('Destination', 'destination', 5))
+            .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
+                .addChild(new SnapshotRetentionParameter('Source', 'source', 0, 'minutes'))
+                .addChild(new SnapshotRetentionParameter('Destination', 'destination', 0, 'minutes'))
             );
         super(name, parameterSchema);
     }
@@ -91,7 +91,7 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
             .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
             .addChild(new StringParameter('Custom Name', 'customName', ''))
-            .addChild(new IntParameter('Snapshot Retention', 'snapRetention', 5)
+            .addChild(new SnapshotRetentionParameter('Snapshot Retention', 'snapshotRetention', 0, 'minutes')
             );
         super(name, parameterSchema);
     }

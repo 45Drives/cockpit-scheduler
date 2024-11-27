@@ -15,6 +15,7 @@
                     <input type="checkbox" v-model="useCustomSource" class="h-4 w-4 rounded" />
                 </div>
             </div>
+
             <div name="source-pool">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
@@ -37,6 +38,7 @@
                     </select>
                 </div>
             </div>
+
             <div name="source-dataset">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
@@ -60,35 +62,31 @@
                         <option v-if="loadingSourceDatasets">Loading...</option>
                     </select>
                 </div>
-
             </div>
+
             <div name="source-snapshot-retention" class="">
-                <div name="use-snapshot-retention-toggle" class="flex flex-row items-center">
-
-                    <div class="flex flex-row items-center gap-2 mt-2 whitespace-nowrap">
-                        <label class="block text-sm leading-6 text-default">Limit Snapshots?</label>
-                        <input type="checkbox" v-model="useSnapshotRetention" class=" h-4 w-4 rounded" />
-                    </div>
-                    <InfoTile class="ml-2 mt-2"
-                        title="Value of 0 will keep ALL snapshots. **WARNING: If multiple tasks use same dataset, these limits will CONFLICT. Proceed accordingly.**" />
+                <div class="flex flex-row justify-between items-center">
+                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
+                        Retention Policy
+                        <InfoTile class="ml-1"
+                            :title="`How long to keep snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
+                    </label>
                 </div>
-
-                <div class="flex flex-row gap-2 mt-2 w-full items-center justify-between">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">Snapshots
-                        to Keep</label>
-                    <input type="number" min="0" v-model="snapsToKeep" v-if="useSnapshotRetention"
+                <div class="flex flex-row gap-2 w-full items-center justify-between">
+                    <input type="number" min="0" v-model="retentionTime"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="" />
-                    <input type="number" min="0" v-model="snapsToKeep" v-else disabled
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
-
+                    <select v-model="retentionUnit"
+                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select a Retention Interval</option>
+                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
+                            {{ option }}
+                        </option>
+                    </select>
                 </div>
-
             </div>
 
-
-            <div class="flex flex-row gap-2 mt-2">
+            <div class="flex flex-row gap-2">
                 <div name="custom-snapshot-name-toggle" class="flex flex-row items-center justify-between">
                     <div class="flex flex-row items-center gap-2 mt-2 whitespace-nowrap">
                         <label class="block text-sm leading-6 text-default">Use Custom Name Schema?</label>
@@ -98,12 +96,12 @@
                 </div>
                 <div name="custom-snapshot-name-field" class="mt-1 flex-grow">
                     <input v-if="useCustomName" type="text" v-model="customName" :class="[
-                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default placeholder:text-xs',
                         customNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" placeholder="Name is CustomName + Timestamp" />
+                    ]" placeholder="Name is CustomName + TaskName + Timestamp" />
                     <input v-else disabled type="text" v-model="customName"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="Name is Timestamp" />
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default placeholder:text-xs"
+                        placeholder="Name is TaskName + Timestamp" />
                 </div>
                 <div name="send-opt-recursive" class="flex flex-row items-center gap-2 mt-2">
                     <label class="block text-sm leading-6 text-default">Recursive Snapshots</label>
@@ -117,11 +115,11 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, watch, inject } from 'vue';
+import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SelectionParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
 import { getPoolData, getDatasetData } from '../../../composables/utility';
 
 interface AutomatedSnapshotTaskParamsProps {
@@ -148,8 +146,10 @@ const sendRecursive = ref(false);
 const useCustomName = ref(false);
 const customName = ref('');
 const customNameErrorTag = ref(false);
-const snapsToKeep = ref(0);
-const useSnapshotRetention = ref(false);
+
+const retentionTime = ref(0);
+const retentionUnit = ref('');
+const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
 
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
@@ -170,8 +170,13 @@ async function initializeData() {
         sendRecursive.value = params.find(p => p.key === 'recursive_flag')!.value;
         useCustomName.value = params.find(p => p.key === 'customName_flag')!.value;
         customName.value = params.find(p => p.key === 'customName')!.value;
-        snapsToKeep.value = params.find(p => p.key === 'snapRetention')!.value;
-        useSnapshotRetention.value = snapsToKeep.value > 0 ? true : false;
+        // snapsToKeep.value = params.find(p => p.key === 'snapRetention')!.value;
+        // useSnapshotRetention.value = snapsToKeep.value > 0 ? true : false;
+        const snapshotRetention = params.find(p => p.key === 'snapshotRetention');
+        if (snapshotRetention) {
+            retentionTime.value = snapshotRetention.children.find(c => c.key === 'retentionTime')!.value;
+            retentionUnit.value = snapshotRetention.children.find(c => c.key === 'retentionUnit')!.value;
+        }
 
         initialParameters.value = JSON.parse(JSON.stringify({
             sourcePool: sourcePool.value,
@@ -179,7 +184,11 @@ async function initializeData() {
             sendRecursive: sendRecursive.value,
             useCustomName: useCustomName.value,
             customName: customName.value,
-            snapsToKeep: snapsToKeep.value
+            // snapsToKeep: snapsToKeep.value
+            snapshotRetention: {
+                retentionTime: retentionTime.value,
+                retentionUnit: retentionUnit.value,
+            },
         }));
 
         loading.value = false;
@@ -196,7 +205,11 @@ function hasChanges() {
         sendRecursive: sendRecursive.value,
         useCustomName: useCustomName.value,
         customName: customName.value,
-        snapsToKeep: snapsToKeep.value
+        // snapsToKeep: snapsToKeep.value
+        snapshotRetention: {
+            retentionTime: retentionTime.value,
+            retentionUnit: retentionUnit.value,
+        },
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -276,9 +289,10 @@ function validateSource() {
                 customSrcDatasetErrorTag.value = true;
             }
         }
-
     }
+   
 }
+
 
 function isValidPoolName(poolName) {
     if (poolName === '') {
@@ -336,7 +350,7 @@ function clearErrorTags() {
     errorList.value = [];
 }
 
-function validateParams() {
+async function validateParams() {
     validateSource();
     validateCustomName();
 
@@ -352,8 +366,13 @@ function setParams() {
         .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
         .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
         .addChild(new StringParameter('Custom Name', 'customName', customName.value))
-        .addChild(new IntParameter('Snapshot Retention', 'snapRetention', snapsToKeep.value)
-        );
+        .addChild(new SnapshotRetentionParameter(
+            'Snapshot Retention',
+            'snapshotRetention',
+            retentionTime.value,
+            retentionUnit.value
+        )
+    );
 
     parameters.value = newParams;
     console.log('newParams:', newParams);

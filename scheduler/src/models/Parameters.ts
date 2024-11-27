@@ -93,6 +93,28 @@ export class SelectionParameter extends ParameterNode implements SelectionParame
     }
 }
 
+export class SnapshotRetentionParameter extends ParameterNode implements ParameterNodeType {
+    constructor(label: string, key: string, retentionTime: number, retentionUnit: string) {
+        super(label, key);
+
+        // Add Retention Time as IntParameter
+        this.addChild(new IntParameter('Retention Time', 'retentionTime', retentionTime));
+
+        // Add Retention Unit as SelectionParameter
+        const retentionUnitParam = new SelectionParameter('Retention Unit', 'retentionUnit', retentionUnit, [
+            new SelectionOption('minutes', 'Minutes'),
+            new SelectionOption('hours', 'Hours'),
+            new SelectionOption('days', 'Days'),
+            new SelectionOption('weeks', 'Weeks'),
+            new SelectionOption('months', 'Months'),
+            new SelectionOption('years', 'Years'),
+        ]);
+        this.addChild(retentionUnitParam);
+    }
+}
+
+
+
 export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeType {
     constructor(label: string, key: string, host: string = "", port: number = 0, user: string = "", pool: string = "", dataset: string = "") {
         super(label, key);

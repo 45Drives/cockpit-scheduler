@@ -189,6 +189,8 @@ export class Scheduler implements SchedulerType {
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
+        envObject['taskName'] = taskInstance.name;
+
         const scriptFileName = this.getScriptFromTemplateName(templateName);
         const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
 
@@ -259,6 +261,8 @@ export class Scheduler implements SchedulerType {
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
+        envObject['taskName'] = taskInstance.name;
+
         const scriptFileName = this.getScriptFromTemplateName(templateName);
         const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
 
@@ -303,7 +307,9 @@ export class Scheduler implements SchedulerType {
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         await removeTask(fullTaskName);
+
         console.log(`${fullTaskName} removed`);
+        // await this.loadTaskInstances();
     }
 
     async runTaskNow(taskInstance: TaskInstanceType) {

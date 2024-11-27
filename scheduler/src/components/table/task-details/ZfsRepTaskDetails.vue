@@ -14,22 +14,25 @@
             <p class="my-2 truncate"
                 :title="`Source: ${findValue(taskInstance.parameters, 'sourceDataset', 'dataset')}`">
                 Source: <b>
-                    <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
                     {{ findValue(taskInstance.parameters, 'sourceDataset',
                     'dataset') }}
                 </b>
             </p>
-            <p v-if="findValue(taskInstance.parameters, 'snapRetention',
-                'source') > 0" class="my-2 truncate"
-                :title="`Source Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'source')}`">
-                Source Snapshots to Keep: <b>
-                    {{ findValue(taskInstance.parameters, 'snapRetention',
-                    'source') }}
-                </b>
+
+            <p v-if="hasSnapshotRetentionPolicy(taskInstance)" class="my-2 truncate"
+                :title="`Keep Src. Snapshots For: ${findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionTime')} ${findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionUnit')}`">
+                Keep Src. Snapshots For:
+                <b>{{
+                    findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionTime')
+                    }} {{
+                    findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionUnit')
+                    }}</b>
             </p>
-            <p v-else class="my-2 truncate" :title="`No Snapshot Limit (Keep All)`">
-                No Snapshot Limit Set (Keep All)
+
+            <p v-else class="my-2 truncate text-sm" :title="`No Snapshot Retention Policy Configured`">
+                <b>No Snapshot Retention Policy Configured</b>
             </p>
+
             <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
                 <span class="truncate"
                     :title="`Remote SSH Host: ${findValue(taskInstance.parameters, 'destDataset', 'host')}`">
@@ -58,21 +61,21 @@
             <p class="my-2 truncate"
                 :title="`Destination: ${findValue(taskInstance.parameters, 'destDataset', 'dataset')}`">
                 Destination: <b>
-                    <!-- {{ findValue(taskInstance.parameters, 'destDataset', 'pool') }}/ -->
                     {{ findValue(taskInstance.parameters, 'destDataset',
                     'dataset') }}
                 </b>
             </p>
-            <p v-if="findValue(taskInstance.parameters, 'snapRetention',
-                'destination') > 0" class="my-2 truncate"
-                :title="`Destination Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'destination')}`">
-                Destination Snapshots to Keep: <b>
-                    {{ findValue(taskInstance.parameters, 'snapRetention',
-                    'destination') }}
-                </b>
+            <p v-if="hasSnapshotRetentionPolicy(taskInstance)" class="my-2 truncate"
+                :title="`Keep Dest. Snapshots For: ${findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionTime')} ${findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionUnit')}`">
+                Keep Dest. Snapshots For:
+                <b>{{
+                    findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionTime')
+                    }} {{
+                        findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionUnit')
+                    }}</b>
             </p>
-            <p v-else class="my-2 truncate" :title="`No Snapshot Limit (Keep All)`">
-                No Snapshot Limit Set (Keep All)
+            <p v-else class="my-2 truncate text-sm" :title="`No Snapshot Retention Policy Configured`">
+                <b>No Snapshot Retention Policy Configured</b>
             </p>
         </div>
         <div class="col-span-2 row-span-2">
@@ -102,5 +105,27 @@ interface ZfsRepTaskDetailsProps {
 const props = defineProps<ZfsRepTaskDetailsProps>();
 const taskInstance = ref(props.task);
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+
+function findNestedValue(obj, path) {
+    const keys = path.split('.');
+    let current = obj;
+
+    for (const key of keys) {
+        if (!current) return null;
+
+        if (current.children) {
+            current = current.children.find((child) => child.key === key);
+        } else {
+            return null;
+        }
+    }
+    return current?.value ?? null;
+}
+
+function hasSnapshotRetentionPolicy(taskInstance) {
+    const sourceRetentionTime = findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionTime');
+    const destinationRetentionTime = findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionTime');
+    return (sourceRetentionTime > 0 || destinationRetentionTime > 0);
+}
 
 </script>

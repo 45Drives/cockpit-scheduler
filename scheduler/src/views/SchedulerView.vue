@@ -218,7 +218,7 @@ const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     const runNow = true;
     // Push a notification that the task has started
-    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
     await updateStatusAndTime(selectedTask.value!, taskIndex);
 
@@ -259,11 +259,11 @@ async function showRemoveTaskDialog() {
 const removeTaskYes: ConfirmationCallback = async () => {
     removing.value = true;
     await myScheduler.unregisterTaskInstance(selectedTask.value!);
+    removing.value = false;
+    updateShowRemoveTaskPrompt(false);
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
-    removing.value = false;
-    updateShowRemoveTaskPrompt(false);
 }
 const removeTaskNo: ConfirmationCallback = async () => {
     updateShowRemoveTaskPrompt(false);

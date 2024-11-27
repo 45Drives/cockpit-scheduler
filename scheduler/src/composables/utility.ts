@@ -309,3 +309,69 @@ export function splitAndClean(inputString: string, isDisk: boolean) {
     return cleanedParts;
 }
 
+export async function isDatasetEmpty(mountpoint) {
+    try {
+        const command = ['ls', '-la', `/${mountpoint}`,];
+        const state = useSpawn(command, { superuser: 'try' });
+        const output = await state.promise();
+        // console.log(`output:`, output);
+        // return output.stdout;
+
+        // Split the output into lines
+        const lines = output.stdout.split('\n');
+
+        // Define the regex pattern to match '.' and '..'
+        const pattern = /^\S+\s+\d+\s+\S+\s+\S+\s+\d+\s+\w+\s+\d+\s+\d+:\d+\s+(\.|\.\.)$/;
+
+        // Check each line for matches
+        const matches = lines.filter(line => pattern.test(line));
+
+        // If we find only '.' and '..', return true (dataset is empty)
+        if (matches.length <= 2) {
+            return true
+        } else {
+            return false;
+        }
+    } catch (error) {
+        console.error(`Error checking dataset contents: ${errorString(error)}`);
+        return false;
+    }
+}
+
+export async function doSnapshotsExist(filesystem: string, user?: string, host?: string, port?: string) {
+    try {
+        const baseCommand = ['zfs', 'list', '-H', '-t', 'snapshot', filesystem];
+        let command: string[] = [];
+       
+        if (user && host) {
+            // Use SSH for remote command
+            command = ['ssh'];
+            if (port && port !== '22') {
+                command.push('-p', port);
+            }
+            command.push(`${user}@${host}`, ...baseCommand);
+
+        } else {
+            // Local command
+            command = baseCommand;
+        }
+
+        // Execute the command
+        const state = useSpawn(command, { superuser: 'try' }); // Ensure you handle superuser permissions if necessary
+        const output = await state.promise();
+
+        // Parse the output
+        const lines = output.stdout.trim().split('\n'); // Use trim() to remove empty lines
+        if (lines.length === 1 && lines[0] === '') {
+            // If there's only one empty line, there are no snapshots
+            console.log('No snapshots found.');
+            return false;
+        } else if (lines.length > 0) {
+            console.log('Snapshots exist, must overwrite dataset to continue.');
+            return true;
+        }
+    } catch (error) {
+        console.error(`Error checking dataset contents: ${errorString(error)}`);
+        return null;
+    }
+}

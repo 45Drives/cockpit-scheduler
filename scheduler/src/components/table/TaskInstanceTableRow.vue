@@ -123,7 +123,13 @@ function manageScheduleBtn() {
 	emit('manageSchedule', props.task);
 }
 
+let intervalId: number | undefined;
+
 function removeTaskBtn() {
+	if (intervalId) {
+		clearInterval(intervalId);
+		intervalId = undefined;
+	}
 	emit('removeTask', props.task);
 }
 
@@ -251,7 +257,7 @@ async function toggleTaskSchedule(event) {
 // 	const intervalId = setInterval(async () => {
 // 		await updateTaskStatus(taskInstance.value);
 // 		await fetchLatestLog(taskInstance.value);
-// 	}, 5000);
+// 	}, 8000);
 // 	onUnmounted(() => clearInterval(intervalId));
 // });
 
@@ -259,61 +265,62 @@ onMounted(async () => {
 	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	await fetchLatestLog(taskInstance.value);
 
-	const intervalId = setInterval(async () => {
-		await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
-		await fetchLatestLog(taskInstance.value);
+	intervalId = setInterval(async () => {
+		try {
+			await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
+			await fetchLatestLog(taskInstance.value);
+		} catch (error) {
+			console.error('Polling failed:', error);
+			clearInterval(intervalId);
+		}
 	}, 1500);
 
-	onUnmounted(() => clearInterval(intervalId));
+	onUnmounted(() => {
+		if (intervalId) {
+			clearInterval(intervalId);
+		}
+	});
 });
 
 
 // Ensure updates when taskInstance changes
-watch(taskInstance, async (newTask) => {
-	await updateTaskStatus(newTask, taskInstance.value.schedule.enabled);
-	await fetchLatestLog(newTask);
+watch(taskInstance, async (newTask, oldTask) => {
+	if (!newTask) {
+		if (intervalId) {
+			clearInterval(intervalId);
+			intervalId = undefined;
+		}
+		return;
+	}
+	try {
+		await updateTaskStatus(newTask, newTask.schedule.enabled);
+		await fetchLatestLog(newTask);
+	} catch (error: any) {
+		console.error(`Error updating task status:`, error);
+		if (error.stderr && error.stderr.includes('Unit could not be found')) {
+			if (intervalId) {
+				clearInterval(intervalId);
+				intervalId = undefined;
+			}
+		}
+	}
 });
 
-// async function updateTaskStatus(task) {
-// 	const status = await myScheduler.getTaskStatusFor(task);
-// 	taskStatus.value = status.toString();
-// 	// console.log(`Status for ${task.name}:`, status);
-// }
+
 async function updateTaskStatus(task, timerEnabled) {
-	// let status = await myScheduler.getTaskStatusFor(task);
-
-	// Add a check for unscheduled tasks (no systemd timer)
-	// if (task.schedule.intervals.length === 0 && !task.schedule.enabled) {
-	// 	status = 'Unscheduled';
-	// } else if (!task.schedule.enabled) {
-	// 	status = 'Disabled';
-	// }
-
-	let status;
-
-	if (timerEnabled) {
-		status = await myScheduler.getTimerStatus(task);
-	} else {
-		status = await myScheduler.getServiceStatus(task);
-	}
-
-	taskStatus.value = status.toString();
-}
-
-
-// change color of status text
-function taskStatusClass(status) {
-	if (status) {
-		if (status.includes('active') || status.includes('Active') || status.includes('Starting') || status.includes('Completed')) {
-			return 'text-success';
-		} else if (status.includes('inactive') || status.includes('Disabled')) {
-			return 'text-warning';
-		} else if (status.includes('failed') || status.includes('Failed')) {
-			return 'text-danger';
-		} else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
-			return 'text-muted';
-		} else if (status == 'Disabled') {
-			return 'text-45d';
+	try {
+		let status;
+		if (timerEnabled) {
+			status = await myScheduler.getTimerStatus(task);
+		} else {
+			status = await myScheduler.getServiceStatus(task);
+		}
+		taskStatus.value = status.toString();
+	} catch (error) {
+		console.error(`Failed to get status for ${task.name}:`, error);
+		taskStatus.value = 'Error';
+		if (intervalId) {
+			clearInterval(intervalId);
 		}
 	}
 }
@@ -333,9 +340,29 @@ async function fetchLatestLog(task) {
 		}
 	} catch (error) {
 		console.error("Failed to fetch logs:", error);
+		if (intervalId) {
+			clearInterval(intervalId);
+		}
 	}
 }
 
+
+// change color of status text
+function taskStatusClass(status) {
+	if (status) {
+		if (status.includes('active') || status.includes('Active') || status.includes('Starting') || status.includes('Completed')) {
+			return 'text-success';
+		} else if (status.includes('inactive') || status.includes('Disabled')) {
+			return 'text-warning';
+		} else if (status.includes('failed') || status.includes('Failed')) {
+			return 'text-danger';
+		} else if (status.includes('No schedule found') || status.includes('Not scheduled')) {
+			return 'text-muted';
+		} else if (status == 'Disabled') {
+			return 'text-45d';
+		}
+	}
+}
 
 defineExpose({
 	updateTaskStatus,

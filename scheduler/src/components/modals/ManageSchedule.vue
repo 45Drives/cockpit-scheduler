@@ -135,12 +135,16 @@
                             </div>
                             <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
                                 <button name="clearFields" @click.stop="clearFields()"
-                                    class="btn btn-danger h-min">Clear Interval</button>
+                                    class="btn btn-danger h-min">
+                                    Clear Interval
+                                </button>
                                 <button v-if="selectedIndex !== undefined" name="updateInterval"
-                                    @click.stop="saveInterval(newInterval)" class="btn btn-secondary h-min">Update
-                                    Interval</button>
+                                    @click.stop="saveInterval(newInterval)" class="btn btn-secondary h-min">
+                                    Update Interval</button>
                                 <button v-else name="saveInterval" @click.stop="saveInterval(newInterval)"
-                                    class="btn btn-secondary h-min">Save Interval</button>
+                                    class="btn btn-secondary h-min"
+                                    :disabled="usingSnapshotRetention && localIntervals.length >= 1">
+                                    Save Interval</button>
                             </div>
                         </div>
                     </div>
@@ -158,8 +162,8 @@
                         <div @click="clearSelectedInterval()">
                             <div class="flex flex-row justify-between">
                                 <label
-                                    class="block text-sm font-medium leading-6 text-default whitespace-nowrap">Current
-                                    Intervals</label>
+                                    class="block text-sm font-medium leading-6 text-default whitespace-nowrap">
+                                    Current Intervals</label>
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
                                 <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"
@@ -169,8 +173,8 @@
                                         :class="intervalSelectedClass(idx)">
                                         <div class="flex flex-col w-full grow">
                                             <span v-if="selectedIndex !== undefined && selectedIndex == idx"
-                                                class="flex flex-row grow w-full justify-center text-center text-xs text-semibold italic text-default">EDITING
-                                                INTERVAL:</span>
+                                                class="flex flex-row grow w-full justify-center text-center text-xs text-semibold italic text-default">
+                                                EDITING INTERVAL:</span>
                                             <p>{{ myScheduler.parseIntervalIntoString(interval) }}</p>
                                         </div>
                                     </button>
@@ -208,10 +212,10 @@
                             </svg>
                             Saving Schedule...
                         </button>
-                        <button disabled v-if="!savingSchedule && !hasIntervals" id="add-schedule-btn" type="button" class="btn btn-primary h-fit w-full"
-                            @click="saveScheduleBtn()">Save Schedule</button>
-                        <button v-if="!savingSchedule && hasIntervals" id="add-schedule-btn" type="button" class="btn btn-primary h-fit w-full"
-                            @click="saveScheduleBtn()">Save Schedule</button>
+                        <button disabled v-if="!savingSchedule && !hasIntervals" id="add-schedule-btn" type="button"
+                            class="btn btn-primary h-fit w-full" @click="saveScheduleBtn()">Save Schedule</button>
+                        <button v-if="!savingSchedule && hasIntervals" id="add-schedule-btn" type="button"
+                            class="btn btn-primary h-fit w-full" @click="saveScheduleBtn()">Save Schedule</button>
                     </div>
                 </div>
             </div>
@@ -277,6 +281,49 @@ function hasScheduleChanges() {
 const hasIntervals = computed(() => {
     return localIntervals.value.length > 0 ? true : false;
 });
+
+const usingSnapshotRetention = computed(() => {
+    const taskTemplate = props.task.template.name;
+    const isSnapshotTask = taskTemplate === 'Automated Snapshot Task';
+    const isReplicationTask = taskTemplate === 'ZFS Replication Task';
+
+    // Find the snapshotRetention parameter if it exists
+    const snapshotRetention = props.task.parameters.children.find(
+        (param) => param.key === 'snapshotRetention'
+    );
+
+    if (!snapshotRetention) {
+        return false;
+    }
+
+    // Check for Automated Snapshot Task
+    if (isSnapshotTask) {
+        const hasRetentionTime = snapshotRetention.children.some(
+            (child) => child.key === 'retentionTime' && child.value > 0
+        );
+        return hasRetentionTime;
+    }
+
+    // Check for ZFS Replication Task
+    if (isReplicationTask) {
+        const sourceRetentionTime = snapshotRetention.children.find(
+            (child) => child.key === 'source'
+        )?.children.some(
+            (child) => child.key === 'retentionTime' && child.value > 0
+        );
+
+        const destinationRetentionTime = snapshotRetention.children.find(
+            (child) => child.key === 'destination'
+        )?.children.some(
+            (child) => child.key === 'retentionTime' && child.value > 0
+        );
+
+        return sourceRetentionTime || destinationRetentionTime;
+    }
+
+    return false;
+});
+
 
 const cancelingAddTask = ref(false);
 const showCloseConfirmation = ref(false);
@@ -492,6 +539,10 @@ function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
 }
 
 function saveInterval(interval) {
+    if (usingSnapshotRetention.value) {
+        pushNotification(new Notification('Interval Limit Reached', 'Tasks using Snapshot Retention Policy can currently only have one scheduled interval.\nCreate multiple tasks to handle different retention policies.', 'warning', 8000));
+    }
+
     if (validateFields(interval)) {
         console.log('selectedIndex in saveInterval:', selectedIndex.value);
         if (selectedIndex.value !== undefined) {

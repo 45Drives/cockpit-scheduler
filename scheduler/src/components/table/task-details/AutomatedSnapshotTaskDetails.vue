@@ -10,7 +10,7 @@
                 Filesystem: <b>
                     <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
                     {{ findValue(taskInstance.parameters, 'filesystem',
-                        'dataset') }}
+                    'dataset') }}
                 </b>
             </p>
             <p v-if="findValue(taskInstance.parameters, 'customName_flag', 'customName_flag')" class="my-2 truncate"
@@ -18,7 +18,7 @@
                 Custom Snapshot Name: <b>
                     <!-- {{ findValue(taskInstance.parameters, 'sourceDataset', 'pool') }}/ -->
                     {{ findValue(taskInstance.parameters, 'customName',
-                        'customName') }}
+                    'customName') }}
                 </b>
             </p>
         </div>
@@ -27,22 +27,19 @@
                 :title="`Recursive Snapshots: ${boolToYesNo(findValue(taskInstance.parameters, 'recursive_flag', 'recursive_flag'))}`">
                 Recursive Snapshots: <b>{{
                     boolToYesNo(findValue(taskInstance.parameters,
-                        'recursive_flag', 'recursive_flag')) }}</b>
+                    'recursive_flag', 'recursive_flag')) }}</b>
             </p>
-            <p v-if="findValue(taskInstance.parameters, 'snapRetention',
-                'snapRetention') > 0" class="my-2 truncate"
-                :title="`Snapshots to Keep: ${findValue(taskInstance.parameters, 'snapRetention', 'snapRetention')}`">
-                Snapshots to Keep: <b>
-                    {{ findValue(taskInstance.parameters, 'snapRetention',
-                        'snapRetention') }}
-                </b>
+            <p v-if="findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime') > 0" class="my-2 truncate"
+                :title="`Keep Snapshots For: ${findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime')} ${findValue(taskInstance.parameters, 'snapshotRetention', 'retentionUnit')}`">
+                Keep Snapshots For: <b>{{ findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime') }} {{
+                    findValue(taskInstance.parameters, 'snapshotRetention', 'retentionUnit') }}</b>
             </p>
-            <p v-else class="my-2 truncate" :title="`No Snapshot Limit (Keep All)`">
-                No Snapshot Limit Set (Keep All)
+            <p v-else class="my-2 truncate" :title="`No Snapshot Retention Policy Configured (Keep All)`">
+                <b>No Snapshot Retention Policy Configured</b>
             </p>
         </div>
         <div class="col-span-2 row-span-2">
-            <p class="my-2 font-bold">Current Schedules:</p>
+            <p class="mt-2 font-bold">Current Schedules:</p>
             <div v-if="taskInstance.schedule.intervals.length > 0"
                 v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
                 class="flex flex-row col-span-2 divide divide-y divide-default p-1"

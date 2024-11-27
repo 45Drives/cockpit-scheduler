@@ -66,25 +66,25 @@
                     </select>
                 </div>
             </div>
-            <div name="source-snapshot-retention">
-                <div name="use-source-snapshot-retention-toggle" class="flex flex-row items-center">
-                    <div class="flex flex-row items-center gap-2 mt-2 whitespace-nowrap">
-                        <label class="block text-sm leading-6 text-default">Limit Snapshots? (Source)</label>
-                        <input type="checkbox" v-model="useSourceSnapshotRetention" class=" h-4 w-4 rounded" />
-                    </div>
-                    <InfoTile class="ml-2 mt-2"
-                        title="Value of 0 will keep ALL snapshots. **WARNING: If multiple tasks use same dataset, these limits will CONFLICT. Proceed accordingly.**" />
+            <div name="source-snapshot-retention" class="">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
+                        Source Retention Policy
+                        <InfoTile class="ml-1"
+                            :title="`How long to keep source snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
+                    </label>
                 </div>
-
-                <div class="flex flex-row gap-2 mt-2 w-full items-center justify-between">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">Snapshots
-                        to Keep</label>
-                    <input type="number" min="0" v-model="snapsToKeepSrc" v-if="useSourceSnapshotRetention"
+                <div class="flex flex-row gap-2 w-full items-center justify-between">
+                    <input type="number" min="0" v-model="srcRetentionTime"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="" />
-                    <input type="number" min="0" v-model="snapsToKeepSrc" v-else disabled
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
+                    <select v-model="srcRetentionUnit"
+                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select an Interval</option>
+                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
+                            {{ option }}
+                        </option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -152,25 +152,25 @@
                     </select>
                 </div>
             </div>
-            <div name="destination-snapshot-retention">
-                <div name="use-snapshot-retention-toggle" class="flex flex-row items-center">
-                    <div class="flex flex-row items-center gap-2 mt-2 whitespace-nowrap">
-                        <label class="block text-sm leading-6 text-default">Limit Snapshots? (Target)</label>
-                        <input type="checkbox" v-model="useDestinationSnapshotRetention" class=" h-4 w-4 rounded" />
-                    </div>
-                    <InfoTile class="ml-2 mt-2"
-                        title="Value of 0 will keep ALL snapshots. **WARNING: If multiple tasks use same dataset, these limits will CONFLICT. Proceed accordingly.**" />
+            <div name="destination-snapshot-retention" class="">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
+                        Destination Retention Policy
+                        <InfoTile class="ml-1"
+                            :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
+                    </label>
                 </div>
-
-                <div class="flex flex-row gap-2 mt-2 w-full items-center justify-between">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">Snapshots
-                        to Keep</label>
-                    <input type="number" min="0" v-model="snapsToKeepDest" v-if="useDestinationSnapshotRetention"
+                <div class="flex flex-row gap-2 w-full items-center justify-between">
+                    <input type="number" min="0" v-model="destRetentionTime"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="" />
-                    <input type="number" min="0" v-model="snapsToKeepDest" v-else disabled
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
+                    <select v-model="destRetentionUnit"
+                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select an Interval</option>
+                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
+                            {{ option }}
+                        </option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -259,10 +259,10 @@
                     <input v-if="useCustomName" type="text" v-model="customName" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" placeholder="Name is CustomName + Timestamp" />
+                    ]" placeholder="Name is TaskName + CustomName + Timestamp" />
                     <input v-else disabled type="text" v-model="customName"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="Name is Timestamp" />
+                        placeholder="Name is TaskName + Timestamp" />
                 </div>
             </div>
             <div class="grid grid-cols-2 mt-2">
@@ -304,8 +304,8 @@ import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH } from '../../../composables/utility';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
+import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -351,10 +351,13 @@ const mbufferUnit = ref('G');
 const useCustomName = ref(false);
 const customName = ref('');
 const customNameErrorTag = ref(false);
-const snapsToKeepSrc = ref(0);
-const useSourceSnapshotRetention = ref(false);
-const snapsToKeepDest = ref(0);
-const useDestinationSnapshotRetention = ref(false);
+
+const srcRetentionTime = ref(0);
+const srcRetentionUnit = ref('');
+const destRetentionTime = ref(0);
+const destRetentionUnit = ref('');
+const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
+
 const useCustomTarget = ref(false);
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
@@ -422,11 +425,22 @@ async function initializeData() {
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
         customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
 
-        const snapshotRetentionParams = params.find(p => p.key === 'snapRetention')!.children;
-        snapsToKeepSrc.value = snapshotRetentionParams.find(p => p.key === 'source')!.value;
-        useSourceSnapshotRetention.value = snapsToKeepSrc.value > 0 ? true : false;
-        snapsToKeepDest.value = snapshotRetentionParams.find(p => p.key === 'destination')!.value;
-        useDestinationSnapshotRetention.value = snapsToKeepDest.value > 0 ? true : false;
+        const snapshotRetentionParams = params.find(p => p.key === 'snapshotRetention')!.children;
+
+        // Check for source retention
+        const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
+        if (sourceRetention) {
+            srcRetentionTime.value = sourceRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
+            srcRetentionUnit.value = sourceRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
+        }
+
+        // Check for destination retention
+        const destinationRetention = snapshotRetentionParams.find(c => c.key === 'destination');
+        if (destinationRetention) {
+            destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
+            destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
+
+        }
 
         initialParameters.value = JSON.parse(JSON.stringify({
             sourcePool: sourcePool.value,
@@ -445,8 +459,10 @@ async function initializeData() {
             mbufferUnit: mbufferUnit.value,
             useCustomName: useCustomName.value,
             customName: customName.value,
-            snapsToKeepSrc: snapsToKeepSrc.value,
-            snapsToKeepDest: snapsToKeepDest.value
+            srcRetentionTime: srcRetentionTime.value,
+            srcRetentionUnit: srcRetentionUnit.value,
+            destRetentionTime: destRetentionTime.value,
+            destRetentionUnit: destRetentionUnit.value
         }));
 
         loading.value = false;
@@ -475,8 +491,10 @@ function hasChanges() {
         mbufferUnit: mbufferUnit.value,
         useCustomName: useCustomName.value,
         customName: customName.value,
-        snapsToKeepSrc: snapsToKeepSrc.value,
-        snapsToKeepDest: snapsToKeepDest.value
+        srcRetentionTime: srcRetentionTime.value,
+        srcRetentionUnit: srcRetentionUnit.value,
+        destRetentionTime: destRetentionTime.value,
+        destRetentionUnit: destRetentionUnit.value
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -691,6 +709,31 @@ function validateDestination() {
     }
 }
 
+async function checkDestDatasetContents() {
+    try {
+        const hasSnapshots = await doSnapshotsExist(destDataset.value);
+        const isEmpty = await isDatasetEmpty(destDataset.value);
+
+        if (hasSnapshots) {
+            errorList.value.push("Destination dataset has snapshots already, please create a new one.");
+            useCustomTarget.value = true;
+            makeNewDestDataset.value = true;
+            destDatasetErrorTag.value = true;
+        } else {
+            if (!isEmpty) {
+                errorList.value.push("Destination dataset is not empty, please create a new one.");
+                useCustomTarget.value = true;
+                makeNewDestDataset.value = true;
+                destDatasetErrorTag.value = true;
+            }
+        }
+
+    } catch (error) {
+        console.error("Error while checking dataset contents:", error);
+        errorList.value.push("An unexpected error occurred while validating dataset contents.");
+    }
+}
+
 
 function isValidPoolName(poolName) {
     if (poolName === '') {
@@ -753,11 +796,12 @@ function clearErrorTags() {
     errorList.value = [];
 }
 
-function validateParams() {
+async function validateParams() {
     // clearErrorTags();
     validateSource();
     validateHost();
     validateDestination();
+    await checkDestDatasetContents();
     validateCustomName();
 
     if (errorList.value.length == 0) {
@@ -778,10 +822,12 @@ function setParams() {
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
         )
-        .addChild(new ParameterNode('Snapshot Retention', 'snapRetention')
-            .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
-            .addChild(new IntParameter('Destination', 'destination', snapsToKeepDest.value)
-            )
+        .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
+            // .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
+            // .addChild(new IntParameter('Destination', 'destination', snapsToKeepDest.value)
+            // )
+            .addChild(new SnapshotRetentionParameter('Source','source',srcRetentionTime.value,srcRetentionUnit.value))
+            .addChild(new SnapshotRetentionParameter('Destination', 'destination', destRetentionTime.value, destRetentionUnit.value))
         );
 
     parameters.value = newParams;

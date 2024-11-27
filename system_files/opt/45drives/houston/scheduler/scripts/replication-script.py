@@ -2,6 +2,7 @@ import subprocess
 import sys
 import datetime
 import os
+import re
 
 class Snapshot:
 	def __init__(self, name, guid, creation):
@@ -9,56 +10,89 @@ class Snapshot:
 		self.guid = guid
 		self.creation = creation
 	 
-def create_snapshot(filesystem, is_recursive, custom_name=None):
+def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
 	command = [ 'zfs', 'snapshot' ]
 	if is_recursive:
 		command.append('-r')
 	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
- 
+  
 	if custom_name:
-		new_snap = (f'{filesystem}@{custom_name}-{timestamp}')
+		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
 	else:
-		
-		new_snap = (f'{filesystem}@{timestamp}')
+		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
   
 	command.append(new_snap)
 	
 	subprocess.run(command)
 	print(f"new snapshot created: {new_snap}")
+
 	return new_snap
 
-def prune_snapshots(filesystem, max_retain_count, remoteUser="", remoteHost="", remotePort=""):
-	snapshots = []
- 
-	if remoteHost:
-		snapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, filesystem)
+
+def prune_snapshots_by_retention(
+	filesystem, task_name, retention_time, retention_unit, 
+	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22
+):
+	# Determine whether to fetch snapshots locally or remotely
+	if remote_host:
+		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
 	else:
 		snapshots = get_local_snapshots(filesystem)
 
-	if max_retain_count is not 0:
-		if len(snapshots) is not 0:
-			snapshots.sort(key=lambda x: x.creation)
+	now = datetime.datetime.now()
 
-			if len(snapshots) <= int(max_retain_count):
-				print(f"snapshot retention policy delayed on {filesystem} - currently {len(snapshots)} snapshots out of {max_retain_count} allowed")
-				return
-			else:
-				snapshots_to_delete = snapshots[:-int(max_retain_count)]  # Older snapshots beyond the retain limit
-				for snapshot in snapshots_to_delete:
-					delete_command = ['zfs', 'destroy', snapshot.name]
-					try:
-						subprocess.run(delete_command, check=True)
-						# print(f"Deleted snapshot: {snapshot.name}")
-					except subprocess.CalledProcessError as e:
-						print(f"ERROR: Failed to delete snapshot {snapshot.name}: {e}")
-						sys.exit(1)	
-				print(f"snapshot retention policy executed on {filesystem} - keeping {max_retain_count} snapshots (deleted {len(snapshots_to_delete)})")
-		else:
-			# print("No snapshots to prune.")
-			return
+	# Define unit multipliers for retention calculation
+	unit_multipliers = {
+	  	"minutes": 60 * 1000,
+		"hours": 60 * 60 * 1000,
+		"days": 24 * 60 * 60 * 1000,
+		"weeks": 7 * 24 * 60 * 60 * 1000,
+		"months": 30 * 24 * 60 * 60 * 1000,
+		"years": 365 * 24 * 60 * 60 * 1000
+	}
+
+	multiplier = unit_multipliers.get(retention_unit, 0)
+ 
+	retention_milliseconds = int(retention_time) * multiplier
+	if retention_milliseconds == 0:
+		print("Retention period is not valid. No pruning will be performed.")
 	else:
-		# print("No snapshots to prune.")
-		return
+		snapshots_to_delete = []
+		for snapshot in snapshots:
+			print(f"Excluded snap: {excluded_snapshot_name}")
+			# Exclude current snapshot and focus on snapshots belonging to task
+			if task_name in snapshot.name and snapshot.name != excluded_snapshot_name:
+				# print(f"Creation: {snapshot.creation}")
+				creation_time = snapshot.creation
+				age_milliseconds = (now - creation_time).total_seconds() * 1000
+				if age_milliseconds > retention_milliseconds:
+					snapshots_to_delete.append(snapshot)
+
+		for snapshot in snapshots_to_delete:
+			# Build the delete command
+			if remote_host:
+				delete_command = [
+					"ssh",
+					f"{remote_user}@{remote_host}",
+					"-p", str(remote_port),
+					"zfs", "destroy", snapshot.name
+				]
+			else:
+				delete_command = ['zfs', 'destroy', snapshot.name]
+
+			try:
+				subprocess.run(delete_command, check=True)
+				print(f"Deleted snapshot: {snapshot.name}")
+			except subprocess.CalledProcessError as e:
+				print(f"Failed to delete snapshot {snapshot.name}: {e}")
+				sys.exit(1)
+
+		if snapshots_to_delete:
+			print(f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_time} {retention_unit}).")
+		else:
+			print("No snapshots to prune.")
+
+
 
 def get_local_snapshots(filesystem):
 	command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
@@ -66,11 +100,12 @@ def get_local_snapshots(filesystem):
 		output = subprocess.check_output(command)
 		snapshots = []
 		for line in output.decode().splitlines():
-			parts = line.split()
+			# parts = line.split()
+			parts = line.split(maxsplit=2)  # Split into exactly 3 parts: name, guid, and creation
 			if len(parts) >= 3:
 				snapshot_name = parts[0]
 				snapshot_guid = parts[1]
-				snapshot_creation = parts[2]
+				snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
 				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
 				snapshots.append(snapshot)
 		return snapshots
@@ -135,7 +170,10 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 		send_cmd.append(sendName)
 
 		# print(f"SEND_CMD: {send_cmd}")
-		print(f"sending {sendName} to {recvName}")
+		if sendName2 != "":
+			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
+		else:
+			print(f"sending {sendName} to {recvName}")
 
 		process_send = subprocess.Popen(
 			send_cmd,
@@ -230,7 +268,6 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 		print(f"ERROR: send error: {e}")
 		sys.exit(1)
 
-
 def main():
 	try:	
 		sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
@@ -245,8 +282,11 @@ def main():
 		remotePort = os.environ.get('zfsRepConfig_destDataset_port', 22)
 		mBufferSize = os.environ.get('zfsRepConfig_sendOptions_mbufferSize', 1)
 		mBufferUnit = os.environ.get('zfsRepConfig_sendOptions_mbufferUnit', 'G')
-		snapsToKeepSrc = os.environ.get('zfsRepConfig_snapRetention_source', '')
-		snapsToKeepDest = os.environ.get('zfsRepConfig_snapRetention_destination', '')
+		sourceRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionTime', 0)
+		sourceRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionUnit', '')
+		destinationRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionTime', 0)
+		destinationRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionUnit', '')
+		taskName = os.environ.get('taskName', '')
 
 		forceOverwrite = False
 		
@@ -282,8 +322,10 @@ def main():
 
 			if not common_snapshots:
 				# raise Exception("No common snapshots found between source and destination. Operation aborted.")
-				raise Exception(f"ERROR: Snapshots on source + destination but none in common. Aborting send.")
+				# raise Exception(f"ERROR: Snapshots on source + destination but none in common. Aborting send.")
+				print("No common snapshots found")
 			else:
+				# if common_snapshots:
 				# Find the most recent common snapshot from destinationSnapshots
 				common_snapshots.sort(key=lambda x: x.creation, reverse=True)  # Ensure they are sorted by creation time
 				mostRecentCommonSnap = common_snapshots[0]
@@ -292,12 +334,14 @@ def main():
 				# print("Setting incrementalSnap to:", incrementalSnapName)
 
 
-		newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, customName)
+		newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, taskName, customName)
 		# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nremoteHost:{remoteHost}\nremotePort:{remotePort}\nremoteUser:{remoteUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
 		send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, remoteHost, remotePort, remoteUser, mBufferSize, mBufferUnit, forceOverwrite)
-		prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
-		prune_snapshots(receivingFilesystem, snapsToKeepDest, remoteUser, remoteHost, remotePort)
-  
+		# prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
+		# prune_snapshots(receivingFilesystem, snapsToKeepDest, remoteUser, remoteHost, remotePort)
+		prune_snapshots_by_retention(sourceFilesystem, taskName, sourceRetentionTime, sourceRetentionUnit, newSnap)
+		prune_snapshots_by_retention(receivingFilesystem, taskName, destinationRetentionTime, destinationRetentionUnit, newSnap, remoteUser, remoteHost, remotePort)
+
 	except Exception as e:
 		print(f"Exception: {e}")
 		sys.exit(1)
