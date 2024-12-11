@@ -21,7 +21,6 @@ def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
 		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
   
 	command.append(new_snap)
-	
 	subprocess.run(command)
 	print(f"new snapshot created: {new_snap}")
 
@@ -95,7 +94,7 @@ def prune_snapshots_by_retention(filesystem, task_name, retention_time, retentio
 
 def main():
 	filesystem = os.environ.get('autoSnapConfig_filesystem_dataset', '')
-	isRecursiveSnap = os.environ.get('autoSnapConfig_recursive_flag', False)
+	isRecursiveSnap = os.environ.get('autoSnapConfig_recursive_flag', 'false').strip().lower() == 'true'
 	customName = os.environ.get('autoSnapConfig_customName', '')
 	retentionTime = os.environ.get('autoSnapConfig_snapshotRetention_retentionTime', 0)
 	retentionUnit = os.environ.get('autoSnapConfig_snapshotRetention_retentionUnit', '')
