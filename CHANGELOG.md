@@ -1,3 +1,1 @@
-## task scheduler 1.2.3-1
-
-* Introduces time-based snapshot retention policies
+## task scheduler 1.2.4-2

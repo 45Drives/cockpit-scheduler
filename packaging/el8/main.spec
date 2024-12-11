@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Dec 11 2024 Rachit Hans <rhans@45drives.com> 1.2.4-1
+- Fixed auto-snapshot recursive bug
 * Wed Nov 27 2024 Jordan Keough <jkeough@45drives.com> 1.2.3-1
 - Introduces time-based snapshot retention policies
 * Mon Nov 04 2024 Jordan Keough <jkeough@45drives.com> 1.2.2-1
