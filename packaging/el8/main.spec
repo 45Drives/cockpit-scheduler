@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Dec 12 2024 Jordan Keough <jkeough@45drives.com> 1.2.5-1
+- Fixes issue with task searching/sorting
 * Wed Dec 11 2024 Rachit Hans <rhans@45drives.com> 1.2.4-1
 - Fixed auto-snapshot recursive bug
 * Wed Nov 27 2024 Jordan Keough <jkeough@45drives.com> 1.2.3-1
