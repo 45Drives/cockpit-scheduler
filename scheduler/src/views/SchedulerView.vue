@@ -7,7 +7,7 @@
             </div>
             <div class="flex flex-row justify-between">
                 <div class="px-3">
-                    <label class="block text-medium font-medium leading-6 text-default">Search Tasks</label>
+                    <label class="block text-medium font-medium leading-6 text-default">Filter By Name</label>
                     <input type="text" @keydown.enter="" v-model="searchItem"
                         class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
                 </div>
@@ -69,7 +69,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
+                                    <div v-for="taskInstance in filteredAndSortedTasks" :key="taskInstance.name">
                                         <TaskInstanceTableRow :task="taskInstance"
                                             :isExpanded="expandedTaskName === taskInstance.name"
                                             @runTask="(task) => runTaskBtn(task)"
@@ -79,7 +79,6 @@
                                             @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
                                             ref="taskTableRow" :attr="taskInstance" />
                                     </div>
-
                                 </tbody>
                             </table>
                         </div>
@@ -133,7 +132,6 @@ import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
-const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
@@ -205,6 +203,7 @@ async function showRunNowDialog() {
     showRunNowPrompt.value = true;
 }
 
+
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
@@ -218,7 +217,7 @@ const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     const runNow = true;
     // Push a notification that the task has started
-    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
     await updateStatusAndTime(selectedTask.value!, taskIndex);
 
@@ -232,13 +231,9 @@ const runNowYes: ConfirmationCallback = async () => {
         pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
     });
 
-    // const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-
     updateShowRunNowPrompt(false); // Close the modal
     running.value = false;
 };
-
 
 
 /* Remove Task */
@@ -320,11 +315,13 @@ async function viewLogsBtn(task) {
     showLogView.value = true;
 }
 
+
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
+
 
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
@@ -350,20 +347,15 @@ const filteredAndSortedTasks = computed(() => {
                 const value = task[key];
                 if (value && value.toString().toLowerCase().includes(searchQuery)) {
                     return true;
-                } // const result = JSON.parse(output.stdout);
-                // return result;
+                }
             }
             return false;
         });
     }
 
-    if (filterItem.value && filterItem.value !== 'no_filter') {
-        // filter based on status (need to figure out and program what status is first)
-        // filteredTasks = filteredTasks.filter(task => formatStatus(task.active) === filterItem.value);
-    }
-
     return sortTasks(filteredTasks);
 });
+
 
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     if (!sort.value.field) return tasksToSort;
@@ -387,6 +379,7 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     });
 };
 
+
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -396,6 +389,7 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
+
 
 function sortIconFlip() {
     if (sort.value.order == 1) {
