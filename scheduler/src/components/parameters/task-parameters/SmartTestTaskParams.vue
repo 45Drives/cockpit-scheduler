@@ -188,7 +188,7 @@ function clearErrorTags() {
     errorList.value = [];
 }
 
-function validateParams() {
+async function validateParams() {
     // clearErrorTags();
     validateDisks();
     validateTestType();

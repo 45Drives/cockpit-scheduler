@@ -573,7 +573,7 @@ function clearErrorTags() {
     errorList.value = [];
 }
 
-function validateParams() {
+async function validateParams() {
     // clearErrorTags();
     validateSourcePath();
     validateHost();

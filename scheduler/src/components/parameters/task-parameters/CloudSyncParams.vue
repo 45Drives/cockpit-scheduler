@@ -62,7 +62,7 @@
 
                 <!-- <button v-if="selectedRemote" @click.stop="authenticateRemoteBtn(selectedRemote)"
                         @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
-                        class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-default"
+                        class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-white"
                         :style="getButtonStyles(isHovered, undefined, selectedRemote)">
                         <span class="flex-grow text-center">
                             Authenticate {{ selectedRemote.name }}
@@ -75,7 +75,7 @@
                 <!--     
                     <button v-if="selectedRemote && selectedRemote.provider.providerParams.oAuthSupported!" @click.stop="refreshRemoteTokenBtn(selectedRemote)"
                         @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
-                        class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-default"
+                        class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-white"
                         :style="getButtonStyles(isHovered, undefined, selectedRemote)">
                         <span class="flex-grow text-center">
                             Refresh {{ selectedRemote.name }} Token
@@ -816,32 +816,112 @@ function hasChanges() {
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
+// // Define a flag to control watcher activation
+// const enableTargetPathWatcher = ref(true);
+
+// watch(selectedRemote, (newVal, oldVal) => {
+//     console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
+//     if (enableTargetPathWatcher.value && newVal && selectedRemote.value) {
+//         targetPath.value = `${selectedRemote.value!.name}:`;
+//     }
+// });
+
+// watch([update, ignoreExisting, multiThreadOptions], () => handleMutuallyExclusiveOptions());
+
+// function handleMutuallyExclusiveOptions() {
+//     if (update.value && ignoreExisting.value) {
+//         ignoreExisting.value = false;
+//     }
+//     if (multiThreadOptions.value) {
+//         multiThreadChunkSize.value = multiThreadChunkSize.value || 64;
+//         multiThreadCutoff.value = multiThreadCutoff.value || 256;
+//         multiThreadStreams.value = multiThreadStreams.value || 4;
+//         multiThreadWriteBufferSize.value = multiThreadWriteBufferSize.value || 128;
+//     } else {
+//         multiThreadChunkSize.value = undefined;
+//         multiThreadCutoff.value = undefined;
+//         multiThreadStreams.value = undefined;
+//         multiThreadWriteBufferSize.value = undefined;
+//     }
+// }
+
 // Define a flag to control watcher activation
 const enableTargetPathWatcher = ref(true);
 
+// watch(selectedRemote, (newVal, oldVal) => {
+//     console.log("Selected remote changed:", newVal); // Logs whenever selectedRemote changes
+//     if (enableTargetPathWatcher.value && newVal && selectedRemote.value) {
+//         targetPath.value = `${selectedRemote.value!.name}:`;
+//     }
+// });
 watch(selectedRemote, (newVal, oldVal) => {
-    console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
-    if (enableTargetPathWatcher.value && newVal && selectedRemote.value) {
-        targetPath.value = `${selectedRemote.value!.name}:`;
+    console.log("Selected remote changed:", newVal); // Logs whenever selectedRemote changes
+
+    // Only update targetPath if the watcher is enabled
+    if (enableTargetPathWatcher.value) {
+        if (newVal && selectedRemote.value) {
+            targetPath.value = `${selectedRemote.value!.name}:`;
+        } else {
+            console.log("Target path update skipped because enableTargetPathWatcher is false.");
+        }
     }
 });
-
-watch([update, ignoreExisting, multiThreadOptions], () => handleMutuallyExclusiveOptions());
+watch(
+    [
+        update,
+        ignoreExisting,
+        multiThreadOptions,
+        checksum,
+        ignoreSize,
+        noTraverse,
+        includeFromPath,
+        excludeFromPath,
+    ],
+    () => handleMutuallyExclusiveOptions()
+);
 
 function handleMutuallyExclusiveOptions() {
+    // Case: Update vs Ignore Existing
     if (update.value && ignoreExisting.value) {
-        ignoreExisting.value = false;
+        ignoreExisting.value = false; // Prefer update by default
     }
+
+    // Case: Checksum vs Ignore Size
+    if (checksum.value && ignoreSize.value) {
+        ignoreSize.value = false; // Prefer checksum for accuracy
+    }
+
+    // Case: No Traverse vs Include/Exclude Files from Path
+    if (noTraverse.value && (includeFromPath.value || excludeFromPath.value)) {
+        includeFromPath.value = '';
+        excludeFromPath.value = ''; // Clear include/exclude paths if noTraverse is enabled
+    }
+
+    // Case: Multi-threading settings
     if (multiThreadOptions.value) {
         multiThreadChunkSize.value = multiThreadChunkSize.value || 64;
         multiThreadCutoff.value = multiThreadCutoff.value || 256;
         multiThreadStreams.value = multiThreadStreams.value || 4;
-        multiThreadWriteBufferSize.value = multiThreadWriteBufferSize.value || 128;
+        multiThreadWriteBufferSize.value =
+            multiThreadWriteBufferSize.value || 128;
     } else {
         multiThreadChunkSize.value = undefined;
         multiThreadCutoff.value = undefined;
         multiThreadStreams.value = undefined;
         multiThreadWriteBufferSize.value = undefined;
+    }
+
+    // Case: Max Transfer Size vs Cutoff Mode
+    if (maxTransferSize.value > 0 && cutoffMode.value) {
+        cutoffMode.value = null; // Prioritize max transfer size if both are set
+    }
+
+    // Case: Dry Run vs Transfer Options
+    if (dryRun.value) {
+        update.value = false;
+        ignoreExisting.value = false;
+        checksum.value = false;
+        // Additional options affecting transfers can be disabled here
     }
 }
 
@@ -890,43 +970,36 @@ async function loadManageRemotesComponent() {
 }
 
 
-// async function validateLocalPath() {
-//     if (!localPath.value) {
-//         errorList.value.push("Local path is required.");
-//         errorTags.value.localPath = true;
-//         return false;
-//     }
-//     if (await checkLocalPathExists(localPath.value) && validatePath(localPath.value)) {
-//         errorTags.value.localPath = false;
-//         console.log("Valid source path.");
-//         return true;
-//     } else {
-//         errorList.value.push("Source path is invalid.");
-//         errorTags.value.localPath = true;
-//         return false;
-//     }
-// }
-
-
 async function validateLocalPath() {
+    // Clear the local path error before validation
+    errorTags.value.localPath = false;
+
     if (!localPath.value) {
-        console.log("Local path is required.");
+        errorList.value.push("Local path is required.");
         errorTags.value.localPath = true;
         return false;
     }
+
+    // Check if the path exists asynchronously
     const pathExists = await checkLocalPathExists(localPath.value);
     const validPath = validatePath(localPath.value);
     console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
 
-    if (pathExists && validPath) {
-        errorTags.value.localPath = false;
-        console.log("Valid source path.");
-        return true;
-    } else {
-        console.log("Source path is invalid.");
+    if (!pathExists) {
+        errorList.value.push(`Path does not exist: ${localPath.value}`);
         errorTags.value.localPath = true;
         return false;
     }
+
+    if (!validPath) {
+        errorList.value.push("Source path format is invalid.");
+        errorTags.value.localPath = true;
+        return false;
+    }
+
+    // If everything is valid
+    console.log("Valid source path.");
+    return true;
 }
 
 function validateDestinationPath() {
@@ -936,7 +1009,7 @@ function validateDestinationPath() {
         return false;
     }
 
-    if (validatePath(targetPath.value)) {
+    if (validatePath(targetPath.value, true)) {
         errorTags.value.targetPath = false;
         // if (!targetPath.value.endsWith('/')) {
         //     targetPath.value += '/';
@@ -950,15 +1023,22 @@ function validateDestinationPath() {
     }
 }
 
-function validatePath(path) {
-    // Allow paths without leading /, and allow alphanumeric paths with optional / at the end
-    const pathRegex = /^([^/ ]+\/?)+$/;
-    // const pathRegex = /^\/?[\w\s\/.-]+$/;
-    return pathRegex.test(path);
+function validatePath(path, isRemote?) {
+    //no spaces allowed
+    // const pathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\-.]+(?:\\|\/)?)*$/;
+    
+    if (isRemote) {
+        const rcloneRegex = /^[\w\-.]+:[\\/]*(?:[\w\s\-.]+[\\/])*[\w\s\-.]*$/;
+        return rcloneRegex.test(path);
+    } else {
+        // Allow flexible, valid paths with spaces
+        const localPathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-.]+(?:\\|\/)?)*$/;
+        return localPathRegex.test(path);
+    }
 }
 
 
-function validateAllValues() {
+async function validateAllValues() {
     if (!selectedRemote.value) {
         errorList.value.push("Remote is required.");
         errorTags.value.selectedRemote = true;
@@ -969,8 +1049,15 @@ function validateAllValues() {
         errorTags.value.transferType = true;
     }
 
-    validateLocalPath();
-    validateDestinationPath();
+    // if (!await validateLocalPath()) {
+    //     errorList.value.push("Source path is invalid.");
+    //     errorTags.value.localPath = true;
+    // }
+
+    // if (!await validateDestinationPath()) {
+    //     errorList.value.push("Target path is invalid.");
+    //     errorTags.value.targetPath = true;
+    // }
 
     if (numberOfTransfers.value && typeof numberOfTransfers.value !== 'number' || numberOfTransfers.value < 0) {
         errorList.value.push("Number of Transfers must be a valid number.");
@@ -1054,16 +1141,15 @@ function clearErrorTags() {
     errorList.value = [];
 }
 
-function validateParams() {
-    clearErrorTags();
-    validateAllValues();
+async function validateParams() {
+    // clearErrorTags();
+    await validateAllValues();
+    await validateLocalPath();
+    validateDestinationPath();
 
     if (errorList.value.length == 0 && Object.values(errorTags.value).every(tag => tag === false)) {
         setParams();
     } 
-    // else {
-    //     pushNotification(new Notification('Error', `There are errors:\n${errorList.value.join("\n")}`, 'error', 8000));
-    // }
 }
 
 function setParams() {

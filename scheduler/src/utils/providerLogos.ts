@@ -5,10 +5,15 @@ interface ProviderLogo {
 }
 
 export const providerLogos: { [key: string]: ProviderLogo } = {
+    // "s3-AWS": {
+    //     logo: "./img/s3-amazon.svg",
+    //     mainColor: "#E05243",
+    //     hoverColor: "#9E271A"
+    // },
     "s3-AWS": {
         logo: "./img/s3-amazon.svg",
-        mainColor: "#E05243",
-        hoverColor: "#9E271A"
+        mainColor: "#252F3E",
+        hoverColor: "#13152D"
     },
     "s3-Wasabi": {
         logo: "./img/s3-wasabi.svg",

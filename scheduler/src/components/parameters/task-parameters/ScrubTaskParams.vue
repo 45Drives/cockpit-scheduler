@@ -161,7 +161,7 @@ function clearErrorTags() {
     errorList.value = [];
 }
 
-function validateParams() {
+async function validateParams() {
     validatescrub();
 
     if (errorList.value.length == 0) {

@@ -6,8 +6,12 @@
                 Task Type: <b>Rsync Task</b>
             </p>
             <p class="my-2 truncate"
-                :title="`Direction: ${upperCaseWord(findValue(taskInstance.parameters, 'direction', 'direction'))}`">
-                Direction: <b>{{ upperCaseWord(findValue(taskInstance.parameters, 'direction', 'direction')) }}</b>
+                :title="`Send Type: ${findValue(taskInstance.parameters, 'target_info', 'host') !== '' ? 'Remote' : 'Local'}`">
+                Transfer Type:
+                <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">Remote ({{
+                    upperCaseWord(findValue(taskInstance.parameters, 'direction', 'direction')) }})</b>
+                <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') === ''">Local ({{
+                    upperCaseWord(findValue(taskInstance.parameters, 'direction', 'direction')) }})</b>
             </p>
             <p class="my-2 truncate"
                 :title="`Local Path: ${findValue(taskInstance.parameters, 'local_path', 'local_path')}`">
@@ -17,18 +21,13 @@
                 :title="`Target Path: ${findValue(taskInstance.parameters, 'target_info', 'path')}`">
                 Target Path: <b>{{ findValue(taskInstance.parameters, 'target_info', 'path') }}</b>
             </p>
-            <p class="my-2 truncate"
-                :title="`Send Type: ${findValue(taskInstance.parameters, 'target_info', 'host') !== '' ? 'Remote' : 'Local'}`">
-                Transfer Type:
-                <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">Remote</b>
-                <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') === ''">Local</b>
-            </p>
-            <p class="my-2"
-                v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">
-                <span class="truncate" :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'target_info', 'host')}`">
+            <p class="my-2" v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">
+                <span class="truncate"
+                    :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'target_info', 'host')}`">
                     Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'target_info', 'host') }}</b>
                 </span>
-                <span class="truncate" :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'target_info', 'port')}`">
+                <span class="truncate"
+                    :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'target_info', 'port')}`">
                     Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'target_info', 'port') }}</b>
                 </span>
             </p>

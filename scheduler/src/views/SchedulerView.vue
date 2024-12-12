@@ -7,7 +7,7 @@
             </div>
             <div class="flex flex-row justify-between">
                 <div class="px-3">
-                    <label class="block text-medium font-medium leading-6 text-default">Search Tasks</label>
+                    <label class="block text-medium font-medium leading-6 text-default">Filter By Name</label>
                     <input type="text" @keydown.enter="" v-model="searchItem"
                         class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
                 </div>
@@ -69,14 +69,13 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div  v-for="taskInstance, index in sortedTasks" :key="index">
+                                    <div v-for="taskInstance in filteredAndSortedTasks" :key="taskInstance.name">
                                         <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
                                        @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
                                        @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
                                         ref="taskTableRow" :attr="taskInstance"
                                         />
                                     </div>
-
                                 </tbody>
                             </table>
                         </div>
@@ -130,7 +129,6 @@ import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
-const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const selectedTask = ref<TaskInstanceType>();
@@ -141,12 +139,6 @@ async function updateStatusAndTime(task: TaskInstanceType, index: number) {
     await target.updateTaskStatus(task);
     await target.fetchLatestLog(task);
 }
-
-// async function updateRunNowStatusAndTime(task: TaskInstanceType, index: number, runNow: boolean) {
-//     const target = taskTableRow.value[index];
-//     await target.updateTaskStatus(task, runNow);
-//     await target.fetchLatestLog(task);
-// }
 
 /* Refresh Display */
 async function refreshBtn() {
@@ -235,24 +227,6 @@ const runNowYes: ConfirmationCallback = async () => {
         // Push a failure notification if the task fails
         pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
     });
-
-    // const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-
-    updateShowRunNowPrompt(false); // Close the modal
-
-    updateShowRunNowPrompt(false); // Close the modal
-    // Start the task and close the modal immediately
-    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
-        // Push a success notification when task finishes
-        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
-    }).catch((error) => {
-        // Push a failure notification if the task fails
-        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
-    });
-
-    // const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
 
     updateShowRunNowPrompt(false); // Close the modal
     running.value = false;
@@ -360,7 +334,7 @@ const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
     order: 1,
 });
 
-const sortedTasks = computed(() => {
+const filteredAndSortedTasks = computed(() => {
     let filteredTasks = taskInstances.value;
 
     if (searchItem.value) {
@@ -370,8 +344,7 @@ const sortedTasks = computed(() => {
                 const value = task[key];
                 if (value && value.toString().toLowerCase().includes(searchQuery)) {
                     return true;
-                } // const result = JSON.parse(output.stdout);
-                // return result;
+                }
             }
             return false;
         });

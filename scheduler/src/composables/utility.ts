@@ -310,28 +310,35 @@ export function splitAndClean(inputString: string, isDisk: boolean) {
 }
 
 
-export async function checkLocalPathExists(localPathStr: string) {
+export async function checkLocalPathExists(localPathStr: string): Promise<boolean> {
     try {
-        console.log('localPathStr:', localPathStr);
+        console.log('Checking local path:', localPathStr);
 
-        // Run 'test -e <path>'
+        // Run 'test -e <path>' to check existence
+        // test -e /the/dir && echo "exist" || echo "does not exist"
         const state = useSpawn(['test', '-e', localPathStr]);
 
-        // Await the promise and handle the exit code to determine existence
-        const output = await state.promise();
+        // Await the spawn state promise to get the exit code
+        // const output = await state.promise();
+        // if (output.stdout.includes("exists")) {
+        //     return true;
+        // } else {
+        //     return false;
+        // }
 
+        await state.promise();
         // If the command succeeds, the path exists
         return true;
     } catch (error: any) {
-        // If 'test' fails, it usually means the path does not exist
+        // If 'test' fails with status 1, it means the path does not exist
         if (error.status === 1) {
-            console.log('Path does not exist');
+            console.log('Path does not exist:', localPathStr);
             return false;
         }
 
-        // Log other types of errors
+        // Log unexpected errors and rethrow them for debugging
         console.error('Unexpected error:', errorString(error));
-        return false;
+        throw new Error(`Failed to check path existence: ${errorString(error)}`);
     }
 }
 
@@ -361,6 +368,7 @@ export async function checkRemotePathExists(remoteName: string, remotePathStr: s
         return false;
     }
 }
+
 export async function isDatasetEmpty(mountpoint) {
     try {
         const command = ['ls', '-la', `/${mountpoint}`,];

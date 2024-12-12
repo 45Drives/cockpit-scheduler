@@ -22,7 +22,7 @@
                             class="col-span-1 flex rounded-md shadow-sm">
                             <button @click.stop="selectRemoteBtn(remote)" @mouseenter="handleMouseEnter(remote.name)"
                                 @mouseleave="handleMouseLeave(remote.name)"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-default"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-white"
                                 :style="getButtonStyles(isHovered(remote.name), undefined, remote)"
                                 :title="remote.name">
                                 <div class="rounded-full bg-white w-5 h-5">
@@ -38,7 +38,7 @@
                             <button @click.stop="selectRemoteBtn(dummyRemote)"
                                 @mouseenter="handleMouseEnter(dummyRemote.name)"
                                 @mouseleave="handleMouseLeave(dummyRemote.name)"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-default"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-white"
                                 :style="getButtonStyles(isHovered(dummyRemote.name), undefined, dummyRemote)"
                                 :title="dummyRemote.name">
                                 <div class="rounded-full bg-white w-5 h-5">
@@ -122,7 +122,7 @@
                                 class="block w-full mt-1 input-textlike"
                                 :placeholder='`Default is empty object`'></textarea>
                             <textarea disabled v-else-if="parameter.type === 'object' && String(key) === 'token'"
-                                v-model="displayValue" rows="4" :id="String(key)" 
+                                v-model="displayValue" rows="4" :id="String(key)"
                                 class="block w-full mt-1 input-textlike"
                                 :placeholder='`Default is empty object`'></textarea>
                         </div>
@@ -136,7 +136,7 @@
                             <div class="button-group-row justify-between">
                                 <button @click.stop="oAuthBtn(loadedEditableRemoteProvider! as CloudSyncProvider)"
                                     @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
-                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
+                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-white"
                                     :style="getButtonStyles(isHovered(loadedEditableRemoteParams.name), loadedEditableRemoteProvider! as CloudSyncProvider, undefined)">
                                     <span class="flex-grow text-center mt-0.5">
                                         Authenticate with {{ (loadedEditableRemoteProvider! as CloudSyncProvider).name
@@ -564,7 +564,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         }
 
-        const ngrokUrl = `https://a04c-142-177-145-42.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
+        const ngrokUrl = `https://trusted-strangely-baboon.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
         const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
@@ -573,7 +573,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                if (event.origin !== 'https://a04c-142-177-145-42.ngrok-free.app') return;
+                if (event.origin !== 'https://trusted-strangely-baboon.ngrok-free.app') return;
 
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 

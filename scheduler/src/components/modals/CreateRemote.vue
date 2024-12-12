@@ -6,7 +6,7 @@
             <div class="items-center">
                 Create Rclone Remote
                 <img v-if="selectedProvider" :src="getProviderLogo(selectedProvider, undefined)" alt="provider-logo"
-                    class="inline-block w-4 h-4 ml-2" />
+                    class="inline-block w-6 h-6 ml-2" />
             </div>
         </template>
         <template v-slot:content>
@@ -45,7 +45,7 @@
                         <div class="button-group-row justify-between">
                             <button @click.stop="oAuthBtn(selectedProvider)" @mouseenter="handleMouseEnter"
                                 @mouseleave="handleMouseLeave"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-default"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-white"
                                 :style="getButtonStyles(isHovered, selectedProvider, undefined)">
                                 <span class="flex-grow text-center mt-0.5">
                                     Authenticate with {{ selectedProvider.name }}
@@ -332,8 +332,6 @@ const createRemoteBtn = async () => {
         console.error('Error during save:', error);
         pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
     }
-
-   
 }
 
 function clearOAuthBtn() {
@@ -369,7 +367,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         }
 
-        const ngrokUrl = `https://a04c-142-177-145-42.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
+        const ngrokUrl = `https://trusted-strangely-baboon.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
         const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
@@ -378,7 +376,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                if (event.origin !== 'https://a04c-142-177-145-42.ngrok-free.app') return;
+                if (event.origin !== 'https://trusted-strangely-baboon.ngrok-free.app') return;
 
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 
