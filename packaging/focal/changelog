@@ -1,3 +1,15 @@
+cockpit-scheduler (1.2.5-1focal) focal; urgency=medium
+
+  * Fixes issue with task searching/sorting
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 12 Dec 2024 11:57:13 -0400
+
+cockpit-scheduler (1.2.4-1focal) focal; urgency=medium
+
+  * Fixed auto-snapshot recursive bug
+
+ -- Rachit Hans <rhans@45drives.com>  Wed, 11 Dec 2024 05:53:37 -0400
+
 cockpit-scheduler (1.2.3-1focal) focal; urgency=medium
 
   * Introduces time-based snapshot retention policies

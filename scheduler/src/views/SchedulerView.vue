@@ -8,6 +8,7 @@
             <div class="flex flex-row justify-between">
                 <div class="px-3">
                     <label class="block text-medium font-medium leading-6 text-default">Filter By Name</label>
+                    <label class="block text-medium font-medium leading-6 text-default">Filter By Name</label>
                     <input type="text" @keydown.enter="" v-model="searchItem"
                         class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
                 </div>
@@ -201,6 +202,7 @@ async function showRunNowDialog() {
 }
 
 
+
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
@@ -214,6 +216,7 @@ const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     const runNow = true;
     // Push a notification that the task has started
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
     pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
     await updateStatusAndTime(selectedTask.value!, taskIndex);
@@ -313,11 +316,13 @@ async function viewLogsBtn(task) {
 }
 
 
+
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
+
 
 
 const updateShowLogViewComponent = (newVal) => {
@@ -345,6 +350,7 @@ const filteredAndSortedTasks = computed(() => {
                 if (value && value.toString().toLowerCase().includes(searchQuery)) {
                     return true;
                 }
+                }
             }
             return false;
         });
@@ -352,6 +358,7 @@ const filteredAndSortedTasks = computed(() => {
 
     return sortTasks(filteredTasks);
 });
+
 
 
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
@@ -377,6 +384,7 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
 };
 
 
+
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -386,6 +394,7 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
+
 
 
 function sortIconFlip() {

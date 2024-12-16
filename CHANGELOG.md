@@ -1,3 +1,3 @@
-## task scheduler 1.2.3-1
+## task scheduler 1.2.5-1
 
-* Introduces time-based snapshot retention policies
+* Fixes issue with task searching/sorting
