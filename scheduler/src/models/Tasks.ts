@@ -48,7 +48,7 @@ export class TaskTemplate implements TaskTemplateType {
     constructor(name: string, parameterSchema: ParameterNode) {
         this.name = name;
         this.parameterSchema = parameterSchema;
-    }
+        }
 
     createTaskInstance(parameters: ParameterNode) {
         return TaskInstance;
@@ -149,6 +149,21 @@ export class ScrubTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ScrubTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+        // Return the TaskInstance constructor function
+        return TaskInstance;
+    }
+}
+export class CustomTaskTemplate extends TaskTemplate {
+    constructor() {
+        const name = "Custom Task";
+        const parameterSchema = new ParameterNode("SMART Test Config", "smartTestConfig")
+        .addChild(new StringParameter('Disks', 'disks', ''))
+        .addChild(new StringParameter('Test Type', 'testType', ''))
+
+        super(name, parameterSchema);
+    }
+
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CustomTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
