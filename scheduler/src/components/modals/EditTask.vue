@@ -103,10 +103,15 @@ const cancelCancel: ConfirmationCallback = async () => {
     updateShowCloseConfirmation(false);
 }
 
-
-function validateComponentParams() {
+function clearAllErrors() {
+    errorList.value = [];
     parameterInputComponent.value.clearTaskParamErrorTags();
-    parameterInputComponent.value.validation();
+}
+
+async function validateComponentParams() {
+    clearAllErrors();
+    await parameterInputComponent.value.clearTaskParamErrorTags();
+    await parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
         pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
@@ -182,7 +187,7 @@ const updateShowSaveConfirmation = (newVal) => {
 
 async function saveChangesBtn() {
     errorList.value = [];
-    if (validateComponentParams()) {
+    if (await validateComponentParams()) {
         showConfirmationDialog();
     }
 }

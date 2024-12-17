@@ -16,8 +16,12 @@
             </p>
             <p v-if="cloudRemote" class="my-2 truncate" :title="`Target Remote: ${cloudRemote.name}`">
                 Rclone Remote: <b>{{ cloudRemote.name }}</b>
+               <!-- <div class="rounded-full bg-white w-5 h-5">
+                        <img :src="getProviderLogo(undefined, remote)" alt="provider-logo"
+                            class="inline-block w-4 h-4" />
+                    </div> -->
                 <img v-if="cloudRemote" :src="getProviderLogo(undefined, cloudRemote)" alt="provider-logo"
-                    class="inline-block w-5 h-5 ml-2" :title="`Provider: ${cloudRemote.getProviderName()}`" />
+                    class="inline-block w-5 h-5 ml-2 -mt-1" :title="`Provider: ${cloudRemote.getProviderName()}`" />
             </p>
             <p v-else>
                 Loading Rclone Remote...
@@ -35,41 +39,33 @@
         <div class="col-span-1">
             <p class="my-2 truncate"
                 :title="`Dry Run: ${boolToYesNo(findValue(taskInstance.parameters, 'rcloneOptions', 'dry_run_flag'))}`">
-                Dry Run: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rcloneOptions', 'dry_run_flag')) }}</b>
+                Dry Run: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rcloneOptions', 'dry_run_flag'))
+                    }}</b>
             </p>
             <p class="my-2 truncate"
                 :title="`Check First: ${boolToYesNo(findValue(taskInstance.parameters, 'rcloneOptions', 'check_first_flag'))}`">
-                Check First: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rcloneOptions', 'check_first_flag'))
+                Check First: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rcloneOptions',
+                    'check_first_flag'))
                     }}</b>
             </p>
             <p class="my-2 truncate"
                 :title="`Bandwidth Limit: ${((findValue(taskInstance.parameters, 'rcloneOptions', 'bandwidth_limit_kbps') !== 0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'bandwidth_limit_kbps')} kb/s` : 'No'))}`">
-                Bandwidth Limit: <b>{{ ((findValue(taskInstance.parameters, 'rcloneOptions', 'bandwidth_limit_kbps') !==
-                    0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'bandwidth_limit_kbps')} kb/s` : 'No'))
+                Bandwidth Limit: <b>{{ ((findValue(taskInstance.parameters, 'rcloneOptions', 'bandwidth_limit_kbps')
+                    !==
+                    0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'bandwidth_limit_kbps')} kb/s` :
+                    'No'))
                     }}</b>
             </p>
             <p class="my-2 truncate"
-                :title="`Number of Transfers: ${((findValue(taskInstance.parameters, 'rcloneOptions', 'transfers') !== 0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'transfers')}` : 4))}`">
+                :title="`Number of Transfers: ${((findValue(taskInstance.parameters, 'rcloneOptions', 'transfers') !== 0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'transfers')}` : '4 (Default)'))}`">
                 Number of Transfers: <b>{{ ((findValue(taskInstance.parameters, 'rcloneOptions', 'transfers') !==
-                    0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'transfers')}` : 4)) }}</b>
+                    0 ? `${findValue(taskInstance.parameters, 'rcloneOptions', 'transfers')}` : '4 (Default)')) }}</b>
             </p>
             <p class="my-2 truncate"
                 v-if="(findValue(taskInstance.parameters, 'rcloneOptions', 'exclude_pattern') !== '')"
                 :title="`Exclude Pattern: ${findValue(taskInstance.parameters, 'rcloneOptions', 'exclude_pattern')}`">
                 Exclude Pattern: <b>{{ findValue(taskInstance.parameters, 'rcloneOptions', 'exclude_pattern') }}</b>
             </p>
-            <!-- <div v-if="filteredParameters.length > 0">
-                <p v-for="param in filteredParameters" :key="param.key" class="my-2 truncate"
-                    :title="`${param.label}: ${param.value}`">
-                    {{ param.label }}: <b>{{ param.value }}</b>
-                </p>
-            </div>
-            <div v-else>
-                <p class="my-2 truncate">Dry Run: <b>No</b></p>
-                <p class="my-2 truncate">Check First: <b>No</b></p>
-                <p class="my-2 truncate">Bandwidth Limit: <b>No</b></p>
-                <p class="my-2 truncate">Number of Transfers: <b>4</b></p>
-            </div> -->
         </div>
         <div class="col-span-2 row-span-2">
             <p class="my-2 font-bold">Current Schedules:</p>
@@ -106,21 +102,5 @@ onMounted(async () => {
     console.log('cloudRemote:', cloudRemote.value);
 });
 
-
-const filteredParameters = computed(() => {
-    const rcloneOptions = findValue(taskInstance.value.parameters, 'rcloneOptions', 'children');
-    if (!rcloneOptions) return [];
-
-    return rcloneOptions.filter(param => {
-        if (typeof param.value === 'boolean') {
-            return param.value; // Include if true
-        } else if (typeof param.value === 'string') {
-            return param.value.trim() !== ''; // Include if non-empty string
-        } else if (typeof param.value === 'number') {
-            return param.value !== 0; // Include if non-zero
-        }
-        return false;
-    });
-});
 
 </script>

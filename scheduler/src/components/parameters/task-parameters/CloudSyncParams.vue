@@ -54,38 +54,6 @@
                         Manage Existing
                     </button>
                 </div>
-                <!-- <div class="mt-1 col-span-2 button-group-row">
-                    <button v-if="!selectedRemote"
-                        class="mt-1 btn h-fit w-full col-span-2 btn btn-secondary text-default" disabled>
-                        No Remote Selected
-                    </button> -->
-
-                <!-- <button v-if="selectedRemote" @click.stop="authenticateRemoteBtn(selectedRemote)"
-                        @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
-                        class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-white"
-                        :style="getButtonStyles(isHovered, undefined, selectedRemote)">
-                        <span class="flex-grow text-center">
-                            Authenticate {{ selectedRemote.name }}
-                        </span>
-                        <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                            <img :src="getProviderLogo(undefined, selectedRemote)" alt="provider-logo"
-                                class="inline-block w-4 h-4" />
-                        </div>
-                    </button> -->
-                <!--     
-                    <button v-if="selectedRemote && selectedRemote.provider.providerParams.oAuthSupported!" @click.stop="refreshRemoteTokenBtn(selectedRemote)"
-                        @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
-                        class="mt-1 flex items-center justify-between h-fit w-full col-span-2 btn btn-secondary text-white"
-                        :style="getButtonStyles(isHovered, undefined, selectedRemote)">
-                        <span class="flex-grow text-center">
-                            Refresh {{ selectedRemote.name }} Token
-                        </span>
-                        <div class="flex items-center justify-center h-6 w-6 bg-white rounded-full ml-2">
-                            <img :src="getProviderLogo(undefined, selectedRemote)" alt="provider-logo"
-                                class="inline-block w-4 h-4" />
-                        </div>
-                    </button>
-                </div> -->
             </div>
 
             <div name="transfer-config" class="grid grid-cols-2 col-span-2 gap-x-2">
@@ -94,7 +62,7 @@
                         <label class="block text-sm leading-6 text-default">
                             Transfer Type
                             <InfoTile class="ml-1"
-                                :title="`COPY: Copy files from source to dest, skipping already copied.\nMOVE: Move files from source to dest.\nSYNC: Make source and dest identical, modifying destination only.`" />
+                                :title="transferTypeComputed" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.transferType" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -154,7 +122,7 @@
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Local Path
                             <InfoTile class="ml-1"
-                                :title="`Specify the path to a directory or file.\n- With a trailing slash (/): transfers only the contents of the directory, not the folder itself.\n- Without a trailing slash: transfers the folder and its contents.\n- For files, use the full file path (no trailing slash).`" />
+                                :title="localTitleComputed" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.localPath" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -163,7 +131,7 @@
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[errorTags.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                             placeholder="Specify Local Path"
-                            :title="`Specify the path to a directory or file.\n- With a trailing slash (/): transfers only the contents of the directory, not the folder itself.\n- Without a trailing slash: transfers the folder and its contents.\n- For files, use the full file path (no trailing slash).`" />
+                            :title="localTitleComputed" />
                     </div>
                 </div>
                 <div name="destination-path">
@@ -171,7 +139,7 @@
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Target Path
                             <InfoTile class="ml-1"
-                                :title="`Specify the path on the remote with 'remoteName:' as a prefix (e.g., remoteName:path/to/folder).\n- With a trailing slash (/): transfers filesinto the specified folder on the remote.\n- Without a trailing slash: creates the folder itself on the remote, including its contents. Avoid starting the path with /, as this may cause errors.`" />
+                                :title="targetTitleComputed" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.targetPath" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -180,7 +148,7 @@
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[errorTags.targetPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                             placeholder="Specify Target Path"
-                            :title="`Specify the path on the remote with 'remoteName:' as a prefix (e.g., remoteName:path/to/folder).\n- With a trailing slash (/): transfers filesinto the specified folder on the remote.\n- Without a trailing slash: creates the folder itself on the remote, including its contents. Avoid starting the path with /, as this may cause errors.`" />
+                            :title="targetTitleComputed" />
                     </div>
                 </div>
             </div>
@@ -581,7 +549,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref, onMounted, inject, provide, watch } from 'vue';
+import { ref, Ref, onMounted, inject, provide, watch, computed } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
@@ -654,7 +622,7 @@ const checksum = ref(false);
 const update = ref(false);
 const ignoreExisting = ref(false);
 const dryRun = ref(false);
-const numberOfTransfers = ref();
+const numberOfTransfers = ref(4);
 const includePattern = ref('');
 const excludePattern = ref('');
 const customArgs = ref('');
@@ -677,20 +645,31 @@ const maxTransferSizeUnit = ref('MiB');
 const cutoffMode = ref();
 const noTraverse = ref(false);
 
+const isTaskLoading = ref(false);
+
 onMounted(async () => {
     //for development only
     // if (existingRemotes.value.length < 1) {
     //     existingRemotes.value.push(dummyRemote.value);
     // }
 
+    isTaskLoading.value = true; // Start loading the task
     await initializeData();
+    isTaskLoading.value = false; // Mark loading as complete
+
     console.log("Existing remotes:", existingRemotes);
 });
 
+watch(selectedRemote, (newVal) => {
+    // Only auto-update the targetPath when not loading an existing task
+    if (!isTaskLoading.value && newVal) {
+        targetPath.value = `${selectedRemote.value!.name}:`;
+    }
+});
 
 async function initializeData() {
     if (props.task) {
-        enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
+        // enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
         console.log('loading task:', props.task);
         loading.value = true;
 
@@ -778,7 +757,7 @@ async function initializeData() {
         }));
 
         loading.value = false;
-        enableTargetPathWatcher.value = true; // Re-enable watcher
+        // enableTargetPathWatcher.value = true; // Re-enable watcher
     }
 }
 
@@ -816,56 +795,6 @@ function hasChanges() {
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
-// // Define a flag to control watcher activation
-// const enableTargetPathWatcher = ref(true);
-
-// watch(selectedRemote, (newVal, oldVal) => {
-//     console.log("Selected remote changed:", newVal);  // Logs whenever selectedRemote changes
-//     if (enableTargetPathWatcher.value && newVal && selectedRemote.value) {
-//         targetPath.value = `${selectedRemote.value!.name}:`;
-//     }
-// });
-
-// watch([update, ignoreExisting, multiThreadOptions], () => handleMutuallyExclusiveOptions());
-
-// function handleMutuallyExclusiveOptions() {
-//     if (update.value && ignoreExisting.value) {
-//         ignoreExisting.value = false;
-//     }
-//     if (multiThreadOptions.value) {
-//         multiThreadChunkSize.value = multiThreadChunkSize.value || 64;
-//         multiThreadCutoff.value = multiThreadCutoff.value || 256;
-//         multiThreadStreams.value = multiThreadStreams.value || 4;
-//         multiThreadWriteBufferSize.value = multiThreadWriteBufferSize.value || 128;
-//     } else {
-//         multiThreadChunkSize.value = undefined;
-//         multiThreadCutoff.value = undefined;
-//         multiThreadStreams.value = undefined;
-//         multiThreadWriteBufferSize.value = undefined;
-//     }
-// }
-
-// Define a flag to control watcher activation
-const enableTargetPathWatcher = ref(true);
-
-// watch(selectedRemote, (newVal, oldVal) => {
-//     console.log("Selected remote changed:", newVal); // Logs whenever selectedRemote changes
-//     if (enableTargetPathWatcher.value && newVal && selectedRemote.value) {
-//         targetPath.value = `${selectedRemote.value!.name}:`;
-//     }
-// });
-watch(selectedRemote, (newVal, oldVal) => {
-    console.log("Selected remote changed:", newVal); // Logs whenever selectedRemote changes
-
-    // Only update targetPath if the watcher is enabled
-    if (enableTargetPathWatcher.value) {
-        if (newVal && selectedRemote.value) {
-            targetPath.value = `${selectedRemote.value!.name}:`;
-        } else {
-            console.log("Target path update skipped because enableTargetPathWatcher is false.");
-        }
-    }
-});
 watch(
     [
         update,
@@ -925,32 +854,58 @@ function handleMutuallyExclusiveOptions() {
     }
 }
 
+const localTitleComputed = computed(() => {
+    if (!directionSwitched.value) {
+        //Push from local to target
+        return `This is the source path on your local system. Files from this path will be transferred to the cloud remote.
+- With a trailing slash (/): Transfers only the contents of the directory, not the directory itself.
+- Without a trailing slash: Transfers the directory and its contents.
+- For files, specify the full file path without a trailing slash.`;
+    } else {
+        //Pull from target to local
+        return `This is the destination path on your local system. Files from the remote storage will be downloaded here.
+- With a trailing slash (/): Files will be placed directly into this directory.
+- Without a trailing slash: The remote directory itself will be created here with its contents.
+- Ensure there's sufficient free space and the directory is writable.`;
+    }
+});
 
+const targetTitleComputed = computed(() => {
+    if (!directionSwitched.value) {
+        //Push from local to target
+        return `This is the destination path on the remote storage. Files from the local path will be uploaded here.
+- Verify the target directory exists or rclone can create it.
+- Avoid uploading directly into the root folder unless necessary.`;
+    } else {
+        //Pull from target to local
+        return `This is the source path on the remote storage. Files from this path will be pulled to your local system.
+- Verify the remote directory exists and contains the files you want.
+- Avoid downloading large or unnecessary directories unless needed.`;
+    }
+});
 
-// const isHovered = ref(false);
-
-// function handleMouseEnter() {
-//     isHovered.value = true;
-// }
-
-// function handleMouseLeave() {
-//     isHovered.value = false;
-// }
-
-// function authenticateRemoteBtn(selectedRemote: CloudSyncRemote) {
-
-// }
-
-// function refreshRemoteTokenBtn(selectedRemote: CloudSyncRemote) {
-
-// }
-
+const transferTypeComputed = computed(() => {
+    if (!directionSwitched.value) {
+        //Push from local to target
+        return `Select the transfer type for sending files from your local path to the remote path:
+COPY: Copy files to the remote, skipping files that already exist.
+MOVE: Move files to the remote and delete them locally after a successful transfer.
+SYNC: Make the remote identical to your local path by adding, updating, or deleting files on the remote. Use carefully, as it may delete remote files.`;
+    } else {
+        //Pull from target to local
+        return `Select the transfer type for retrieving files from the remote path to your local path:
+COPY: Copy files to the local system, skipping files that already exist.
+MOVE: Move files to the local system and delete them from the remote after a successful transfer.
+SYNC: Make the local path identical to the remote by adding, updating, or deleting files locally. Use carefully, as it may delete local files.`;
+    }
+});
 
 const showCreateRemote = ref(false);
 async function createRemoteBtn() {
     await loadCreateRemoteComponent();
     showCreateRemote.value = true;
 }
+
 const createRemoteComponent = ref();
 async function loadCreateRemoteComponent() {
     const module = await import('../../modals/CreateRemote.vue');
@@ -1048,16 +1003,6 @@ async function validateAllValues() {
         errorList.value.push("Transfer type is required.");
         errorTags.value.transferType = true;
     }
-
-    // if (!await validateLocalPath()) {
-    //     errorList.value.push("Source path is invalid.");
-    //     errorTags.value.localPath = true;
-    // }
-
-    // if (!await validateDestinationPath()) {
-    //     errorList.value.push("Target path is invalid.");
-    //     errorTags.value.targetPath = true;
-    // }
 
     if (numberOfTransfers.value && typeof numberOfTransfers.value !== 'number' || numberOfTransfers.value < 0) {
         errorList.value.push("Number of Transfers must be a valid number.");
@@ -1157,7 +1102,7 @@ function setParams() {
     const directionPULL = new SelectionOption('pull', 'Pull');
 
     const transferDirection = directionSwitched.value ? directionPULL : directionPUSH;
-
+    // const rclonePath = `${selectedRemote.value!.name}:${targetPath.value}`;
     const newParams = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', localPath.value))
         .addChild(new StringParameter('Target Path', 'target_path', targetPath.value))

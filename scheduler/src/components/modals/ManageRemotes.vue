@@ -600,7 +600,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     // console.log('Assembled full token:', fullToken);
 
                     oAuthenticated.value = true;
-                    loadedEditableRemoteParams.value.parameters.token.value = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
+                    loadedEditableRemoteParams.value.parameters.token.value = JSON.stringify(fullToken);
 
                     pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
 
