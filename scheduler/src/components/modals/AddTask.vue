@@ -229,7 +229,7 @@ async function saveTask() {
     }
     console.log('sanitizedName:', sanitizedName);
 
-
+    console.log("template: ", template, " parameters ", parameters)
     if (isStandaloneTask.value) {
         const schedule = new TaskSchedule(false, []);
         const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);

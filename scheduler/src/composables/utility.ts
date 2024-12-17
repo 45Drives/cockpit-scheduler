@@ -175,10 +175,13 @@ export async function executePythonScript(script: string, args: string[]): Promi
 }
 
 export async function createTaskFiles(templateName, scriptPath, envFile, timerTemplate, scheduleFile) {
+    console.log(" createTaskFiles Script Path: ",scriptPath)
     return executePythonScript(task_file_creation_script, ['-tN', templateName, '-t', 'create-task-schedule', '-sP', scriptPath, '-e', envFile, '-tt', timerTemplate, '-s', scheduleFile]);
 }
 
 export async function createStandaloneTask(templateName, scriptPath, envFile) {
+    console.log(" createStandaloneTask Script Path: ",scriptPath)
+
     return executePythonScript(task_file_creation_script, ['-tN', templateName, '-t', 'create-task', '-sP', scriptPath, '-e', envFile]);
 }
 

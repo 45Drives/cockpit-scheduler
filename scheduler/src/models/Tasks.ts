@@ -156,9 +156,11 @@ export class ScrubTaskTemplate extends TaskTemplate {
 export class CustomTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Custom Task";
-        const parameterSchema = new ParameterNode("SMART Test Config", "smartTestConfig")
-        .addChild(new StringParameter('Disks', 'disks', ''))
-        .addChild(new StringParameter('Test Type', 'testType', ''))
+        const parameterSchema = new ParameterNode("Custom Task Config", "customTaskConfig")
+        .addChild(new BoolParameter("FilePath","filePath",false))
+        .addChild(new BoolParameter("Command","command",false))
+        .addChild(new StringParameter('Path', 'path', ''))
+        .addChild(new StringParameter('Command', 'Command', ''))
 
         super(name, parameterSchema);
     }

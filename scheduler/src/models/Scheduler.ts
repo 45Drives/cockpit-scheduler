@@ -179,6 +179,8 @@ export class Scheduler implements SchedulerType {
                 return 'rsync-script';
             case 'SmartTest':
                 return 'smart-test-script';
+            case 'CustomTask':
+                return 'custom-task-script';
             default:
                 console.error('no script provided');
                 break;
@@ -190,12 +192,20 @@ export class Scheduler implements SchedulerType {
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         console.log('envKeyVals Before Parse:', envKeyValues);
         const templateName = formatTemplateName(taskInstance.template.name);
-
+        let scriptPath = '';
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
         envObject['taskName'] = taskInstance.name;
 
-        const scriptFileName = this.getScriptFromTemplateName(templateName);
-        const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
+        if(templateName=="CustomTask"){
+            const children = taskInstance.parameters?.children;
+            const pathParam = children?.find((child: any) => child.key === 'path');
+            scriptPath = pathParam?.value;
+
+        }else{
+            const scriptFileName = this.getScriptFromTemplateName(templateName);
+            scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
+        }
+
 
         // Remove empty values from envObject
         const filteredEnvObject = Object.fromEntries(Object.entries(envObject).filter(([key, value]) => value !== '' && value !== 0));
