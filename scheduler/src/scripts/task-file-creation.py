@@ -31,10 +31,17 @@ def generate_exec_start(templateName, parameters, scriptPath):
     if templateName == 'ScrubTask':
         return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
     elif(templateName=="CustomTask"):
-        if parameters.get('customTaskConfig_filePath'):  #
-            return f"python3 {parameters['customTaskConfig_filePath']}"
+        file_path = parameters.get('customTaskConfig_filePath', '')
+        if not file_path:
+            return parameters.get('customTaskConfig_command', 'No command provided')  # Return command or a message if not provided
+        if file_path.endswith('.py'):
+            return f"python3 {file_path}"  # For Python scripts
+        elif file_path.endswith('.sh'):
+            return f"bash {file_path}"  # For Bash scripts
+        elif file_path.endswith('.bash'):
+            return f"bash {file_path}"  # For Bash scripts (same command as .sh)
         else:
-            return parameters.get('customTaskConfig_command')  
+            raise ValueError("Unsupported file type: Only .py and .sh files are allowed.")
         
     return(base_python_command)
 

@@ -6,11 +6,10 @@
             <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
                 Task Type: <b>Custom Task</b>
             </p>
-            <!-- <p class="my-2 truncate" :title="`Pool: ${findValue(taskInstance.parameters, 'pool', 'pool')}`">
-                Pool: <b>
-                    {{ findValue(taskInstance.parameters, 'pool', 'pool') }}
-                </b>
-            </p> -->
+            <p class="my-2 truncate" :title="`Pool: ${findValue(taskInstance.parameters, 'pool', 'pool')}`">
+                Execution Type: <b>
+                    {{ taskInstance.parameters.children.find(child => child.key === 'filePath_flag')?.value ? 'Script File' : 'Custom Command' }}                </b>
+            </p>
 
         </div>
         <div class="col-span-1">

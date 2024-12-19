@@ -11,11 +11,11 @@
     <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2"> 
       <label class="mt-1 block text-sm leading-6 text-default">
         <input  type="radio" value="script" v-model="inputType" />
-        Provide a script file path
+        Script file path
       </label>
       <label class="mt-1 block text-sm leading-6 text-default" >
         <input type="radio" value="command" v-model="inputType"/>
-        Provide a command
+        Custom command
       </label>
     </div>
     <div class="grid grid-flow-cols my-2 gap-2">
@@ -105,7 +105,7 @@ const initializeParameters = () => {
 
     onMounted(initializeParameters);
 
-function isValidFilePath(filePath) {
+    function isValidFilePath(filePath) {
     console.log("File Path: ", filePath);
 
     // Check for empty path
@@ -113,35 +113,49 @@ function isValidFilePath(filePath) {
         return false;
     }
 
+    // Trim leading and trailing spaces
+    filePath = filePath.trim();
+
     // Check for invalid characters typically not allowed in file paths
+    // For Unix-like systems, ':', '?', '*', '"', and '|' are invalid.
     if (/[:<>?*"|]/.test(filePath)) {
+        errorList.value.push("File path contains invalid characters.");
+
         return false; // Invalid characters for file paths on most systems
     }
 
-    // Check for path starting with a space or ending with a space
+    // Check for path starting or ending with a space
     if (/^[ ]|[ ]$/.test(filePath)) {
+        errorList.value.push("File path cannot start or end with a space.");
         return false; // Cannot start or end with a space
     }
-
-    // Check for valid directory structure
-    // Valid characters: alphanumeric, slashes, dots, underscores, and hyphens
-    if (!/^([a-zA-Z0-9_.-]+([/\\][a-zA-Z0-9_.-]+)*)*$/.test(filePath)) {
-        return false; // Invalid characters
+    const validPathPattern = /^((\/[a-zA-Z0-9_.-]+)+|\.[a-zA-Z0-9_.-]+)$/; 
+    if (!validPathPattern.test(filePath)) {
+        errorList.value.push("File path has an invalid structure.");
+        return false; // Invalid characters or structure
     }
 
     // Check for consecutive slashes
-    if (filePath.includes('//') || filePath.includes('\\\\')) {
+    if (filePath.includes('//')) {
+        errorList.value.push("File path cannot contain consecutive slashes.");
         return false; 
     }
 
-    // Additional check for root directory (not allowed in some cases)
-    if (filePath === '/' || filePath === '\\') {
-        return false;
+    if (filePath === '/') {
+        errorList.value.push("Root directory access is not allowed.");
+        return false; 
+    }
+
+    // Check if the file ends with .py, .sh, or .bash
+    if (!filePath.endsWith('.py') && !filePath.endsWith('.sh') && !filePath.endsWith('.bash')) {
+        errorList.value.push("File path must end with .py, .sh, or .bash.");
+        return false; // Must end with .py, .sh, or .bash
     }
 
     // If everything is valid
     return true; // Path is valid
 }
+
 
 const clearCommandIfPathInput = () => {
   if (scriptPath.value) {
@@ -179,7 +193,6 @@ function validateCustomTask(){
         }
     else{
         if(!isValidFilePath(scriptPath.value)){
-            errorList.value.push("File path is invalid.");
             scriptPathErrorTag.value = true;
         }
     }
