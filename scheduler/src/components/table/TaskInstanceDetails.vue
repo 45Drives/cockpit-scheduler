@@ -5,6 +5,7 @@
         <RsyncTaskDetails v-else-if="template.name == 'Rsync Task'" ref="activeComponent" :task="props.task"/>
         <ScrubTaskDetails v-else-if="template.name == 'Scrub Task'" ref="activeComponent" :task="props.task"/>
         <SmartTestTaskDetails v-else-if="template.name == 'SMART Test'" ref="activeComponent" :task="props.task"/>
+        <CustomTaskDetails v-else-if="template.name == 'Custom Task'" ref="activeComponent" :task="props.task"/>
     </div>
 </template>
 <script setup lang="ts">
@@ -15,6 +16,7 @@ import AutomatedSnapshotTaskDetails from './task-details/AutomatedSnapshotTaskDe
 import RsyncTaskDetails from './task-details/RsyncTaskDetails.vue';
 import ScrubTaskDetails from './task-details/ScrubTaskDetails.vue';
 import SmartTestTaskDetails from './task-details/SmartTestTaskDetails.vue';
+import CustomTaskDetails from './task-details/CustomTaskDetails.vue';
 interface TaskInstanceDetailsProps {
     task: TaskInstanceType;
 }
@@ -23,6 +25,6 @@ const props = defineProps<TaskInstanceDetailsProps>();
 
 const template = computed(() => props.task.template);
 
-const activeComponent = ref<InstanceType<typeof ZfsRepTaskDetails | typeof AutomatedSnapshotTaskDetails | typeof RsyncTaskDetails | typeof ScrubTaskDetails | typeof SmartTestTaskDetails> | null>(null);
+const activeComponent = ref<InstanceType<typeof ZfsRepTaskDetails | typeof AutomatedSnapshotTaskDetails | typeof RsyncTaskDetails | typeof ScrubTaskDetails | typeof SmartTestTaskDetails | typeof CustomTaskDetails> | null>(null);
 
 </script>

@@ -23,7 +23,6 @@ export class Scheduler implements SchedulerType {
             const tasksOutput = (await state.promise()).stdout;
             // console.log('Raw tasksOutput:', tasksOutput);
             const tasksData = JSON.parse(tasksOutput);
-
             tasksData.forEach(task => {
                 const newTaskTemplate = ref();
                 if (task.template == 'ZfsReplicationTask') {
@@ -40,7 +39,6 @@ export class Scheduler implements SchedulerType {
                 else if (task.template == 'CustomTask') {
                     newTaskTemplate.value = new CustomTaskTemplate;
                 }
-
                 const parameters = task.parameters;
                 const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.value.parameterSchema, parameters);
                 const taskIntervals: TaskScheduleInterval[] = [];
@@ -92,10 +90,9 @@ export class Scheduler implements SchedulerType {
         function assignValues(node: ParameterNode, prefix = ''): void {
             const currentPrefix = prefix ? prefix + '_' : '';
             const fullKey = currentPrefix + node.key;
-            // console.log(`Assigning value for key: ${fullKey}`);  // Debug log to see which keys are being processed
+            // console.log(`Assigning value for key: ${fullKey}`);  
             if (parameters.hasOwnProperty(fullKey)) {
                 let value = parameters[fullKey];
-                // console.log(`Found value: ${value} for key: ${fullKey}`);  // Debug log to confirm values
                 if (node instanceof StringParameter || node instanceof SelectionParameter) {
                     node.value = value;
                 } else if (node instanceof IntParameter) {
@@ -179,8 +176,6 @@ export class Scheduler implements SchedulerType {
                 return 'rsync-script';
             case 'SmartTest':
                 return 'smart-test-script';
-            case 'CustomTask':
-                return 'custom-task-script';
             default:
                 console.error('no script provided');
                 break;
@@ -199,7 +194,7 @@ export class Scheduler implements SchedulerType {
         if(templateName=="CustomTask"){
             const children = taskInstance.parameters?.children;
             const pathParam = children?.find((child: any) => child.key === 'path');
-            scriptPath = pathParam?.value;
+            scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
 
         }else{
             const scriptFileName = this.getScriptFromTemplateName(templateName);

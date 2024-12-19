@@ -30,8 +30,13 @@ def generate_exec_start(templateName, parameters, scriptPath):
     
     if templateName == 'ScrubTask':
         return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
-    else:
-        return(base_python_command)
+    elif(templateName=="CustomTask"):
+        if parameters.get('customTaskConfig_filePath'):  #
+            return f"python3 {parameters['customTaskConfig_filePath']}"
+        else:
+            return parameters.get('customTaskConfig_command')  
+        
+    return(base_python_command)
 
 def read_schedule_json(file_path):
     logging.debug(f'Reading schedule JSON file: {file_path}')

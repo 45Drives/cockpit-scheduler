@@ -1,6 +1,4 @@
 <template>
-
-
     <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <div
             class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
@@ -77,6 +75,35 @@ const commandErrorTag = ref(false);
 const initialParameters = ref({});
 
 const errorList = inject<Ref<string[]>>('errors')!;
+
+
+const initializeParameters = () => {
+      if (props.task) {
+        console.log("props:  ",props.task)
+        loading.value = true;
+        const params = props.task.parameters.children;
+        console.log("Custom Task Params: ", params);
+
+        // Safely retrieve the command, path, and input type
+        oneLineCommand.value = params.find(param => param.key === 'command')?.value || '';
+        scriptPath.value = params.find(param => param.key === 'filePath')?.value || '';
+        if (scriptPath.value !== '') { 
+        inputType.value = 'script'; 
+    } else if (oneLineCommand.value !== '') { 
+        inputType.value = 'command'; 
+    }
+        // Store initial parameters
+        initialParameters.value = {
+          oneLineCommand: oneLineCommand.value,
+        inputType: inputType.value,
+          scriptPath: scriptPath.value,
+        };
+        
+        loading.value = false;
+      }
+    };
+
+    onMounted(initializeParameters);
 
 function isValidFilePath(filePath) {
     console.log("File Path: ", filePath);
@@ -172,11 +199,11 @@ function clearErrorTags() {
 }
 
 function setParams() {
-    const newParams = new ParameterNode("Custom Task Config", "customConfig")
-    .addChild(new BoolParameter("FilePath","filePath",inputType.value === 'script'))
-        .addChild(new BoolParameter("Command","command",inputType.value === 'command'))
-        .addChild(new StringParameter('Path', 'path', scriptPath.value))
-        .addChild(new StringParameter('Command', 'Command', oneLineCommand.value))
+    const newParams = new ParameterNode("Custom Task Config", "customTaskConfig")
+    .addChild(new BoolParameter("FilePath_flag","filePath_flag",inputType.value === 'script'))
+        .addChild(new BoolParameter("Command_flag","command_flag",inputType.value === 'command'))
+        .addChild(new StringParameter('FilePath', 'filePath', scriptPath.value))
+        .addChild(new StringParameter('Command', 'command', oneLineCommand.value))
 
     parameters.value = newParams;
     console.log('newParams:', newParams);

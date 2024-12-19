@@ -3,7 +3,7 @@ import re
 import json
 import subprocess
 
-currentTaskTemplates = ['ZfsReplicationTask', 'AutomatedSnapshotTask', 'ScrubTask', 'RsyncTask', 'SmartTest']
+currentTaskTemplates = ['ZfsReplicationTask', 'AutomatedSnapshotTask', 'ScrubTask', 'RsyncTask', 'SmartTest', 'CustomTask']
 # , 'CloudSyncTask'
 
 

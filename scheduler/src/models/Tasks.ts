@@ -157,10 +157,10 @@ export class CustomTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "Custom Task";
         const parameterSchema = new ParameterNode("Custom Task Config", "customTaskConfig")
-        .addChild(new BoolParameter("FilePath","filePath",false))
-        .addChild(new BoolParameter("Command","command",false))
-        .addChild(new StringParameter('Path', 'path', ''))
-        .addChild(new StringParameter('Command', 'Command', ''))
+        .addChild(new BoolParameter("FilePath_flag","filePath_flag",false))
+        .addChild(new BoolParameter("Command_flag","command_flag",false))
+        .addChild(new StringParameter('FilePath', 'filePath', ''))
+        .addChild(new StringParameter('Command', 'command', ''))
 
         super(name, parameterSchema);
     }

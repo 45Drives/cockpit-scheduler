@@ -26,6 +26,7 @@ interface ParameterInputProps {
 const props = defineProps<ParameterInputProps>();
 
 const template = computed(() => props.selectedTemplate);
+console.log("template:  ", template)
 const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams | typeof ScrubTaskParams | typeof SmartTestTaskParams | typeof CustomTaskParams  > | null>(null);
 
 async function validation() {
