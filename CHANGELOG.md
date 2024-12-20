@@ -1,3 +1,3 @@
-## task scheduler 1.2.5-1
+## task scheduler 1.2.6-1
 
-* Fixes issue with task searching/sorting
+* Added Custom Task

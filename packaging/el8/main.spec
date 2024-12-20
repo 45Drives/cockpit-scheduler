@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Fri Dec 20 2024 Rachit Hans <rhans@45drives.com> 1.2.6-1
+- Added Custom Task
 * Thu Dec 12 2024 Jordan Keough <jkeough@45drives.com> 1.2.5-1
 - Fixes issue with task searching/sorting
 * Wed Dec 11 2024 Rachit Hans <rhans@45drives.com> 1.2.4-1
