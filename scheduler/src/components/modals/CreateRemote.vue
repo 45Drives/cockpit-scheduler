@@ -304,30 +304,6 @@ const createRemoteBtn = async () => {
         creating.value = false;
         showCreateRemote.value = false;
 
-        // if (!remoteName.value) throw new Error('Remote name required');
-        // if (!selectedProvider.value) throw new Error('No provider selected');
-
-        // if (providerValues.token && typeof providerValues.token === 'string') {
-        //     try {
-        //         providerValues.token = JSON.parse(providerValues.token); // Parse token if needed
-        //     } catch {
-        //         throw new Error('Token parameter is invalid JSON.');
-        //     }
-        // }
-
-        // creating.value = true;
-        // const parametersToSave = Object.fromEntries(
-        //     Object.entries(providerValues).filter(([key, value]) => value)
-        // );
-
-        // const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, {
-        //     ...parametersToSave,
-        // });
-
-        // console.log('newRemote:', newRemote);
-        // pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
-        // creating.value = false;
-        // showCreateRemote.value = false;
     } catch (error: any) {
         console.error('Error during save:', error);
         pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
@@ -364,7 +340,6 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             default:
                 providerAuthUrlSuffix = '';
                 break;
-
         }
 
         const ngrokUrl = `https://trusted-strangely-baboon.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
@@ -378,17 +353,13 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             try {
                 if (event.origin !== 'https://trusted-strangely-baboon.ngrok-free.app') return;
 
-                const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
+                const { accessToken: token, refreshToken: refresh, expiry: expiry, userId: id } = event.data;
 
                 if (token && refresh && id) {
                     accessToken.value = token;
                     refreshToken.value = refresh;
+                    tokenExpiry.value = expiry;
                     userId.value = id;
-
-                    const expiry = await getTokenExpiry();
-                    if (expiry) {
-                        tokenExpiry.value = expiry;
-                    }
 
                     const fullToken = {
                         "access_token": accessToken.value,
@@ -397,7 +368,6 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     };
 
                     oAuthenticated.value = true;
-                    // providerValues.token = typeof fullToken === 'string' ? JSON.parse(fullToken) : fullToken;
                     providerValues.token = JSON.stringify(fullToken);
 
                     pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
@@ -420,13 +390,6 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
         console.error('Error initializing OAuth:', error);
         pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 8000));
     }
-}
-
-
-async function getTokenExpiry(): Promise<string> {
-    // Assume a standard 1-hour lifespan for Google access tokens
-    const currentTime = new Date();
-    return new Date(currentTime.getTime() + 3600 * 1000).toISOString();
 }
 
 const isHovered = ref(false);

@@ -130,7 +130,6 @@ import { TaskInstance } from '../models/Tasks';
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-
 const selectedTask = ref<TaskInstanceType>();
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
 
@@ -212,12 +211,10 @@ const runNowNo: ConfirmationCallback = async () => {
 
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
-    const runNow = true;
     // Push a notification that the task has started
     pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
     await updateStatusAndTime(selectedTask.value!, taskIndex);
-
     updateShowRunNowPrompt(false); // Close the modal
     // Start the task and close the modal immediately
     await myScheduler.runTaskNow(selectedTask.value!).then(() => {

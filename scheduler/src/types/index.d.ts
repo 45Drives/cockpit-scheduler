@@ -161,6 +161,5 @@ interface RemoteManagerType {
 	createRemote(label: string, key: string, name: string, type: string, parameters: any): CloudSyncRemote;
 	editRemote(key: string, newLabel: string, oldName: string, newType: string, parameters: any): CloudSyncRemote
 	deleteRemote(key: string): Promise<boolean>;
-	authorizeRemote(key: string): boolean;
 }
 

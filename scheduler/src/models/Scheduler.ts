@@ -338,7 +338,7 @@ export class Scheduler implements SchedulerType {
         console.log(`Task ${fullTaskName} completed.`);
         // return TaskExecutionResult;
     }
-  
+
     async getTimerStatus(taskInstance: TaskInstanceType) {
         const taskLog = new TaskExecutionLog([]);
         const houstonSchedulerPrefix = 'houston_scheduler_';

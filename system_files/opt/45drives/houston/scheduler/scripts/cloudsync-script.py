@@ -1,12 +1,118 @@
 import subprocess
 import sys
 import os
+import json
+import configparser
+from datetime import datetime
+import requests
+
+RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
+SERVER_URL = 'https://trusted-strangely-baboon.ngrok-free.app'
+
+OAUTH_TYPES = {
+    "drive": "drive",
+    "google cloud storage": "cloud",
+    "dropbox": "dropbox",
+    "onedrive": "onedrive",
+}
+
+def load_rclone_config():
+    """
+    Load and parse the rclone configuration file.
+    """
+    config = configparser.ConfigParser()
+    config.read(RCLONE_CONF_PATH)
+    return config
+
+def get_remote_details(config, remote_name):
+    """
+    Retrieve remote details (type and token) from the rclone configuration.
+    """
+    if not config.has_section(remote_name):
+        raise ValueError(f"Remote '{remote_name}' not found in rclone.conf")
+
+    remote_type = config.get(remote_name, "type", fallback=None)
+    if not remote_type:
+        raise ValueError(f"No type found for remote '{remote_name}'")
+
+    token = config.get(remote_name, "token", fallback=None)
+
+    # Return token as None if it's not an OAuth type
+    if remote_type.lower() not in OAUTH_TYPES:
+        return remote_type.lower(), None
+
+    if not token:
+        raise ValueError(f"No token found for OAuth remote '{remote_name}'")
+
+    return remote_type.lower(), json.loads(token)
+
+def is_token_expired(token_data):
+    """
+    Check if the token is expired based on the expiry time.
+    """
+    expiry = token_data.get("expiry")
+    if not expiry:
+        raise ValueError("No expiry information found in token")
+
+    expiry_datetime = datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ')  # Adjust format if needed
+    return datetime.utcnow() >= expiry_datetime
+
+def refresh_token_via_server(config, remote_name, remote_type, token_data):
+    """
+    Refresh the token for the given remote using the Express server.
+    """
+    if remote_type not in OAUTH_TYPES:
+        print(f"Remote type '{remote_type}' for '{remote_name}' does not support token refresh. Skipping.")
+        return
+
+    endpoint = OAUTH_TYPES[remote_type]
+    refresh_token = token_data.get("refresh_token")
+    if not refresh_token:
+        raise ValueError(f"No refresh token found for remote '{remote_name}'")
+
+    try:
+        response = requests.post(
+            f"{SERVER_URL}/auth/refresh-token/{endpoint}",
+            json={"refreshToken": refresh_token}
+        )
+        if response.status_code == 200:
+            new_token_data = response.json()
+            token_data["access_token"] = new_token_data["accessToken"]
+            token_data["expiry"] = new_token_data["expiry"]
+
+            # Update the rclone.conf file
+            config.set(remote_name, "token", json.dumps(token_data))
+            with open(RCLONE_CONF_PATH, "w") as conf_file:
+                config.write(conf_file)
+
+            print(f"Token refreshed and updated for remote '{remote_name}'")
+        else:
+            raise Exception(f"Failed to refresh token: {response.text}")
+    except Exception as e:
+        print(f"Error refreshing token for remote '{remote_name}': {e}")
+        raise
+
+def validate_and_refresh_token(config, remote_name):
+    """
+    Validate the token for the remote and refresh it if expired, skipping non-OAuth remotes.
+    """
+    remote_type, token_data = get_remote_details(config, remote_name)
+
+    # Skip token validation for non-OAuth remotes
+    if remote_type not in OAUTH_TYPES:
+        print(f"Remote '{remote_name}' of type '{remote_type}' does not require OAuth token validation. Skipping.")
+        return
+
+    # Validate and refresh the token if needed
+    if is_token_expired(token_data):
+        refresh_token_via_server(config, remote_name, remote_type, token_data)
 
 def build_rclone_command(options):
-    # print("Building rclone command with options:", options)
-    
+    """
+    Construct the rclone command based on options.
+    """
     command = ['rclone', options['type'], '-v']
-    
+
     option_flags = {
         'check_first_flag': '--check-first',
         'checksum_flag': '--checksum',
@@ -17,29 +123,24 @@ def build_rclone_command(options):
         'inplace_flag': '--inplace',
         'no_traverse_flag': '--no-traverse',
     }
-    
+
     for key, flag in option_flags.items():
         if options.get(key):
             command.append(flag)
-            
-    if options['custom_args']:
-        cleaned_custom_args = [arg.strip().replace(',', '') for arg in options['custom_args']]
-        for arg in cleaned_custom_args:
-            command.append(arg)
-            
+
     if int(options['bandwidth_limit_kbps']) > 0:
         command.append(f'--bwlimit={options["bandwidth_limit_kbps"]}')
-    
+
     if options['include_pattern']:
         include_patterns = options['include_pattern'].split(',')
         for pattern in include_patterns:
             command.append(f'--include={pattern.strip()}')
-    
+
     if options['exclude_pattern']:
         exclude_patterns = options['exclude_pattern'].split(',')
         for pattern in exclude_patterns:
             command.append(f'--exclude={pattern.strip()}')
-            
+
     if options['multithread_chunk_size'] > 0:
         command.append(f'--multi-thread-chunk-size={options["multithread_chunk_size"]}{options["multithread_chunk_size_unit"]}')
     if options['multithread_cutoff'] > 0:
@@ -56,27 +157,20 @@ def build_rclone_command(options):
         command.append(f'--max-transfer={options["max_transfer_size"]}{options["max_transfer_size_unit"]}')
     if options['cutoff_mode']:
         command.append(f'--cutoff-mode={options["cutoff_mode"].upper()}')
-        
-    # print("Constructed rclone command:", " ".join(command))
-    return command
-    
-def construct_paths(localPath, direction, targetPath):
-    # print(f"Constructing paths with localPath='{localPath}', direction='{direction}', targetPath='{targetPath}'")
-    if direction == 'push':
-        src = localPath
-        dest = targetPath
-    elif direction == 'pull':
-        src = targetPath
-        dest = localPath
-        
-    # print(f"Constructed source path: {src}")
-    # print(f"Constructed destination path: {dest}")
-    return src, dest
 
+    return command
+
+def construct_paths(localPath, direction, targetPath):
+    """
+    Construct source and destination paths for rclone.
+    """
+    return (localPath, targetPath) if direction == 'push' else (targetPath, localPath)
 
 def execute_command(command, src, dest):
+    """
+    Execute the constructed rclone command.
+    """
     command.extend([src, dest])
-
     print(f"Executing command: {' '.join(command)}")
 
     process = subprocess.Popen(
@@ -94,8 +188,17 @@ def execute_command(command, src, dest):
         print(stdout)
 
 def execute_rclone(options):
+    """
+    Validate token, refresh if necessary, and execute rclone task.
+    """
     try:
-        # print("Starting rclone execution with options:", options)
+        config = load_rclone_config()
+        remote_name = options.get('rclone_remote')
+        if not remote_name:
+            raise ValueError("No remote name specified in options")
+
+        validate_and_refresh_token(config, remote_name)
+
         command = build_rclone_command(options)
         src, dest = construct_paths(options['local_path'], options['direction'], options['target_path'])
         execute_command(command, src, dest)
@@ -103,12 +206,11 @@ def execute_rclone(options):
         print(f"Execution error: {e}")
         sys.exit(1)
 
-
-def str_to_bool(value):
-    return str(value).lower() in ('true', '1', 't', 'yes', 'y')
-
 def parse_arguments():
-    options = {
+    """
+    Parse environment variables into options.
+    """
+    return {
         'local_path': os.environ.get('cloudSyncConfig_local_path', ''),
         'direction': os.environ.get('cloudSyncConfig_direction', 'push'),
         'target_path': os.environ.get('cloudSyncConfig_target_path', ''),
@@ -140,15 +242,18 @@ def parse_arguments():
         'cutoff_mode': os.environ.get('cloudSyncConfig_rcloneOptions_cutoff_mode', 'HARD').lower(),
         'no_traverse_flag': str_to_bool(os.environ.get('cloudSyncConfig_rcloneOptions_no_traverse_flag', 'False')),
     }
-    # print("Parsed arguments:", options)
-    return options
 
+def str_to_bool(value):
+    return str(value).lower() in ('true', '1', 't', 'yes', 'y')
 
 def main():
+    """
+    Main execution entry point.
+    """
     print("Starting rclone script...")
     options = parse_arguments()
     execute_rclone(options)
     print("Rclone task execution completed.")
-    
+
 if __name__ == '__main__':
     main()

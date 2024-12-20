@@ -214,9 +214,4 @@ export class RemoteManager implements RemoteManagerType {
         }
     }
 
-
-    authorizeRemote(name: string): boolean {
-        // Authorization logic
-        return true;
-    }
 }

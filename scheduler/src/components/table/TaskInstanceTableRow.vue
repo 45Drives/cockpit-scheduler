@@ -84,8 +84,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, defineExpose } from 'vue';
 import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
-import { upperCaseWord, injectWithCheck } from '../../composables/utility'
-import { schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
+import { injectWithCheck } from '../../composables/utility'
+import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
 
 interface TaskInstanceTableRowProps {
@@ -96,7 +96,6 @@ interface TaskInstanceTableRowProps {
 const props = defineProps<TaskInstanceTableRowProps>();
 const taskInstance = ref(props.task);
 
-const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 
@@ -108,7 +107,6 @@ const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask',
 async function runTaskBtn() {
 	emit('runTask', props.task);
 }
-
 
 function manageScheduleBtn() {
 	emit('manageSchedule', props.task);
@@ -164,6 +162,10 @@ async function showEnableDialog() {
 const enableYes = async () => {
 	enabling.value = true;
 	console.log('enabling schedule for:', taskInstance.value.name);
+	if (intervalId) {
+		clearInterval(intervalId);
+		intervalId = undefined;
+	}
 	await myScheduler.enableSchedule(taskInstance.value);
 	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	updateShowEnablePrompt(false);
@@ -200,6 +202,10 @@ async function showDisableDialog() {
 const disableYes = async () => {
 	disabling.value = true;
 	console.log('disabling schedule for:', taskInstance.value.name);
+	if (intervalId) {
+		clearInterval(intervalId);
+		intervalId = undefined;
+	}
 	await myScheduler.disableSchedule(taskInstance.value);
 	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
 	updateShowDisablePrompt(false);
@@ -297,6 +303,7 @@ async function updateTaskStatus(task, timerEnabled) {
 		taskStatus.value = 'Error';
 		if (intervalId) {
 			clearInterval(intervalId);
+			intervalId = undefined;
 		}
 	}
 }
