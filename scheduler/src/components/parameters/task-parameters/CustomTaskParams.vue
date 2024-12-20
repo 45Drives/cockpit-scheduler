@@ -79,10 +79,8 @@ const errorList = inject<Ref<string[]>>('errors')!;
 
 const initializeParameters = () => {
       if (props.task) {
-        console.log("props:  ",props.task)
         loading.value = true;
         const params = props.task.parameters.children;
-        console.log("Custom Task Params: ", params);
 
         // Safely retrieve the command, path, and input type
         oneLineCommand.value = params.find(param => param.key === 'command')?.value || '';

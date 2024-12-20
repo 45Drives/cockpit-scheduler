@@ -40,7 +40,6 @@
     
     const props = defineProps<CustomTaskDetailsProps>();
     const taskInstance = ref(props.task);
-    console.log("Custom Task Details: props ", taskInstance )
     const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
     
     </script>
