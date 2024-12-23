@@ -1,11 +1,25 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showEditTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false" :closeConfirm="closeBtn">
+    <Modal @close="closeModal" :isOpen="showNotesPrompt" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false" :closeConfirm="closeBtn">
         <template v-slot:title>
-            Edit <span class="text-base">{{taskInstance.name}}</span> <br/><span class="text-base text-muted italic">{{taskInstance.template.name}}</span>
+            Notes <span class="text-base">{{taskInstance.name}}</span> <br/><span class="text-base text-muted italic">{{taskInstance.template.name}}</span>
         </template>
         <template v-slot:content>
             <div>
-                <ParameterInput ref="parameterInputComponent" :selectedTemplate="taskInstance.template" :task="taskInstance"/>
+                <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+                    <div class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
+                        <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
+                    </div>
+                </div>
+
+                <div v-else>
+                    <div class="grid grid-flow-cols my-2 gap-2">
+                        <!-- Displaying notes section -->
+                        <div class="border border-default rounded-md p-2 col-span-2 bg-accent">
+                            <label class="mt-1 block text-sm leading-6 text-default">Notes</label>
+                            <textarea v-model="notes" rows="4" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Your notes here..."></textarea>
+                        </div>
+                    </div>
+                </div>
             </div>
         </template>
         <template v-slot:footer>
@@ -22,7 +36,7 @@
                             </svg>
                             Saving...
                         </button>
-                        <button v-else id="edit-task-btn" class="btn btn-primary h-fit w-full" @click="saveChangesBtn">Save Task</button>
+                        <button @click="saveChangesBtn" class="btn btn-primary">Save Notes</button>                    
                     </div>
 				</div>
 			</div>
@@ -39,9 +53,8 @@
 
 </template>
 <script setup lang="ts">
-import { inject, provide, ref, Ref } from 'vue';
+import { inject, provide, ref, Ref,computed } from 'vue';
 import Modal from '../common/Modal.vue';
-import ParameterInput from '../parameters/ParameterInput.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from 'houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
@@ -54,22 +67,23 @@ interface EditTaskProps {
 
 const props = defineProps<EditTaskProps>();
 const emit = defineEmits(['close']);
-const showEditTaskWizard = inject<Ref<boolean>>('show-edit-task-wizard')!;
+const showNotesPrompt = inject<Ref<boolean>>('show-notes-view')!;
 const saving = ref(false);
 
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-
 const taskInstance = ref(props.task);
+const notes = ref(taskInstance.value?.notes);
+const isEditing = ref(false); // State for editing notes
+
+
 
 const errorList = ref<string[]>([]);
 const parameterInputComponent = ref();
 const parameters = ref();
 
-const initialParameters = ref(props.task.parameters);
-
 const closeModal = () => {
-    showEditTaskWizard.value = false;
+    showNotesPrompt.value = false;
     emit('close');
 }
 
@@ -82,13 +96,7 @@ async function loadCloseConfirmationComponent() {
 }
 
 const closeBtn = async () => {
-    const hasChanges = parameterInputComponent.value.hasChanges();
-    if (hasChanges) {
-        await loadCloseConfirmationComponent();
-        showCloseConfirmation.value = true;
-    } else {
         closeModal();
-    }
 };
 
 const updateShowCloseConfirmation = (newVal) => {
@@ -103,17 +111,6 @@ const cancelCancel: ConfirmationCallback = async () => {
     updateShowCloseConfirmation(false);
 }
 
-
-function validateComponentParams() {
-    parameterInputComponent.value.clearTaskParamErrorTags();
-    parameterInputComponent.value.validation();
-    if (errorList.value.length > 0) {
-        pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
-        return false;
-    } else {
-        return true;
-    }
-}
 
 const showSaveConfirmation = ref(false);
 const confirmationComponent = ref();
@@ -137,7 +134,7 @@ const confirmSaveChanges : ConfirmationCallback = async () => {
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
-    showEditTaskWizard.value = false;
+    showNotesPrompt.value = false;
 }
 
 const cancelEdit : ConfirmationCallback = async () => {
@@ -147,6 +144,7 @@ const cancelEdit : ConfirmationCallback = async () => {
 async function saveEditedTask() {
     console.log('save changes triggered');
     const template = ref();
+    console.log("Notes: taskInstance: ",taskInstance)
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
     } else if (taskInstance.value?.template.name == 'Automated Snapshot Task') {
@@ -169,10 +167,10 @@ async function saveEditedTask() {
     console.log('sanitizedName:', sanitizedName);
 
     const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
-    const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,taskInstance.value.notes);
+    const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes.value);
     console.log('edited task: ', task);
 
-    await myScheduler.updateTaskInstance(task);
+    await myScheduler.updateTaskNotes(task);
 
     pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 8000));
 }
@@ -182,11 +180,17 @@ const updateShowSaveConfirmation = (newVal) => {
 }
 
 async function saveChangesBtn() {
-    errorList.value = [];
-    if (validateComponentParams()) {
-        showConfirmationDialog();
-    }
+    showConfirmationDialog();
+    
 }
+
+
+const addNote = () => {
+            notes.value = ''; 
+};
+const editNote = () => {
+};
+
 
 provide('task-for-editing', taskInstance);
 provide('parameters', parameters);

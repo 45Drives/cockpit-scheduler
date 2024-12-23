@@ -6,14 +6,16 @@ export class TaskInstance implements TaskInstanceType {
     template: TaskTemplate;
     parameters: ParameterNode;
     schedule: TaskSchedule;
+    notes: string;
     // status: string;
     // lastExecutionResult: TaskExecutionResult | null;
 
-    constructor(name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) {
+    constructor(name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) {
         this.name = name;
         this.template = template;
         this.parameters = parameters;
         this.schedule = schedule;
+        this.notes = notes;
         // this.status = 'Pending';  // Default status
         // this.lastExecutionResult = null;  // No result initially
     }
@@ -77,7 +79,7 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ZFSReplicationTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ZFSReplicationTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
@@ -96,7 +98,7 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: AutomatedSnapshotTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: AutomatedSnapshotTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
@@ -133,7 +135,7 @@ export class RsyncTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: RsyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: RsyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
@@ -148,7 +150,7 @@ export class ScrubTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ScrubTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ScrubTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
@@ -165,7 +167,7 @@ export class CustomTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CustomTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CustomTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }
@@ -181,7 +183,7 @@ export class SmartTestTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: SmartTestTemplate, parameters: ParameterNode, schedule: TaskSchedule) => TaskInstance {
+    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: SmartTestTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
         // Return the TaskInstance constructor function
         return TaskInstance;
     }

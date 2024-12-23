@@ -42,14 +42,14 @@ export class Scheduler implements SchedulerType {
                 const parameters = task.parameters;
                 const parameterNodeStructure = this.createParameterNodeFromSchema(newTaskTemplate.value.parameterSchema, parameters);
                 const taskIntervals: TaskScheduleInterval[] = [];
+                const notes = task.notes;
 
                 task.schedule.intervals.forEach(interval => {
                     const thisInterval = new TaskScheduleInterval(interval);
                     taskIntervals.push(thisInterval);
                 });
-
                 const newSchedule = new TaskSchedule(task.schedule.enabled, taskIntervals);
-                const newTaskInstance = new TaskInstance(task.name, newTaskTemplate.value, parameterNodeStructure, newSchedule);
+                const newTaskInstance = new TaskInstance(task.name, newTaskTemplate.value, parameterNodeStructure, newSchedule,notes);
                 this.taskInstances.push(newTaskInstance);
             });
 
@@ -232,6 +232,24 @@ export class Scheduler implements SchedulerType {
         const jsonFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.json`;
         console.log('jsonFilePath:', jsonFilePath);
 
+        //run script to generate notes file
+        console.log("genrating notes file");
+        const notesFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.txt`;
+        //const notes = taskInstance.notes
+        const notes = taskInstance.notes
+        const file3 = new BetterCockpitFile(notesFilePath, {
+            superUser: 'try',
+        }) 
+        file3.replace(notes).then(() => {
+            console.log('Notes file created and content written successfully');
+            file3.close();
+
+        }).catch(error => {
+            console.error("Error writing content to the notes file:", error);
+            file3.close();
+        });
+
+
         //run script to generate service + timer via template, param env and schedule json
         if (taskInstance.schedule.intervals.length < 1) {
             //ignore schedule for now
@@ -307,6 +325,33 @@ export class Scheduler implements SchedulerType {
         await state.promise();
     }
 
+    async updateTaskNotes(taskInstance) {
+        //populate data from env file and then delete + recreate task files
+   
+        const templateName = formatTemplateName(taskInstance.template.name);
+
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const notesFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.txt`;
+
+        console.log('notesFilePath:', notesFilePath);
+
+        const file = new BetterCockpitFile(notesFilePath, {
+            superuser: 'try',
+        });
+
+        file.replace(taskInstance.notes).then(() => {
+            console.log('notes file updated successfully');
+            file.close();
+        }).catch(error => {
+            console.error("Error updating file:", error);
+            file.close();
+        });
+
+        // Reload the system daemon
+        let command = ['sudo', 'systemctl', 'daemon-reload'];
+        let state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+    }
 
     async unregisterTaskInstance(taskInstance: TaskInstanceType) {
         //delete task + associated files
