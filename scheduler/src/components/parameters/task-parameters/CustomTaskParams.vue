@@ -71,6 +71,7 @@ const inputType = ref('script'); // Default to script input
 const commandError = ref('');
 const oneLineCommand = ref('');
 const commandErrorTag = ref(false);
+const wrapCommand = ref('')
 
 const initialParameters = ref({});
 
@@ -84,7 +85,8 @@ const initializeParameters = () => {
 
         // Safely retrieve the command, path, and input type
         oneLineCommand.value = params.find(param => param.key === 'command')?.value || '';
-        oneLineCommand.value = oneLineCommand.value.replace(/\/bin\/bash -c\s*/, '').replace(/^"|"$/g, '').trim();
+        
+        oneLineCommand.value = unwrapCommand(oneLineCommand.value);
         scriptPath.value = params.find(param => param.key === 'filePath')?.value || '';
         if (scriptPath.value !== '') { 
         inputType.value = 'script'; 
@@ -167,13 +169,7 @@ const clearPathIfCommandInput = () => {
     scriptPath.value = ''; // Clear the script path input
   }
 };
-function doesItExist(thisName: string, list: string[]) {
-    if (list.includes(thisName)) {
-        return true;
-    } else {
-        return false;
-    }
-}
+
 
 function validateParams() {
     validateCustomTask();
@@ -181,7 +177,7 @@ function validateParams() {
     if (errorList.value.length == 0) {
         if (oneLineCommand.value !== '') {
             // Append /bin/bash -c " to the command and remove any trailing quotes
-            oneLineCommand.value = `/bin/bash -c "${oneLineCommand.value}"`;
+            wrapCommand.value =  wrapCommandWithBash(oneLineCommand.value)
         }
         setParams();
     }
@@ -207,11 +203,42 @@ function validateCustomTask(){
     }
 
 }
+function unwrapCommand(wrappedCommand) {
+    // Check if the command starts with /bin/bash -c "
+    const prefix = '/bin/bash -c "';
+    if (!wrappedCommand.startsWith(prefix)) {
+        return wrappedCommand; // Return as-is if it doesn't match
+    }
 
+    // Extract the command part
+    const commandPart = wrappedCommand.slice(prefix.length, -1); // Remove the ending quote
+
+    // Unescape the command
+    const unescapedCommand = commandPart
+        .replace(/\\'/g, "'")  // Unescape single quotes
+        .replace(/\\"/g, '"')   // Unescape double quotes
+        .replace(/\\`/g, '`')   // Unescape backticks
+        .replace(/\\\\/g, '\\'); // Unescape backslashes
+
+    return unescapedCommand;
+}
 
 function clearErrorTags() {
     scriptPathErrorTag.value = false;
     errorList.value = [];
+}
+function wrapCommandWithBash(userCommand) {
+    // Escape backslashes, single quotes, double quotes, and backticks
+    const escapedCommand = userCommand
+        .replace(/\\/g, '\\\\') // Escape backslashes
+        .replace(/'/g, "'\\''") // Escape single quotes
+        .replace(/"/g, '\\"')    // Escape double quotes
+        .replace(/`/g, '\\`');   // Escape backticks
+
+    // Construct the final command
+    const finalCommand = `/bin/bash -c "${escapedCommand}"`;
+
+    return finalCommand;
 }
 
 function setParams() {
@@ -219,7 +246,7 @@ function setParams() {
     .addChild(new BoolParameter("FilePath_flag","filePath_flag",inputType.value === 'script'))
         .addChild(new BoolParameter("Command_flag","command_flag",inputType.value === 'command'))
         .addChild(new StringParameter('FilePath', 'filePath', scriptPath.value))
-        .addChild(new StringParameter('Command', 'command', oneLineCommand.value))
+        .addChild(new StringParameter('Command', 'command', wrapCommand.value))
 
     parameters.value = newParams;
     console.log('newParams:', newParams);
