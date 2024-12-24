@@ -395,7 +395,6 @@ async function loadConfirmationDialog(dialogRef) {
     dialogRef.value = module.default;
 }
 
-
 const closeBtn = async () => {
     if (selectedRemote.value && editMode.value) {
         await loadConfirmationDialog(closeConfirmationComponent);
@@ -416,7 +415,6 @@ const confirmCancel: ConfirmationCallback = async () => {
 const cancelCancel: ConfirmationCallback = async () => {
     updateShowCloseConfirmation(false);
 }
-
 
 function selectRemoteBtn(remote) {
     editMode.value = false
@@ -461,6 +459,7 @@ async function saveEditedRemoteBtn() {
         pushNotification(new Notification('No Changes Detected', `No fields have been changed, save not completed.`, 'info', 8000));
     } else {
         saving.value = true;
+        // console.log("Final token being sent to the backend:", loadedEditableRemoteParams.value.parameters.token.value);
         await myRemoteManager.editRemote(selectedRemote.value!.name, loadedEditableRemoteName.value!, loadedEditableRemoteProvider.value!.type, loadedEditableRemoteParams.value!);
         pushNotification(new Notification('Remote Updated', `Remote changes have been saved successfully.`, 'success', 8000));
         saving.value = false;
@@ -496,13 +495,13 @@ const deleteRemoteYes: ConfirmationCallback = async () => {
     deleting.value = false;
     updateShowDeleteRemotePrompt(false);
 }
+
 const deleteRemoteNo: ConfirmationCallback = async () => {
     updateShowDeleteRemotePrompt(false);
 }
 const updateShowDeleteRemotePrompt = (newVal) => {
     showDeleteRemotePrompt.value = newVal;
 }
-
 
 function clearOAuthBtn() {
     oAuthenticated.value = false;
@@ -513,28 +512,57 @@ function clearOAuthBtn() {
 const displayValue = computed({
     get: () => {
         if (loadedEditableRemoteProvider.value) {
-            const token = loadedEditableRemoteParams.value.parameters.token.value;
+            let token = loadedEditableRemoteParams.value.parameters.token.value;
+            console.log("GET: Current token value:", token);
+
             if (!token) {
-                return ''; // Return empty or a placeholder if token is missing
+                console.log("GET: Token is missing or empty.");
+                return '';
             }
-            // Convert token to JSON string for display if it’s an object
-            return typeof token === 'object'
-                ? JSON.stringify(token, null, 2)
-                : token;
+
+            if (typeof token === 'string') {
+                try {
+                    // Try to parse the string as JSON
+                    token = JSON.parse(token);
+                    console.log("GET: Parsed token string into object:", token);
+                } catch (error) {
+                    console.warn("GET: Token string is not valid JSON. Returning as-is:", token);
+                    return token;
+                }
+            }
+
+            if (typeof token === 'object') {
+                const jsonString = JSON.stringify(token, null, 2);
+                console.log("GET: Token is an object. Returning JSON string:", jsonString);
+                return jsonString;
+            } else {
+                console.log("GET: Token is not an object. Returning as-is:", token);
+                return token;
+            }
         }
     },
     set: (newValue: string) => {
         if (loadedEditableRemoteProvider.value) {
+            console.log("SET: New value received for token:", newValue);
+
             try {
-                // Parse JSON and update token if valid in loadedEditableRemoteParams
-                loadedEditableRemoteParams.value.parameters.token.value = JSON.parse(newValue);
-            } catch {
-                // If parsing fails, keep as string in loadedEditableRemoteParams
+                // Try to parse the new value as JSON
+                const parsedValue = JSON.parse(newValue);
+                console.log("SET: Parsed new value into JSON object:", parsedValue);
+                loadedEditableRemoteParams.value.parameters.token.value = parsedValue;
+            } catch (error) {
+                console.warn("SET: Failed to parse new value as JSON. Keeping as string:", newValue);
                 loadedEditableRemoteParams.value.parameters.token.value = newValue;
             }
+
+            console.log(
+                "SET: Final token value in parameters:",
+                loadedEditableRemoteParams.value.parameters.token.value
+            );
         }
     }
 });
+
 
 const accessToken = ref<string | null>(null);
 const refreshToken = ref<string | null>(null);
@@ -555,9 +583,9 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             case 'google cloud storage':
                 providerAuthUrlSuffix = 'cloud';
                 break;
-            case 'onedrive':
-                providerAuthUrlSuffix = 'onedrive';
-                break;
+            // case 'onedrive':
+            //     providerAuthUrlSuffix = 'onedrive';
+            //     break;
             default:
                 providerAuthUrlSuffix = '';
                 break;

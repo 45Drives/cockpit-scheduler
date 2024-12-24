@@ -994,10 +994,6 @@ function validatePath(path, isRemote?) {
 
 
 async function validateAllValues() {
-    if (!selectedRemote.value) {
-        errorList.value.push("Remote is required.");
-        errorTags.value.selectedRemote = true;
-    }
 
     if (!transferType.value) {
         errorList.value.push("Transfer type is required.");
@@ -1078,6 +1074,31 @@ async function validateAllValues() {
     }
 }
 
+async function validateSelectedRemote() {
+    // Clear previous error
+    errorTags.value.selectedRemote = false;
+
+    // Check if selectedRemote is set
+    if (!selectedRemote.value) {
+        errorList.value.push("Remote is required.");
+        errorTags.value.selectedRemote = true;
+        return false;
+    }
+
+    // Verify the remote exists in the list of existingRemotes
+    const remoteExists = existingRemotes.value.some(
+        (remote) => remote.name === selectedRemote.value!.name
+    );
+
+    if (!remoteExists) {
+        errorList.value.push(`Selected remote "${selectedRemote.value.name}" does not exist.`);
+        errorTags.value.selectedRemote = true;
+        return false;
+    }
+
+    return true;
+}
+
 
 function clearErrorTags() {
     for (const key in errorTags.value) {
@@ -1088,6 +1109,7 @@ function clearErrorTags() {
 
 async function validateParams() {
     // clearErrorTags();
+    await validateSelectedRemote();
     await validateAllValues();
     await validateLocalPath();
     validateDestinationPath();

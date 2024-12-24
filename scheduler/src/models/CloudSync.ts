@@ -51,15 +51,15 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
         },
         oAuthSupported: true
     }),
-    "onedrive": new CloudSyncProvider("Microsoft OneDrive", "onedrive", {
-        parameters: {
-            token: { value: "", type: 'object', defaultValue: "" },
-            client_id: { value: "", type: 'string', defaultValue: "" },
-            client_secret: { value: "", type: 'string', defaultValue: "" },
-            region: { value: "global", type: 'select', allowedValues: ["global", "us", "de", "cn"], defaultValue: "global" }
-        },
-        oAuthSupported: true
-    }),
+    // "onedrive": new CloudSyncProvider("Microsoft OneDrive", "onedrive", {
+    //     parameters: {
+    //         // token: { value: "", type: 'object', defaultValue: "" },
+    //         client_id: { value: "", type: 'string', defaultValue: "" },
+    //         client_secret: { value: "", type: 'string', defaultValue: "" },
+    //         region: { value: "global", type: 'select', allowedValues: ["global", "us", "de", "cn"], defaultValue: "global" }
+    //     },
+    //     // oAuthSupported: true
+    // }),
     "azureblob": new CloudSyncProvider("Microsoft Azure Blob", "azureblob", {
         parameters: {
             account: { value: "", type: 'string', defaultValue: "" },

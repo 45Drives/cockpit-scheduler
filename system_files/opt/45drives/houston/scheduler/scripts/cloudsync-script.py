@@ -3,7 +3,7 @@ import sys
 import os
 import json
 import configparser
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import requests
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
@@ -13,7 +13,7 @@ OAUTH_TYPES = {
     "drive": "drive",
     "google cloud storage": "cloud",
     "dropbox": "dropbox",
-    "onedrive": "onedrive",
+    # "onedrive": "onedrive",
 }
 
 def load_rclone_config():
@@ -29,33 +29,113 @@ def get_remote_details(config, remote_name):
     Retrieve remote details (type and token) from the rclone configuration.
     """
     if not config.has_section(remote_name):
+        print(f"ERROR: Remote '{remote_name}' not found in rclone.conf")
         raise ValueError(f"Remote '{remote_name}' not found in rclone.conf")
 
     remote_type = config.get(remote_name, "type", fallback=None)
+
     if not remote_type:
+        print(f"ERROR: No type found for remote '{remote_name}'")
         raise ValueError(f"No type found for remote '{remote_name}'")
 
     token = config.get(remote_name, "token", fallback=None)
 
     # Return token as None if it's not an OAuth type
     if remote_type.lower() not in OAUTH_TYPES:
+        print(f"INFO: Remote '{remote_name}' is not an OAuth type. Type: {remote_type.lower()}, Token: None")
         return remote_type.lower(), None
 
     if not token:
+        print(f"ERROR: No token found for OAuth remote '{remote_name}'")
         raise ValueError(f"No token found for OAuth remote '{remote_name}'")
 
-    return remote_type.lower(), json.loads(token)
+    try:
+        parsed_token = json.loads(token)
+        return remote_type.lower(), parsed_token
+
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Invalid JSON token for remote '{remote_name}': {token}")
+        raise ValueError(f"Invalid JSON token for remote '{remote_name}': {token}") from e
+
+
+def normalize_to_utc(expiry):
+    """
+    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
+    """
+    if '+' in expiry:
+        dt_part, offset_part = expiry.split('+')
+        sign = 1
+    elif '-' in expiry and not expiry.endswith('Z'):
+        dt_part, offset_part = expiry.split('-')
+        sign = -1
+    else:
+        # Already in UTC
+        return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+
+    # Parse the main datetime part
+    dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
+
+    # Parse the offset into hours and minutes
+    offset_hours, offset_minutes = map(int, offset_part.split(':'))
+    offset = timedelta(hours=offset_hours, minutes=offset_minutes)
+
+    # Adjust the datetime to UTC
+    dt_utc = dt - sign * offset
+
+    # Return as timezone-aware datetime
+    return dt_utc.replace(tzinfo=timezone.utc)
+
+def normalize_to_utc(expiry):
+    """
+    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
+    """
+    if not isinstance(expiry, str):
+        raise ValueError(f"Expiry must be a string, got {type(expiry)}: {expiry}")
+
+    try:
+        # Check for offset and split accordingly
+        if '+' in expiry:
+            dt_part, offset_part = expiry.split('+', maxsplit=1)
+            sign = 1
+        elif '-' in expiry and not expiry.endswith('Z'):
+            dt_part, offset_part = expiry.rsplit('-', maxsplit=1)
+            sign = -1
+        else:
+            # Handle UTC format without offset
+            return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+
+        # Truncate fractional seconds to six digits if present
+        if '.' in dt_part:
+            base, frac = dt_part.split('.')
+            dt_part = f"{base}.{frac[:6]}"
+
+        # Parse datetime and offset
+        dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
+        offset_hours, offset_minutes = map(int, offset_part.split(':'))
+        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
+
+        # Adjust datetime to UTC
+        return (dt - sign * offset).replace(tzinfo=timezone.utc)
+
+    except Exception as e:
+        raise ValueError(f"Failed to normalize expiry '{expiry}' to UTC: {e}")
+
 
 def is_token_expired(token_data):
     """
     Check if the token is expired based on the expiry time.
     """
     expiry = token_data.get("expiry")
+    
     if not expiry:
         raise ValueError("No expiry information found in token")
 
-    expiry_datetime = datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ')  # Adjust format if needed
-    return datetime.utcnow() >= expiry_datetime
+    # Normalize the expiry to a UTC-aware datetime
+    expiry_datetime = normalize_to_utc(expiry)
+    # print(f'Token expiry: {expiry_datetime} vs now: {datetime.now(timezone.utc)}')
+    
+    # Compare with the current UTC time
+    return datetime.now(timezone.utc) >= expiry_datetime
 
 def refresh_token_via_server(config, remote_name, remote_type, token_data):
     """
@@ -105,6 +185,7 @@ def validate_and_refresh_token(config, remote_name):
 
     # Validate and refresh the token if needed
     if is_token_expired(token_data):
+        print(f'Access token expired... Refreshing token...')
         refresh_token_via_server(config, remote_name, remote_type, token_data)
 
 def build_rclone_command(options):
@@ -197,10 +278,13 @@ def execute_rclone(options):
         if not remote_name:
             raise ValueError("No remote name specified in options")
 
+        # print("Starting token validation...")
         validate_and_refresh_token(config, remote_name)
+        # print("Finished token validation.")
 
         command = build_rclone_command(options)
         src, dest = construct_paths(options['local_path'], options['direction'], options['target_path'])
+        # print(f"Source: {src}, Destination: {dest}")
         execute_command(command, src, dest)
     except Exception as e:
         print(f"Execution error: {e}")
@@ -251,7 +335,9 @@ def main():
     Main execution entry point.
     """
     print("Starting rclone script...")
+    # print('env:', os.environ)
     options = parse_arguments()
+    # print(f"Options: {options}")
     execute_rclone(options)
     print("Rclone task execution completed.")
 

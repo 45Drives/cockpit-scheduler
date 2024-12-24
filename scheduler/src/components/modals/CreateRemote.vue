@@ -334,9 +334,9 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             case 'google cloud storage':
                 providerAuthUrlSuffix = 'cloud';
                 break;
-            case 'onedrive':
-                providerAuthUrlSuffix = 'onedrive';
-                break;
+            // case 'onedrive':
+            //     providerAuthUrlSuffix = 'onedrive';
+            //     break;
             default:
                 providerAuthUrlSuffix = '';
                 break;

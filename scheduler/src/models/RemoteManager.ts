@@ -148,7 +148,7 @@ export class RemoteManager implements RemoteManagerType {
     async editRemote(oldName: string, newName: string, newType: string, newParams: any) {
         let provider;
         console.log(`oldName: ${oldName}, newName: ${newName}, newType: ${newType}`);
-        console.log('newParams:', newParams);
+        console.log('newRemoteParams:', newParams);
         // Handle the case where the type is 's3' and provider is passed
         if (newType === 's3') {
             provider = cloudSyncProviders[`s3-${newParams.parameters.provider.value}`];
