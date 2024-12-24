@@ -84,6 +84,7 @@ const initializeParameters = () => {
 
         // Safely retrieve the command, path, and input type
         oneLineCommand.value = params.find(param => param.key === 'command')?.value || '';
+        oneLineCommand.value = oneLineCommand.value.replace(/\/bin\/bash -c\s*/, '').replace(/^"|"$/g, '').trim();
         scriptPath.value = params.find(param => param.key === 'filePath')?.value || '';
         if (scriptPath.value !== '') { 
         inputType.value = 'script'; 
@@ -178,10 +179,14 @@ function validateParams() {
     validateCustomTask();
 
     if (errorList.value.length == 0) {
+        if (oneLineCommand.value !== '') {
+            // Append /bin/bash -c " to the command and remove any trailing quotes
+            oneLineCommand.value = `/bin/bash -c "${oneLineCommand.value}"`;
+        }
         setParams();
     }
-
 }
+
 
 function validateCustomTask(){
     if(inputType.value === 'script' ){
