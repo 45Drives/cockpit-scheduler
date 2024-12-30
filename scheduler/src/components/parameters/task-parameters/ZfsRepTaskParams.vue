@@ -178,9 +178,17 @@
         <!-- TOP RIGHT -->
         <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
             <div class="grid grid-cols-2">
+                <label class="mt-1 col-span-1 block text-base leading-6 text-default" >Select Transfer Method</label>
+                <select v-model="transferMethod" class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"id="method">
+                    <option value="ssh">SSH</option>
+                    <option value="netcat">Netcat</option>
+                </select>
+
+            </div>
+            <div class="grid grid-cols-2 mt-2">
                 <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
                 <div class="col-span-1 items-end text-end justify-end">
-                    <button disabled v-if="testingSSH" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                    <button disabled v-if="testingNetcat || testingSSH " class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
                         <svg aria-hidden="true" role="status"
                             class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101"
                             fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -193,8 +201,10 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else @click="confirmTest(destHost, destUser)"
+                    <button v-else-if="transferMethod === 'ssh'" @click="confirmTest(destHost, destUser)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                    <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
+                    class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
                 </div>
             </div>
             <div name="destination-host" class="mt-1">
@@ -207,7 +217,7 @@
                     destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" placeholder="Leave blank for local replication." />
             </div>
-            <div name="destination-user" class="mt-1">
+            <div name="destination-user" v-if ="transferMethod === 'ssh'" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
                 <input v-if="destHost === ''" disabled type="text" v-model="destUser"
                     class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
@@ -305,7 +315,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist } from '../../../composables/utility';
+import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -369,6 +379,12 @@ const makeNewDestDataset = ref(false);
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
+
+const testingNetcat = ref(false);
+const netCatTestResult = ref(false);
+
+const transferMethod = ref('ssh')
+
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
@@ -847,7 +863,34 @@ async function confirmTest(destHost, destUser) {
     }
     testingSSH.value = false;
 }
+async function confirmNetcatTest(destHost2, destPort2) {
+  testingNetcat.value = true;
+  const netcatHost = destHost2;
+  const netcatdestPort = destPort2;
+  
+  // Await the result of the testNetcat function
+  netCatTestResult.value = await testNetcat(netcatHost, netcatdestPort);
+  
+  console.log(netCatTestResult);
+  
+  if (netCatTestResult.value) {
+    pushNotification(new Notification("Connection Successful!", `Netcat connection established. This host can be used for remote transfers.`, "success", 8000));
+  } else {
+    pushNotification(new Notification("Connection Failed", `Could not resolve hostname "${destHost2}": Check the server and port.`, "error", 8000));
+  }
+  testingNetcat.value = false
 
+}
+watch(transferMethod, (newMethod) => {
+            if (newMethod === 'netcat' && destHost.value!='') {
+                console.log("newmothod: hello")
+                destUser.value = ''; // Set destUser to an empty string
+                // Alternatively, you can set it to 'root' by uncommenting the next line
+                // destUser.value = 'root';
+            }else if(newMethod === 'ssh' && destHost.value==''){
+                destUser.value = 'root'
+            }
+        });
 watch(destPool, handleDestPoolChange);
 watch(sourcePool, handleSourcePoolChange);
 

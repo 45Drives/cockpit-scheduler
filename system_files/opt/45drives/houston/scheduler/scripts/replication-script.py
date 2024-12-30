@@ -34,8 +34,10 @@ def prune_snapshots_by_retention(
 	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22
 ):
 	# Determine whether to fetch snapshots locally or remotely
-	if remote_host:
+	if remote_host and user is not None:
 		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
+	if remote_host and user is None:
+		snapshots = get_remote_snapshots_via_netcat(remote_user, remote_host, remote_port, filesystem)
 	else:
 		snapshots = get_local_snapshots(filesystem)
 
@@ -143,6 +145,40 @@ def get_remote_snapshots(user, host, port, filesystem):
 		print(f"An unexpected error occurred: {e}")
 		sys.exit(1)
 
+
+def get_remote_snapshots_via_netcat(host, port, filesystem):
+    # Construct the command to fetch snapshots
+    zfs_command = f"zfs list -H -o name,guid,creation -t snapshot -r {filesystem}"
+
+    try:
+        # Use subprocess to send the command via Netcat
+        result = subprocess.run(
+            ['nc', host, str(port)],
+            input=zfs_command,
+            text=True,
+            capture_output=True,
+            check=True
+        )
+
+        # Process the output to parse snapshots
+        snapshots = []
+        for line in result.stdout.splitlines():
+            parts = line.split('\t')  # ZFS output is tab-delimited
+            if len(parts) >= 3:
+                snapshot_name = parts[0]
+                snapshot_guid = parts[1]
+                snapshot_creation = parts[2]
+                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
+                snapshots.append(snapshot)
+
+        return snapshots
+
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: Failed to fetch remote snapshots via Netcat: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
 			
 def get_most_recent_snapshot(snapshots):
 	if snapshots:
@@ -263,10 +299,54 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 	
 			print(f"received remote send")
 
+	if recvHost != "" and user is None:
+		try:
+			# Command to use mbuffer for buffering
+			m_buff_cmd = ['mbuffer', '-s', '256k']
+			m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
 
-	except Exception as e:
-		print(f"ERROR: send error: {e}")
-		sys.exit(1)
+			# Start the mbuffer process
+			process_m_buff = subprocess.Popen(
+				m_buff_cmd,
+				stdin=process_send.stdout,  # Connect to the previous send process
+				stdout=subprocess.PIPE,  # Output to the next process
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
+
+			# Netcat command to connect to the remote host and port
+			nc_cmd = ['nc']
+			nc_cmd.append(recvHost)
+			nc_cmd.append(recvPort)
+
+			# Debugging information
+			print(f"Receiving {sendName} in {recvName} via {recvHost}:{recvPort}")
+
+			# Start the netcat process
+			process_nc = subprocess.Popen(
+				nc_cmd,
+				stdin=process_m_buff.stdout,  # Connect to the mbuffer output
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
+
+			# Wait for netcat process to finish and capture the output
+			stdout, stderr = process_nc.communicate()
+
+			# Check for errors
+			if process_nc.returncode != 0:
+				print(f"ERROR: Netcat receive error: {stderr}")
+				sys.exit(1)
+			else:
+				print(stdout)
+
+			print(f"Successfully received remote send.")
+
+		except Exception as e:
+			print(f"ERROR: Send error: {e}")
+			sys.exit(1)
+
 
 def main():
 	try:	
@@ -299,8 +379,11 @@ def main():
 
 		incrementalSnapName = ""
 
-		if remoteHost:
+		if remoteHost and user:
 			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem)
+		elif remoteHost and user is None:
+			destinationSnapshots = get_remote_snapshots_via(remoteHost, remotePort, receivingFilesystem)
+
 		else:
 			destinationSnapshots = get_local_snapshots(receivingFilesystem)
 

@@ -38,13 +38,33 @@ def build_rsync_command(options):
         exclude_patterns = options['excludePattern'].split(',')
         for pattern in exclude_patterns:
             command.append(f'--exclude={pattern.strip()}')
-    
-    if options['targetHost']:
-        if options['targetPort'] and int(options['targetPort']) != 22:
-            remote_command = f"ssh -p {options['targetPort']}"
+    # Check if transferMethod is specified
+    if 'transferMethod' in options:
+        if options['transferMethod'] == 'ssh':
+            remote_command = "ssh"
+            if 'targetPort' in options and int(options['targetPort']) != 22:
+                remote_command += f" -p {options['targetPort']}"
             command.append(f"-e {remote_command}")
+            print(f'Using SSH command: ', command)
+
+        elif options['transferMethod'] == 'netcat' and 'targetHost' in options:
+            remote_command = f"nc {options['targetHost']} {options['targetPort']}"
+            command.append(f"-e '{remote_command}'")
+            print(f'Using Netcat command: ', command)
         else:
-            command.append("-e 'ssh'")
+            print("Error: targetHost must be provided for Netcat.")
+    else:
+        # If transferMethod is missing, proceed with default logic
+        if options['targetHost'] and options['targetUser']:
+            if 'targetPort' in options and int(options['targetPort']) != 22:
+                remote_command = f"ssh -p {options['targetPort']}"
+                command.append(f"-e {remote_command}")
+            else:
+                command.append("-e 'ssh'")
+        elif options['targetHost']:
+            remote_command = f"nc {options['targetHost']} {options['targetPort']}"
+            command.append(f"-e '{remote_command}'")  # Use netcat for remote command
+            print(f'Using Netcat command: ', command)
     
     return command
 
@@ -120,6 +140,7 @@ def parse_arguments():
     return {
         'localPath': os.environ.get('rsyncConfig_local_path', ''),
         'direction': os.environ.get('rsyncConfig_direction', 'push'),
+        'transferMethod': os.environ.get('rsyncConfig_target_info_transferMethod', ''),
         'targetHost': os.environ.get('rsyncConfig_target_info_host', ''),
         'targetPort': int(os.environ.get('rsyncConfig_target_info_port', 22)),
         'targetUser': os.environ.get('rsyncConfig_target_info_user', 'root'),
