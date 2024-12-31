@@ -342,8 +342,9 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 break;
         }
 
-        const ngrokUrl = `https://trusted-strangely-baboon.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
-        const authWindow = window.open(ngrokUrl, '_blank', 'width=500,height=900');
+        // const middlewareUrl = `https://trusted-strangely-baboon.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
+        const middlewareUrl = `http://192.168.123.5:1337/auth/${providerAuthUrlSuffix}`;
+        const authWindow = window.open(middlewareUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
             throw new Error('Failed to open authentication window. Please check your popup settings.');
@@ -351,8 +352,8 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                if (event.origin !== 'https://trusted-strangely-baboon.ngrok-free.app') return;
-
+                // if (event.origin !== 'https://trusted-strangely-baboon.ngrok-free.app') return;
+                if (event.origin !== 'http://192.168.123.5:1337') return;
                 const { accessToken: token, refreshToken: refresh, expiry: expiry, userId: id } = event.data;
 
                 if (token && refresh && id) {

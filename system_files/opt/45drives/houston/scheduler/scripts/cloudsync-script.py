@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
-SERVER_URL = 'https://trusted-strangely-baboon.ngrok-free.app'
+# SERVER_URL = 'https://trusted-strangely-baboon.ngrok-free.app'
+SERVER_URL = 'http://192.168.123.5:1337'
 
 OAUTH_TYPES = {
     "drive": "drive",
