@@ -305,7 +305,9 @@ export class Scheduler implements SchedulerType {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
-
+        if (taskInstance.schedule.enabled) {
+            await this.disableSchedule(taskInstance);
+        }
         await removeTask(fullTaskName);
 
         console.log(`${fullTaskName} removed`);

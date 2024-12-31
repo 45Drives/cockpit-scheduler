@@ -439,7 +439,6 @@ async function initializeData() {
         if (destinationRetention) {
             destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
-
         }
 
         initialParameters.value = JSON.parse(JSON.stringify({
@@ -710,27 +709,31 @@ function validateDestination() {
 }
 
 async function checkDestDatasetContents() {
-    try {
-        const hasSnapshots = await doSnapshotsExist(destDataset.value);
-        const isEmpty = await isDatasetEmpty(destDataset.value);
+    if (!useCustomTarget.value && !makeNewDestDataset.value) {
+        try {
+            const hasSnapshots = await doSnapshotsExist(destDataset.value);
+            const isEmpty = await isDatasetEmpty(destDataset.value);
 
-        if (hasSnapshots) {
-            errorList.value.push("Destination dataset has snapshots already, please create a new one.");
-            useCustomTarget.value = true;
-            makeNewDestDataset.value = true;
-            destDatasetErrorTag.value = true;
-        } else {
-            if (!isEmpty) {
-                errorList.value.push("Destination dataset is not empty, please create a new one.");
+            if (hasSnapshots) {
+                errorList.value.push("Destination dataset has snapshots already, please create a new one.");
                 useCustomTarget.value = true;
                 makeNewDestDataset.value = true;
                 destDatasetErrorTag.value = true;
+            } else {
+                if (!isEmpty) {
+                    errorList.value.push("Destination dataset is not empty, please create a new one.");
+                    useCustomTarget.value = true;
+                    makeNewDestDataset.value = true;
+                    destDatasetErrorTag.value = true;
+                }
             }
+        } catch (error) {
+            console.error("Error while checking dataset contents:", error);
+            errorList.value.push("An unexpected error occurred while validating dataset contents.");
         }
-
-    } catch (error) {
-        console.error("Error while checking dataset contents:", error);
-        errorList.value.push("An unexpected error occurred while validating dataset contents.");
+    } else {
+        // Skip checks if making a new destination dataset
+        console.log("Skipping dataset content checks as 'makeNewDestDataset' is true.");
     }
 }
 
@@ -802,6 +805,7 @@ async function validateParams() {
     validateHost();
     validateDestination();
     await checkDestDatasetContents();
+    
     validateCustomName();
 
     if (errorList.value.length == 0) {

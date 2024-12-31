@@ -146,6 +146,7 @@ const cancelEdit : ConfirmationCallback = async () => {
 
 async function saveEditedTask() {
     console.log('save changes triggered');
+    console.log('params to save:', parameters.value)
     const template = ref();
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
