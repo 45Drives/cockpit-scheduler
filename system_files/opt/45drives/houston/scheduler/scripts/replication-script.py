@@ -187,165 +187,152 @@ def get_most_recent_snapshot(snapshots):
 	else:
 		return None
 	
+import subprocess
+import sys
+
 def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G", forceOverwrite=False):
-	try:
-		# Initial local send command
-		send_cmd = ['zfs', 'send']
-		
-		# send_cmd.append('-v')
-		
-		if compressed:
-			send_cmd.append('-Lce')
+    try:
+        # Initial local send command
+        send_cmd = ['zfs', 'send']
 
-		if raw:
-			send_cmd.append('-w')
+        if compressed:
+            send_cmd.append('-Lce')
 
-		if sendName2 != "":
-			send_cmd.extend(['-i', sendName2])
+        if raw:
+            send_cmd.append('-w')
 
-		send_cmd.append(sendName)
+        if sendName2 != "":
+            send_cmd.extend(['-i', sendName2])
 
-		# print(f"SEND_CMD: {send_cmd}")
-		if sendName2 != "":
-			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
-		else:
-			print(f"sending {sendName} to {recvName}")
+        send_cmd.append(sendName)
 
-		process_send = subprocess.Popen(
-			send_cmd,
-			stdout=subprocess.PIPE,
-			stderr=subprocess.PIPE,
-		)
-		
+        if sendName2 != "":
+            print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
+        else:
+            print(f"sending {sendName} to {recvName}")
 
-		# If sending locally
-		if recvHost == "" or recvHost is None:
-			recv_cmd = ['zfs', 'recv']
-			
-			# recv_cmd.append('-v')
-			if forceOverwrite:
-				recv_cmd.append('-F')
+        process_send = subprocess.Popen(
+            send_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
-			recv_cmd.append(recvName)
+        # If sending locally
+        if recvHost == "" or recvHost is None:
+            recv_cmd = ['zfs', 'recv']
+            if forceOverwrite:
+                recv_cmd.append('-F')
 
-			# print(f"RECV_CMD: {recv_cmd}")
-			print(f"receiving {sendName} in {recvName}")
+            recv_cmd.append(recvName)
 
-			process_recv = subprocess.Popen(
-				recv_cmd,
-				stdin=process_send.stdout,
-				stdout=subprocess.PIPE,
-				stderr=subprocess.PIPE,
-				universal_newlines=True,
-			)
-		   
-			stdout, stderr = process_recv.communicate()
+            print(f"receiving {sendName} in {recvName}")
 
-			if process_recv.returncode != 0:
-				print(f"recv error: {stderr}")
-				sys.exit(1)
-			else:
-				print(stdout)
-	
-			print(f"received local send")
+            process_recv = subprocess.Popen(
+                recv_cmd,
+                stdin=process_send.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
 
-		# If sending remotely via ssh
-		if recvHost != "" and recvHost is not None:
+            stdout, stderr = process_recv.communicate()
 
-			m_buff_cmd = ['mbuffer', '-s', '256k']
-			m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+            if process_recv.returncode != 0:
+                print(f"recv error: {stderr}")
+                sys.exit(1)
+            else:
+                print(stdout)
 
-			process_m_buff = subprocess.Popen(
-				m_buff_cmd,
-				stdin=process_send.stdout,
-				stdout=subprocess.PIPE,
-				stderr=subprocess.PIPE,
-				universal_newlines=True,
-			)
+            print(f"received local send")
 
-			ssh_cmd = ['ssh']
+        # If sending remotely via ssh
+        if recvHost != "" and recvHost is not None:
+            m_buff_cmd = ['mbuffer', '-s', '256k']
+            m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
 
-			if recvPort != '22':
-				ssh_cmd.extend(['-p', recvPort])
+            process_m_buff = subprocess.Popen(
+                m_buff_cmd,
+                stdin=process_send.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
 
-			ssh_cmd.append(recvHostUser + '@' + recvHost)
+            ssh_cmd = ['ssh']
 
-			ssh_cmd.extend(['zfs', 'recv'])
-			
-			# ssh_cmd.append('-v')
-			if forceOverwrite:
-				ssh_cmd.append('-F')
+            if recvPort != '22':
+                ssh_cmd.extend(['-p', recvPort])
 
-			ssh_cmd.append(recvName)
+            ssh_cmd.append(recvHostUser + '@' + recvHost)
+            ssh_cmd.extend(['zfs', 'recv'])
 
-			# print(f"ssh_cmd: {ssh_cmd}")	
-			print(f"receiving {sendName} in {recvName} via {recvHostUser}@{recvHost}:{recvPort}")
+            if forceOverwrite:
+                ssh_cmd.append('-F')
 
-			process_remote_recv = subprocess.Popen(
-				ssh_cmd,
-				stdin=process_m_buff.stdout,
-				stdout=subprocess.PIPE,
-				stderr=subprocess.PIPE,
-				universal_newlines=True,
-			)
+            ssh_cmd.append(recvName)
 
-			stdout, stderr = process_remote_recv.communicate()
+            print(f"receiving {sendName} in {recvName} via {recvHostUser}@{recvHost}:{recvPort}")
 
-			if process_remote_recv.returncode != 0:
-				print(f"ERROR: remote recv error: {stderr}")
-				sys.exit(1)
-			else:
-				print(stdout)
-	
-			print(f"received remote send")
+            process_remote_recv = subprocess.Popen(
+                ssh_cmd,
+                stdin=process_m_buff.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
 
-	if recvHost != "" and user is None:
-		try:
-			# Command to use mbuffer for buffering
-			m_buff_cmd = ['mbuffer', '-s', '256k']
-			m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+            stdout, stderr = process_remote_recv.communicate()
 
-			# Start the mbuffer process
-			process_m_buff = subprocess.Popen(
-				m_buff_cmd,
-				stdin=process_send.stdout,  # Connect to the previous send process
-				stdout=subprocess.PIPE,  # Output to the next process
-				stderr=subprocess.PIPE,
-				universal_newlines=True,
-			)
+            if process_remote_recv.returncode != 0:
+                print(f"ERROR: remote recv error: {stderr}")
+                sys.exit(1)
+            else:
+                print(stdout)
 
-			# Netcat command to connect to the remote host and port
-			nc_cmd = ['nc']
-			nc_cmd.append(recvHost)
-			nc_cmd.append(recvPort)
+            print(f"received remote send")
 
-			# Debugging information
-			print(f"Receiving {sendName} in {recvName} via {recvHost}:{recvPort}")
+        # Additional netcat handling
+        if recvHost != "" and recvHostUser is None:
+            try:
+                m_buff_cmd = ['mbuffer', '-s', '256k']
+                m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
 
-			# Start the netcat process
-			process_nc = subprocess.Popen(
-				nc_cmd,
-				stdin=process_m_buff.stdout,  # Connect to the mbuffer output
-				stdout=subprocess.PIPE,
-				stderr=subprocess.PIPE,
-				universal_newlines=True,
-			)
+                process_m_buff = subprocess.Popen(
+                    m_buff_cmd,
+                    stdin=process_send.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                )
 
-			# Wait for netcat process to finish and capture the output
-			stdout, stderr = process_nc.communicate()
+                nc_cmd = ['nc', recvHost, str(recvPort)]
+                print(f"Receiving {sendName} in {recvName} via {recvHost}:{recvPort}")
 
-			# Check for errors
-			if process_nc.returncode != 0:
-				print(f"ERROR: Netcat receive error: {stderr}")
-				sys.exit(1)
-			else:
-				print(stdout)
+                process_nc = subprocess.Popen(
+                    nc_cmd,
+                    stdin=process_m_buff.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                )
 
-			print(f"Successfully received remote send.")
+                stdout, stderr = process_nc.communicate()
 
-		except Exception as e:
-			print(f"ERROR: Send error: {e}")
-			sys.exit(1)
+                if process_nc.returncode != 0:
+                    print(f"ERROR: Netcat receive error: {stderr}")
+                    sys.exit(1)
+                else:
+                    print(stdout)
+
+                print(f"Successfully received remote send.")
+
+            except Exception as e:
+                print(f"ERROR: Send error: {e}")
+                sys.exit(1)
+
+    except Exception as e:
+        print(f"ERROR: Send error: {e}")
+        sys.exit(1)
 
 
 def main():

@@ -71,10 +71,13 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
                 .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
                 .addChild(new StringParameter('Custom Name', 'customName', ''))
+                .addChild(new StringParameter('Transfer Method', 'transferMethod', ''))
+
             )
             .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
                 .addChild(new SnapshotRetentionParameter('Source', 'source', 0, 'minutes'))
                 .addChild(new SnapshotRetentionParameter('Destination', 'destination', 0, 'minutes'))
+
             );
         super(name, parameterSchema);
     }

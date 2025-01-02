@@ -391,6 +391,7 @@ const errorList = inject<Ref<string[]>>('errors')!;
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
     if (props.task) {
+        console.log("params: ", props.task)
         loading.value = true;
         await getSourcePools();
         const isRemoteAccessible = ref(false);
@@ -433,6 +434,7 @@ async function initializeData() {
             useCustomTarget.value = true;
         }
         const sendOptionsParams = params.find(p => p.key === 'sendOptions')!.children;
+        console.log("sendOptions:",sendOptionsParams);
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
         sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
@@ -440,8 +442,11 @@ async function initializeData() {
         mbufferUnit.value = sendOptionsParams.find(p => p.key === 'mbufferUnit')!.value;
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
         customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
-
         const snapshotRetentionParams = params.find(p => p.key === 'snapshotRetention')!.children;
+        transferMethod.value = sendOptionsParams.find(p => p.key === 'transferMethod')!.value;
+        if(transferMethod.value == 'local' || transferMethod.value == ''){
+            transferMethod.value = 'ssh'
+        }
 
         // Check for source retention
         const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
@@ -478,7 +483,8 @@ async function initializeData() {
             srcRetentionTime: srcRetentionTime.value,
             srcRetentionUnit: srcRetentionUnit.value,
             destRetentionTime: destRetentionTime.value,
-            destRetentionUnit: destRetentionUnit.value
+            destRetentionUnit: destRetentionUnit.value,
+            transferMethod: transferMethod.value
         }));
 
         loading.value = false;
@@ -826,6 +832,13 @@ async function validateParams() {
 }
 
 function setParams() {
+    if (transferMethod.value == 'ssh' && destHost.value == ''){
+        transferMethod.value = "local"
+    }
+    else if(transferMethod.value == "netcat") {
+        transferMethod.value = "netcat"
+
+    }
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
         .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', destHost.value, destPort.value, destUser.value, destPool.value, destDataset.value))
@@ -837,6 +850,8 @@ function setParams() {
             .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
+            .addChild(new StringParameter('Transfer Method', 'transferMethod', transferMethod.value))
+
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
             // .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
@@ -844,8 +859,8 @@ function setParams() {
             // )
             .addChild(new SnapshotRetentionParameter('Source','source',srcRetentionTime.value,srcRetentionUnit.value))
             .addChild(new SnapshotRetentionParameter('Destination', 'destination', destRetentionTime.value, destRetentionUnit.value))
-        );
 
+        );
     parameters.value = newParams;
     console.log('newParams:', newParams);
 }
