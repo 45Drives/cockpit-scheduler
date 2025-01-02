@@ -104,9 +104,9 @@ const cancelCancel: ConfirmationCallback = async () => {
 }
 
 
-function validateComponentParams() {
+async function validateComponentParams() {
     parameterInputComponent.value.clearTaskParamErrorTags();
-    parameterInputComponent.value.validation();
+    await parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
         pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
@@ -180,9 +180,17 @@ const updateShowSaveConfirmation = (newVal) => {
 }
 
 async function saveChangesBtn() {
-    errorList.value = [];
-    if (validateComponentParams()) {
-        showConfirmationDialog();
+    const hasChanges = parameterInputComponent.value.hasChanges();
+    if (hasChanges) {
+        // console.log('data has changed, triggering save');
+        errorList.value = [];
+        if (await validateComponentParams()) {
+            showConfirmationDialog();
+        }
+    } else {
+        // console.log('no changes');
+        showEditTaskWizard.value = false;
+        pushNotification(new Notification('No Changes Found', `Task saved as-is, no changes detected.`, 'info', 8000));
     }
 }
 
