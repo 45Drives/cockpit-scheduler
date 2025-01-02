@@ -1,3 +1,10 @@
+cockpit-scheduler (1.2.7-1focal) focal; urgency=medium
+
+  * *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters
+    and updates EditTask logic to check for changes before saving.
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 02 Jan 2025 06:52:11 -0400
+
 cockpit-scheduler (1.2.6-1focal) focal; urgency=medium
 
   * Adds more robust error handling to ZFSRepTask parameters and updates EditTask
