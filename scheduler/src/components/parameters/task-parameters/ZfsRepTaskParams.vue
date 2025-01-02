@@ -316,7 +316,7 @@ interface ZfsRepTaskParamsProps {
 const props = defineProps<ZfsRepTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
-const initialParameters = ref({});
+const initialParameters: any = ref({});
 
 const sourcePools = ref<string[]>([]);
 const sourceDatasets = ref<string[]>([]);
@@ -439,7 +439,6 @@ async function initializeData() {
         if (destinationRetention) {
             destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
-
         }
 
         initialParameters.value = JSON.parse(JSON.stringify({
@@ -498,6 +497,10 @@ function hasChanges() {
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
+}
+
+function hasDestDatasetChanged() {
+    return destDataset.value !== initialParameters.value.destDataset;
 }
 
 function handleCheckboxChange(checkbox) {
@@ -662,7 +665,6 @@ function validateSource() {
                 customSrcDatasetErrorTag.value = true;
             }
         }
-
     }
 }
 
@@ -709,30 +711,65 @@ function validateDestination() {
     }
 }
 
-async function checkDestDatasetContents() {
-    try {
-        const hasSnapshots = await doSnapshotsExist(destDataset.value);
-        const isEmpty = await isDatasetEmpty(destDataset.value);
 
-        if (hasSnapshots) {
-            errorList.value.push("Destination dataset has snapshots already, please create a new one.");
-            useCustomTarget.value = true;
-            makeNewDestDataset.value = true;
-            destDatasetErrorTag.value = true;
-        } else {
-            if (!isEmpty) {
-                errorList.value.push("Destination dataset is not empty, please create a new one.");
+async function checkDestDatasetContents() {
+    if (!hasDestDatasetChanged()) {
+        console.log("Destination has not changed, skipping checks.");
+        return;
+    }
+
+    try {
+        // Check if custom target and new dataset creation are flagged
+        if (!useCustomTarget.value && !makeNewDestDataset.value) {
+            // Perform checks if the dataset exists
+            const hasSnapshots = await doSnapshotsExist(destDataset.value);
+            const isEmpty = await isDatasetEmpty(destDataset.value);
+
+            if (hasSnapshots) {
+                errorList.value.push("Destination dataset has snapshots already, please create a new one.");
+                destDatasetErrorTag.value = true;
                 useCustomTarget.value = true;
                 makeNewDestDataset.value = true;
+            } else if (!isEmpty) {
+                errorList.value.push("Destination dataset is not empty, please create a new one.");
                 destDatasetErrorTag.value = true;
+                useCustomTarget.value = true;
+                makeNewDestDataset.value = true;
+            } else {
+                // Dataset is valid, no errors
+                destDatasetErrorTag.value = false;
+            }
+        } else {
+            // Check if the destination dataset exists
+            const datasetExists = doesItExist(destDataset.value, destDatasets.value);
+
+            if (!datasetExists) {
+                // Dataset does not exist, can proceed with creation
+                console.log("Destination dataset does not exist, proceeding with creation.");
+                destDatasetErrorTag.value = false;
+            } else {
+                // Dataset exists, perform additional validation
+                const hasSnapshots = await doSnapshotsExist(destDataset.value);
+                const isEmpty = await isDatasetEmpty(destDataset.value);
+
+                if (hasSnapshots) {
+                    errorList.value.push("Destination dataset has snapshots already, please create a new one.");
+                    destDatasetErrorTag.value = true;
+                } else if (!isEmpty) {
+                    errorList.value.push("Destination dataset is not empty, please create a new one.");
+                    destDatasetErrorTag.value = true;
+                } else {
+                    // Dataset is valid
+                    destDatasetErrorTag.value = false;
+                }
             }
         }
-
     } catch (error) {
         console.error("Error while checking dataset contents:", error);
         errorList.value.push("An unexpected error occurred while validating dataset contents.");
     }
 }
+
 
 
 function isValidPoolName(poolName) {
@@ -802,6 +839,7 @@ async function validateParams() {
     validateHost();
     validateDestination();
     await checkDestDatasetContents();
+    
     validateCustomName();
 
     if (errorList.value.length == 0) {

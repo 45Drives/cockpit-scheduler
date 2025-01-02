@@ -151,6 +151,7 @@ const cancelEdit : ConfirmationCallback = async () => {
 
 async function saveEditedTask() {
     console.log('save changes triggered');
+    console.log('params to save:', parameters.value)
     const template = ref();
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
@@ -186,9 +187,17 @@ const updateShowSaveConfirmation = (newVal) => {
 }
 
 async function saveChangesBtn() {
-    errorList.value = [];
-    if (await validateComponentParams()) {
-        showConfirmationDialog();
+    const hasChanges = parameterInputComponent.value.hasChanges();
+    if (hasChanges) {
+        // console.log('data has changed, triggering save');
+        errorList.value = [];
+        if (await validateComponentParams()) {
+            showConfirmationDialog();
+        }
+    } else {
+        // console.log('no changes');
+        showEditTaskWizard.value = false;
+        pushNotification(new Notification('No Changes Found', `Task saved as-is, no changes detected.`, 'info', 8000));
     }
 }
 
