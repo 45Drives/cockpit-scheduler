@@ -342,8 +342,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 break;
         }
 
-        // const middlewareUrl = `https://trusted-strangely-baboon.ngrok-free.app/auth/${providerAuthUrlSuffix}`;
-        const middlewareUrl = `http://192.168.123.5:1337/auth/${providerAuthUrlSuffix}`;
+        const middlewareUrl = `https://cloud-sync.45d.io//auth/${providerAuthUrlSuffix}`;
         const authWindow = window.open(middlewareUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
@@ -352,8 +351,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                // if (event.origin !== 'https://trusted-strangely-baboon.ngrok-free.app') return;
-                if (event.origin !== 'http://192.168.123.5:1337') return;
+                if (event.origin !== 'https://cloud-sync.45d.io/') return;
                 const { accessToken: token, refreshToken: refresh, expiry: expiry, userId: id } = event.data;
 
                 if (token && refresh && id) {
