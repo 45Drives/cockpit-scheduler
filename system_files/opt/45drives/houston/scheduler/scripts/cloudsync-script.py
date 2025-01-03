@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
-SERVER_URL = 'https://cloud-sync.45d.io/'
+SERVER_URL = 'https://cloud-sync.45d.io'
 
 OAUTH_TYPES = {
     "drive": "drive",

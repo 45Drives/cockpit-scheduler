@@ -163,13 +163,21 @@
 
                         </div>
                         <div v-if="loadedEditableRemoteParams.value.oAuthSupported"
-                            class="w-full col-span-2 text-default text-center items-center mt-3">
-                            --- OR ---
+                            class="w-full col-span-2 text-default items-center mt-3 flex flex-row">
+                            <div class="flex-grow text-left">
+                                <a :href="privacyPolicyUrl" target="_blank" rel="noopener noreferrer"
+                                    class="underline text-blue-500 hover:text-blue-700">
+                                    Privacy Policy
+                                </a>
+                                <a :href="termsOfServiceUrl" target="_blank" rel="noopener noreferrer"
+                                    class="ml-4 underline text-blue-500 hover:text-blue-700">
+                                    Terms of Service
+                                </a>
+                            </div>
                         </div>
                         <div class="col-span-2 w-full mt-2">
                             <div class="block text-base leading-6 text-default border-b-2 mb-2">
-                                <b>Manually Configure Parameters</b> - <i class="text-sm">Blank fields will be left out
-                                    of
+                                <b>Manually Configure Parameters</b> - <i class="text-sm">Blank fields will be left out of
                                     config or set with defaults (if applicable)</i>
                             </div>
                             <div v-for="(parameter, key) in loadedEditableRemoteParams.value.parameters"
@@ -205,7 +213,7 @@
                                 <textarea v-else-if="parameter.type === 'object' && String(key) === 'token'"
                                     v-model="displayValue" rows="4" :id="String(key)"
                                     class="block w-full mt-1 input-textlike"
-                                    :placeholder='`Default is empty object`'></textarea>
+                                    :placeholder='`Automatically retrieved with OAuth. (Default is empty object)`'></textarea>
                             </div>
                         </div>
                     </div>
@@ -285,8 +293,10 @@ const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const emit = defineEmits(['close']);
 const showManageRemotes = inject<Ref<boolean>>('show-manage-remotes')!;
 
-console.log('REMOTES:', existingRemotes)!;
+console.log('EXISTING REMOTES:', existingRemotes)!;
 
+const privacyPolicyUrl = ref('https://cloud-sync.45d.io/privacy');
+const termsOfServiceUrl = ref('https://cloud-sync.45d.io/tos');
 
 // Create dummy CloudSyncRemote instance for dev
 const dummyDropboxProvider: CloudSyncProvider = cloudSyncProviders["dropbox"];
@@ -583,16 +593,13 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             case 'google cloud storage':
                 providerAuthUrlSuffix = 'cloud';
                 break;
-            // case 'onedrive':
-            //     providerAuthUrlSuffix = 'onedrive';
-            //     break;
             default:
                 providerAuthUrlSuffix = '';
                 break;
 
         }
 
-        const middlewareUrl = `https://cloud-sync.45d.io//auth/${providerAuthUrlSuffix}`;
+        const middlewareUrl = `https://cloud-sync.45d.io/auth/${providerAuthUrlSuffix}`;
         const authWindow = window.open(middlewareUrl, '_blank', 'width=500,height=900');
 
         if (!authWindow) {
@@ -601,7 +608,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
 
         const handleAuthMessage = async (event) => {
             try {
-                if (event.origin !== 'https://cloud-sync.45d.io/') return;
+                if (event.origin !== 'https://cloud-sync.45d.io') return;
 
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 
