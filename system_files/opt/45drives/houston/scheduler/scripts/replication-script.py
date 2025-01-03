@@ -15,14 +15,11 @@ def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
 	if is_recursive:
 		command.append('-r')
 	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
-  
 	if custom_name:
 		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
 	else:
 		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
-  
 	command.append(new_snap)
-	
 	subprocess.run(command)
 	print(f"new snapshot created: {new_snap}")
 
@@ -34,9 +31,9 @@ def prune_snapshots_by_retention(
 	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22
 ):
 	# Determine whether to fetch snapshots locally or remotely
-	if remote_host and user is not None:
+	if remote_host and remoteUser is not None:
 		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
-	if remote_host and user is None:
+	if remote_host and remoteUser is None:
 		snapshots = get_remote_snapshots_via_netcat(remote_user, remote_host, remote_port, filesystem)
 	else:
 		snapshots = get_local_snapshots(filesystem)
@@ -146,40 +143,6 @@ def get_remote_snapshots(user, host, port, filesystem):
 		sys.exit(1)
 
 
-def get_remote_snapshots_via_netcat(host, port, filesystem):
-    # Construct the command to fetch snapshots
-    zfs_command = f"zfs list -H -o name,guid,creation -t snapshot -r {filesystem}"
-
-    try:
-        # Use subprocess to send the command via Netcat
-        result = subprocess.run(
-            ['nc', host, str(port)],
-            input=zfs_command,
-            text=True,
-            capture_output=True,
-            check=True
-        )
-
-        # Process the output to parse snapshots
-        snapshots = []
-        for line in result.stdout.splitlines():
-            parts = line.split('\t')  # ZFS output is tab-delimited
-            if len(parts) >= 3:
-                snapshot_name = parts[0]
-                snapshot_guid = parts[1]
-                snapshot_creation = parts[2]
-                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
-                snapshots.append(snapshot)
-
-        return snapshots
-
-    except subprocess.CalledProcessError as e:
-        print(f"ERROR: Failed to fetch remote snapshots via Netcat: {e}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        sys.exit(1)
-			
 def get_most_recent_snapshot(snapshots):
 	if snapshots:
 		snapshots.sort(key=lambda x: x.creation, reverse=True)
@@ -190,149 +153,166 @@ def get_most_recent_snapshot(snapshots):
 import subprocess
 import sys
 
-def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G", forceOverwrite=False):
-    try:
-        # Initial local send command
-        send_cmd = ['zfs', 'send']
+def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G", forceOverwrite=False,transferMethod=""):
+	try:
+		# Initial local send command
+		send_cmd = ['zfs', 'send']
 
-        if compressed:
-            send_cmd.append('-Lce')
+		if compressed:
+			send_cmd.append('-Lce')
 
-        if raw:
-            send_cmd.append('-w')
+		if raw:
+			send_cmd.append('-w')
 
-        if sendName2 != "":
-            send_cmd.extend(['-i', sendName2])
+		if sendName2 != "":
+			send_cmd.extend(['-i', sendName2])
 
-        send_cmd.append(sendName)
+		send_cmd.append(sendName)
 
-        if sendName2 != "":
-            print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
-        else:
-            print(f"sending {sendName} to {recvName}")
+		if sendName2 != "":
+			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
+		else:
+			print(f"sending {sendName} to {recvName}")
 
-        process_send = subprocess.Popen(
-            send_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+		process_send = subprocess.Popen(
+			send_cmd,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE,
+		)
 
-        # If sending locally
-        if recvHost == "" or recvHost is None:
-            recv_cmd = ['zfs', 'recv']
-            if forceOverwrite:
-                recv_cmd.append('-F')
+		# If sending locally
+		if transferMethod == "local" :
+			recv_cmd = ['zfs', 'recv']
+			if forceOverwrite:
+				recv_cmd.append('-F')
 
-            recv_cmd.append(recvName)
+			recv_cmd.append(recvName)
 
-            print(f"receiving {sendName} in {recvName}")
+			print(f"receiving {sendName} in {recvName}")
 
-            process_recv = subprocess.Popen(
-                recv_cmd,
-                stdin=process_send.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
+			process_recv = subprocess.Popen(
+				recv_cmd,
+				stdin=process_send.stdout,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
 
-            stdout, stderr = process_recv.communicate()
+			stdout, stderr = process_recv.communicate()
 
-            if process_recv.returncode != 0:
-                print(f"recv error: {stderr}")
-                sys.exit(1)
-            else:
-                print(stdout)
+			if process_recv.returncode != 0:
+				print(f"recv error: {stderr}")
+				sys.exit(1)
+			else:
+				print(stdout)
 
-            print(f"received local send")
+			print(f"received local send")
 
-        # If sending remotely via ssh
-        if recvHost != "" and recvHost is not None:
-            m_buff_cmd = ['mbuffer', '-s', '256k']
-            m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+		# If sending remotely via ssh
+		if transferMethod == "ssh" :
+			print("sending via ssh")
+			m_buff_cmd = ['mbuffer', '-s', '256k']
+			m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
 
-            process_m_buff = subprocess.Popen(
-                m_buff_cmd,
-                stdin=process_send.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
+			process_m_buff = subprocess.Popen(
+				m_buff_cmd,
+				stdin=process_send.stdout,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
 
-            ssh_cmd = ['ssh']
+			ssh_cmd = ['ssh']
 
-            if recvPort != '22':
-                ssh_cmd.extend(['-p', recvPort])
+			if recvPort != '22':
+				ssh_cmd.extend(['-p', recvPort])
 
-            ssh_cmd.append(recvHostUser + '@' + recvHost)
-            ssh_cmd.extend(['zfs', 'recv'])
+			ssh_cmd.append(recvHostUser + '@' + recvHost)
+			ssh_cmd.extend(['zfs', 'recv'])
 
-            if forceOverwrite:
-                ssh_cmd.append('-F')
+			if forceOverwrite:
+				ssh_cmd.append('-F')
 
-            ssh_cmd.append(recvName)
+			ssh_cmd.append(recvName)
 
-            print(f"receiving {sendName} in {recvName} via {recvHostUser}@{recvHost}:{recvPort}")
+			print(f"receiving {sendName} in {recvName} via {recvHostUser}@{recvHost}:{recvPort}")
 
-            process_remote_recv = subprocess.Popen(
-                ssh_cmd,
-                stdin=process_m_buff.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
+			process_remote_recv = subprocess.Popen(
+				ssh_cmd,
+				stdin=process_m_buff.stdout,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				universal_newlines=True,
+			)
 
-            stdout, stderr = process_remote_recv.communicate()
+			stdout, stderr = process_remote_recv.communicate()
 
-            if process_remote_recv.returncode != 0:
-                print(f"ERROR: remote recv error: {stderr}")
-                sys.exit(1)
-            else:
-                print(stdout)
+			if process_remote_recv.returncode != 0:
+				print(f"ERROR: remote recv error: {stderr}")
+				sys.exit(1)
+			else:
+				print(stdout)
 
-            print(f"received remote send")
+			print(f"received remote send")
 
-        # Additional netcat handling
-        if recvHost != "" and recvHostUser is None:
-            try:
-                m_buff_cmd = ['mbuffer', '-s', '256k']
-                m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+		# Additional netcat handling
+		if transferMethod == "netcat":
+			try:
+				print("sending via netcat")
+				listen_cmd = f"nc -l -p {recvPort} | zfs receive {recvName}"
+				ssh_cmd = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
 
-                process_m_buff = subprocess.Popen(
-                    m_buff_cmd,
-                    stdin=process_send.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True,
-                )
 
-                nc_cmd = ['nc', recvHost, str(recvPort)]
-                print(f"Receiving {sendName} in {recvName} via {recvHost}:{recvPort}")
+				ssh_process = subprocess.Popen(
+						ssh_cmd,
+						stdout=subprocess.PIPE,
+						stderr=subprocess.PIPE,
+						universal_newlines=True,
+					)
+				print(f" ssh_cmd t open port : ", ssh_cmd)
+				print(f"Listening on {recvHost}:{recvPort}...")
+				import time
+				time.sleep(2)
+				
+				m_buff_cmd = ['mbuffer', '-s', '256k']
+				m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+				process_m_buff = subprocess.Popen(
+					m_buff_cmd,
+					stdin=process_send.stdout,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+					universal_newlines=True,
+				)
 
-                process_nc = subprocess.Popen(
-                    nc_cmd,
-                    stdin=process_m_buff.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True,
-                )
+				nc_cmd = ['nc', recvHost, "1111"]
+				print("nc command: ", nc_cmd)
+				print(f"Receiving {sendName} in {recvName} via {recvHost}:{recvPort}")
 
-                stdout, stderr = process_nc.communicate()
+				process_nc = subprocess.Popen(
+					nc_cmd,
+					stdin=process_m_buff.stdout,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+					universal_newlines=True,
+				)
 
-                if process_nc.returncode != 0:
-                    print(f"ERROR: Netcat receive error: {stderr}")
-                    sys.exit(1)
-                else:
-                    print(stdout)
+				stdout, stderr = process_nc.communicate()
 
-                print(f"Successfully received remote send.")
+				if process_nc.returncode != 0:
+					print(f"ERROR: Netcat receive error: {stderr}")
+					sys.exit(1)
+				else:
+					print(stdout)
 
-            except Exception as e:
-                print(f"ERROR: Send error: {e}")
-                sys.exit(1)
+				print(f"Successfully received remote send.")
 
-    except Exception as e:
-        print(f"ERROR: Send error: {e}")
-        sys.exit(1)
+			except Exception as e:
+				print(f"ERROR: Send error: {e}")
+				sys.exit(1)
+
+	except Exception as e:
+		print(f"ERROR: Send error: {e}")
+		sys.exit(1)
 
 
 def main():
@@ -353,6 +333,8 @@ def main():
 		sourceRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionUnit', '')
 		destinationRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionTime', 0)
 		destinationRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionUnit', '')
+		transferMethod = os.environ.get('zfsRepConfig_sendOptions_transferMethod', '')
+
 		taskName = os.environ.get('taskName', '')
 
 		forceOverwrite = False
@@ -366,9 +348,9 @@ def main():
 
 		incrementalSnapName = ""
 
-		if remoteHost and user:
+		if remoteHost and remoteUser:
 			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem)
-		elif remoteHost and user is None:
+		elif remoteHost and remoteUser is None:
 			destinationSnapshots = get_remote_snapshots_via(remoteHost, remotePort, receivingFilesystem)
 
 		else:
@@ -406,7 +388,7 @@ def main():
 
 		newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, taskName, customName)
 		# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nremoteHost:{remoteHost}\nremotePort:{remotePort}\nremoteUser:{remoteUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
-		send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, remoteHost, remotePort, remoteUser, mBufferSize, mBufferUnit, forceOverwrite)
+		send_snapshot(newSnap, receivingFilesystem, incrementalSnapName, isCompressed, isRaw, remoteHost, remotePort, remoteUser, mBufferSize, mBufferUnit, forceOverwrite,transferMethod)
 		# prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
 		# prune_snapshots(receivingFilesystem, snapsToKeepDest, remoteUser, remoteHost, remotePort)
 		prune_snapshots_by_retention(sourceFilesystem, taskName, sourceRetentionTime, sourceRetentionUnit, newSnap)
