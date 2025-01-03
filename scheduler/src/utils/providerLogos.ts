@@ -5,11 +5,6 @@ interface ProviderLogo {
 }
 
 export const providerLogos: { [key: string]: ProviderLogo } = {
-    // "s3-AWS": {
-    //     logo: "./img/s3-amazon.svg",
-    //     mainColor: "#E05243",
-    //     hoverColor: "#9E271A"
-    // },
     "s3-AWS": {
         logo: "./img/s3-amazon.svg",
         mainColor: "#252F3E",
@@ -35,11 +30,11 @@ export const providerLogos: { [key: string]: ProviderLogo } = {
         mainColor: "#FF4329",
         hoverColor: "#DB1B00"
     },
-    "onedrive": {
-        logo: "./img/onedrive.svg",
-        mainColor: "#4F8AD8",
-        hoverColor: "#1866AC"
-    },
+    // "onedrive": {
+    //     logo: "./img/onedrive.svg",
+    //     mainColor: "#4F8AD8",
+    //     hoverColor: "#1866AC"
+    // },
     "google cloud storage": {
         logo: "./img/google-cloud.svg",
         mainColor: "#FA3B00",
