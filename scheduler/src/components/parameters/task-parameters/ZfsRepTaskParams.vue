@@ -326,7 +326,8 @@ interface ZfsRepTaskParamsProps {
 const props = defineProps<ZfsRepTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
-    const initialParameters: any = ref({});
+const initialParameters: any = ref({});
+
 const sourcePools = ref<string[]>([]);
 const sourceDatasets = ref<string[]>([]);
 const loadingSourcePools = ref(false);
@@ -459,7 +460,6 @@ async function initializeData() {
         if (destinationRetention) {
             destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
-
         }
 
         initialParameters.value = JSON.parse(JSON.stringify({
@@ -520,6 +520,7 @@ function hasChanges() {
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
+
 
 function hasDestDatasetChanged() {
     return destDataset.value !== initialParameters.value.destDataset;
@@ -687,7 +688,6 @@ function validateSource() {
                 customSrcDatasetErrorTag.value = true;
             }
         }
-
     }
 }
 
@@ -734,6 +734,7 @@ function validateDestination() {
     }
 }
 
+
 async function checkDestDatasetContents() {
     if (!hasDestDatasetChanged()) {
         console.log("Destination has not changed, skipping checks.");
@@ -744,8 +745,8 @@ async function checkDestDatasetContents() {
         // Check if custom target and new dataset creation are flagged
         if (!useCustomTarget.value && !makeNewDestDataset.value) {
             // Perform checks if the dataset exists
-            const hasSnapshots = await doSnapshotsExist(destDataset.value);
-            const isEmpty = await isDatasetEmpty(destDataset.value);
+            const hasSnapshots = await doSnapshotsExist(destDataset.value,destUser.value,destHost.value,destPort.value);
+            const isEmpty = await isDatasetEmpty(destDataset.value,destUser.value,destHost.value,destPort.value);
 
             if (hasSnapshots) {
                 errorList.value.push("Destination dataset has snapshots already, please create a new one.");
@@ -857,7 +858,8 @@ async function validateParams() {
     validateSource();
     validateHost();
     validateDestination();
-   await checkDestDatasetContents();
+    await checkDestDatasetContents();
+    
     validateCustomName();
 
     if (errorList.value.length == 0) {
