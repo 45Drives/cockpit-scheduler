@@ -745,8 +745,17 @@ async function checkDestDatasetContents() {
         // Check if custom target and new dataset creation are flagged
         if (!useCustomTarget.value && !makeNewDestDataset.value) {
             // Perform checks if the dataset exists
-            const hasSnapshots = await doSnapshotsExist(destDataset.value,destUser.value,destHost.value,destPort.value);
-            const isEmpty = await isDatasetEmpty(destDataset.value,destUser.value,destHost.value,destPort.value);
+
+            let hasSnapshots;
+            let isEmpty;
+
+            if (destHost.value !== '') {
+                hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+            } else {
+                hasSnapshots = await doSnapshotsExist(destDataset.value);
+                isEmpty = await isDatasetEmpty(destDataset.value);
+            }
 
             if (hasSnapshots) {
                 errorList.value.push("Destination dataset has snapshots already, please create a new one.");

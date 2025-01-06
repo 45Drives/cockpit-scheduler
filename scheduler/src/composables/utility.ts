@@ -341,9 +341,24 @@ export function splitAndClean(inputString: string, isDisk: boolean) {
     return cleanedParts;
 }
 
-export async function isDatasetEmpty(mountpoint) {
+export async function isDatasetEmpty(mountpoint, user?: string, host?: string, port?: string) {
     try {
-        const command = ['ls', '-la', `/${mountpoint}`,];
+        const baseCommand = ['ls', '-la', `/${mountpoint}`,];
+        let command: string[] = [];
+
+        if (user && host) {
+            // Use SSH for remote command
+            command = ['ssh'];
+            if (port && port !== '22') {
+                command.push('-p', port);
+            }
+            command.push(`${user}@${host}`, ...baseCommand);
+
+        } else {
+            // Local command
+            command = baseCommand;
+        }
+        
         const state = useSpawn(command, { superuser: 'try' });
         const output = await state.promise();
         // console.log(`output:`, output);
