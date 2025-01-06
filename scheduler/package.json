@@ -1,7 +1,7 @@
 {
   "name": "cockpit-scheduler",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.2.8",
   "description": "Scheduler Module for Automating Server Tasks",
   "types": "./src/index.d.ts",
   "repository": {
