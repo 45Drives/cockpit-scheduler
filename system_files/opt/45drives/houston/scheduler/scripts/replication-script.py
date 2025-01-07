@@ -32,7 +32,7 @@ def prune_snapshots_by_retention(
 ):
 	# Determine whether to fetch snapshots locally or remotely
 	if remote_host :
-		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
+		snapshots = get_remote_snapshots(remote_user, remote_host, '22', filesystem)
 	else:
 		snapshots = get_local_snapshots(filesystem)
 
@@ -133,7 +133,7 @@ def get_remote_snapshots(user, host, port, filesystem):
 				snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
 				snapshots.append(snapshot)
 		return snapshots
-	except subprocess.CalledProcessError as e:
+	except subprocess.CalledProcessError as e:	
 		print(f"ERROR: Failed to fetch remote snapshots: {e}")
 		sys.exit(1)
 	except Exception as e:
@@ -151,7 +151,7 @@ def get_most_recent_snapshot(snapshots):
 import subprocess
 import sys
 
-def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort=22, recvHostUser="", mBufferSize=1, mBufferUnit="G", forceOverwrite=False,transferMethod=""):
+def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False, recvHost="", recvPort='22', recvHostUser="", mBufferSize=1, mBufferUnit="G", forceOverwrite=False,transferMethod=""):
 	try:
 		# Initial local send command
 		send_cmd = ['zfs', 'send']
@@ -274,11 +274,10 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 					stdout=subprocess.PIPE,
 					stderr=subprocess.PIPE,
 					universal_newlines=True,
-				)
-
+				)				
 				# Wait for a moment to ensure the listener is ready
 				import time
-				time.sleep(5)
+				time.sleep(3)
 
 				
 				m_buff_cmd = ['mbuffer', '-s', '256k']
@@ -319,7 +318,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 					snapshot_check_cmd,
 					stdout=subprocess.PIPE,
 					stderr=subprocess.PIPE,
-				)
+				)				
 				snapshot_output, snapshot_err = snapshot_process.communicate()
 
 				if snapshot_err:
@@ -377,10 +376,12 @@ def main():
 
 		incrementalSnapName = ""
 
+		if transferMethod == "netcat":
+			port = '22'
+		else:
+			port = remotePort
 		if remoteHost and remoteUser:
-			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem)
-		elif remoteHost and remoteUser is None:
-			destinationSnapshots = get_remote_snapshots_via(remoteHost, remotePort, receivingFilesystem)
+			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, port, receivingFilesystem)
 
 		else:
 			destinationSnapshots = get_local_snapshots(receivingFilesystem)
@@ -421,7 +422,7 @@ def main():
 		# prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
 		# prune_snapshots(receivingFilesystem, snapsToKeepDest, remoteUser, remoteHost, remotePort)
 		prune_snapshots_by_retention(sourceFilesystem, taskName, sourceRetentionTime, sourceRetentionUnit, newSnap)
-		prune_snapshots_by_retention(receivingFilesystem, taskName, destinationRetentionTime, destinationRetentionUnit, newSnap, remoteUser, remoteHost, remotePort)
+		prune_snapshots_by_retention(receivingFilesystem, taskName, destinationRetentionTime, destinationRetentionUnit, newSnap, remoteUser, remoteHost, port)
 
 	except Exception as e:
 		print(f"Exception: {e}")

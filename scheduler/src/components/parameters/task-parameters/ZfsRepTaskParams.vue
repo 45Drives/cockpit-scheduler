@@ -217,7 +217,7 @@
                     destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" placeholder="Leave blank for local replication." />
             </div>
-            <div name="destination-user" v-if ="transferMethod === 'ssh'" class="mt-1">
+            <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
                 <input v-if="destHost === ''" disabled type="text" v-model="destUser"
                     class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
@@ -233,7 +233,8 @@
                     max="65535" placeholder="22 is default" />
                 <input v-else type="number" v-model="destPort"
                     class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                    max="65535" placeholder="22 is default" />
+                    max="65535" :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
+                    @input="validatePort" />
             </div>
         </div>
 
@@ -384,6 +385,7 @@ const testingNetcat = ref(false);
 const netCatTestResult = ref(false);
 
 const transferMethod = ref('ssh')
+const netCatPortError = ref(false);
 
 
 const errorList = inject<Ref<string[]>>('errors')!;
@@ -430,6 +432,9 @@ async function initializeData() {
             await getLocalDestinationDatasets();
             destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
         }
+        console.log("doesit exist destPool.value ", destPool.value," ",destPools.value," ",doesItExist(destPool.value, destPools.value))
+        console.log("doesit exist destPool.value ", destDataset.value," ",destDatasets.value," ",doesItExist(destDataset.value, destDatasets.value))
+
         if (!doesItExist(destPool.value, destPools.value) || !doesItExist(destDataset.value, destDatasets.value)) {
             useCustomTarget.value = true;
         }
@@ -603,15 +608,17 @@ const getLocalDestinationDatasets = async () => {
 
 const getRemoteDestinationPools = async () => {
     loadingDestPools.value = true;
-    destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
+
+    destPools.value = await getPoolData(destHost.value, 22, destUser.value);
     loadingDestPools.value = false;
     console.log('Remote destPools:', destPools.value);
+
 }
 
 
 const getRemoteDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
-    destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+    destDatasets.value = await getDatasetData(destPool.value, destHost.value, 22, destUser.value);
     loadingDestDatasets.value = false;
     console.log('Remote destDataset:', destDatasets.value);
 }
@@ -634,6 +641,13 @@ function validateHost() {
 
     }
 }
+function validatePort() {
+        // Check if the entered port is '22' and the transfer method is 'netcat'
+        if (destPort.value == 22 && transferMethod.value == 'netcat') {
+            errorList.value.push("Port 22 is not available for netcat");
+            netCatPortError.value = true;
+        }
+    }
 
 function validateCustomName() {
     if (useCustomName.value) {
@@ -750,8 +764,14 @@ async function checkDestDatasetContents() {
             let isEmpty;
 
             if (destHost.value !== '') {
-                hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
-                isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                if (transferMethod.value == "netcat"){
+                    hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, "22");
+                    isEmpty = isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, "22");
+
+                }else{
+                    hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                    isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                }
             } else {
                 hasSnapshots = await doSnapshotsExist(destDataset.value);
                 isEmpty = await isDatasetEmpty(destDataset.value);
@@ -859,6 +879,7 @@ function clearErrorTags() {
     customSrcDatasetErrorTag.value = false;
     customDestPoolErrorTag.value = false;
     customDestDatasetErrorTag.value = false;
+    netCatPortError.value = false;
     errorList.value = [];
 }
 
@@ -867,6 +888,7 @@ async function validateParams() {
     validateSource();
     validateHost();
     validateDestination();
+    validatePort();
     await checkDestDatasetContents();
     
     validateCustomName();
@@ -927,9 +949,8 @@ async function confirmNetcatTest(destHost2, destPort2) {
   testingNetcat.value = true;
   const netcatHost = destHost2;
   const netcatdestPort = destPort2;
-  
   // Await the result of the testNetcat function
-  netCatTestResult.value = await testNetcat(netcatHost, netcatdestPort);
+  netCatTestResult.value = await testNetcat(destUser.value,netcatHost, netcatdestPort);
   
   console.log(netCatTestResult);
   
@@ -941,16 +962,7 @@ async function confirmNetcatTest(destHost2, destPort2) {
   testingNetcat.value = false
 
 }
-watch(transferMethod, (newMethod) => {
-            if (newMethod === 'netcat' && destHost.value!='') {
-                console.log("newmothod: hello")
-                destUser.value = ''; // Set destUser to an empty string
-                // Alternatively, you can set it to 'root' by uncommenting the next line
-                // destUser.value = 'root';
-            }else if(newMethod === 'ssh' && destHost.value==''){
-                destUser.value = 'root'
-            }
-        });
+
 watch(destPool, handleDestPoolChange);
 watch(sourcePool, handleSourcePoolChange);
 
