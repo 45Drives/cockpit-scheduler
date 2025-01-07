@@ -31,10 +31,8 @@ def prune_snapshots_by_retention(
 	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22
 ):
 	# Determine whether to fetch snapshots locally or remotely
-	if remote_host and remoteUser is not None:
+	if remote_host :
 		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
-	if remote_host and remoteUser is None:
-		snapshots = get_remote_snapshots_via_netcat(remote_user, remote_host, remote_port, filesystem)
 	else:
 		snapshots = get_local_snapshots(filesystem)
 
@@ -244,7 +242,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 				stderr=subprocess.PIPE,
 				universal_newlines=True,
 			)
-
+			print(f"ssh command: ", ssh_cmd)
 			stdout, stderr = process_remote_recv.communicate()
 
 			if process_remote_recv.returncode != 0:
@@ -255,61 +253,92 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 			print(f"received remote send")
 
-		# Additional netcat handling
 		if transferMethod == "netcat":
 			try:
-				print("sending via netcat")
-				listen_cmd = f"nc -l -p {recvPort} | zfs receive {recvName}"
-				ssh_cmd = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
+				print("Sending via netcat...")
+
+				# Start the listener on the receiver side
+				listen_cmd = f"nc -l {recvPort} | zfs receive "
+				if forceOverwrite:
+					listen_cmd += f"-F {recvName}"
+				else:
+					listen_cmd += f"{recvName}"
 
 
-				ssh_process = subprocess.Popen(
-						ssh_cmd,
-						stdout=subprocess.PIPE,
-						stderr=subprocess.PIPE,
-						universal_newlines=True,
-					)
-				print(f" ssh_cmd t open port : ", ssh_cmd)
-				print(f"Listening on {recvHost}:{recvPort}...")
+				ssh_cmd_listener = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
+
+				# Start the listener process
+				print(f"[Receiver Side] Starting SSH listener command: {' '.join(ssh_cmd_listener)}")
+				ssh_process_listener = subprocess.Popen(
+					ssh_cmd_listener,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+					universal_newlines=True,
+				)
+
+				# Wait for a moment to ensure the listener is ready
 				import time
-				time.sleep(2)
+				time.sleep(5)
+
 				
 				m_buff_cmd = ['mbuffer', '-s', '256k']
 				m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+				
 				process_m_buff = subprocess.Popen(
 					m_buff_cmd,
 					stdin=process_send.stdout,
 					stdout=subprocess.PIPE,
 					stderr=subprocess.PIPE,
-					universal_newlines=True,
 				)
-
-				nc_cmd = ['nc', recvHost, "1111"]
-				print("nc command: ", nc_cmd)
-				print(f"Receiving {sendName} in {recvName} via {recvHost}:{recvPort}")
-
-				process_nc = subprocess.Popen(
-					nc_cmd,
+				# Prepare and run the ZFS send command
+				nc_command =  ['nc', '192.168.123.5', recvPort]
+				nc_process = subprocess.Popen(
+					nc_command,
 					stdin=process_m_buff.stdout,
 					stdout=subprocess.PIPE,
 					stderr=subprocess.PIPE,
-					universal_newlines=True,
 				)
-
-				stdout, stderr = process_nc.communicate()
-
-				if process_nc.returncode != 0:
-					print(f"ERROR: Netcat receive error: {stderr}")
+				# Capture the output and errors
+				mbuff_stdout, mbuff_stderr = process_m_buff.communicate()
+				nc_stdout, nc_stderr = nc_process.communicate()
+				# Check for errors from mbuffer process
+				if process_m_buff.returncode != 0:
+					print(f"[Sender Side] mbuffer error: {mbuff_stderr}")
 					sys.exit(1)
-				else:
-					print(stdout)
 
-				print(f"Successfully received remote send.")
+				# Check for errors from nc process
+				if nc_process.returncode != 0:
+					print(f"[Sender Side] nc error: {nc_stderr}")
+					sys.exit(1)
+
+
+				print("[Sender Side] Successfully sent data via netcat.")
+				# Check if the snapshot exists on the receiver
+				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list t/ZFSNetcattesting']
+				snapshot_process = subprocess.Popen(
+					snapshot_check_cmd,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+				)
+				snapshot_output, snapshot_err = snapshot_process.communicate()
+
+				if snapshot_err:
+					print(f"[Receiver Side] Error checking received dataset: {snapshot_err.strip()}")
+				else:
+					if snapshot_output:
+						print(f"[Receiver Side] Received dataset exists: {snapshot_output.strip()}")
+					else:
+						print("[Receiver Side] Dataset does not exist.")
+
+			except subprocess.CalledProcessError as e:
+				print(f"[Sender Side] Command failed with exit code {e.returncode}. Error: {e.stderr}")
+				sys.exit(1)
+			
 
 			except Exception as e:
 				print(f"ERROR: Send error: {e}")
 				sys.exit(1)
-
+					
 	except Exception as e:
 		print(f"ERROR: Send error: {e}")
 		sys.exit(1)

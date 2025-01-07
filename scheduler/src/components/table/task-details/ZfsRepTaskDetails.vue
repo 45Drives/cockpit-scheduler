@@ -8,7 +8,9 @@
             <p class="my-2 truncate"
                 :title="`Send Type: ${findValue(taskInstance.parameters, 'destDataset', 'host') !== '' ? 'Remote' : 'Local'}`">
                 Send Type:
-                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
+                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== '' && findValue(taskInstance.parameters,'sendOptions', 'transferMethod') == 'netcat'">Remote via Netcat</b>
+                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== '' && findValue(taskInstance.parameters,'sendOptions', 'transferMethod') == 'ssh'">Remote via SSH</b>
+                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== '' && findValue(taskInstance.parameters,'sendOptions', 'transferMethod') == ''">Remote</b>
                 <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b>
             </p>
             <p class="my-2 truncate"

@@ -162,13 +162,13 @@ export async function testSSH(sshTarget) {
     }
 }
 
-export async function testNetcat(netcatHost, port) {
+export async function testNetcat(user, netcatHost, port) {
     try {
       console.log(`target: ${netcatHost}, port: ${port}`);
       
       // Pass both hostname and port to the Python script
       const state = useSpawn(
-        ["/usr/bin/env", "python3", "-c", test_netcat_script, netcatHost, port],
+        ["/usr/bin/env", "python3", "-c", test_netcat_script, user, netcatHost, port],
         { superuser: "try", stderr: "out" }
       );
   
