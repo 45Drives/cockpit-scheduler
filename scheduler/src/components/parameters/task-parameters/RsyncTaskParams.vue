@@ -83,17 +83,9 @@
         <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent"
             style="grid-row: 1 / span 1;">
             <div class="grid grid-cols-2">
-                <label class="mt-1 col-span-1 block text-base leading-6 text-default" >Select Transfer Method</label>
-                <select v-model="transferMethod" class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"id="method">
-                    <option value="ssh">SSH</option>
-                    <option value="netcat">Netcat</option>
-                </select>
-
-            </div>
-            <div class="grid grid-cols-2 mt-2">
                 <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
                 <div class="col-span-1 items-end text-end justify-end">
-                    <button disabled v-if="testingSSH || testingNetcat" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                    <button disabled v-if="testingSSH" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
                         <svg aria-hidden="true" role="status"
                             class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101"
                             fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -106,10 +98,8 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else-if="transferMethod === 'ssh'" @click="confirmTest(destHost, destUser)"
+                    <button v-else @click="confirmTest(destHost, destUser)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
-                        <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
-                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
                 </div>
             </div>
             <div name="destination-host" class="mt-1">
@@ -122,7 +112,7 @@
                     :class="[destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                     placeholder="Leave blank for local transfer." />
             </div>
-            <div v-if ="transferMethod === 'ssh'"name="destination-user" class="mt-1">
+            <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
                 <input v-if="destHost === ''" disabled type="text" v-model="destUser"
                     class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
@@ -182,7 +172,6 @@
                             Preserve Times
                             <InfoTile class="ml-1" title="Preserve modification times." />
                         </label>
-                        
                         <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
                         <input v-else type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded"/> -->
                         <input type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded" />
@@ -351,13 +340,13 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, inject, watch } from 'vue';
+import { ref, Ref, onMounted, inject } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter } from '../../../models/Parameters';
-import { testNetcat, testSSH } from '../../../composables/utility';
+import { testSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from 'houston-common-ui';
 
 interface RsyncTaskParamsProps {
@@ -405,13 +394,8 @@ const extraUserParams = ref('');
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
-const testingNetcat = ref(false);
-const netCatTestResult = ref(false);
-
 
 const errorList = inject<Ref<string[]>>('errors')!;
-
-const transferMethod = ref('ssh')
 
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
@@ -426,10 +410,6 @@ async function initializeData() {
         destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
         destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
         destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
-        transferMethod.value = targetInfoParams.find(p => p.key === 'transferMethod')!.value;
-        if (transferMethod.value == 'local'){
-            transferMethod.value = 'ssh'
-        }
         const transferDirection = params.find(p => p.key === 'direction')!.value;
         if (transferDirection == 'pull') {
             directionSwitched.value = true;
@@ -475,8 +455,7 @@ async function initializeData() {
             excludePattern: excludePattern.value,
             extraUserParams: extraUserParams.value,
             isParallel: isParallel.value,
-            parallelThreads: parallelThreads.value,
-            transferMethod: transferMethod.value
+            parallelThreads: parallelThreads.value
         }));
 
         loading.value = false;
@@ -619,15 +598,10 @@ function setParams() {
     } else {
         transferDirection.value = directionPUSH;
     }
-    if(destHost.value===''){
-        transferMethod.value = 'local'
-    }    
-    console.log("destHoist: ", destHost.value)
-    console.log("transferMethod: ", transferMethod.value)
 
     const newParams = new ParameterNode("Rsync Task Config", "rsyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', sourcePath.value))
-        .addChild(new LocationParameter('Target Information', 'target_info', transferMethod.value,destHost.value, destPort.value, destUser.value, destRoot.value, destPath.value,))
+        .addChild(new LocationParameter('Target Information', 'target_info', destHost.value, destPort.value, destUser.value, destRoot.value, destPath.value))
         .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value.value))
         .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
             .addChild(new BoolParameter('Archive', 'archive_flag', isArchive.value))
@@ -664,32 +638,7 @@ async function confirmTest(destHost, destUser) {
     }
     testingSSH.value = false;
 }
-async function confirmNetcatTest(destHost2, destPort2) {
-  testingNetcat.value = true;
-  const netcatHost = destHost2;
-  const netcatdestPort = destPort2;
-  
-  // Await the result of the testNetcat function
-  netCatTestResult.value = await testNetcat(netcatHost, netcatdestPort);
-  
-  console.log(netCatTestResult);
-  
-  if (netCatTestResult.value) {
-    pushNotification(new Notification("Connection Successful!", `Netcat connection established. This host can be used for remote transfers.`, "success", 8000));
-  } else {
-    pushNotification(new Notification("Connection Failed", `Could not resolve hostname "${destHost2}": Check the server and port.`, "error", 8000));
-  }
-  testingNetcat.value = false
-}
-watch(transferMethod, (newMethod) => {
-            if (newMethod === 'netcat' && destHost.value!='') {
-                destUser.value = ''; // Set destUser to an empty string
-                // Alternatively, you can set it to 'root' by uncommenting the next line
-                // destUser.value = 'root';
-            }else if(newMethod === 'ssh' && destHost.value==''){
-                destUser.value = 'root'
-            }
-        });
+
 onMounted(async () => {
     await initializeData();
 });

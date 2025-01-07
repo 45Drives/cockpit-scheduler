@@ -116,7 +116,7 @@ export class RsyncTaskTemplate extends TaskTemplate {
         ];
         const parameterSchema = new ParameterNode("Rsync Task Config", "rsyncConfig")
             .addChild(new StringParameter('Local Path', 'local_path', ''))
-            .addChild(new LocationParameter('Target Information', 'target_info', '','', 22, '', '', ''))
+            .addChild(new LocationParameter('Target Information', 'target_info', '', 22, '', '', ''))
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
                 .addChild(new BoolParameter('Archive', 'archive_flag', true))

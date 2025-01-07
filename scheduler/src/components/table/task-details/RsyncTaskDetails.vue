@@ -24,19 +24,11 @@
                 <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') === ''">Local</b>
             </p>
             <p class="my-2" v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">
-                <span v-if="findValue(taskInstance.parameters, 'target_info', 'transferMethod')=='netcat'" class="truncate"
-                    :title="`Remote Netcat Host: ${findValue(taskInstance.parameters, 'target_info', 'host')}`">
-                    Remote Netcat Host: <b>{{ findValue(taskInstance.parameters, 'target_info', 'host') }}</b>
-                </span>
-                <span v-else class="truncate"
+                <span class="truncate"
                     :title="`Remote SSH Host: ${findValue(taskInstance.parameters, 'target_info', 'host')}`">
                     Remote SSH Host: <b>{{ findValue(taskInstance.parameters, 'target_info', 'host') }}</b>
                 </span>
-                <span v-if="findValue(taskInstance.parameters, 'target_info', 'transferMethod')=='netcat'" class="truncate"
-                    :title="`Remote Netcat Port: ${findValue(taskInstance.parameters, 'target_info', 'port')}`">
-                    Remote Netcat Port: <b>{{ findValue(taskInstance.parameters, 'target_info', 'port') }}</b>
-                </span>
-                <span v-else class="truncate"
+                <span class="truncate"
                     :title="`Remote SSH Port: ${findValue(taskInstance.parameters, 'target_info', 'port')}`">
                     Remote SSH Port: : <b>{{ findValue(taskInstance.parameters, 'target_info', 'port') }}</b>
                 </span>
