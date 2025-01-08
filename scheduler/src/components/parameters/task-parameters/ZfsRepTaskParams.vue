@@ -227,12 +227,16 @@
                     placeholder="'root' is default" />
             </div>
             <div name="destination-port" class="mt-1">
-                <label class="block text-sm leading-6 text-default">Port</label>
-                <input v-if="destHost === ''" disabled type="number" v-model="destPort"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                    max="65535" placeholder="22 is default" />
+                <div class="flex flex-row justify-between items-center"><label class="block text-sm leading-6 text-default">Port</label>
+                <ExclamationCircleIcon v-if="netCatPortError"
+                        class="mt-1 w-5 h-5 text-danger" />
+                </div>
+                <input v-if="destHost === ''" disabled type="number" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6" 
+                v-model="destPort"  min="0" max="65535" placeholder="22 is default"/>
                 <input v-else type="number" v-model="destPort"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
+                :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
+                    ]" 
                     max="65535" :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
                     @input="validatePort" />
             </div>
@@ -643,11 +647,20 @@ function validateHost() {
 }
 function validatePort() {
         // Check if the entered port is '22' and the transfer method is 'netcat'
-        if (destPort.value == 22 && transferMethod.value == 'netcat') {
+        if (destPort.value == 22 && transferMethod.value == 'netcat' && destHost.value != '') {
             errorList.value.push("Port 22 is not available for netcat");
             netCatPortError.value = true;
         }
+        else if(destHost.value==''){
+            netCatPortError.value = false;
+
+        }
     }
+    watch(destHost, (newValue) => {
+      if (newValue === '') {
+        validatePort(); // Call validatePort() when destHost is empty
+      }
+    });
 
 function validateCustomName() {
     if (useCustomName.value) {
