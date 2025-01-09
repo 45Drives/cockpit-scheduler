@@ -1,3 +1,5 @@
-## task scheduler 1.2.7-2-1
+## task scheduler 1.2.7-3
 
-* Building Package
+* building package
+* release notes
+* Added netcat functionality, notes functionality and fixed cutom task

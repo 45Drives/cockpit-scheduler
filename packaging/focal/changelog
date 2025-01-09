@@ -1,3 +1,11 @@
+cockpit-scheduler (1.2.7-3focal) focal; urgency=medium
+
+  * building package
+  * release notes
+  * Added netcat functionality, notes functionality and fixed cutom task
+
+ -- Rachit Hans <rhans@45drives.com>  Thu, 09 Jan 2025 08:31:12 -0400
+
 cockpit-scheduler (1.2.7-2-1focal) focal; urgency=medium
 
   * Building Package
