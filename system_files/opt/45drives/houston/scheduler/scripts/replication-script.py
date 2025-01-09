@@ -302,21 +302,6 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 				else:
 					print(f"sending {sendName} to {recvName}")
 
-				# process_send = subprocess.Popen(
-				# 	send_cmd,
-				# 	stdout=subprocess.PIPE,
-				# 	stderr=subprocess.PIPE,
-				# )
-
-
-				# # Start mbuffer process
-				# process_m_buff = subprocess.Popen(
-				# 	m_buff_cmd,
-				# 	stdin=process_send.stdout,
-				# 	stdout=subprocess.PIPE,
-				# 	stderr=subprocess.PIPE,
-				# )
-
 				# Prepare and run the ZFS send command
 				send_cmd_str = ' '.join(send_cmd)  #
 				m_buff_cmd_str = ' '.join(m_buff_cmd)
@@ -333,17 +318,8 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 				# Capture the output and errors
 				#mbuff_stdout, mbuff_stderr = process_m_buff.communicate()
 				nc_stdout, nc_stderr = nc_process.communicate()
-
-				# Log mbuffer and netcat outputs
-				#print(f"[Sender Side] mbuffer stdout: {mbuff_stdout}")
-				#print(f"[Sender Side] mbuffer stderr: {mbuff_stderr}")
 				print(f"[Sender Side] nc stdout: {nc_stdout}")
 				print(f"[Sender Side] nc stderr: {nc_stderr}")
-
-				# Check for errors from mbuffer process
-				# if process_m_buff.returncode != 0:
-				# 	print(f"[Sender Side] mbuffer error: {mbuff_stderr}")
-				# 	sys.exit(1)
 
 				# Check for errors from nc process
 				if nc_process.returncode != 0:
@@ -470,7 +446,7 @@ def main():
 		# prune_snapshots(sourceFilesystem, snapsToKeepSrc)	
 		# prune_snapshots(receivingFilesystem, snapsToKeepDest, remoteUser, remoteHost, remotePort)
 		prune_snapshots_by_retention(sourceFilesystem, taskName, sourceRetentionTime, sourceRetentionUnit, newSnap)
-		prune_snapshots_by_retention(receivingFilesystem, taskName, destinationRetentionTime, destinationRetentionUnit, newSnap, remote_User, remoteHost, port)
+		prune_snapshots_by_retention(receivingFilesystem, taskName, destinationRetentionTime, destinationRetentionUnit, newSnap, remoteUser, remoteHost, port)
 
 	except Exception as e:
 		print(f"Exception: {e}")
