@@ -2,7 +2,7 @@
     "__version": "45D-R2",
     "name": "cockpit-scheduler",
     "title": "task scheduler",
-    "prerelease": false,
+    "prerelease": true,
     "version": "1.2.7",
     "buildVersion": "1",
     "author": "Jordan Keough <jkeough@45drives.com>",

@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Jan 09 2025 Rachit Hans <rhans@45drives.com> 1.2.7-2-1
+- Building Package
 * Thu Jan 02 2025 Jordan Keough <jkeough@45drives.com> 1.2.6-1
 - Adds more robust error handling to ZFSRepTask parameters and updates EditTask logic
   to check for changes before saving.
