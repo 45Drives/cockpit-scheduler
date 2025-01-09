@@ -60,10 +60,11 @@
         "version": "1.2.7",
         "buildVersion": "2",
         "ignore": [],
-        "date": "2025-01-09T11:57:08.651073",
+        "date": "2025-01-09T12:15:10.586958",
         "packager": "Rachit Hans <rhans@45drives.com>",
         "changes": [
-            "building package"
+            "building package",
+            "release notes"
         ]
     }
 }
