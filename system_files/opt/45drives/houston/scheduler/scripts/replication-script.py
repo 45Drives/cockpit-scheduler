@@ -278,7 +278,7 @@ def send_snapshot(sendName, recvName, sendName2="", compressed=False, raw=False,
 
 				# Wait for a moment to ensure the listener is ready
 				import time
-				time.sleep(10)
+				time.sleep(5)
 
 				# Prepare mbuffer command
 				m_buff_cmd = ['mbuffer', '-s', '256k']

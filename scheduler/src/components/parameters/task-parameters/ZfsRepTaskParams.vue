@@ -722,6 +722,10 @@ function validateSource() {
 }
 
 function validateDestination() {
+    if (!hasDestDatasetChanged()) {
+        console.log("Destination has not changed, skipping checks.");
+        return;
+    }
     if (useCustomTarget.value) {
         if (!isValidPoolName(destPool.value)) {
             errorList.value.push("Destination pool is invalid.");
@@ -903,7 +907,7 @@ async function validateParams() {
     // clearErrorTags();
     validateSource();
     validateHost();
-    validateDestination();
+   validateDestination();
     validatePort();
     await checkDestDatasetContents();
     
