@@ -397,7 +397,6 @@ const errorList = inject<Ref<string[]>>('errors')!;
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
     if (props.task) {
-        console.log("params: ", props.task)
         loading.value = true;
         await getSourcePools();
         const isRemoteAccessible = ref(false);
@@ -436,14 +435,11 @@ async function initializeData() {
             await getLocalDestinationDatasets();
             destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
         }
-        console.log("doesit exist destPool.value ", destPool.value," ",destPools.value," ",doesItExist(destPool.value, destPools.value))
-        console.log("doesit exist destPool.value ", destDataset.value," ",destDatasets.value," ",doesItExist(destDataset.value, destDatasets.value))
 
         if (!doesItExist(destPool.value, destPools.value) || !doesItExist(destDataset.value, destDatasets.value)) {
             useCustomTarget.value = true;
         }
         const sendOptionsParams = params.find(p => p.key === 'sendOptions')!.children;
-        console.log("sendOptions:",sendOptionsParams);
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
         sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
@@ -612,8 +608,11 @@ const getLocalDestinationDatasets = async () => {
 
 const getRemoteDestinationPools = async () => {
     loadingDestPools.value = true;
-
-    destPools.value = await getPoolData(destHost.value, 22, destUser.value);
+    if(transferMethod.value=='netcat'){
+        destPools.value = await getPoolData(destHost.value, "22", destUser.value);
+    }else{
+        destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
+    }
     loadingDestPools.value = false;
     console.log('Remote destPools:', destPools.value);
 
@@ -622,7 +621,11 @@ const getRemoteDestinationPools = async () => {
 
 const getRemoteDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
-    destDatasets.value = await getDatasetData(destPool.value, destHost.value, 22, destUser.value);
+    if(transferMethod.value=='netcat'){
+    destDatasets.value = await getDatasetData(destPool.value, destHost.value, "22", destUser.value);
+    }else{
+            destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+    }
     loadingDestDatasets.value = false;
     console.log('Remote destDataset:', destDatasets.value);
 }
