@@ -1,11 +1,13 @@
 import { ref } from 'vue';
-import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
+import { legacy } from '@45drives/houston-common-lib';
 import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // @ts-ignore
-import get_tasks_script from '../scripts/get-task-instances.py?raw';;
+import get_tasks_script from '../scripts/get-task-instances.py?raw';
+
+const { BetterCockpitFile, errorString, useSpawn } = legacy;
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -20,7 +22,7 @@ export class Scheduler implements SchedulerType {
         this.taskInstances.splice(0, this.taskInstances.length);
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_tasks_script], { superuser: 'try' });
-            const tasksOutput = (await state.promise()).stdout;
+            const tasksOutput = (await state.promise()).stdout!;
             // console.log('Raw tasksOutput:', tasksOutput);
             const tasksData = JSON.parse(tasksOutput);
 
@@ -336,7 +338,7 @@ export class Scheduler implements SchedulerType {
             const command = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
-            const output = result.stdout;
+            const output = result.stdout!;
 
             return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
         } catch (error) {
@@ -355,7 +357,7 @@ export class Scheduler implements SchedulerType {
             const command = ['systemctl', 'status', `${fullTaskName}.service`, '--no-pager', '--output=cat'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
-            const output = result.stdout;
+            const output = result.stdout!;
 
             // Return the parsed status based on stdout
             return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);

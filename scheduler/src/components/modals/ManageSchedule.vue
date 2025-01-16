@@ -244,7 +244,7 @@ import CalendarComponent from '../common/CalendarComponent.vue';
 import InfoTile from '../common/InfoTile.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { TaskInstance } from '../../models/Tasks';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 
