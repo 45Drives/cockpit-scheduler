@@ -34,7 +34,7 @@
                                 </div>
                             </button>
                         </li>
-                        <li v-else>
+                        <!-- <li v-else>
                             <button @click.stop="selectRemoteBtn(dummyRemote)"
                                 @mouseenter="handleMouseEnter(dummyRemote.name)"
                                 @mouseleave="handleMouseLeave(dummyRemote.name)"
@@ -49,7 +49,7 @@
                                     {{ dummyRemote.name }}
                                 </div>
                             </button>
-                        </li>
+                        </li> -->
                     </ul>
                 </div>
                 <div v-if="!selectedRemote" class="mt-4 border rounded-md border-default p-2 bg-well">
@@ -281,7 +281,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
 import CustomLoadingSpinner from "../common/CustomLoadingSpinner.vue";
 import { CloudAuthParameter, CloudSyncParameter, CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
 
@@ -299,22 +299,22 @@ const privacyPolicyUrl = ref('https://cloud-sync.45d.io/privacy');
 const termsOfServiceUrl = ref('https://cloud-sync.45d.io/tos');
 
 // Create dummy CloudSyncRemote instance for dev
-const dummyDropboxProvider: CloudSyncProvider = cloudSyncProviders["dropbox"];
-const dummyDropboxAuthParams: CloudAuthParameter = {
-    parameters: {
-        token: { value: "", type: "object", defaultValue: "" },
-        client_id: { value: "dropbox-client-id", type: "string", defaultValue: "" },
-        client_secret: { value: "dropbox-client-secret", type: "string", defaultValue: "" },
-    },
-    oAuthSupported: true,
-};
-const dummyCloudSyncRemote = new CloudSyncRemote(
-    "dummyRemote",          // Name of the remote
-    "dropbox",              // Type of remote, matching the provider type
-    dummyDropboxAuthParams,      // Authentication parameters for Dropbox
-    dummyDropboxProvider         // The Dropbox provider instance
-);
-const dummyRemote = ref(dummyCloudSyncRemote);
+// const dummyDropboxProvider: CloudSyncProvider = cloudSyncProviders["dropbox"];
+// const dummyDropboxAuthParams: CloudAuthParameter = {
+//     parameters: {
+//         token: { value: "", type: "object", defaultValue: "" },
+//         client_id: { value: "dropbox-client-id", type: "string", defaultValue: "" },
+//         client_secret: { value: "dropbox-client-secret", type: "string", defaultValue: "" },
+//     },
+//     oAuthSupported: true,
+// };
+// const dummyCloudSyncRemote = new CloudSyncRemote(
+//     "dummyRemote",          // Name of the remote
+//     "dropbox",              // Type of remote, matching the provider type
+//     dummyDropboxAuthParams,      // Authentication parameters for Dropbox
+//     dummyDropboxProvider         // The Dropbox provider instance
+// );
+// const dummyRemote = ref(dummyCloudSyncRemote);
 
 onMounted(async () => {
     await loadRemotes();
@@ -359,14 +359,14 @@ function clearValues() {
     loadedEditableRemoteName.value = '';
     loadedEditableRemoteProvider.value = undefined;
     loadedEditableRemoteParams.value = {};
-    console.log('clearedRemoteName:', loadedEditableRemoteName.value);
-    console.log('clearedRemoteProvider:', loadedEditableRemoteProvider.value);
-    console.log('clearedRemoteParams', loadedEditableRemoteParams);
+  //  console.log('clearedRemoteName:', loadedEditableRemoteName.value);
+  //  console.log('clearedRemoteProvider:', loadedEditableRemoteProvider.value);
+  //  console.log('clearedRemoteParams', loadedEditableRemoteParams);
 }
 
 function populateValues(selectedRemote: CloudSyncRemote) {
     clearValues();
-    console.log('selectedRemote:', selectedRemote);
+  //  console.log('selectedRemote:', selectedRemote);
     loadedEditableRemoteName.value = selectedRemote.name;
     loadedEditableRemoteProvider.value = selectedRemote.provider;
 
@@ -377,9 +377,9 @@ function populateValues(selectedRemote: CloudSyncRemote) {
         console.error("authParams is undefined in selectedRemote");
     }
 
-    console.log('loadedEditableRemoteName:', loadedEditableRemoteName.value);
-    console.log('loadedEditableRemoteProvider:', loadedEditableRemoteProvider.value);
-    console.log('loadedEditableRemoteParams', loadedEditableRemoteParams);
+  //  console.log('loadedEditableRemoteName:', loadedEditableRemoteName.value);
+  //  console.log('loadedEditableRemoteProvider:', loadedEditableRemoteProvider.value);
+  //  console.log('loadedEditableRemoteParams', loadedEditableRemoteParams);
 }
 
 
@@ -523,10 +523,10 @@ const displayValue = computed({
     get: () => {
         if (loadedEditableRemoteProvider.value) {
             let token = loadedEditableRemoteParams.value.parameters.token.value;
-            console.log("GET: Current token value:", token);
+            // console.log("GET: Current token value:", token);
 
             if (!token) {
-                console.log("GET: Token is missing or empty.");
+                // console.log("GET: Token is missing or empty.");
                 return '';
             }
 
@@ -534,39 +534,39 @@ const displayValue = computed({
                 try {
                     // Try to parse the string as JSON
                     token = JSON.parse(token);
-                    console.log("GET: Parsed token string into object:", token);
+                    // console.log("GET: Parsed token string into object:", token);
                 } catch (error) {
-                    console.warn("GET: Token string is not valid JSON. Returning as-is:", token);
+                    // console.warn("GET: Token string is not valid JSON. Returning as-is:", token);
                     return token;
                 }
             }
 
             if (typeof token === 'object') {
                 const jsonString = JSON.stringify(token, null, 2);
-                console.log("GET: Token is an object. Returning JSON string:", jsonString);
+                // console.log("GET: Token is an object. Returning JSON string:", jsonString);
                 return jsonString;
             } else {
-                console.log("GET: Token is not an object. Returning as-is:", token);
+                // console.log("GET: Token is not an object. Returning as-is:", token);
                 return token;
             }
         }
     },
     set: (newValue: string) => {
         if (loadedEditableRemoteProvider.value) {
-            console.log("SET: New value received for token:", newValue);
+            // console.log("SET: New value received for token:", newValue);
 
             try {
                 // Try to parse the new value as JSON
                 const parsedValue = JSON.parse(newValue);
-                console.log("SET: Parsed new value into JSON object:", parsedValue);
+                // console.log("SET: Parsed new value into JSON object:", parsedValue);
                 loadedEditableRemoteParams.value.parameters.token.value = parsedValue;
             } catch (error) {
-                console.warn("SET: Failed to parse new value as JSON. Keeping as string:", newValue);
+                // console.warn("SET: Failed to parse new value as JSON. Keeping as string:", newValue);
                 loadedEditableRemoteParams.value.parameters.token.value = newValue;
             }
 
-            console.log(
-                "SET: Final token value in parameters:",
+           console.log(
+                // "SET: Final token value in parameters:",
                 loadedEditableRemoteParams.value.parameters.token.value
             );
         }

@@ -117,7 +117,7 @@ async function initializeData() {
     loading.value = true;
 
     await getDisks(diskList);
-    console.log('disks:', diskList)
+  //  console.log('disks:', diskList)
 
     if (props.task) {
         const params = props.task.parameters.children;
@@ -127,7 +127,7 @@ async function initializeData() {
         selectedDisks.value = storedDisks
             ? storedDisks.split(', ').map(disk => disk.replace(/^'|'$/g, ''))
             : [];
-        console.log('selectedDisks:', selectedDisks.value);
+      //  console.log('selectedDisks:', selectedDisks.value);
 
         selectedTestType.value = params.find(p => p.key === 'testType')!.value;
 
@@ -199,7 +199,7 @@ async function validateParams() {
 }
 
 function setParams() {
-    console.log('selectedDisks:', selectedDisks.value);
+  //  console.log('selectedDisks:', selectedDisks.value);
     const diskSelectionString = selectedDisks.value.join(', ');
 
     const newParams = new ParameterNode("SMART Test Config", "smartTestConfig")
@@ -207,7 +207,7 @@ function setParams() {
         .addChild(new StringParameter('Test Type', 'testType', selectedTestType.value));
 
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
 onMounted(async () => {

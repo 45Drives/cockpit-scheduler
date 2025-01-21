@@ -1,5 +1,7 @@
-import { useSpawn, errorString } from '@45drives/cockpit-helpers';
+import { legacy } from '@45drives/houston-common-lib';
 import { formatTemplateName } from '../composables/utility';
+
+const { useSpawn, errorString } = legacy;
 
 export class TaskExecutionLog {
     entries: TaskExecutionResult[];
@@ -28,7 +30,7 @@ export class TaskExecutionLog {
             const command = ['journalctl', '-u', fullTaskName, '--until', untilTime, '--no-pager', '--all'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
-            const taskLogData = result.stdout.trim();
+            const taskLogData = result.stdout!.trim();
             // console.log('taskLogData:', taskLogData);
 
             return taskLogData;
@@ -53,7 +55,7 @@ export class TaskExecutionLog {
             const execState = useSpawn(execCommand, { superuser: 'try' });
             const execResult = await execState.promise();
 
-            const properties = Object.fromEntries(execResult.stdout.split('\n').filter(line => line.includes('=')).map(line => line.split('=')));
+            const properties = Object.fromEntries(execResult.stdout!.split('\n').filter(line => line.includes('=')).map(line => line.split('=')));
             const exitCode = properties['ExecMainStatus'] || '0';
             const startTime = properties['ExecMainStartTimestamp'] || '';
             const finishTime = properties['ExecMainExitTimestamp'] || '';
@@ -63,7 +65,7 @@ export class TaskExecutionLog {
                 const logCommand = ['journalctl', '-u', fullTaskName, '--since', startTime, '--no-pager', '--all'];
                 const logState = useSpawn(logCommand, { superuser: 'try' });
                 const logResult = await logState.promise();
-                output = logResult.stdout;
+                output = logResult.stdout!;
             } else {
                 output = "No executions found.";
                 

@@ -74,7 +74,7 @@ import ParameterInput from '../parameters/ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate } from '../../models/Tasks';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
@@ -182,7 +182,7 @@ async function showSchedulePromptDialog() {
     await loadConfirmationComponent();
 
     showSchedulePrompt.value = true;
-    console.log('Showing confirmation dialog...');
+    // console.log('Showing confirmation dialog...');
 }
 
 const makeScheduleLater : ConfirmationCallback = async () => {
@@ -230,13 +230,13 @@ async function saveTask() {
     if (sanitizedName.startsWith('_')) {
         sanitizedName = 'task' + sanitizedName;
     }
-    console.log('sanitizedName:', sanitizedName);
+  //  console.log('sanitizedName:', sanitizedName);
 
 
     if (isStandaloneTask.value) {
         const schedule = new TaskSchedule(false, []);
         const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
-        console.log('task (no schedule):', task);
+      //  console.log('task (no schedule):', task);
 
         await myScheduler.registerTaskInstance(task);
         pushNotification(new Notification('Task Save Successful', `Task has been saved.`, 'success', 8000));
@@ -246,7 +246,7 @@ async function saveTask() {
     } else {
         const schedule = new TaskSchedule(true, []);
         const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
-        console.log('task (for scheduling):', task);
+      //  console.log('task (for scheduling):', task);
 
         newTask.value = task;
     }
@@ -264,4 +264,3 @@ provide('errors', errorList);
 provide('show-schedule-prompt', showSchedulePrompt);
 provide('is-standalone-task', isStandaloneTask);
 </script>
-

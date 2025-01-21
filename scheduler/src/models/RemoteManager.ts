@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
+import { legacy } from '@45drives/houston-common-lib';
 import { CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, CloudAuthParameter, CloudSyncParameter} from "./CloudSync";
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
@@ -12,6 +12,8 @@ import delete_cloud_sync_remote_script from '../scripts/delete-rclone-remote.py?
 //@ts-ignore
 import update_cloud_sync_remote_script from '../scripts/update-rclone-remote.py?raw';
 
+
+const { BetterCockpitFile, errorString, useSpawn } = legacy;
 export class RemoteManager implements RemoteManagerType {
     cloudSyncRemotes: CloudSyncRemote[];
 
@@ -23,10 +25,10 @@ export class RemoteManager implements RemoteManagerType {
         this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_cloud_sync_remotes_script], { superuser: 'try' });
-            const remotesOutput = (await state.promise()).stdout;
+            const remotesOutput = (await state.promise()).stdout!;
 
             const remotesData = JSON.parse(remotesOutput);  // Parse the remotes
-            console.log('remotesData JSON:', remotesData);
+            // console.log('remotesData JSON:', remotesData);
 
             if (!Array.isArray(remotesData)) {
                 console.error("Unexpected remotes data format:", remotesData);
@@ -92,7 +94,7 @@ export class RemoteManager implements RemoteManagerType {
         const remote = this.cloudSyncRemotes.find(remote => remote.name === remoteName);
 
         if (remote) {
-            console.log(`Found remote: ${remote.name}`);
+          //  console.log(`Found remote: ${remote.name}`);
             return remote;
         } else {
             console.error(`Remote with name "${remoteName}" not found`);
@@ -104,7 +106,7 @@ export class RemoteManager implements RemoteManagerType {
         let provider: CloudSyncProvider;
         // Handle the case where the type is 's3' and provider is passed
         if (type === 's3') {
-            console.log('parameters:', parameters)
+          //  console.log('parameters:', parameters)
             provider = cloudSyncProviders[`s3-${parameters.provider}`];
 
             if (!provider) {
@@ -120,11 +122,11 @@ export class RemoteManager implements RemoteManagerType {
         }
 
         const authParams: CloudAuthParameter = parameters;
-        console.log('authParams', authParams);
+      //  console.log('authParams', authParams);
 
         // Create the new CloudSyncRemote with the appropriate provider and authParams
         const remote = new CloudSyncRemote(name, type, authParams, provider);
-        console.log('newRemote:', remote);
+      //  console.log('newRemote:', remote);
 
         // Convert CloudSyncRemote object to JSON string
         const remoteJsonString = JSON.stringify(remote);
@@ -134,7 +136,7 @@ export class RemoteManager implements RemoteManagerType {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', create_cloud_sync_remote_script, '--data', remoteJsonString], { superuser: 'try' });
             const newRemoteOutput = (await state.promise()).stdout;
 
-            console.log('newRemoteOutput:', newRemoteOutput);
+          //  console.log('newRemoteOutput:', newRemoteOutput);
             this.cloudSyncRemotes.push(remote);
 
         } catch (error) {
@@ -147,8 +149,8 @@ export class RemoteManager implements RemoteManagerType {
 
     async editRemote(oldName: string, newName: string, newType: string, newParams: any) {
         let provider;
-        console.log(`oldName: ${oldName}, newName: ${newName}, newType: ${newType}`);
-        console.log('newRemoteParams:', newParams);
+      //  console.log(`oldName: ${oldName}, newName: ${newName}, newType: ${newType}`);
+      //  console.log('newRemoteParams:', newParams);
         // Handle the case where the type is 's3' and provider is passed
         if (newType === 's3') {
             provider = cloudSyncProviders[`s3-${newParams.parameters.provider.value}`];
@@ -167,14 +169,14 @@ export class RemoteManager implements RemoteManagerType {
         const authParams = newParams.parameters;
         const remote = new CloudSyncRemote(newName, newType, authParams, provider);
         const remoteJson = JSON.stringify(remote);
-        console.log('newly edited remote:', remote);
+      //  console.log('newly edited remote:', remote);
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', update_cloud_sync_remote_script, 
                 '--old_name', oldName, '--data', remoteJson
             ], { superuser: 'try' });
 
             const editRemoteOutput = (await state.promise()).stdout;
-            console.log('editRemoteOutput:', editRemoteOutput);
+          //  console.log('editRemoteOutput:', editRemoteOutput);
 
             // Update the local list of remotes with the new data
             const index = this.cloudSyncRemotes.findIndex(remote => remote.name === oldName);
@@ -206,7 +208,7 @@ export class RemoteManager implements RemoteManagerType {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', delete_cloud_sync_remote_script, remoteName], { superuser: 'try' });
             const deleteOutput = (await state.promise()).stdout;
 
-            console.log("Delete script output:", deleteOutput);
+          //  console.log("Delete script output:", deleteOutput);
             return true;
         } catch (error) {
             console.error("Error deleting remote:", error);

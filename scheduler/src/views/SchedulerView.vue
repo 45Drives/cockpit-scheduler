@@ -117,13 +117,12 @@
 </template>
 
 <script setup lang="ts">
-import 'houston-common-css/src/index.css';
-import "houston-common-ui/style.css";
+import "@45drives/houston-common-css/src/index.css";
 import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
@@ -278,10 +277,10 @@ const loadScheduleWizardComponent = async () => {
 }
 
 async function showThisScheduleWizardComponent() {
-    console.log('Attempting to load Schedule Wizard Component...');
+  //  console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-        console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
+      //  console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
         // console.log('schedulerView: setting showThisScheduleWizard to true.');
         showThisScheduleWizard.value = true;
     } catch (error) {
@@ -289,7 +288,7 @@ async function showThisScheduleWizardComponent() {
     }
 }
 const updateShowThisScheduleWizardComponent = (newVal) => {
-    console.log('updateShowThisScheduleWizard triggered');
+  //  console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
 }
 

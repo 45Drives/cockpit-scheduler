@@ -219,14 +219,14 @@ const getSourcePools = async () => {
     loadingSourcePools.value = true;
     sourcePools.value = await getPoolData();
     loadingSourcePools.value = false;
-    console.log('sourcePools:', sourcePools.value);
+  //  console.log('sourcePools:', sourcePools.value);
 }
 
 const getSourceDatasets = async () => {
     loadingSourceDatasets.value = true;
     sourceDatasets.value = await getDatasetData(sourcePool.value);
     loadingSourceDatasets.value = false;
-    console.log('sourceDatasets:', sourceDatasets.value);
+  //  console.log('sourceDatasets:', sourceDatasets.value);
 }
 
 const handleSourcePoolChange = async (newVal) => {
@@ -375,7 +375,7 @@ function setParams() {
     );
 
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
 watch(sourcePool, handleSourcePoolChange);

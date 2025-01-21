@@ -657,7 +657,7 @@ onMounted(async () => {
     await initializeData();
     isTaskLoading.value = false; // Mark loading as complete
 
-    console.log("Existing remotes:", existingRemotes);
+  //  console.log("Existing remotes:", existingRemotes);
 });
 
 watch(selectedRemote, (newVal) => {
@@ -670,7 +670,7 @@ watch(selectedRemote, (newVal) => {
 async function initializeData() {
     if (props.task) {
         // enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
-        console.log('loading task:', props.task);
+      //  console.log('loading task:', props.task);
         loading.value = true;
 
         const params = props.task.parameters.children;
@@ -938,7 +938,7 @@ async function validateLocalPath() {
     // Check if the path exists asynchronously
     const pathExists = await checkLocalPathExists(localPath.value);
     const validPath = validatePath(localPath.value);
-    console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
+  //  console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
 
     if (!pathExists) {
         errorList.value.push(`Path does not exist: ${localPath.value}`);
@@ -953,7 +953,7 @@ async function validateLocalPath() {
     }
 
     // If everything is valid
-    console.log("Valid source path.");
+  //  console.log("Valid source path.");
     return true;
 }
 
@@ -969,7 +969,7 @@ function validateDestinationPath() {
         // if (!targetPath.value.endsWith('/')) {
         //     targetPath.value += '/';
         // }
-        console.log("Valid destination path: " + targetPath.value);
+      //  console.log("Valid destination path: " + targetPath.value);
         return true;
     } else {
         errorList.value.push("Target path is invalid.");
@@ -1161,13 +1161,13 @@ function setParams() {
         );
 
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
 onMounted(async () => {
     await initializeData();
     // console.log("Component mounted");
-    console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
+  //  console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
 });
 
 

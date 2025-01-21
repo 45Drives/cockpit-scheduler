@@ -1,5 +1,5 @@
 <template>
-	<HoustonAppContainer moduleName="Task Scheduler">
+	<HoustonAppContainer moduleName="Task Scheduler" :appVersion="appVersion">
 		<CenteredCardColumn>
 			<CardContainer>
 				<SchedulerView />
@@ -10,16 +10,16 @@
 
 <script setup lang="ts">
 import { ref, provide, onMounted } from 'vue';
-import 'houston-common-css/src/index.css';
-import "houston-common-ui/style.css";
 import SchedulerView from './views/SchedulerView.vue';
 import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate} from './models/Tasks';
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
-import { HoustonAppContainer, CardContainer, CenteredCardColumn } from 'houston-common-ui'
+import { HoustonAppContainer, CardContainer, CenteredCardColumn } from '@45drives/houston-common-ui'
 import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey, taskTemplatesInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from './keys/injection-keys';
 import { RemoteManager } from './models/RemoteManager';
 import { CloudSyncRemote } from './models/CloudSync';
+
+const appVersion = __APP_VERSION__;
 
 // Instantiate task templates -> These must corrolate with Template files located in /system_files/opt/45drives/houston/scheduler/templates
 function initializeTaskTemplates(): TaskTemplate[] {

@@ -99,7 +99,7 @@ const cloudRemote = ref();
 
 onMounted(async () => {
     cloudRemote.value = await myRemoteManager.getRemoteByName(findValue(taskInstance.value.parameters, 'rclone_remote', 'rclone_remote'));
-    console.log('cloudRemote:', cloudRemote.value);
+  //  console.log('cloudRemote:', cloudRemote.value);
 });
 
 

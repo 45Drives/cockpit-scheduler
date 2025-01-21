@@ -1,12 +1,14 @@
 import { ref } from 'vue';
-import { BetterCockpitFile, errorString, useSpawn } from '@45drives/cockpit-helpers';
+import { legacy } from '@45drives/houston-common-lib';
 import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 
 // @ts-ignore
-import get_tasks_script from '../scripts/get-task-instances.py?raw';;
+import get_tasks_script from '../scripts/get-task-instances.py?raw';
+
+const { BetterCockpitFile, errorString, useSpawn } = legacy;
 
 export class Scheduler implements SchedulerType {
     taskTemplates: TaskTemplate[];
@@ -21,7 +23,7 @@ export class Scheduler implements SchedulerType {
         this.taskInstances.splice(0, this.taskInstances.length);
         try {
             const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_tasks_script], { superuser: 'try' });
-            const tasksOutput = (await state.promise()).stdout;
+            const tasksOutput = (await state.promise()).stdout!;
             // console.log('Raw tasksOutput:', tasksOutput);
             const tasksData = JSON.parse(tasksOutput);
 
@@ -123,7 +125,7 @@ export class Scheduler implements SchedulerType {
             return acc;
         }, {});
 
-        console.log('templateName:', templateName);
+      //  console.log('templateName:', templateName);
 
         function formatEnvOption(envObject, key, emptyValue = '', excludeValues = [0, '0', "''"], resetKeys: string[] = []) {
             if (envObject[key] && !excludeValues.includes(envObject[key])) {
@@ -174,7 +176,7 @@ export class Scheduler implements SchedulerType {
             default:
                 break;
         }
-        console.log('envObject After:', envObject);
+      //  console.log('envObject After:', envObject);
         return envObject;
     }
 
@@ -200,7 +202,7 @@ export class Scheduler implements SchedulerType {
     async registerTaskInstance(taskInstance: TaskInstance) {
         //generate env file with key/value pairs (Task Parameters)
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
-        console.log('envKeyVals Before Parse:', envKeyValues);
+      //  console.log('envKeyVals Before Parse:', envKeyValues);
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
@@ -212,7 +214,7 @@ export class Scheduler implements SchedulerType {
         // Remove empty values from envObject
         const filteredEnvObject = Object.fromEntries(Object.entries(envObject).filter(([key, value]) => value !== '' && value !== 0));
 
-        console.log('Filtered envObject:', filteredEnvObject);
+      //  console.log('Filtered envObject:', filteredEnvObject);
 
         // Convert the parsed envObject back to envKeyValuesString
         const envKeyValuesString = Object.entries(filteredEnvObject).map(([key, value]) => `${key}=${value}`).join('\n');
@@ -222,7 +224,7 @@ export class Scheduler implements SchedulerType {
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
 
 
-        console.log('envFilePath:', envFilePath);
+      //  console.log('envFilePath:', envFilePath);
         // console.log('envKeyValuesString:', envKeyValuesString);
 
         const file = new BetterCockpitFile(envFilePath, {
@@ -239,7 +241,7 @@ export class Scheduler implements SchedulerType {
         });
 
         const jsonFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.json`;
-        console.log('jsonFilePath:', jsonFilePath);
+      //  console.log('jsonFilePath:', jsonFilePath);
 
         //run script to generate service + timer via template, param env and schedule json
         if (taskInstance.schedule.intervals.length < 1) {
@@ -251,7 +253,7 @@ export class Scheduler implements SchedulerType {
         } else {
             //generate json file with enabled boolean + intervals (Schedule Intervals)
             // requires schedule data object
-            console.log('schedule:', taskInstance.schedule);
+          //  console.log('schedule:', taskInstance.schedule);
 
             const file2 = new BetterCockpitFile(jsonFilePath, {
                 superuser: 'try',
@@ -274,7 +276,7 @@ export class Scheduler implements SchedulerType {
     async updateTaskInstance(taskInstance) {
         //populate data from env file and then delete + recreate task files
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
-        console.log('envKeyVals:', envKeyValues);
+      //  console.log('envKeyVals:', envKeyValues);
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
@@ -286,7 +288,7 @@ export class Scheduler implements SchedulerType {
         // Remove empty values from envObject
         const filteredEnvObject = Object.fromEntries(Object.entries(envObject).filter(([key, value]) => value !== '' && value !== 0));
 
-        console.log('Filtered envObject:', filteredEnvObject);
+      //  console.log('Filtered envObject:', filteredEnvObject);
 
         // Convert the parsed envObject back to envKeyValuesString
         const envKeyValuesString = Object.entries(filteredEnvObject).map(([key, value]) => `${key}=${value}`).join('\n');
@@ -294,7 +296,7 @@ export class Scheduler implements SchedulerType {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const envFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.env`;
 
-        console.log('envFilePath:', envFilePath);
+      //  console.log('envFilePath:', envFilePath);
 
         const file = new BetterCockpitFile(envFilePath, {
             superuser: 'try',
@@ -351,7 +353,7 @@ export class Scheduler implements SchedulerType {
             const command = ['systemctl', 'status', `${fullTaskName}.timer`, '--no-pager', '--output=cat'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
-            const output = result.stdout;
+            const output = result.stdout!;
 
             return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
         } catch (error) {
@@ -371,7 +373,7 @@ export class Scheduler implements SchedulerType {
             const command = ['systemctl', 'status', `${fullTaskName}.service`, '--no-pager', '--output=cat'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
-            const output = result.stdout;
+            const output = result.stdout!;
 
             // Return the parsed status based on stdout
             return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
@@ -454,7 +456,7 @@ export class Scheduler implements SchedulerType {
 
             console.log(`${timerName} has been enabled and started`);
             taskInstance.schedule.enabled = true;
-            console.log('taskInstance after enable:', taskInstance);
+          //  console.log('taskInstance after enable:', taskInstance);
             await this.updateSchedule(taskInstance);
         } catch (error) {
             console.error(errorString(error));
@@ -486,7 +488,7 @@ export class Scheduler implements SchedulerType {
     
             console.log(`${timerName} has been stopped and disabled`);
             taskInstance.schedule.enabled = false;
-            console.log('taskInstance after disable:', taskInstance);
+          //  console.log('taskInstance after disable:', taskInstance);
 
 
             await this.updateSchedule(taskInstance);
@@ -505,7 +507,7 @@ export class Scheduler implements SchedulerType {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
         const jsonFilePath = `/etc/systemd/system/${fullTaskName}.json`;
-        console.log('jsonFilePath:', jsonFilePath);
+      //  console.log('jsonFilePath:', jsonFilePath);
 
         const file = new BetterCockpitFile(jsonFilePath, {
             superuser: 'try',

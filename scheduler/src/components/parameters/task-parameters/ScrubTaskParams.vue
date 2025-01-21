@@ -101,7 +101,7 @@ const getPools = async () => {
     loadingPools.value = true;
     pools.value = await getPoolData();
     loadingPools.value = false;
-    console.log('pools:', pools.value);
+  //  console.log('pools:', pools.value);
 }
 
 
@@ -175,7 +175,7 @@ function setParams() {
         .addChild(new ZfsDatasetParameter('Pool', 'pool', '', 0, '', pool.value, ''));
 
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
 onMounted(async () => {

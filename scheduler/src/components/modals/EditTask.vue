@@ -43,7 +43,7 @@ import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate } from '../../models/Tasks';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 
@@ -134,7 +134,7 @@ async function showConfirmationDialog() {
 }
 
 const confirmSaveChanges : ConfirmationCallback = async () => {
-    console.log('Saving and scheduling task now...');
+  //  console.log('Saving and scheduling task now...');
     saving.value = true;
     await saveEditedTask();
     saving.value = false;
@@ -151,7 +151,7 @@ const cancelEdit : ConfirmationCallback = async () => {
 
 async function saveEditedTask() {
     console.log('save changes triggered');
-    console.log('params to save:', parameters.value)
+  //  console.log('params to save:', parameters.value)
     const template = ref();
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
@@ -171,11 +171,11 @@ async function saveEditedTask() {
     if (sanitizedName.startsWith('_')) {
         sanitizedName = 'task' + sanitizedName;
     }
-    console.log('sanitizedName:', sanitizedName);
+  //  console.log('sanitizedName:', sanitizedName);
 
     const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
     const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
-    console.log('edited task: ', task);
+  //  console.log('edited task: ', task);
 
     await myScheduler.updateTaskInstance(task);
 

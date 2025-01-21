@@ -168,7 +168,7 @@ import { inject, ref, Ref, watch, computed, reactive } from 'vue';
 import Modal from '../common/Modal.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
 import { CloudSyncProvider, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
@@ -194,9 +194,9 @@ const privacyPolicyUrl = ref('https://cloud-sync.45d.io/privacy');
 const termsOfServiceUrl = ref('https://cloud-sync.45d.io/tos');
 
 watch(selectedProvider, (newlySelectedProvider) => {
-    console.log('selectedProvider:', selectedProvider.value);
+  //  console.log('selectedProvider:', selectedProvider.value);
     if (newlySelectedProvider) {
-        console.log('newlySelectedProvider:', newlySelectedProvider);
+      //  console.log('newlySelectedProvider:', newlySelectedProvider);
         Object.keys(providerValues).forEach((key) => delete providerValues[key]); // Clear previous values
 
         // Initialize providerValues with a shallow copy of the selectedProvider parameters
@@ -295,7 +295,7 @@ const createRemoteBtn = async () => {
                     throw new Error('Token parameter is invalid JSON.');
                 }
             }
-            console.log('token value:', providerValues.token);
+          //  console.log('token value:', providerValues.token);
         }
 
         creating.value = true;
@@ -306,9 +306,9 @@ const createRemoteBtn = async () => {
                 return value !== null && value !== undefined && value !== '';
             })
         );
-        console.log('parametersToSave:', parametersToSave);
+      //  console.log('parametersToSave:', parametersToSave);
         const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
-        console.log('newRemote:', newRemote);
+      //  console.log('newRemote:', newRemote);
         pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
         creating.value = false;
         showCreateRemote.value = false;

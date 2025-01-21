@@ -347,7 +347,7 @@ import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter } from '../../../models/Parameters';
 import { testSSH } from '../../../composables/utility';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface RsyncTaskParamsProps {
     parameterSchema: ParameterNodeType;
@@ -523,7 +523,7 @@ function validateSourcePath() {
             // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 8000));
             sourcePath.value += '/';
         }
-        console.log("Valid source path.");
+      //  console.log("Valid source path.");
         return true;
     } else {
         console.log("Invalid source path.");
@@ -539,7 +539,7 @@ function validateDestinationPath() {
         if (!destPath.value.endsWith('/')) {
             destPath.value += '/';
         }
-        console.log("Valid destination path: " + destPath.value);
+      //  console.log("Valid destination path: " + destPath.value);
         return destPath.value;
     } else {
         console.log("Invalid destination path.");
@@ -622,7 +622,7 @@ function setParams() {
         );
 
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
 async function confirmTest(destHost, destUser) {

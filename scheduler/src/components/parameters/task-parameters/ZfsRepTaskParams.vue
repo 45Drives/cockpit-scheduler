@@ -306,7 +306,7 @@ import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
 import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist } from '../../../composables/utility';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
     parameterSchema: ParameterNodeType;
@@ -513,7 +513,7 @@ function handleCheckboxChange(checkbox) {
 }
 
 const handleDestHostChange = async (newVal) => {
-    console.log("Handling destination host change:", newVal);
+  //  console.log("Handling destination host change:", newVal);
     if (newVal !== "") {
         await getRemoteDestinationPools();
     } else {
@@ -554,35 +554,35 @@ const getSourcePools = async () => {
     loadingSourcePools.value = true;
     sourcePools.value = await getPoolData();
     loadingSourcePools.value = false;
-    console.log('sourcePools:', sourcePools.value);
+  //  console.log('sourcePools:', sourcePools.value);
 }
 
 const getSourceDatasets = async () => {
     loadingSourceDatasets.value = true;
     sourceDatasets.value = await getDatasetData(sourcePool.value);
     loadingSourceDatasets.value = false;
-    console.log('sourceDatasets:', sourceDatasets.value);
+  //  console.log('sourceDatasets:', sourceDatasets.value);
 }
 
 const getLocalDestinationPools = async () => {
     loadingDestPools.value = true;
     destPools.value = await getPoolData();
     loadingDestPools.value = false;
-    console.log('Local destPools:', destPools.value);
+  //  console.log('Local destPools:', destPools.value);
 }
 
 const getLocalDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
     destDatasets.value = await getDatasetData(destPool.value);
     loadingDestDatasets.value = false;
-    console.log('Local destDatasets:', destDatasets.value);
+  //  console.log('Local destDatasets:', destDatasets.value);
 }
 
 const getRemoteDestinationPools = async () => {
     loadingDestPools.value = true;
     destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
     loadingDestPools.value = false;
-    console.log('Remote destPools:', destPools.value);
+  //  console.log('Remote destPools:', destPools.value);
 }
 
 
@@ -590,7 +590,7 @@ const getRemoteDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
     destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
     loadingDestDatasets.value = false;
-    console.log('Remote destDataset:', destDatasets.value);
+  //  console.log('Remote destDataset:', destDatasets.value);
 }
 
 
@@ -714,7 +714,7 @@ function validateDestination() {
 
 async function checkDestDatasetContents() {
     if (!hasDestDatasetChanged()) {
-        console.log("Destination has not changed, skipping checks.");
+      //  console.log("Destination has not changed, skipping checks.");
         return;
     }
 
@@ -754,7 +754,7 @@ async function checkDestDatasetContents() {
 
             if (!datasetExists) {
                 // Dataset does not exist, can proceed with creation
-                console.log("Destination dataset does not exist, proceeding with creation.");
+              //  console.log("Destination dataset does not exist, proceeding with creation.");
                 destDatasetErrorTag.value = false;
             } else {
                 // Dataset exists, perform additional validation
@@ -878,7 +878,7 @@ function setParams() {
         );
 
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
 async function confirmTest(destHost, destUser) {
