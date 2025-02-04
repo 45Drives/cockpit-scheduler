@@ -90,6 +90,7 @@
         "scheduler",
         "system_files",
         "package.json",
+        "bootstrap.sh",
         "Makefile"
     ],
     "changelog": {
