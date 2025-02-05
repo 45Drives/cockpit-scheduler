@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.8-2focal) focal; urgency=medium
+
+  * Building testing package for Scheduler Phase 3 and 4
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 06:16:42 -0400
+
 cockpit-scheduler (1.2.8-1focal) focal; urgency=medium
 
   * Creating testing package for Cloud-Sync addition

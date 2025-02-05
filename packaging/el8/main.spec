@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-2
+- Building testing package for Scheduler Phase 3 and 4
 * Mon Jan 06 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-1
 - Creating testing package for Cloud-Sync addition
 * Thu Jan 09 2025 Rachit Hans <rhans@45drives.com> 1.2.7-3

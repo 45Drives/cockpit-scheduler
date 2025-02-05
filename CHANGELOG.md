@@ -1,6 +1,3 @@
-## task scheduler 1.2.8-1
+## task scheduler 1.2.8-2
 
-* Creating testing package for Cloud-Sync addition
-* building package
-* release notes
-* Added netcat functionality, notes functionality and fixed cutom task
+* Building testing package for Scheduler Phase 3 and 4
