@@ -92,7 +92,8 @@
         "package.json",
         "bootstrap.sh",
         "Makefile",
-        ".gitmodules"
+        ".gitmodules",
+        ".git"
     ],
     "changelog": {
         "urgency": "medium",
