@@ -56,7 +56,7 @@
 import { inject, provide, ref, Ref,computed } from 'vue';
 import Modal from '../common/Modal.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate } from '../../models/Tasks';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 
