@@ -91,7 +91,8 @@
         "system_files",
         "package.json",
         "bootstrap.sh",
-        "Makefile"
+        "Makefile",
+        ".gitmodules"
     ],
     "changelog": {
         "urgency": "medium",
