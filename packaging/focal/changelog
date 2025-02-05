@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.8-5focal) focal; urgency=medium
+
+  * removed scheduler test from makefile to try and rectify deb build issue
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 07:12:38 -0400
+
 cockpit-scheduler (1.2.8-4focal) focal; urgency=medium
 
   * Building testing package for Scheduler Phase 3 and 4

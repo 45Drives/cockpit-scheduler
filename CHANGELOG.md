@@ -1,3 +1,3 @@
-## task scheduler 1.2.8-4
+## task scheduler 1.2.8-5
 
-* Building testing package for Scheduler Phase 3 and 4
+* removed scheduler test from makefile to try and rectify deb build issue

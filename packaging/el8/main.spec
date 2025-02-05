@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-5
+- removed scheduler test from makefile to try and rectify deb build issue
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-4
 - Building testing package for Scheduler Phase 3 and 4
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-3
