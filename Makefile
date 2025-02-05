@@ -175,6 +175,6 @@ help:
 test-%:
 	yarn --cwd $* run test
 
-test: houston-common-test $(addprefix test-, $(PLUGIN_SRCS))
+test: houston-common-test
 
 FORCE:
