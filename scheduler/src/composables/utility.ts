@@ -3,6 +3,8 @@ import { legacy } from "@45drives/houston-common-lib";
 import get_zfs_data_script from "../scripts/get-zfs-data.py?raw";
 // @ts-ignore
 import test_ssh_script from "../scripts/test-ssh.py?raw";
+// @ts-ignore
+import test_netcat_script from '../scripts/test-netcat.py?raw'
 //@ts-ignore
 import task_file_creation_script from "../scripts/task-file-creation.py?raw";
 //@ts-ignore
@@ -177,6 +179,30 @@ export async function testSSH(sshTarget) {
   }
 }
 
+export async function testNetcat(user, netcatHost, port) {
+    try {
+      console.log(`target: ${netcatHost}, port: ${port}`);
+      
+      // Pass both hostname and port to the Python script
+      const state = useSpawn(
+        ["/usr/bin/env", "python3", "-c", test_netcat_script, user, netcatHost, port],
+        { superuser: "try", stderr: "out" }
+      );
+  
+      const output = await state.promise();
+      console.log("testNetcat output:", output);
+  
+      // Check for "Connected" in stdout to confirm a successful connection
+      if (output.stdout.includes("True")) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (error) {
+      console.error(errorString(error));
+      return false;
+    }
+  }
 export async function executePythonScript(
   script: string,
   args: string[]
@@ -201,6 +227,8 @@ export async function createTaskFiles(
   timerTemplate,
   scheduleFile
 ) {
+    console.log("createTaskFiles ", templateName)
+    console.log(" createTaskFiles Script Path: ",scriptPath)
   return executePythonScript(task_file_creation_script, [
     "-tN",
     templateName,
@@ -218,6 +246,10 @@ export async function createTaskFiles(
 }
 
 export async function createStandaloneTask(templateName, scriptPath, envFile) {
+    console.log(" createStandaloneTask Template Name: ",templateName)
+
+    console.log(" createStandaloneTask Script Path: ",scriptPath)
+
   return executePythonScript(task_file_creation_script, [
     "-tN",
     templateName,

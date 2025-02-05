@@ -34,6 +34,14 @@
                 <div v-if="selectedTemplate">
                     <ParameterInput ref="parameterInputComponent" :selectedTemplate="selectedTemplate"/>
                 </div>
+
+            </div>
+            <div class="grid grid-flow-cols my-2 gap-2">
+                        <!-- Displaying notes section -->
+                        <div v-if="showNotes" class="border border-default rounded-md p-2 col-span-2 bg-accent">
+                            <label class="mt-1 block text-sm leading-6 text-default">Notes</label>
+                            <textarea rows="4" v-model="notesTask" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Your notes here..."></textarea>
+                        </div>
             </div>
         </template>
         <template v-slot:footer>
@@ -42,6 +50,7 @@
                     <div class="button-group-row">
                         <button @click.stop="closeBtn()" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger h-fit w-full">Close</button>
                     </div>
+                    <button @click="toggleNotes" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary"> {{ buttonText }}</button>
                     <div class="button-group-row">
                         <button disabled v-if="adding" id="adding-task-btn" type="button" class="btn btn-primary h-fit w-full">
                             <svg aria-hidden="true" role="status" class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -68,12 +77,12 @@
     
 </template>
 <script setup lang="ts">
-import { inject, provide, ref, Ref, watch } from 'vue';
+import { computed, inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate } from '../../models/Tasks';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate, CustomTaskTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
@@ -96,6 +105,14 @@ const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
 const parameters = ref();
+const notesTask = ref('');
+const showNotes = ref(false); // Controls visibility of the component
+
+function toggleNotes() {
+            showNotes.value = !showNotes.value; // Toggle the value
+        }
+const buttonText = computed(() => (showNotes.value ? 'Close Notes' : 'Add Notes'));
+
 
 const closeModal = () => {
     showTaskWizard.value = false;
@@ -224,7 +241,10 @@ async function saveTask() {
         template.value = new SmartTestTemplate();
     } else if (selectedTemplate.value?.name == "Cloud Sync Task") {
         template.value = new CloudSyncTaskTemplate();
+    } else if (selectedTemplate.value?.name == "Custom Task") {
+        template.value = new CustomTaskTemplate();
     }
+ 
 
     let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
     if (sanitizedName.startsWith('_')) {
@@ -232,10 +252,11 @@ async function saveTask() {
     }
   //  console.log('sanitizedName:', sanitizedName);
 
-
+    console.log("template: ", template, " parameters ", parameters)
+    const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
     if (isStandaloneTask.value) {
         const schedule = new TaskSchedule(false, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes);
       //  console.log('task (no schedule):', task);
 
         await myScheduler.registerTaskInstance(task);
@@ -245,7 +266,7 @@ async function saveTask() {
         loading.value = false;
     } else {
         const schedule = new TaskSchedule(true, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes);
       //  console.log('task (for scheduling):', task);
 
         newTask.value = task;
@@ -258,9 +279,13 @@ async function addTaskBtn() {
     }
 }
 
+
+
 provide('new-task', newTask);
 provide('parameters', parameters);
 provide('errors', errorList);
 provide('show-schedule-prompt', showSchedulePrompt);
 provide('is-standalone-task', isStandaloneTask);
+provide('show-task-wizard', showTaskWizard);
+
 </script>

@@ -28,6 +28,7 @@ interface TaskInstanceType {
 	template: TaskTemplateType;
 	parameters: ParameterNodeType;
 	schedule: TaskScheduleType;
+	notes: string;
 }
 
 type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';

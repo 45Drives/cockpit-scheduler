@@ -73,6 +73,7 @@
                                         <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
                                        @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
                                        @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
+                                            @viewNotes="(task) => viewNotesBtn(task)"
                                         ref="taskTableRow" :attr="taskInstance"
                                         />
                                     </div>
@@ -108,6 +109,10 @@
         <component :is="removeTaskDialog" @close="updateShowRemoveTaskPrompt" :showFlag="showRemoveTaskPrompt"
             :title="'Remove Task'" :message="'Are you sure you want to remove this task?'" :confirmYes="removeTaskYes"
             :confirmNo="removeTaskNo" :operating="removing" :operation="'removing'" />
+    </div>
+
+    <div v-if="showNotesPrompt">
+        <component :is="viewNotesComponent" :id-key="'view-notes-task-modal'"  :task="selectedTask"/>
     </div>
 
     <div v-if="showLogView">
@@ -177,10 +182,30 @@ async function loadEditTaskComponent() {
 }
 
 
+
 /* Generic loading function for Confirmation Dialogs */
 async function loadConfirmationDialog(dialogRef) {
     const module = await import('../components/common/ConfirmationDialog.vue');
     dialogRef.value = module.default;
+}
+/* Task Notes View*/
+const showNotesPrompt = ref(false);
+
+async function viewNotesBtn(task){
+    selectedTask.value = task;
+    console.log("viewNotesBtn triggered with task:", task);
+    console.log("Vie notes Btn in scheduler.vue")
+    await loadViewNotesComponent();
+    showNotesPrompt.value = true
+}
+
+const viewNotesComponent = ref()
+
+async function loadViewNotesComponent(){
+    console.log('loadV iewNotes Component triggered in scheduler view');
+
+    const module = await import('../components/modals/Notes.vue')
+    viewNotesComponent.value = module.default;
 }
 
 
@@ -398,4 +423,6 @@ provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showThisScheduleWizard);
 provide('show-edit-task-wizard', showEditTaskWizard);
 provide('show-log-view', showLogView);
+provide('show-notes-view', showNotesPrompt);
+
 </script>

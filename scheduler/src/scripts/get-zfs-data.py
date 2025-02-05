@@ -26,6 +26,29 @@ def get_remote_zfs_pools(host, port=22, user='root'):
         print(f"Error {e}")
         return {"success": False, "data": [], "error": str(e)}
 
+def get_remote_zfs_pools_netcat(host, port=22):
+    try:
+        command = "zpool list -H -o name\n"  # Note: The newline character ensures the command is sent properly
+
+        # Netcat command
+        nc_cmd = ['nc', host, str(port)]
+        
+        process = subprocess.Popen(nc_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        stdout, stderr = process.communicate(command)
+
+        # Check for errors
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, ' '.join(nc_cmd), output=stdout, stderr=stderr)
+
+        # Process the result
+        pools = stdout.strip().split('\n')
+        return {"success": True, "data": pools, "error": None}
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Error {e}")
+        return {"success": False, "data": [], "error": str(e)}
+
 def get_local_zfs_datasets(pool):
     try:
         result = subprocess.run(['zfs', 'list', '-H', '-o', 'name', '-r', pool], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)

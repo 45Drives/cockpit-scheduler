@@ -174,13 +174,13 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
     toLocation(): Location {
         const label = (this.children[0] as StringParameter).value;
         const key = (this.children[1] as StringParameter).value;
-        const host = (this.children[2] as StringParameter).value;
-        const port = (this.children[3] as IntParameter).value;
-        const user = (this.children[4] as StringParameter).value;
-        const root = (this.children[5] as SelectionParameter).value;
-        const path = (this.children[6] as SelectionParameter).value;
+        const host = (this.children[3] as StringParameter).value;
+        const port = (this.children[4] as IntParameter).value;
+        const user = (this.children[5] as StringParameter).value;
+        const root = (this.children[6] as SelectionParameter).value;
+        const path = (this.children[7] as SelectionParameter).value;
 
-        return { host, port, user, root, path };
+        return {host, port, user, root, path };
     }
 }
 
@@ -203,7 +203,6 @@ export class Location implements LocationType {
 export class LocationParameter extends ParameterNode implements ParameterNodeType {
     constructor(label: string, key: string, host: string = "", port: number = 0, user: string = "", root: string = "", path: string = "") {
         super(label, key);
-
         this.addChild(new StringParameter("Host", "host", host));
         this.addChild(new IntParameter("Port", "port", port));
         this.addChild(new StringParameter("User", "user", user));
@@ -213,7 +212,7 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
 
     // Method to create ZfsDatasetParameter from a location
     static fromLocation(label: string, key: string, location: Location): LocationParameter {
-        const { host, port, user, root, path } = location;
+        const {host, port, user, root, path } = location;
         return new LocationParameter(label, key, host, port, user, root, path);
     }
 
@@ -221,13 +220,14 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
     toLocation(): Location {
         const label = (this.children[0] as StringParameter).value;
         const key = (this.children[1] as StringParameter).value;
-        const host = (this.children[2] as StringParameter).value;
-        const port = (this.children[3] as IntParameter).value;
-        const user = (this.children[4] as StringParameter).value;
-        const root = (this.children[5] as SelectionParameter).value;
-        const path = (this.children[6] as SelectionParameter).value;
+        const transferMethod = (this.children[2] as StringParameter).value;
+        const host = (this.children[3] as StringParameter).value;
+        const port = (this.children[4] as IntParameter).value;
+        const user = (this.children[5] as StringParameter).value;
+        const root = (this.children[6] as SelectionParameter).value;
+        const path = (this.children[7] as SelectionParameter).value;
 
-        return { host, port, user, root, path };
+        return {host, port, user, root, path };
     }
 }
 

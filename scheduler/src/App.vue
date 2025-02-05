@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { ref, provide, onMounted } from 'vue';
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate} from './models/Tasks';
+import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate, CloudSyncTaskTemplate} from './models/Tasks';
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
 import { HoustonAppContainer, CardContainer, CenteredCardColumn } from '@45drives/houston-common-ui'
@@ -29,14 +29,16 @@ function initializeTaskTemplates(): TaskTemplate[] {
 	const scrubTaskTemplate = new ScrubTaskTemplate();
 	const smartTestTemplate = new SmartTestTemplate();
 	const cloudSyncTaskTemplate = new CloudSyncTaskTemplate();
-
+	const customTaskTemplate = new CustomTaskTemplate();
+	
 	return [
 		zfsRepTaskTemplate,
 		autoSnapTaskTemplate,
 		rsyncTaskTemplate,
 		scrubTaskTemplate,
 		smartTestTemplate,
-		cloudSyncTaskTemplate
+		cloudSyncTaskTemplate,
+		customTaskTemplate
 	]
 }
 

@@ -4,6 +4,20 @@ cockpit-scheduler (1.2.8-1focal) focal; urgency=medium
 
  -- Jordan Keough <jkeough@45drives.com>  Mon, 06 Jan 2025 07:20:27 -0400
 
+cockpit-scheduler (1.2.7-3focal) focal; urgency=medium
+
+  * building package
+  * release notes
+  * Added netcat functionality, notes functionality and fixed cutom task
+
+ -- Rachit Hans <rhans@45drives.com>  Thu, 09 Jan 2025 08:31:12 -0400
+
+cockpit-scheduler (1.2.7-2-1focal) focal; urgency=medium
+
+  * Building Package
+
+ -- Rachit Hans <rhans@45drives.com>  Thu, 09 Jan 2025 07:35:03 -0400
+
 cockpit-scheduler (1.2.7-1focal) focal; urgency=medium
 
   * *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters
@@ -17,6 +31,12 @@ cockpit-scheduler (1.2.6-1focal) focal; urgency=medium
     logic to check for changes before saving.
 
  -- Jordan Keough <jkeough@45drives.com>  Thu, 02 Jan 2025 06:50:51 -0400
+
+cockpit-scheduler (1.2.6-1focal) focal; urgency=medium
+
+  * Added Custom Task
+
+ -- Rachit Hans <rhans@45drives.com>  Fri, 20 Dec 2024 05:51:25 -0400
 
 cockpit-scheduler (1.2.5-1focal) focal; urgency=medium
 

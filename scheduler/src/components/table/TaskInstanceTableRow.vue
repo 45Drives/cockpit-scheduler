@@ -59,6 +59,10 @@
 					View Logs
 					<TableCellsIcon class="h-5 ml-2 mt-0.5" />
 				</button>
+				<button @click="viewNotesBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+					Notes
+					<PencilSquareIcon class="h-5 ml-2 mt-0.5" />
+				</button>
 				<button @click="removeTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Remove
 					<TrashIcon class="h-5 ml-2 mt-0.5" />
@@ -83,7 +87,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, defineExpose } from 'vue';
-import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon } from '@heroicons/vue/24/outline';
+import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon,PencilSquareIcon } from '@heroicons/vue/24/outline';
 import { injectWithCheck } from '../../composables/utility'
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
@@ -102,7 +106,7 @@ const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 const latestTaskExecution = ref<string>('');
 const taskStatus = ref<string>('');
 
-const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails']);
+const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes']);
 
 async function runTaskBtn() {
 	emit('runTask', props.task);
@@ -128,6 +132,9 @@ function editTaskBtn() {
 
 function viewLogsBtn() {
 	emit('viewLogs', props.task);
+}
+function viewNotesBtn(){
+	emit('viewNotes',props.task);
 }
 
 /* Toggle task details */
