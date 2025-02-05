@@ -4,7 +4,7 @@
     "title": "task scheduler",
     "prerelease": true,
     "version": "1.2.8",
-    "buildVersion": "3",
+    "buildVersion": "4",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/cockpit-scheduler",
     "category": "utils",
@@ -60,7 +60,7 @@
     "changelog": {
         "urgency": "medium",
         "version": "1.2.8",
-        "buildVersion": "3",
+        "buildVersion": "4",
         "ignore": [],
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
