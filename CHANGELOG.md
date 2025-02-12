@@ -1,3 +1,3 @@
-## task scheduler 1.2.8-5
+## task scheduler 1.2.8-6
 
-* removed scheduler test from makefile to try and rectify deb build issue
+* Updating testing package to fix zfs replication issues

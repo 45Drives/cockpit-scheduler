@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Feb 12 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-6
+- Updating testing package to fix zfs replication issues
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-5
 - removed scheduler test from makefile to try and rectify deb build issue
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-4
