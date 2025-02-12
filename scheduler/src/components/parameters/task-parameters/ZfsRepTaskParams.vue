@@ -739,12 +739,12 @@ function validateDestination() {
             errorList.value.push("Destination pool does not exist.");
             customDestPoolErrorTag.value = true;
         }
-        if (!makeNewDestDataset.value) {
+        if (!makeNewDestDataset.value && !destHost.value) {
             if (!doesItExist(destDataset.value, destDatasets.value)) {
                 errorList.value.push("Destination dataset does not exist.");
                 customDestDatasetErrorTag.value = true;
             }
-        }
+        } 
 
     } else {
         if (destPool.value === '') {
@@ -786,9 +786,9 @@ async function checkDestDatasetContents() {
             if (destHost.value !== '') {
                 if (transferMethod.value == "netcat"){
                     hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, "22");
-                    isEmpty = isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, "22");
+                    isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, "22");
 
-                }else{
+                } else {
                     hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
                     isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
                 }
@@ -817,7 +817,7 @@ async function checkDestDatasetContents() {
 
             if (!datasetExists) {
                 // Dataset does not exist, can proceed with creation
-              //  console.log("Destination dataset does not exist, proceeding with creation.");
+                //  console.log("Destination dataset does not exist, proceeding with creation.");
                 destDatasetErrorTag.value = false;
             } else {
                 // Dataset exists, perform additional validation
@@ -907,7 +907,7 @@ async function validateParams() {
     // clearErrorTags();
     validateSource();
     validateHost();
-   validateDestination();
+    validateDestination();
     validatePort();
     await checkDestDatasetContents();
     

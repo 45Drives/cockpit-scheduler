@@ -186,14 +186,14 @@ export async function testNetcat(user, netcatHost, port) {
       // Pass both hostname and port to the Python script
       const state = useSpawn(
         ["/usr/bin/env", "python3", "-c", test_netcat_script, user, netcatHost, port],
-        { superuser: "try", stderr: "out" }
+        { superuser: "try" }
       );
   
       const output = await state.promise();
       console.log("testNetcat output:", output);
   
       // Check for "Connected" in stdout to confirm a successful connection
-      if (output.stdout.includes("True")) {
+      if (output.stdout!.includes("True")) {
         return true;
       } else {
         return false;
@@ -507,8 +507,10 @@ export async function isDatasetEmpty(mountpoint, user?: string, host?: string, p
 
     // If we find only '.' and '..', return true (dataset is empty)
     if (matches.length <= 2) {
+      console.log(`dataset at /${mountpoint} is empty`);
       return true;
     } else {
+      console.log(`dataset at /${mountpoint} is NOT empty`);
       return false;
     }
   } catch (error) {
