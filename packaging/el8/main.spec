@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Feb 13 2025 Jordan Keough <jkeough@45drives.com> 1.2.9-1
+- Adds Ceph as an option in S3 rclone providers
 * Wed Feb 12 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-6
 - Updating testing package to fix zfs replication issues
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-5

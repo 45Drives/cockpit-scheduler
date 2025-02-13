@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.9-1focal) focal; urgency=medium
+
+  * Adds Ceph as an option in S3 rclone providers
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 13 Feb 2025 09:34:14 -0400
+
 cockpit-scheduler (1.2.8-6focal) focal; urgency=medium
 
   * Updating testing package to fix zfs replication issues
