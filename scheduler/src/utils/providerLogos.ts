@@ -15,6 +15,11 @@ export const providerLogos: { [key: string]: ProviderLogo } = {
         mainColor: "#01CE3F",
         hoverColor: "#005B1C"
     },
+    "s3-Ceph": {
+        logo: "./img/s3-ceph.svg",
+        mainColor: "#F05C56",
+        hoverColor: "#9D2E1E"
+    },
     "b2": {
         logo: "./img/backblaze.svg",
         mainColor: "#D2202F",

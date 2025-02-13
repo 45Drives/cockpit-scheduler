@@ -101,6 +101,18 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
             acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
         },
     }),
+    "s3-Ceph": new CloudSyncProvider("Ceph", "s3", {
+        parameters: {
+            provider: { value: "Ceph", type: 'string', defaultValue: "Ceph" },
+            env_auth: { value: false, type: 'bool', defaultValue: false },
+            access_key_id: { value: "", type: 'string', defaultValue: "" },
+            secret_access_key: { value: "", type: 'string', defaultValue: "" },
+            endpoint: { value: "", type: 'string', defaultValue: "" },
+            region: { value: "", type: 'string', allowedValues: ["", "other-v2-signature"], defaultValue: "" },
+            location_constraint: { value: "", type: 'string', defaultValue: "" },
+            acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
+        },
+    }),
 
 };
 
