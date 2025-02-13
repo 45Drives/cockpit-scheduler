@@ -1,3 +1,3 @@
-## task scheduler 1.2.8-6
+## task scheduler 1.2.9-1
 
-* Updating testing package to fix zfs replication issues
+* Adds Ceph as an option in S3 rclone providers
