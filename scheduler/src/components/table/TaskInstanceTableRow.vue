@@ -1,6 +1,6 @@
 <template>
-	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : ''"
-		class="border border-default border-collapse grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
+		class="grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
 		<td :title="taskInstance.name"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
 			{{ taskInstance.name }}

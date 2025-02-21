@@ -258,7 +258,7 @@ export class Scheduler implements SchedulerType {
         //const notes = taskInstance.notes
         const notes = taskInstance.notes
         const file3 = new BetterCockpitFile(notesFilePath, {
-            superUser: 'try',
+            superuser: 'try',
         }) 
         file3.replace(notes).then(() => {
             console.log('Notes file created and content written successfully');
