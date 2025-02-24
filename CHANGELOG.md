@@ -1,3 +1,3 @@
-## task scheduler 1.2.9-1
+## task scheduler 1.2.10-1
 
-* Adds Ceph as an option in S3 rclone providers
+* Fixes netcat issues found in service testing
