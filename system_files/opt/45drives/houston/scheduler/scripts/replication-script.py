@@ -271,33 +271,123 @@ def send_snapshot(
 				print(stdout)
 			print(f"received remote send")
 
+		# elif transferMethod == "netcat":
+		# 	try:
+		# 		print("Sending via netcat...")
+		# 		# Start the listener on the receiver side
+    
+		# 		listen_cmd = f'nc -l {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
+		# 		ssh_cmd_listener = f'ssh {recvHostUser}@{recvHost} "{listen_cmd}"'
+		# 		print(f"[Receiver Side] Listener command: {ssh_cmd_listener}")
+
+		# 		ssh_process_listener = subprocess.Popen(
+		# 			ssh_cmd_listener,
+		# 			shell=True,
+		# 			stdout=subprocess.PIPE,
+		# 			stderr=subprocess.PIPE,
+		# 			universal_newlines=True,
+		# 		)
+
+		# 		# Wait briefly to ensure the listener is ready
+		# 		time.sleep(5)
+
+		# 		# Prepare mbuffer
+		# 		# m_buff_cmd = ['mbuffer', '-s', '256k', '-m', str(mBufferSize) + mBufferUnit]
+    
+    	# 		# Prepare mbuffer command
+		# 		m_buff_cmd = ['mbuffer', '-s', '256k']
+		# 		m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+		# 		print(f"[Sender Side] mbuffer command: {' '.join(m_buff_cmd)}")
+    
+		# 		send_cmd_list = ['zfs', 'send']
+		# 		if compressed:
+		# 			send_cmd_list.append('-Lce')
+		# 		if raw:
+		# 			send_cmd_list.append('-w')
+		# 		if sendName2 != "":
+		# 			send_cmd_list.extend(['-i', sendName2])
+		# 		send_cmd_list.append(sendName)
+    
+		# 		if sendName2 != "":
+		# 			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
+		# 		else:
+		# 			print(f"sending {sendName} to {recvName}")
+		# 		# Prepare and run the ZFS send command
+		# 		send_cmd_str = ' '.join(send_cmd_list)
+		# 		m_buff_cmd_str = ' '.join(m_buff_cmd)
+		# 		nc_command = f'{send_cmd_str} | {m_buff_cmd_str} | nc {recvHost} {recvPort}'
+		# 		print(f"[Sender Side] Netcat command: {nc_command}")
+
+		# 		nc_process = subprocess.Popen(
+		# 			nc_command,
+		# 			shell=True,
+		# 			stdout=subprocess.PIPE,
+		# 			stderr=subprocess.PIPE,
+		# 		)
+		# 		nc_stdout, nc_stderr = nc_process.communicate()
+
+		# 		print(f"[Sender Side] nc stdout: {nc_stdout}")
+		# 		print(f"[Sender Side] nc stderr: {nc_stderr}")
+		# 		# Check for errors from nc process
+		# 		if nc_process.returncode != 0:
+		# 			print(f"[Sender Side] nc error: {nc_stderr}")
+		# 			sys.exit(1)
+
+		# 		print("[Sender Side] Successfully sent data via netcat.")
+
+		# 		# Verify dataset on the receiver
+		# 		snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
+		# 		print(f"[Receiver Side] Snapshot check command: {' '.join(snapshot_check_cmd)}")
+		# 		snapshot_process = subprocess.Popen(
+		# 			snapshot_check_cmd,
+		# 			stdout=subprocess.PIPE,
+		# 			stderr=subprocess.PIPE,
+		# 			universal_newlines=True,
+		# 		)
+		# 		snapshot_output, snapshot_err = snapshot_process.communicate()
+
+		# 		print(f"[Receiver Side] Snapshot check stdout: {snapshot_output}")
+		# 		print(f"[Receiver Side] Snapshot check stderr: {snapshot_err}")
+
+		# 		if snapshot_err.strip():
+		# 			print(f"[Receiver Side] Error checking received dataset: {snapshot_err.strip()}")
+		# 		else:
+		# 			if snapshot_output.strip():
+		# 				print(f"[Receiver Side] Received dataset exists: {snapshot_output.strip()}")
+		# 			else:
+		# 				print("[Receiver Side] Dataset does not exist.")
+
+		# 	except subprocess.CalledProcessError as e:
+		# 		print(f"[Sender Side] Command failed with exit code {e.returncode}. Error: {e.stderr}")
+		# 		sys.exit(1)
+
+		# 	except Exception as e:
+		# 		print(f"ERROR: Send error: {e}")
+		# 		sys.exit(1)
+  
 		elif transferMethod == "netcat":
 			try:
 				print("Sending via netcat...")
-				# Start the listener on the receiver side
-				listen_cmd = f'nc -l {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
-				ssh_cmd_listener = f'ssh {recvHostUser}@{recvHost} "{listen_cmd}"'
-				print(f"[Receiver Side] Listener command: {ssh_cmd_listener}")
+				
+				# Correct listener command
+				listen_cmd = f'nc -l -p {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
+				ssh_cmd_listener = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
+				print(f"[Receiver Side] Listener command: {' '.join(ssh_cmd_listener)}")
 
 				ssh_process_listener = subprocess.Popen(
 					ssh_cmd_listener,
-					shell=True,
 					stdout=subprocess.PIPE,
 					stderr=subprocess.PIPE,
 					universal_newlines=True,
 				)
 
-				# Wait briefly to ensure the listener is ready
+				# Wait briefly to ensure listener readiness
 				time.sleep(5)
 
-				# Prepare mbuffer
-				# m_buff_cmd = ['mbuffer', '-s', '256k', '-m', str(mBufferSize) + mBufferUnit]
-    
-    			# Prepare mbuffer command
-				m_buff_cmd = ['mbuffer', '-s', '256k']
-				m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
+				# Prepare sender-side mbuffer command
+				m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
 				print(f"[Sender Side] mbuffer command: {' '.join(m_buff_cmd)}")
-    
+
 				send_cmd_list = ['zfs', 'send']
 				if compressed:
 					send_cmd_list.append('-Lce')
@@ -306,15 +396,11 @@ def send_snapshot(
 				if sendName2 != "":
 					send_cmd_list.extend(['-i', sendName2])
 				send_cmd_list.append(sendName)
-    
-				if sendName2 != "":
-					print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
-				else:
-					print(f"sending {sendName} to {recvName}")
-				# Prepare and run the ZFS send command
-				send_cmd_str = ' '.join(send_cmd_list)
-				m_buff_cmd_str = ' '.join(m_buff_cmd)
-				nc_command = f'{send_cmd_str} | {m_buff_cmd_str} | nc {recvHost} {recvPort}'
+
+				print(f"[Sender Side] ZFS send command: {' '.join(send_cmd_list)}")
+
+				# Combine send -> mbuffer -> netcat pipeline
+				nc_command = f"{' '.join(send_cmd_list)} | {' '.join(m_buff_cmd)} | nc {recvHost} {recvPort}"
 				print(f"[Sender Side] Netcat command: {nc_command}")
 
 				nc_process = subprocess.Popen(
@@ -325,44 +411,39 @@ def send_snapshot(
 				)
 				nc_stdout, nc_stderr = nc_process.communicate()
 
-				print(f"[Sender Side] nc stdout: {nc_stdout}")
-				print(f"[Sender Side] nc stderr: {nc_stderr}")
-				# Check for errors from nc process
 				if nc_process.returncode != 0:
-					print(f"[Sender Side] nc error: {nc_stderr}")
+					print(f"[Sender Side] nc error: {nc_stderr.decode()}")
+					ssh_process_listener.terminate()
 					sys.exit(1)
 
 				print("[Sender Side] Successfully sent data via netcat.")
 
-				# Verify dataset on the receiver
+				# Ensure receiver completed successfully
+				ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+				if ssh_process_listener.returncode != 0:
+					print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
+					sys.exit(1)
+
+				# Verify dataset on receiver
 				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				print(f"[Receiver Side] Snapshot check command: {' '.join(snapshot_check_cmd)}")
-				snapshot_process = subprocess.Popen(
-					snapshot_check_cmd,
-					stdout=subprocess.PIPE,
-					stderr=subprocess.PIPE,
-					universal_newlines=True,
-				)
-				snapshot_output, snapshot_err = snapshot_process.communicate()
+				snapshot_process = subprocess.run(snapshot_check_cmd, capture_output=True, text=True)
 
-				print(f"[Receiver Side] Snapshot check stdout: {snapshot_output}")
-				print(f"[Receiver Side] Snapshot check stderr: {snapshot_err}")
+				if snapshot_process.returncode != 0:
+					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")
+					sys.exit(1)
 
-				if snapshot_err.strip():
-					print(f"[Receiver Side] Error checking received dataset: {snapshot_err.strip()}")
-				else:
-					if snapshot_output.strip():
-						print(f"[Receiver Side] Received dataset exists: {snapshot_output.strip()}")
-					else:
-						print("[Receiver Side] Dataset does not exist.")
+				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout.strip()}")
+
+			except subprocess.TimeoutExpired:
+				print("[Receiver Side] Receiver timed out.")
+				ssh_process_listener.terminate()
+				sys.exit(1)
 
 			except subprocess.CalledProcessError as e:
-				print(f"[Sender Side] Command failed with exit code {e.returncode}. Error: {e.stderr}")
+				print(f"Error: {e.stderr}")
+				ssh_process_listener.terminate()
 				sys.exit(1)
 
-			except Exception as e:
-				print(f"ERROR: Send error: {e}")
-				sys.exit(1)
 
 		else:
 			print("ERROR: Invalid transferMethod specified. Must be 'local', 'ssh', or 'netcat'.")
@@ -404,13 +485,8 @@ def main():
 		incrementalSnapName = ""
 
 		# Depending on remote or local, get destination snapshots
-		if transferMethod == "netcat":
-			port = '22'
-		else:
-			port = remotePort
-
 		if remoteHost and remoteUser:
-			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, port, receivingFilesystem)
+			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem)
 		else:
 			destinationSnapshots = get_local_snapshots(receivingFilesystem)
 		# print("Fetched source snapshots:", len(sourceSnapshots))
@@ -459,7 +535,7 @@ def main():
 			isCompressed,
 			isRaw,
 			remoteHost,
-			port,
+			remotePort,
 			remoteUser,
 			str(mBufferSize),
 			mBufferUnit,
@@ -485,7 +561,7 @@ def main():
 			newSnap,
 			remoteUser,
 			remoteHost,
-			port
+			remotePort
 		)
 
 	except Exception as e:

@@ -201,7 +201,7 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else-if="transferMethod === 'ssh'" @click="confirmTest(destHost, destUser)"
+                    <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
                     <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
                     class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
@@ -621,10 +621,10 @@ const getRemoteDestinationPools = async () => {
 
 const getRemoteDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
-    if(transferMethod.value=='netcat'){
-    destDatasets.value = await getDatasetData(destPool.value, destHost.value, "22", destUser.value);
-    }else{
-            destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+    if (transferMethod.value=='netcat') {
+        destDatasets.value = await getDatasetData(destPool.value, destHost.value, "22", destUser.value);
+    } else {
+        destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
     }
     loadingDestDatasets.value = false;
   //  console.log('Remote destDataset:', destDatasets.value);
@@ -648,22 +648,32 @@ function validateHost() {
 
     }
 }
-function validatePort() {
-        // Check if the entered port is '22' and the transfer method is 'netcat'
-        if (destPort.value == 22 && transferMethod.value == 'netcat' && destHost.value != '') {
-            errorList.value.push("Port 22 is not available for netcat");
-            netCatPortError.value = true;
-        }
-        else if(destHost.value==''){
-            netCatPortError.value = false;
 
-        }
+function validatePort() {
+    if (destPort.value == 22 && transferMethod.value == 'netcat' && destHost.value != '') {
+        errorList.value.push("Port 22 is not allowed for Netcat. Please choose a different port.");
+        netCatPortError.value = true;
+    } else {
+        netCatPortError.value = false;
     }
-    watch(destHost, (newValue) => {
-      if (newValue === '') {
+}
+
+
+watch(destHost, (newValue) => {
+    if (newValue === '') {
         validatePort(); // Call validatePort() when destHost is empty
-      }
-    });
+    } 
+});
+
+watch(destPort, validatePort);
+
+watch(transferMethod, (newValue) => {
+    if (newValue === 'netcat' && destPort.value === 22) {
+        destPort.value = 31337;
+    }
+});
+
+
 
 function validateCustomName() {
     if (useCustomName.value) {
@@ -952,7 +962,7 @@ function setParams() {
   //  console.log('newParams:', newParams);
 }
 
-async function confirmTest(destHost, destUser) {
+async function confirmSSHTest(destHost, destUser) {
     testingSSH.value = true;
 
     const sshTarget = destUser + '@' + destHost;
@@ -965,23 +975,32 @@ async function confirmTest(destHost, destUser) {
     }
     testingSSH.value = false;
 }
-async function confirmNetcatTest(destHost2, destPort2) {
-  testingNetcat.value = true;
-  const netcatHost = destHost2;
-  const netcatdestPort = destPort2;
-  // Await the result of the testNetcat function
-  netCatTestResult.value = await testNetcat(destUser.value,netcatHost, netcatdestPort);
-  
-  console.log(netCatTestResult);
-  
-  if (netCatTestResult.value) {
-    pushNotification(new Notification("Connection Successful!", `Netcat connection established. This host can be used for remote transfers.`, "success", 8000));
-  } else {
-    pushNotification(new Notification("Connection Failed", `Could not resolve hostname "${destHost2}": Check the server and port.`, "error", 8000));
-  }
-  testingNetcat.value = false
 
+async function confirmNetcatTest(destHost2, destPort2) {
+    testingNetcat.value = true;
+    const netcatHost = destHost2;
+    const netcatdestPort = destPort2;
+
+    netCatTestResult.value = await testNetcat(destUser.value, netcatHost, netcatdestPort);
+
+    if (netCatTestResult.value) {
+        pushNotification(new Notification(
+            "Connection Successful!",
+            `Netcat connection established. This host can be used for remote transfers.`,
+            "success",
+            8000
+        ));
+    } else {
+        pushNotification(new Notification(
+            "Connection Failed",
+            `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`,
+            "error",
+            8000
+        ));
+    }
+    testingNetcat.value = false;
 }
+
 
 watch(destPool, handleDestPoolChange);
 watch(sourcePool, handleSourcePoolChange);

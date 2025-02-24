@@ -30,7 +30,8 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone"
+                "rclone",
+                "netcat"
             ]
         },
         "el": {
@@ -41,7 +42,8 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone"
+                "rclone",
+                "netcat"
             ]
         }
     },

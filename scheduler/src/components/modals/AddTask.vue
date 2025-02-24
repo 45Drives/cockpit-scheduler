@@ -48,7 +48,7 @@
             <div class="w-full">
 				<div class="button-group-row w-full justify-between">
                     <div class="button-group-row">
-                        <button @click.stop="closeBtn()" id="close-add-task-btn" name="close-add-task-btn" class="mt-1 btn btn-danger h-fit w-full">Close</button>
+                        <button @click.stop="closeBtn()" id="close-add-task-btn" name="close-add-task-btn" class="btn btn-danger h-fit w-full">Close</button>
                     </div>
                     <button @click="toggleNotes" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary"> {{ buttonText }}</button>
                     <div class="button-group-row">
