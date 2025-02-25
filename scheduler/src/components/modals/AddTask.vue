@@ -37,11 +37,11 @@
 
             </div>
             <div class="grid grid-flow-cols my-2 gap-2">
-                        <!-- Displaying notes section -->
-                        <div v-if="showNotes" class="border border-default rounded-md p-2 col-span-2 bg-accent">
-                            <label class="mt-1 block text-sm leading-6 text-default">Notes</label>
-                            <textarea rows="4" v-model="notesTask" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Your notes here..."></textarea>
-                        </div>
+                <!-- Displaying notes section -->
+                <div v-if="showNotes" class="border border-default rounded-md p-2 col-span-2 bg-accent">
+                    <label class="mt-1 block text-sm leading-6 text-default">Notes</label>
+                    <textarea rows="4" v-model="notesTask" class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="Your notes here..."></textarea>
+                </div>
             </div>
         </template>
         <template v-slot:footer>
@@ -109,8 +109,9 @@ const notesTask = ref('');
 const showNotes = ref(false); // Controls visibility of the component
 
 function toggleNotes() {
-            showNotes.value = !showNotes.value; // Toggle the value
-        }
+    showNotes.value = !showNotes.value; // Toggle the value
+}
+
 const buttonText = computed(() => (showNotes.value ? 'Close Notes' : 'Add Notes'));
 
 
@@ -245,7 +246,6 @@ async function saveTask() {
         template.value = new CustomTaskTemplate();
     }
  
-
     let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
     if (sanitizedName.startsWith('_')) {
         sanitizedName = 'task' + sanitizedName;
@@ -253,11 +253,14 @@ async function saveTask() {
   //  console.log('sanitizedName:', sanitizedName);
 
     console.log("template: ", template, " parameters ", parameters)
-    const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
+    // const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
+    const notes = notesTask.value ? notesTask.value : '';  // Ensure notes is always a string
     if (isStandaloneTask.value) {
         const schedule = new TaskSchedule(false, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes);
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes || '');
       //  console.log('task (no schedule):', task);
+        console.log("Saving task with notes:", JSON.stringify(notes));
+        console.log("Task instance:", JSON.stringify(task));
 
         await myScheduler.registerTaskInstance(task);
         pushNotification(new Notification('Task Save Successful', `Task has been saved.`, 'success', 8000));
@@ -268,6 +271,8 @@ async function saveTask() {
         const schedule = new TaskSchedule(true, []);
         const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes);
       //  console.log('task (for scheduling):', task);
+        console.log("Saving task with notes:", JSON.stringify(notes));
+        console.log("Task instance:", JSON.stringify(task));
 
         newTask.value = task;
     }
@@ -278,7 +283,6 @@ async function addTaskBtn() {
         showSchedulePromptDialog();
     }
 }
-
 
 
 provide('new-task', newTask);

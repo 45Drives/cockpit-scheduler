@@ -36,7 +36,7 @@
                             </svg>
                             Saving...
                         </button>
-                        <button @click="saveChangesBtn" class="btn btn-primary">Save Notes</button>                    
+                        <button v-if="!saving" @click="saveChangesBtn" class="btn btn-primary">Save Notes</button>                    
                     </div>
 				</div>
 			</div>
@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { inject, provide, ref, Ref,computed } from 'vue';
 import Modal from '../common/Modal.vue';
+import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
 import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
@@ -75,7 +76,6 @@ const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provid
 const taskInstance = ref(props.task);
 const notes = ref(taskInstance.value?.notes);
 const isEditing = ref(false); // State for editing notes
-
 
 
 const errorList = ref<string[]>([]);
@@ -144,7 +144,7 @@ const cancelEdit : ConfirmationCallback = async () => {
 async function saveEditedTask() {
     console.log('save changes triggered');
     const template = ref();
-    console.log("Notes: taskInstance: ",taskInstance)
+    console.log("Notes: taskInstance: ", taskInstance)
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
     } else if (taskInstance.value?.template.name == 'Automated Snapshot Task') {
@@ -155,8 +155,7 @@ async function saveEditedTask() {
         template.value = new ScrubTaskTemplate();
     } else if (taskInstance.value?.template.name == "SMART Test") {
         template.value = new SmartTestTemplate();
-    }
-    else if (taskInstance.value?.template.name == "Custom Task") {
+    } else if (taskInstance.value?.template.name == "Custom Task") {
         template.value = new CustomTaskTemplate();
     }
   
@@ -168,7 +167,7 @@ async function saveEditedTask() {
 
     const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
     const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes.value);
-    console.log('edited task: ', task);
+    console.log('edited task with note: ', task);
 
     await myScheduler.updateTaskNotes(task);
 
@@ -186,9 +185,11 @@ async function saveChangesBtn() {
 
 
 const addNote = () => {
-            notes.value = ''; 
+    notes.value = ''; 
 };
+
 const editNote = () => {
+
 };
 
 

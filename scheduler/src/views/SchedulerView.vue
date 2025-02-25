@@ -195,7 +195,6 @@ const showNotesPrompt = ref(false);
 async function viewNotesBtn(task){
     selectedTask.value = task;
     console.log("viewNotesBtn triggered with task:", task);
-    console.log("Vie notes Btn in scheduler.vue")
     await loadViewNotesComponent();
     showNotesPrompt.value = true
 }
@@ -203,7 +202,7 @@ async function viewNotesBtn(task){
 const viewNotesComponent = ref()
 
 async function loadViewNotesComponent(){
-    console.log('loadV iewNotes Component triggered in scheduler view');
+    console.log('load ViewNotes Component triggered in scheduler view');
 
     const module = await import('../components/modals/Notes.vue')
     viewNotesComponent.value = module.default;
