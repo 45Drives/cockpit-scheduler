@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-9
+- building again with testing makefile changes
 * Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-8
 - building again
 * Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-7
