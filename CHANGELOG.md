@@ -1,3 +1,3 @@
-## task scheduler 1.2.8-7
+## task scheduler 1.2.8-8
 
-* Updates package to include zfsreptask destdataset fix
+* building again

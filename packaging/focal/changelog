@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.8-8focal) focal; urgency=medium
+
+  * building again
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Feb 2025 11:47:40 -0400
+
 cockpit-scheduler (1.2.8-7focal) focal; urgency=medium
 
   * Updates package to include zfsreptask destdataset fix
