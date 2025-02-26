@@ -1,44 +1,14 @@
 # Automatic Houston Plugin Makefile
-# Copyright (C) 2022 Josh Boudreau <jboudreau@45drives.com>
-# 
-# Automatic Houston Plugin Makefile is free software: you can redistribute it and/or modify it under the terms
-# of the GNU General Public License as published by the Free Software Foundation, either version 3
-# of the License, or (at your option) any later version.
-# 
-# Automatic Houston Plugin Makefile is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-# without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-# 
-# You should have received a copy of the GNU General Public License along with Automatic Houston Plugin Makefile.
-# If not, see <https://www.gnu.org/licenses/>. 
+# Copyright (C) 2022 Josh Boudreau
 
-# PLUGIN_SRCS is space-delimited list of subdirectories containg a plugin project.
 PLUGIN_SRCS=scheduler
 
-# For installing to a remote machine for testing with `make install-remote`
 REMOTE_TEST_HOST=192.168.123.5
 REMOTE_TEST_USER=root
 
-# Restarts cockpit after install
 RESTART_COCKPIT?=0
-
-# When set to 1, JS is not minified
 DEBUG?=0
-
-# Run yarn upgrade or npm update for each project before build
 AUTO_UPGRADE_DEPS?=0
-
-# USAGE
-# installation:
-# $ make
-# # make install
-# testing:
-# $ make
-# $ make install-local
-# or
-# $ make install-remote
-################################
-# Do not edit anything below
 
 define greentext
 	'\033[1;32m$(1)\033[0m'
@@ -52,7 +22,6 @@ BUILD_FLAGS=-- --minify false
 endif
 
 ifndef PLUGIN_SRCS
-# PLUGIN_SRCS:=$(filter-out %-old houston-common, $(patsubst %/package.json,%,$(wildcard */package.json)))
 $(error PLUGIN_SRCS not set - please edit Makefile)
 endif
 
@@ -65,7 +34,7 @@ default: $(OUTPUTS)
 
 all: default
 
-.PHONY: default all install clean help install-local install-remote install houston-common bootstrap-yarn
+.PHONY: default all install clean install-local install-remote install package-debug
 
 bootstrap-yarn: .yarnrc.yml
 
@@ -81,7 +50,6 @@ houston-common: houston-common/Makefile bootstrap-yarn
 houston-common-%:
 	$(MAKE) -C houston-common $*
 
-# build outputs
 .SECONDEXPANSION:
 $(OUTPUTS): %/dist/index.html: bootstrap-yarn houston-common $$(shell find '$$*' -type d \( -name node_modules -o -path '$$*/dist' -o -path '*node_modules*'  \) -prune -o -type f -not \( -name .gitignore \) -print)
 	@echo -e $(call cyantext,Building $*)
@@ -93,9 +61,6 @@ endif
 	@echo -e $(call greentext,Done building $*)
 	@echo
 
-# system install, requires `systemctl restart cockpit.socket`
-# runs plugin-install-* for each plugin
-.SECONDEXPANSION:
 install install-local install-remote: $$(OUTPUTS) $$(addprefix plugin-$$@-, $$(PLUGIN_SRCS)) system-files-$$@
 ifeq ($(RESTART_COCKPIT), 1)
 ifndef DESTDIR
@@ -120,10 +85,8 @@ plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo
 
 plugin-install-% : INSTALL_PREFIX?=/usr/share/cockpit
-
 plugin-install-local-% : INSTALL_PREFIX=$(HOME)/.local/share/cockpit
 plugin-install-local-% : INSTALL_SUFFIX=-test
-
 plugin-install-remote-% : INSTALL_PREFIX=$(REMOTE_TEST_HOME)/.local/share/cockpit
 plugin-install-remote-% : INSTALL_SUFFIX=-test
 plugin-install-remote-% : SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
@@ -138,7 +101,13 @@ system-files-install-local:
 system-files-install-remote:
 	-rsync -avh system_files/* $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/
 
-package-generic: default
+package-debug:
+	@echo "### DEBUG: Listing contents of dist/packages/"
+	@ls -l dist/packages/ || echo "Warning: dist/packages/ does not exist!"
+	@echo "### DEBUG: Listing contents of dist/unsigned/"
+	@ls -l dist/unsigned/ || echo "Warning: dist/unsigned/ does not exist!"
+
+package-generic: default package-debug
 	PKG_NAME="$$(jq -r '[ .name, .version ] | join("_")' ./manifest.json)"'_generic' && \
 	rm -f "$${PKG_NAME}.{zip,tar.gz}" && \
 	ln -snf . "$${PKG_NAME}" && \
@@ -153,23 +122,6 @@ clean: FORCE
 clean-all: clean FORCE
 	rm .yarnrc.yml .yarn/ -rf
 	find . -name node_modules -type d -exec rm -rf {} \; -prune
-
-help:
-	@echo 'make usage'
-	@echo
-	@echo 'building:'
-	@echo '    make'
-	@echo
-	@echo 'installation:'
-	@echo '    make install [RESTART_COCKPIT=1]' 
-	@echo
-	@echo 'testing:'
-	@echo '    make install-local [RESTART_COCKPIT=1]'
-	@echo 'or'
-	@echo '    make install-remote [RESTART_COCKPIT=1]'
-	@echo
-	@echo 'build cleanup:'
-	@echo '    make clean'
 
 test-%:
 	yarn --cwd $* run test
