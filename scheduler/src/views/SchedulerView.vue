@@ -1,7 +1,7 @@
 <template>
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
-            <div class="px-4 sm:px-0 sm:flex-auto">
+            <div class="text-left">
                 <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.
                 </p>
             </div>
