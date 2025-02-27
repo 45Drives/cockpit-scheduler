@@ -1,3 +1,3 @@
-## task scheduler 1.2.10-1
+## task scheduler 1.2.10-2
 
-* Fixes netcat issues found in service testing
+* Fixes netcat/ssh port issue
