@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.10-5focal) focal; urgency=medium
+
+  * building
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 11:18:26 -0400
+
 cockpit-scheduler (1.2.10-4focal) focal; urgency=medium
 
   * attempting to build
