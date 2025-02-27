@@ -1,3 +1,9 @@
+cockpit-scheduler (1.2.10-4focal) focal; urgency=medium
+
+  * attempting to build
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 10:27:44 -0400
+
 cockpit-scheduler (1.2.10-3focal) focal; urgency=medium
 
   * Re-running build, rpm built before but deb did not

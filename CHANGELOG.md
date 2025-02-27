@@ -1,3 +1,3 @@
-## task scheduler 1.2.10-3
+## task scheduler 1.2.10-4
 
-* Re-running build, rpm built before but deb did not
+* attempting to build
