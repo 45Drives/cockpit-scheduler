@@ -28,6 +28,9 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-10
+- now that slack servers are back up should be able to build without api call failing
+  action
 * Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-9
 - building again with testing makefile changes
 * Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-8

@@ -1,3 +1,3 @@
-## task scheduler 1.2.8-9
+## task scheduler 1.2.8-10
 
-* building again with testing makefile changes
+* now that slack servers are back up should be able to build without api call failing action

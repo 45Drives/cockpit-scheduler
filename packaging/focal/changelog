@@ -1,3 +1,10 @@
+cockpit-scheduler (1.2.8-10focal) focal; urgency=medium
+
+  * now that slack servers are back up should be able to build without api call failing
+    action
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 04:14:06 -0400
+
 cockpit-scheduler (1.2.8-9focal) focal; urgency=medium
 
   * building again with testing makefile changes
