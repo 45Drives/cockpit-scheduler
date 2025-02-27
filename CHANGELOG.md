@@ -1,3 +1,3 @@
-## task scheduler 1.2.10-5
+## task scheduler 1.2.10-6
 
-* building
+* update build
