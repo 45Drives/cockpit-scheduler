@@ -28,11 +28,11 @@ def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
 
 def prune_snapshots_by_retention(
 	filesystem, task_name, retention_time, retention_unit, 
-	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22
+	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22, transferMethod='ssh'
 ):
 	# Determine whether to fetch snapshots locally or remotely
 	if remote_host :
-		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
+		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem, transferMethod)
 		# If None is returned, that means the dataset doesn't exist at all; no pruning needed
 		if snapshots is None:
 			print(f"Remote dataset {filesystem} does not exist. Nothing to prune.")
@@ -72,12 +72,12 @@ def prune_snapshots_by_retention(
 		for snapshot in snapshots_to_delete:
 			# Build the delete command
 			if remote_host:
-				delete_command = [
-					"ssh",
-					f"{remote_user}@{remote_host}",
-					"-p", str(remote_port),
-					"zfs", "destroy", snapshot.name
-				]
+				ssh_cmd = ['ssh']
+				if transferMethod == 'ssh' and str(remote_port) != '22':
+					ssh_cmd.extend(['-p', str(remote_port)])
+
+				ssh_cmd.append(f"{remote_user}@{remote_host}")
+				delete_command = ssh_cmd + ["zfs", "destroy", snapshot.name]
 			else:
 				delete_command = ['zfs', 'destroy', snapshot.name]
 
@@ -112,53 +112,54 @@ def get_local_snapshots(filesystem):
 		print(f"ERROR: Failed to fetch local snapshots for {filesystem}: {e}")
 		return []
 
+def get_remote_snapshots(user, host, port, filesystem, transferMethod):
+    """
+    Returns:
+      - A list of Snapshot objects if the remote dataset exists.
+      - An empty list [] if the dataset exists but has no snapshots.
+      - None if the dataset does not exist at all.
+    """
+    ssh_cmd = ['ssh']
+    
+    # print('transfermethod:', transferMethod)
 
-def get_remote_snapshots(user, host, port, filesystem):
-	"""
-	Returns:
-	  - A list of Snapshot objects if the remote dataset exists.
-	  - An empty list [] if the dataset exists but has no snapshots.
-	  - None if the dataset does not exist at all.
-	"""
-	ssh_cmd = ['ssh']
-	# Only add '-p' if port is not the default '22'
-	if str(port) != '22':
-		ssh_cmd.extend(['-p', str(port)])
-	ssh_cmd.append(user + '@' + host)
+    # If using Netcat, always force SSH to use port 22 for snapshot retrieval
+    if transferMethod == 'netcat':
+        port = '22'  # Override the port for SSH, but do NOT modify Netcat’s actual port
+        
+      # If using SSH for transfer, use the specified port only if it's not 22
+    if transferMethod == 'ssh' and str(port) != '22':
+        ssh_cmd.extend(['-p', str(port)])
 
-	ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
+    ssh_cmd.append(f"{user}@{host}")
+    ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 
-	try:
-		output = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT)
-		snapshots = []
-		for line in output.decode().splitlines():
-			parts = line.split(maxsplit=2)
-			if len(parts) >= 3:
-				snapshot_name = parts[0]
-				snapshot_guid = parts[1]
-				# For remote, we need to parse the creation time:
-				#  e.g. "Wed Feb  8 13:02 2023"
-				try:
-					snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
-				except ValueError:
-					# If for some reason the date parse fails, skip
-					continue
-				snapshots.append(Snapshot(snapshot_name, snapshot_guid, snapshot_creation))
-		return snapshots
+    try:
+        output = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT)
+        snapshots = []
+        for line in output.decode().splitlines():
+            parts = line.split(maxsplit=2)
+            if len(parts) >= 3:
+                snapshot_name = parts[0]
+                snapshot_guid = parts[1]
+                try:
+                    snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
+                except ValueError:
+                    continue  # Skip if parsing fails
+                snapshots.append(Snapshot(snapshot_name, snapshot_guid, snapshot_creation))
+        return snapshots
 
-	except subprocess.CalledProcessError as e:
-		# CalledProcessError will have a non-zero return code and the output in e.output
-		err_output = e.output.decode(errors='replace').lower()
-		if "dataset does not exist" in err_output or "cannot open" in err_output:
-			# Return None to indicate the dataset truly doesn't exist
-			return None
-		else:
-			print(f"ERROR: Failed to fetch remote snapshots for {filesystem}: {e}\nOutput:\n{err_output}")
-			sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        err_output = e.output.decode(errors='replace').lower()
+        if "dataset does not exist" in err_output or "cannot open" in err_output:
+            return None  # Dataset does not exist
+        else:
+            print(f"ERROR: Failed to fetch remote snapshots for {filesystem}: {e}\nOutput:\n{err_output}")
+            sys.exit(1)
 
-	except Exception as e:
-		print(f"An unexpected error occurred: {e}")
-		sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
 
 
 def get_most_recent_snapshot(snapshots):
@@ -271,106 +272,13 @@ def send_snapshot(
 				print(stdout)
 			print(f"received remote send")
 
-		# elif transferMethod == "netcat":
-		# 	try:
-		# 		print("Sending via netcat...")
-		# 		# Start the listener on the receiver side
-    
-		# 		listen_cmd = f'nc -l {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
-		# 		ssh_cmd_listener = f'ssh {recvHostUser}@{recvHost} "{listen_cmd}"'
-		# 		print(f"[Receiver Side] Listener command: {ssh_cmd_listener}")
-
-		# 		ssh_process_listener = subprocess.Popen(
-		# 			ssh_cmd_listener,
-		# 			shell=True,
-		# 			stdout=subprocess.PIPE,
-		# 			stderr=subprocess.PIPE,
-		# 			universal_newlines=True,
-		# 		)
-
-		# 		# Wait briefly to ensure the listener is ready
-		# 		time.sleep(5)
-
-		# 		# Prepare mbuffer
-		# 		# m_buff_cmd = ['mbuffer', '-s', '256k', '-m', str(mBufferSize) + mBufferUnit]
-    
-    	# 		# Prepare mbuffer command
-		# 		m_buff_cmd = ['mbuffer', '-s', '256k']
-		# 		m_buff_cmd.extend(['-m', mBufferSize + mBufferUnit])
-		# 		print(f"[Sender Side] mbuffer command: {' '.join(m_buff_cmd)}")
-    
-		# 		send_cmd_list = ['zfs', 'send']
-		# 		if compressed:
-		# 			send_cmd_list.append('-Lce')
-		# 		if raw:
-		# 			send_cmd_list.append('-w')
-		# 		if sendName2 != "":
-		# 			send_cmd_list.extend(['-i', sendName2])
-		# 		send_cmd_list.append(sendName)
-    
-		# 		if sendName2 != "":
-		# 			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
-		# 		else:
-		# 			print(f"sending {sendName} to {recvName}")
-		# 		# Prepare and run the ZFS send command
-		# 		send_cmd_str = ' '.join(send_cmd_list)
-		# 		m_buff_cmd_str = ' '.join(m_buff_cmd)
-		# 		nc_command = f'{send_cmd_str} | {m_buff_cmd_str} | nc {recvHost} {recvPort}'
-		# 		print(f"[Sender Side] Netcat command: {nc_command}")
-
-		# 		nc_process = subprocess.Popen(
-		# 			nc_command,
-		# 			shell=True,
-		# 			stdout=subprocess.PIPE,
-		# 			stderr=subprocess.PIPE,
-		# 		)
-		# 		nc_stdout, nc_stderr = nc_process.communicate()
-
-		# 		print(f"[Sender Side] nc stdout: {nc_stdout}")
-		# 		print(f"[Sender Side] nc stderr: {nc_stderr}")
-		# 		# Check for errors from nc process
-		# 		if nc_process.returncode != 0:
-		# 			print(f"[Sender Side] nc error: {nc_stderr}")
-		# 			sys.exit(1)
-
-		# 		print("[Sender Side] Successfully sent data via netcat.")
-
-		# 		# Verify dataset on the receiver
-		# 		snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-		# 		print(f"[Receiver Side] Snapshot check command: {' '.join(snapshot_check_cmd)}")
-		# 		snapshot_process = subprocess.Popen(
-		# 			snapshot_check_cmd,
-		# 			stdout=subprocess.PIPE,
-		# 			stderr=subprocess.PIPE,
-		# 			universal_newlines=True,
-		# 		)
-		# 		snapshot_output, snapshot_err = snapshot_process.communicate()
-
-		# 		print(f"[Receiver Side] Snapshot check stdout: {snapshot_output}")
-		# 		print(f"[Receiver Side] Snapshot check stderr: {snapshot_err}")
-
-		# 		if snapshot_err.strip():
-		# 			print(f"[Receiver Side] Error checking received dataset: {snapshot_err.strip()}")
-		# 		else:
-		# 			if snapshot_output.strip():
-		# 				print(f"[Receiver Side] Received dataset exists: {snapshot_output.strip()}")
-		# 			else:
-		# 				print("[Receiver Side] Dataset does not exist.")
-
-		# 	except subprocess.CalledProcessError as e:
-		# 		print(f"[Sender Side] Command failed with exit code {e.returncode}. Error: {e.stderr}")
-		# 		sys.exit(1)
-
-		# 	except Exception as e:
-		# 		print(f"ERROR: Send error: {e}")
-		# 		sys.exit(1)
-  
 		elif transferMethod == "netcat":
 			try:
 				print("Sending via netcat...")
 				
 				# Correct listener command
-				listen_cmd = f'nc -l -p {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
+				listen_cmd = f'nc -l {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
+				# listen_cmd = f"nohup sh -c 'nc -l {recvPort} | zfs receive {'-F ' + recvName if forceOverwrite else recvName}' > /dev/null 2>&1 &"
 				ssh_cmd_listener = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
 				print(f"[Receiver Side] Listener command: {' '.join(ssh_cmd_listener)}")
 
@@ -385,7 +293,9 @@ def send_snapshot(
 				time.sleep(5)
 
 				# Prepare sender-side mbuffer command
+				# m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
 				m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
+
 				print(f"[Sender Side] mbuffer command: {' '.join(m_buff_cmd)}")
 
 				send_cmd_list = ['zfs', 'send']
@@ -426,13 +336,13 @@ def send_snapshot(
 
 				# Verify dataset on receiver
 				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				snapshot_process = subprocess.run(snapshot_check_cmd, capture_output=True, text=True)
+				snapshot_process = subprocess.run(snapshot_check_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 				if snapshot_process.returncode != 0:
-					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")
+					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr}")
 					sys.exit(1)
 
-				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout.strip()}")
+				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout}")
 
 			except subprocess.TimeoutExpired:
 				print("[Receiver Side] Receiver timed out.")
@@ -486,7 +396,7 @@ def main():
 
 		# Depending on remote or local, get destination snapshots
 		if remoteHost and remoteUser:
-			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem)
+			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem, transferMethod)
 		else:
 			destinationSnapshots = get_local_snapshots(receivingFilesystem)
 		# print("Fetched source snapshots:", len(sourceSnapshots))
@@ -561,7 +471,8 @@ def main():
 			newSnap,
 			remoteUser,
 			remoteHost,
-			remotePort
+			remotePort,
+   			transferMethod
 		)
 
 	except Exception as e:
