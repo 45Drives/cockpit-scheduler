@@ -1,3 +1,3 @@
-## task scheduler 1.2.10-2
+## task scheduler 1.2.10-3
 
-* Fixes netcat/ssh port issue
+* Re-running build, rpm built before but deb did not

@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-3
+- Re-running build, rpm built before but deb did not
 * Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-2
 - Fixes netcat/ssh port issue
 * Mon Feb 24 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-1
