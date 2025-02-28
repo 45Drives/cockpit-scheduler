@@ -1,3 +1,3 @@
-## task scheduler 1.2.7-1
+## task scheduler 1.2.8-10
 
-* *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters and updates EditTask logic to check for changes before saving.
+* now that slack servers are back up should be able to build without api call failing action

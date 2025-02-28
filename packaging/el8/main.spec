@@ -28,6 +28,15 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-10
+- now that slack servers are back up should be able to build without api call failing
+  action
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-9
+- building again with testing makefile changes
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-8
+- building again
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-7
+- Updates package to include zfsreptask destdataset fix
 * Thu Jan 02 2025 Jordan Keough <jkeough@45drives.com> 1.2.7-1
 - *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters
   and updates EditTask logic to check for changes before saving.
