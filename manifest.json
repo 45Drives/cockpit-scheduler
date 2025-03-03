@@ -2,9 +2,9 @@
     "__version": "45D-R2",
     "name": "cockpit-scheduler",
     "title": "task scheduler",
-    "prerelease": false,
-    "version": "1.2.8",
-    "buildVersion": "10",
+    "prerelease": true,
+    "version": "1.2.10",
+    "buildVersion": "6",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/cockpit-scheduler",
     "category": "utils",
@@ -29,7 +29,9 @@
                 "rsync",
                 "findutils",
                 "smartmontools",
-                "mbuffer"
+                "mbuffer",
+                "rclone",
+                "netcat"
             ]
         },
         "el": {
@@ -39,7 +41,9 @@
                 "rsync",
                 "findutils",
                 "smartmontools",
-                "mbuffer"
+                "mbuffer",
+                "rclone",
+                "netcat"
             ]
         }
     },
@@ -57,8 +61,8 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.2.8",
-        "buildVersion": "10",
+        "version": "1.2.10",
+        "buildVersion": "6",
         "ignore": [],
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",

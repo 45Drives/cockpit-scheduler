@@ -28,6 +28,7 @@ interface TaskInstanceType {
 	template: TaskTemplateType;
 	parameters: ParameterNodeType;
 	schedule: TaskScheduleType;
+	notes: string;
 }
 
 type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
@@ -102,6 +103,7 @@ interface TaskExecutionLogType {
 
 	async getEntriesFor(taskInstance: TaskInstance, untilTime: string): string;
 	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
+	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
 }
 
 interface TaskExecutionResultType {
@@ -130,3 +132,35 @@ interface DiskDetails {
 	diskName: string;
 	diskPath: string;
 }
+
+interface CloudSyncRemoteType {
+	name: string;
+	type: string;
+	authParams: CloudAuthParameterType;
+}
+
+interface CloudAuthParameterType {
+	parameters: {
+		[key: string]: CloudSyncParameter;
+	};
+	provider?: string;
+	oAuthSupported?: boolean;
+}
+
+interface CloudSyncParameterType {
+	value: any;
+	type: 'string' | 'bool' | 'int' | 'select' | 'object';
+	allowedValues?: string[];
+	defaultValue?: string | number | boolean | object;
+}
+
+interface RemoteManagerType {
+	cloudSyncRemotes: CloudSyncRemoteType[];
+
+	async getRemotes(): void;
+	async getRemoteByName(remoteName: string): Promise<CloudSyncRemote | null>;
+	createRemote(label: string, key: string, name: string, type: string, parameters: any): CloudSyncRemote;
+	editRemote(key: string, newLabel: string, oldName: string, newType: string, parameters: any): CloudSyncRemote
+	deleteRemote(key: string): Promise<boolean>;
+}
+

@@ -178,9 +178,17 @@
         <!-- TOP RIGHT -->
         <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
             <div class="grid grid-cols-2">
+                <label class="mt-1 col-span-1 block text-base leading-6 text-default" >Select Transfer Method</label>
+                <select v-model="transferMethod" class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"id="method">
+                    <option value="ssh">SSH</option>
+                    <option value="netcat">Netcat</option>
+                </select>
+
+            </div>
+            <div class="grid grid-cols-2 mt-2">
                 <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
                 <div class="col-span-1 items-end text-end justify-end">
-                    <button disabled v-if="testingSSH" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                    <button disabled v-if="testingNetcat || testingSSH " class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
                         <svg aria-hidden="true" role="status"
                             class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101"
                             fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -193,8 +201,10 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else @click="confirmTest(destHost, destUser)"
+                    <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                    <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
+                    class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
                 </div>
             </div>
             <div name="destination-host" class="mt-1">
@@ -217,13 +227,18 @@
                     placeholder="'root' is default" />
             </div>
             <div name="destination-port" class="mt-1">
-                <label class="block text-sm leading-6 text-default">Port</label>
-                <input v-if="destHost === ''" disabled type="number" v-model="destPort"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                    max="65535" placeholder="22 is default" />
+                <div class="flex flex-row justify-between items-center"><label class="block text-sm leading-6 text-default">Port</label>
+                <ExclamationCircleIcon v-if="netCatPortError"
+                        class="mt-1 w-5 h-5 text-danger" />
+                </div>
+                <input v-if="destHost === ''" disabled type="number" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6" 
+                v-model="destPort"  min="0" max="65535" placeholder="22 is default"/>
                 <input v-else type="number" v-model="destPort"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                    max="65535" placeholder="22 is default" />
+                :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
+                    ]" 
+                    max="65535" :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
+                    @input="validatePort" />
             </div>
         </div>
 
@@ -305,7 +320,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist } from '../../../composables/utility';
+import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -370,6 +385,13 @@ const makeNewDestDataset = ref(false);
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
 
+const testingNetcat = ref(false);
+const netCatTestResult = ref(false);
+
+const transferMethod = ref('ssh')
+const netCatPortError = ref(false);
+
+
 const errorList = inject<Ref<string[]>>('errors')!;
 
 async function initializeData() {
@@ -413,6 +435,7 @@ async function initializeData() {
             await getLocalDestinationDatasets();
             destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
         }
+
         if (!doesItExist(destPool.value, destPools.value) || !doesItExist(destDataset.value, destDatasets.value)) {
             useCustomTarget.value = true;
         }
@@ -424,8 +447,11 @@ async function initializeData() {
         mbufferUnit.value = sendOptionsParams.find(p => p.key === 'mbufferUnit')!.value;
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
         customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
-
         const snapshotRetentionParams = params.find(p => p.key === 'snapshotRetention')!.children;
+        transferMethod.value = sendOptionsParams.find(p => p.key === 'transferMethod')!.value;
+        if(transferMethod.value == 'local' || transferMethod.value == ''){
+            transferMethod.value = 'ssh'
+        }
 
         // Check for source retention
         const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
@@ -461,7 +487,8 @@ async function initializeData() {
             srcRetentionTime: srcRetentionTime.value,
             srcRetentionUnit: srcRetentionUnit.value,
             destRetentionTime: destRetentionTime.value,
-            destRetentionUnit: destRetentionUnit.value
+            destRetentionUnit: destRetentionUnit.value,
+            transferMethod: transferMethod.value
         }));
 
         loading.value = false;
@@ -499,6 +526,7 @@ function hasChanges() {
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
+
 function hasDestDatasetChanged() {
     return destDataset.value !== initialParameters.value.destDataset;
 }
@@ -513,7 +541,7 @@ function handleCheckboxChange(checkbox) {
 }
 
 const handleDestHostChange = async (newVal) => {
-    console.log("Handling destination host change:", newVal);
+  //  console.log("Handling destination host change:", newVal);
     if (newVal !== "") {
         await getRemoteDestinationPools();
     } else {
@@ -554,43 +582,52 @@ const getSourcePools = async () => {
     loadingSourcePools.value = true;
     sourcePools.value = await getPoolData();
     loadingSourcePools.value = false;
-    console.log('sourcePools:', sourcePools.value);
+  //  console.log('sourcePools:', sourcePools.value);
 }
 
 const getSourceDatasets = async () => {
     loadingSourceDatasets.value = true;
     sourceDatasets.value = await getDatasetData(sourcePool.value);
     loadingSourceDatasets.value = false;
-    console.log('sourceDatasets:', sourceDatasets.value);
+  //  console.log('sourceDatasets:', sourceDatasets.value);
 }
 
 const getLocalDestinationPools = async () => {
     loadingDestPools.value = true;
     destPools.value = await getPoolData();
     loadingDestPools.value = false;
-    console.log('Local destPools:', destPools.value);
+  //  console.log('Local destPools:', destPools.value);
 }
 
 const getLocalDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
     destDatasets.value = await getDatasetData(destPool.value);
     loadingDestDatasets.value = false;
-    console.log('Local destDatasets:', destDatasets.value);
+  //  console.log('Local destDatasets:', destDatasets.value);
 }
 
 const getRemoteDestinationPools = async () => {
     loadingDestPools.value = true;
-    destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
+    if(transferMethod.value=='netcat'){
+        destPools.value = await getPoolData(destHost.value, "22", destUser.value);
+    }else{
+        destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
+    }
     loadingDestPools.value = false;
-    console.log('Remote destPools:', destPools.value);
+  //  console.log('Remote destPools:', destPools.value);
+
 }
 
 
 const getRemoteDestinationDatasets = async () => {
     loadingDestDatasets.value = true;
-    destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+    if (transferMethod.value=='netcat') {
+        destDatasets.value = await getDatasetData(destPool.value, destHost.value, "22", destUser.value);
+    } else {
+        destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+    }
     loadingDestDatasets.value = false;
-    console.log('Remote destDataset:', destDatasets.value);
+  //  console.log('Remote destDataset:', destDatasets.value);
 }
 
 
@@ -611,6 +648,32 @@ function validateHost() {
 
     }
 }
+
+function validatePort() {
+    if (destPort.value == 22 && transferMethod.value == 'netcat' && destHost.value != '') {
+        errorList.value.push("Port 22 is not allowed for Netcat. Please choose a different port.");
+        netCatPortError.value = true;
+    } else {
+        netCatPortError.value = false;
+    }
+}
+
+
+watch(destHost, (newValue) => {
+    if (newValue === '') {
+        validatePort(); // Call validatePort() when destHost is empty
+    } 
+});
+
+watch(destPort, validatePort);
+
+watch(transferMethod, (newValue) => {
+    if (newValue === 'netcat' && destPort.value === 22) {
+        destPort.value = 31337;
+    }
+});
+
+
 
 function validateCustomName() {
     if (useCustomName.value) {
@@ -669,6 +732,10 @@ function validateSource() {
 }
 
 function validateDestination() {
+    if (!hasDestDatasetChanged()) {
+        console.log("Destination has not changed, skipping checks.");
+        return;
+    }
     if (useCustomTarget.value) {
         if (!isValidPoolName(destPool.value)) {
             errorList.value.push("Destination pool is invalid.");
@@ -682,12 +749,12 @@ function validateDestination() {
             errorList.value.push("Destination pool does not exist.");
             customDestPoolErrorTag.value = true;
         }
-        if (!makeNewDestDataset.value) {
+        if (!makeNewDestDataset.value && !destHost.value) {
             if (!doesItExist(destDataset.value, destDatasets.value)) {
                 errorList.value.push("Destination dataset does not exist.");
                 customDestDatasetErrorTag.value = true;
             }
-        }
+        } 
 
     } else {
         if (destPool.value === '') {
@@ -714,7 +781,7 @@ function validateDestination() {
 
 async function checkDestDatasetContents() {
     if (!hasDestDatasetChanged()) {
-        console.log("Destination has not changed, skipping checks.");
+      //  console.log("Destination has not changed, skipping checks.");
         return;
     }
 
@@ -727,8 +794,14 @@ async function checkDestDatasetContents() {
             let isEmpty;
 
             if (destHost.value !== '') {
-                hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
-                isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                if (transferMethod.value == "netcat"){
+                    hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, "22");
+                    isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, "22");
+
+                } else {
+                    hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                    isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
+                }
             } else {
                 hasSnapshots = await doSnapshotsExist(destDataset.value);
                 isEmpty = await isDatasetEmpty(destDataset.value);
@@ -754,7 +827,7 @@ async function checkDestDatasetContents() {
 
             if (!datasetExists) {
                 // Dataset does not exist, can proceed with creation
-                console.log("Destination dataset does not exist, proceeding with creation.");
+                //  console.log("Destination dataset does not exist, proceeding with creation.");
                 destDatasetErrorTag.value = false;
             } else {
                 // Dataset exists, perform additional validation
@@ -778,9 +851,6 @@ async function checkDestDatasetContents() {
         errorList.value.push("An unexpected error occurred while validating dataset contents.");
     }
 }
-
-
-
 function isValidPoolName(poolName) {
     if (poolName === '') {
         return false;
@@ -839,6 +909,7 @@ function clearErrorTags() {
     customSrcDatasetErrorTag.value = false;
     customDestPoolErrorTag.value = false;
     customDestDatasetErrorTag.value = false;
+    netCatPortError.value = false;
     errorList.value = [];
 }
 
@@ -847,6 +918,7 @@ async function validateParams() {
     validateSource();
     validateHost();
     validateDestination();
+    validatePort();
     await checkDestDatasetContents();
     
     validateCustomName();
@@ -857,6 +929,13 @@ async function validateParams() {
 }
 
 function setParams() {
+    if (transferMethod.value == 'ssh' && destHost.value == ''){
+        transferMethod.value = "local"
+    }
+    else if(transferMethod.value == "netcat") {
+        transferMethod.value = "netcat"
+
+    }
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
         .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', destHost.value, destPort.value, destUser.value, destPool.value, destDataset.value))
@@ -868,6 +947,8 @@ function setParams() {
             .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
+            .addChild(new StringParameter('Transfer Method', 'transferMethod', transferMethod.value))
+
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
             // .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
@@ -875,13 +956,13 @@ function setParams() {
             // )
             .addChild(new SnapshotRetentionParameter('Source','source',srcRetentionTime.value,srcRetentionUnit.value))
             .addChild(new SnapshotRetentionParameter('Destination', 'destination', destRetentionTime.value, destRetentionUnit.value))
-        );
 
+        );
     parameters.value = newParams;
-    console.log('newParams:', newParams);
+  //  console.log('newParams:', newParams);
 }
 
-async function confirmTest(destHost, destUser) {
+async function confirmSSHTest(destHost, destUser) {
     testingSSH.value = true;
 
     const sshTarget = destUser + '@' + destHost;
@@ -894,6 +975,32 @@ async function confirmTest(destHost, destUser) {
     }
     testingSSH.value = false;
 }
+
+async function confirmNetcatTest(destHost2, destPort2) {
+    testingNetcat.value = true;
+    const netcatHost = destHost2;
+    const netcatdestPort = destPort2;
+
+    netCatTestResult.value = await testNetcat(destUser.value, netcatHost, netcatdestPort);
+
+    if (netCatTestResult.value) {
+        pushNotification(new Notification(
+            "Connection Successful!",
+            `Netcat connection established. This host can be used for remote transfers.`,
+            "success",
+            8000
+        ));
+    } else {
+        pushNotification(new Notification(
+            "Connection Failed",
+            `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`,
+            "error",
+            8000
+        ));
+    }
+    testingNetcat.value = false;
+}
+
 
 watch(destPool, handleDestPoolChange);
 watch(sourcePool, handleSourcePoolChange);

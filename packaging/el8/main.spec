@@ -28,21 +28,46 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
-* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-10
-- now that slack servers are back up should be able to build without api call failing
-  action
-* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-9
-- building again with testing makefile changes
-* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-8
-- building again
-* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-7
-- Updates package to include zfsreptask destdataset fix
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-6
+- update build
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-5
+- building
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-4
+- attempting to build
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-3
+- Re-running build, rpm built before but deb did not
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-2
+- Fixes netcat/ssh port issue
+* Mon Feb 24 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-1
+- Fixes netcat issues found in service testing
+* Thu Feb 13 2025 Jordan Keough <jkeough@45drives.com> 1.2.9-1
+- Adds Ceph as an option in S3 rclone providers
+* Wed Feb 12 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-6
+- Updating testing package to fix zfs replication issues
+* Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-5
+- removed scheduler test from makefile to try and rectify deb build issue
+* Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-4
+- Building testing package for Scheduler Phase 3 and 4
+* Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-3
+- Building testing package for Scheduler Phase 3 and 4
+* Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-2
+- Building testing package for Scheduler Phase 3 and 4
+* Thu Jan 09 2025 Rachit Hans <rhans@45drives.com> 1.2.7-3
+- building package
+- release notes
+- Added netcat functionality, notes functionality and fixed cutom task
+* Thu Jan 09 2025 Rachit Hans <rhans@45drives.com> 1.2.7-2-1
+- Building Package
+* Mon Jan 06 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-1
+- Creating testing package for Cloud-Sync addition
 * Thu Jan 02 2025 Jordan Keough <jkeough@45drives.com> 1.2.7-1
 - *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters
   and updates EditTask logic to check for changes before saving.
 * Thu Jan 02 2025 Jordan Keough <jkeough@45drives.com> 1.2.6-1
 - Adds more robust error handling to ZFSRepTask parameters and updates EditTask logic
   to check for changes before saving.
+* Fri Dec 20 2024 Rachit Hans <rhans@45drives.com> 1.2.6-1
+- Added Custom Task
 * Thu Dec 12 2024 Jordan Keough <jkeough@45drives.com> 1.2.5-1
 - Fixes issue with task searching/sorting
 * Wed Dec 11 2024 Rachit Hans <rhans@45drives.com> 1.2.4-1
