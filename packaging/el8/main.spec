@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Mar 06 2025 Jordan Keough <jkeough@45drives.com> 1.3.1-1
+- Fixes an issue in replication script when checking remote snapshots
 * Thu Mar 06 2025 Jordan Keough <jkeough@45drives.com> 1.3.0-1
 - Introduces Cloud Sync Tasks, Custom Tasks, and adding Notes to tasks. Also adds
   Netcat as an alternative to SSH when using ZFS Replication, as well as numerous
