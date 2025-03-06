@@ -1,3 +1,3 @@
-## task scheduler 1.3.1-1
+## task scheduler 1.3.1-2
 
-* Fixes an issue in replication script when checking remote snapshots
+* fixes changelog and rebuilds

@@ -1,3 +1,9 @@
+cockpit-scheduler (1.3.1-2focal) focal; urgency=medium
+
+  * fixes changelog and rebuilds
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 06 Mar 2025 07:19:04 -0400
+
 cockpit-scheduler (1.3.1-1focal) focal; urgency=medium
 
   * Fixes an issue in replication script when checking remote snapshots
@@ -42,18 +48,6 @@ cockpit-scheduler (1.2.10-2focal) focal; urgency=medium
 
  -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 10:00:54 -0400
 
-cockpit-scheduler (1.2.10-1focal) focal; urgency=medium
-
-  * Fixes netcat issues found in service testing
-
- -- Jordan Keough <jkeough@45drives.com>  Mon, 24 Feb 2025 04:49:57 -0400
-
-cockpit-scheduler (1.2.9-1focal) focal; urgency=medium
-
-  * Adds Ceph as an option in S3 rclone providers
-
- -- Jordan Keough <jkeough@45drives.com>  Thu, 13 Feb 2025 09:34:14 -0400
- 
 cockpit-scheduler (1.2.8-10focal) focal; urgency=medium
 
   * now that slack servers are back up should be able to build without api call failing
@@ -78,6 +72,19 @@ cockpit-scheduler (1.2.8-7focal) focal; urgency=medium
   * Updates package to include zfsreptask destdataset fix
 
  -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Feb 2025 11:45:17 -0400
+
+cockpit-scheduler (1.2.10-1focal) focal; urgency=medium
+
+  * Fixes netcat issues found in service testing
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 24 Feb 2025 04:49:57 -0400
+
+cockpit-scheduler (1.2.9-1focal) focal; urgency=medium
+
+  * Adds Ceph as an option in S3 rclone providers
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 13 Feb 2025 09:34:14 -0400
+ 
  
 cockpit-scheduler (1.2.8-6focal) focal; urgency=medium
 
@@ -109,13 +116,7 @@ cockpit-scheduler (1.2.8-2focal) focal; urgency=medium
 
  -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 06:16:42 -0400
 
-cockpit-scheduler (1.2.8-1focal) focal; urgency=medium
-
-  * Creating testing package for Cloud-Sync addition
-
- -- Jordan Keough <jkeough@45drives.com>  Mon, 06 Jan 2025 07:20:27 -0400
-
-cockpit-scheduler (1.2.7-3focal) focal; urgency=medium
+ cockpit-scheduler (1.2.7-3focal) focal; urgency=medium
 
   * building package
   * release notes
@@ -128,6 +129,12 @@ cockpit-scheduler (1.2.7-2-1focal) focal; urgency=medium
   * Building Package
 
  -- Rachit Hans <rhans@45drives.com>  Thu, 09 Jan 2025 07:35:03 -0400
+
+cockpit-scheduler (1.2.8-1focal) focal; urgency=medium
+
+  * Creating testing package for Cloud-Sync addition
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 06 Jan 2025 07:20:27 -0400
 
 cockpit-scheduler (1.2.7-1focal) focal; urgency=medium
 
