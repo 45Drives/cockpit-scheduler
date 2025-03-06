@@ -48,6 +48,15 @@ make DESTDIR=%{buildroot} install
 - Fixes netcat issues found in service testing
 * Thu Feb 13 2025 Jordan Keough <jkeough@45drives.com> 1.2.9-1
 - Adds Ceph as an option in S3 rclone providers
+* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-10
+- now that slack servers are back up should be able to build without api call failing
+  action
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-9
+- building again with testing makefile changes
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-8
+- building again
+* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-7
+- Updates package to include zfsreptask destdataset fix
 * Wed Feb 12 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-6
 - Updating testing package to fix zfs replication issues
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-5
@@ -58,23 +67,14 @@ make DESTDIR=%{buildroot} install
 - Building testing package for Scheduler Phase 3 and 4
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-2
 - Building testing package for Scheduler Phase 3 and 4
+* Mon Jan 06 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-1
+- Creating testing package for Cloud-Sync addition
 * Thu Jan 09 2025 Rachit Hans <rhans@45drives.com> 1.2.7-3
 - building package
 - release notes
 - Added netcat functionality, notes functionality and fixed cutom task
 * Thu Jan 09 2025 Rachit Hans <rhans@45drives.com> 1.2.7-2-1
 - Building Package
-* Mon Jan 06 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-1
-- Creating testing package for Cloud-Sync addition
-* Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-10
-- now that slack servers are back up should be able to build without api call failing
-  action
-* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-9
-- building again with testing makefile changes
-* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-8
-- building again
-* Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-7
-- Updates package to include zfsreptask destdataset fix
 * Thu Jan 02 2025 Jordan Keough <jkeough@45drives.com> 1.2.7-1
 - *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters
   and updates EditTask logic to check for changes before saving.
