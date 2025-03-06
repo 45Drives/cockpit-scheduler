@@ -20,6 +20,9 @@
                 <div class="mt-5 py-0.5 px-3">
                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                 </div>
+                <!-- <div class="mt-5 py-0.5 px-3">
+                    <button @click="showNewScheduleComponent()" class="btn btn-primary">CALENDAR</button>
+                </div> -->
             </div>
         </div>
 
@@ -71,12 +74,15 @@
                                 </thead>
                                 <tbody class="bg-accent">
                                     <div v-for="taskInstance in filteredAndSortedTasks" :key="taskInstance.name">
-                                        <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
-                                       @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
-                                       @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
-                                            @viewNotes="(task) => viewNotesBtn(task)"
-                                        ref="taskTableRow" :attr="taskInstance"
-                                        />
+                                        <TaskInstanceTableRow :task="taskInstance"
+                                            :isExpanded="expandedTaskName === taskInstance.name"
+                                            @runTask="(task) => runTaskBtn(task)"
+                                            @editTask="(task) => editTaskBtn(task)"
+                                            @manageSchedule="(task) => manageScheduleBtn(task)"
+                                            @removeTask="(task) => removeTaskBtn(task)"
+                                            @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
+                                            @viewNotes="(task) => viewNotesBtn(task)" ref="taskTableRow"
+                                            :attr="taskInstance" />
                                     </div>
                                 </tbody>
                             </table>
@@ -100,6 +106,10 @@
             :mode="scheduleMode" />
     </div>
 
+    <!-- <Modal :show="showNewScheduleWizard" v-on:click-outside="showNewScheduleComponent">
+        <CalendarConfig title="New Schedule" :show="showNewScheduleWizard" @close="showNewScheduleComponent"/>
+    </Modal> -->
+
     <div v-if="showRunNowPrompt">
         <component :is="runNowDialog" @close="updateShowRunNowPrompt" :showFlag="showRunNowPrompt" :title="'Run Task'"
             :message="'Do you wish to run this task now?'" :confirmYes="runNowYes" :confirmNo="runNowNo"
@@ -113,7 +123,7 @@
     </div>
 
     <div v-if="showNotesPrompt">
-        <component :is="viewNotesComponent" :id-key="'view-notes-task-modal'"  :task="selectedTask"/>
+        <component :is="viewNotesComponent" :id-key="'view-notes-task-modal'" :task="selectedTask" />
     </div>
 
     <div v-if="showLogView">
@@ -128,10 +138,11 @@ import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { pushNotification, Notification } from '@45drives/houston-common-ui';
+import { pushNotification, Notification, CalendarConfig, Modal } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
+
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
@@ -322,6 +333,11 @@ const addScheduleHandler = async (task) => {
     scheduleMode.value = 'new';
     await loadScheduleWizardComponent();
     showThisScheduleWizard.value = true;
+}
+
+const showNewScheduleWizard = ref(false);
+function showNewScheduleComponent() {
+    showNewScheduleWizard.value = !showNewScheduleWizard.value;
 }
 
 
