@@ -3,7 +3,7 @@
 
   "menu": {
       "scheduler": {
-          "label": "Task Scheduler (TESTING)",
+          "label": "Task Scheduler",
           "path": "index.html",
           "order": 110
       }

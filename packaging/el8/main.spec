@@ -28,6 +28,10 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Thu Mar 06 2025 Jordan Keough <jkeough@45drives.com> 1.3.0-1
+- Introduces Cloud Sync Tasks, Custom Tasks, and adding Notes to tasks. Also adds
+  Netcat as an alternative to SSH when using ZFS Replication, as well as numerous
+  other QoL and UI updates.
 * Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-6
 - update build
 * Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-5

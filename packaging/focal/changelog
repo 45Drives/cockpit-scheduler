@@ -1,3 +1,11 @@
+cockpit-scheduler (1.3.0-1focal) focal; urgency=medium
+
+  * Introduces Cloud Sync Tasks, Custom Tasks, and adding Notes to tasks. Also adds
+    Netcat as an alternative to SSH when using ZFS Replication, as well as numerous
+    other QoL and UI updates.
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 06 Mar 2025 05:11:11 -0400
+
 cockpit-scheduler (1.2.10-6focal) focal; urgency=medium
 
   * update build
