@@ -49,5 +49,10 @@ export const providerLogos: { [key: string]: ProviderLogo } = {
         logo: "./img/azure.svg",
         mainColor: "#00BCF2",
         hoverColor: "#004357"
+    },
+    "storj": {
+        logo: "./img/Storj.svg",
+        mainColor: "#00BCF2",
+        hoverColor: "#1E90FF"
     }
 };
