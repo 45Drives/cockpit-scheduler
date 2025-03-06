@@ -8,7 +8,9 @@
             <p class="my-2 truncate"
                 :title="`Send Type: ${findValue(taskInstance.parameters, 'destDataset', 'host') !== '' ? 'Remote' : 'Local'}`">
                 Send Type:
-                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">Remote</b>
+                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== '' && findValue(taskInstance.parameters,'sendOptions', 'transferMethod') == 'netcat'">Remote via Netcat</b>
+                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== '' && findValue(taskInstance.parameters,'sendOptions', 'transferMethod') == 'ssh'">Remote via SSH</b>
+                <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== '' && findValue(taskInstance.parameters,'sendOptions', 'transferMethod') == ''">Remote</b>
                 <b v-if="findValue(taskInstance.parameters, 'destDataset', 'host') === ''">Local</b>
             </p>
             <p class="my-2 truncate"
@@ -35,13 +37,16 @@
 
             <p class="my-2" v-if="findValue(taskInstance.parameters, 'destDataset', 'host') !== ''">
                 <span class="truncate"
-                    :title="`Remote SSH Host: ${findValue(taskInstance.parameters, 'destDataset', 'host')}`">
-                    Remote SSH Host: <b>{{ findValue(taskInstance.parameters, 'destDataset', 'host') }}</b>
-                </span>
-                <span class="truncate"
-                    :title="`Remote SSH Port: ${findValue(taskInstance.parameters, 'destDataset', 'port')}`">
-                    Remote SSH Port: : <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
-                </span>
+                :title="`Remote ${findValue(taskInstance.parameters, 'sendOptions', 'transferMethod') === 'netcat' ? 'Netcat' : 'SSH'} Host: ${findValue(taskInstance.parameters, 'destDataset', 'host')}`">
+                Remote {{ findValue(taskInstance.parameters, 'sendOptions', 'transferMethod') === 'netcat' ? 'Netcat' : 'SSH' }} Host: 
+                <b>{{ findValue(taskInstance.parameters, 'destDataset', 'host') }}</b>
+            </span>
+            <span class="truncate"
+                :title="`Remote ${findValue(taskInstance.parameters, 'sendOptions', 'transferMethod') === 'netcat' ? 'Netcat' : 'SSH'} Port: ${findValue(taskInstance.parameters, 'destDataset', 'port')}`">
+                Remote {{ findValue(taskInstance.parameters, 'sendOptions', 'transferMethod') === 'netcat' ? 'Netcat' : 'SSH' }} Port: 
+                <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
+            </span>
+
             </p>
         </div>
         <div class="col-span-1">
@@ -76,6 +81,9 @@
             </p>
             <p v-else class="my-2 truncate text-sm" :title="`No Snapshot Retention Policy Configured`">
                 <b>No Snapshot Retention Policy Configured</b>
+            </p>
+            <p v-else class="my-2 truncate" :title="`No Snapshot Limit (Keep All)`">
+                No Snapshot Limit Set (Keep All)
             </p>
         </div>
         <div class="col-span-2 row-span-2">

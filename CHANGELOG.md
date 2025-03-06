@@ -1,3 +1,3 @@
-## task scheduler 1.2.8-10
+## task scheduler 1.3.0-1
 
-* now that slack servers are back up should be able to build without api call failing action
+* Introduces Cloud Sync Tasks, Custom Tasks, and adding Notes to tasks. Also adds Netcat as an alternative to SSH when using ZFS Replication, as well as numerous other QoL and UI updates.

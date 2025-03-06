@@ -2,7 +2,8 @@
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
             <div class="text-left">
-                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.
+                <p class="mt-4 text-medium text-default">
+                    All tasks currently configured on the system are listed here.
                 </p>
             </div>
             <div class="flex flex-row justify-between">
@@ -19,6 +20,9 @@
                 <div class="mt-5 py-0.5 px-3">
                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                 </div>
+                <!-- <div class="mt-5 py-0.5 px-3">
+                    <button @click="showNewScheduleComponent()" class="btn btn-primary">CALENDAR</button>
+                </div> -->
             </div>
         </div>
 
@@ -77,7 +81,8 @@
                                             @manageSchedule="(task) => manageScheduleBtn(task)"
                                             @removeTask="(task) => removeTaskBtn(task)"
                                             @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
-                                            ref="taskTableRow" :attr="taskInstance" />
+                                            @viewNotes="(task) => viewNotesBtn(task)" ref="taskTableRow"
+                                            :attr="taskInstance" />
                                     </div>
                                 </tbody>
                             </table>
@@ -101,6 +106,10 @@
             :mode="scheduleMode" />
     </div>
 
+    <!-- <Modal :show="showNewScheduleWizard" v-on:click-outside="showNewScheduleComponent">
+        <CalendarConfig title="New Schedule" :show="showNewScheduleWizard" @close="showNewScheduleComponent"/>
+    </Modal> -->
+
     <div v-if="showRunNowPrompt">
         <component :is="runNowDialog" @close="updateShowRunNowPrompt" :showFlag="showRunNowPrompt" :title="'Run Task'"
             :message="'Do you wish to run this task now?'" :confirmYes="runNowYes" :confirmNo="runNowNo"
@@ -113,6 +122,10 @@
             :confirmNo="removeTaskNo" :operating="removing" :operation="'removing'" />
     </div>
 
+    <div v-if="showNotesPrompt">
+        <component :is="viewNotesComponent" :id-key="'view-notes-task-modal'" :task="selectedTask" />
+    </div>
+
     <div v-if="showLogView">
         <component :is="logViewComponent" @close="updateShowLogViewComponent" :task="selectedTask" />
     </div>
@@ -120,18 +133,19 @@
 </template>
 
 <script setup lang="ts">
+import "@45drives/houston-common-css/src/index.css";
 import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { pushNotification, Notification } from '@45drives/houston-common-ui';
+import { pushNotification, Notification, CalendarConfig, Modal } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
+
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-
 const selectedTask = ref<TaskInstanceType>();
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
 
@@ -180,10 +194,29 @@ async function loadEditTaskComponent() {
 }
 
 
+
 /* Generic loading function for Confirmation Dialogs */
 async function loadConfirmationDialog(dialogRef) {
     const module = await import('../components/common/ConfirmationDialog.vue');
     dialogRef.value = module.default;
+}
+/* Task Notes View*/
+const showNotesPrompt = ref(false);
+
+async function viewNotesBtn(task){
+    selectedTask.value = task;
+    console.log("viewNotesBtn triggered with task:", task);
+    await loadViewNotesComponent();
+    showNotesPrompt.value = true
+}
+
+const viewNotesComponent = ref()
+
+async function loadViewNotesComponent(){
+    console.log('load ViewNotes Component triggered in scheduler view');
+
+    const module = await import('../components/modals/Notes.vue')
+    viewNotesComponent.value = module.default;
 }
 
 
@@ -213,12 +246,10 @@ const runNowNo: ConfirmationCallback = async () => {
 
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
-    const runNow = true;
     // Push a notification that the task has started
-    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 5000));
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
     const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
     await updateStatusAndTime(selectedTask.value!, taskIndex);
-
     updateShowRunNowPrompt(false); // Close the modal
     // Start the task and close the modal immediately
     await myScheduler.runTaskNow(selectedTask.value!).then(() => {
@@ -282,10 +313,10 @@ const loadScheduleWizardComponent = async () => {
 }
 
 async function showThisScheduleWizardComponent() {
-    console.log('Attempting to load Schedule Wizard Component...');
+  //  console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-        console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
+      //  console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
         // console.log('schedulerView: setting showThisScheduleWizard to true.');
         showThisScheduleWizard.value = true;
     } catch (error) {
@@ -293,7 +324,7 @@ async function showThisScheduleWizardComponent() {
     }
 }
 const updateShowThisScheduleWizardComponent = (newVal) => {
-    console.log('updateShowThisScheduleWizard triggered');
+  //  console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
 }
 
@@ -302,6 +333,11 @@ const addScheduleHandler = async (task) => {
     scheduleMode.value = 'new';
     await loadScheduleWizardComponent();
     showThisScheduleWizard.value = true;
+}
+
+const showNewScheduleWizard = ref(false);
+function showNewScheduleComponent() {
+    showNewScheduleWizard.value = !showNewScheduleWizard.value;
 }
 
 
@@ -403,4 +439,6 @@ provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showThisScheduleWizard);
 provide('show-edit-task-wizard', showEditTaskWizard);
 provide('show-log-view', showLogView);
+provide('show-notes-view', showNotesPrompt);
+
 </script>

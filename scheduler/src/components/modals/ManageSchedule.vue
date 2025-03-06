@@ -128,7 +128,6 @@
                                                         class="mb-0.5 w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2" />
                                                 </label>
                                             </button>
-                                            <!-- <input v-if="newInterval.dayOfWeek!.includes(day)" type="number" v-model="newInterval.dayOfWeekSteps[day]" min="1" placeholder="Step (optional)" class="text-sm"/> -->
                                         </td>
                                     </tr>
                                 </table>
@@ -531,9 +530,9 @@ function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
     selectedInterval.value = interval;
     // Object.assign(newInterval, JSON.parse(JSON.stringify(interval)));
     selectedIndex.value = index;
-    console.log('selectedInterval (selectionMethod):', selectedInterval.value);
+  //  console.log('selectedInterval (selectionMethod):', selectedInterval.value);
     // console.log('selected interval for editing:', interval);
-    console.log('selectedIndex (selectionMethod):', selectedIndex.value);
+  //  console.log('selectedIndex (selectionMethod):', selectedIndex.value);
     // clearFields();
     editSelectedInterval(selectedInterval.value);
 }
@@ -544,20 +543,20 @@ function saveInterval(interval) {
     }
 
     if (validateFields(interval)) {
-        console.log('selectedIndex in saveInterval:', selectedIndex.value);
+      //  console.log('selectedIndex in saveInterval:', selectedIndex.value);
         if (selectedIndex.value !== undefined) {
             // Deep clone the interval object to ensure no references are shared
             const updatedInterval = JSON.parse(JSON.stringify(interval));
             
             localIntervals.value[selectedIndex.value] = updatedInterval;
-            console.log('updatedInterval saved (saveInterval):', updatedInterval);
+          //  console.log('updatedInterval saved (saveInterval):', updatedInterval);
         } else {
             const newInterval = JSON.parse(JSON.stringify(interval));
             localIntervals.value.push(newInterval);
-            console.log('newInterval saved (saveInterval):', newInterval);
+          //  console.log('newInterval saved (saveInterval):', newInterval);
         }
        
-        console.log('all intervals (saveInterval):', localIntervals.value);
+      //  console.log('all intervals (saveInterval):', localIntervals.value);
         clearFields();
     } 
 }
@@ -569,9 +568,9 @@ function clearSelectedInterval() {
 }
 
 function removeSelectedInterval(index) {
-    console.log('interval to remove (removeSelectedInterval):', localIntervals.value[index])
+  //  console.log('interval to remove (removeSelectedInterval):', localIntervals.value[index])
     localIntervals.value.splice(index, 1);
-    console.log('intervals after splice (removeSelectedInterval):', localIntervals.value);
+  //  console.log('intervals after splice (removeSelectedInterval):', localIntervals.value);
     clearSelectedInterval();
 }
 
@@ -608,7 +607,7 @@ const confirmScheduleTask : ConfirmationCallback = async () => {
     console.log('Saving and scheduling task now...');
    
     savingSchedule.value = true;
-    console.log('task:', thisTask.value);
+  //  console.log('task:', thisTask.value);
     if (props.mode == 'new') {
         await myScheduler.registerTaskInstance(thisTask.value);
         pushNotification(new Notification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000));
@@ -642,17 +641,17 @@ async function saveScheduleBtn() {
     if (localIntervals.value.length < 1) {
         pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 8000));
     } else {
-        console.log('intervals before (saveBtn):', intervals.value);
-        console.log('localIntervals (saveBtn):', localIntervals.value);
+      //  console.log('intervals before (saveBtn):', intervals.value);
+      //  console.log('localIntervals (saveBtn):', localIntervals.value);
         
         intervals.value = [...localIntervals.value];
         intervals.value.forEach(interval => {
             newSchedule.intervals.push(interval);
         });
-        console.log('intervals after (saveBtn):', intervals.value);
+      //  console.log('intervals after (saveBtn):', intervals.value);
         thisTask.value.schedule = newSchedule;
-        console.log('schedule to save (saveBtn):', newSchedule);
-        console.log('task to save (saveBtn):', thisTask.value);
+      //  console.log('schedule to save (saveBtn):', newSchedule);
+      //  console.log('task to save (saveBtn):', thisTask.value);
 
         await showConfirmationDialog();
     }
@@ -696,7 +695,7 @@ const intervalSelectedClass = (intervalIdx) => {
 }
 
 watch(newInterval, (newVal, oldVal) => {
-    console.log('newInterval changed (watch):', newVal);
+  //  console.log('newInterval changed (watch):', newVal);
     forceUpdateCalendar();
 }, { deep: true });
 
@@ -711,14 +710,14 @@ onMounted(() => {
     // clearFields();
     // clearAllErrors();
     
-    console.log('task data (onMounted)', props.task);
+  //  console.log('task data (onMounted)', props.task);
     if (props.mode == 'new') {
         selectedInterval.value = undefined;
         selectedIndex.value = undefined;
         localIntervals.value = [];
     } else {
         localIntervals.value = [...props.task.schedule.intervals];
-        console.log('localIntervals (onMounted)', localIntervals.value);
+      //  console.log('localIntervals (onMounted)', localIntervals.value);
         initialScheduleIntervals.value = JSON.parse(JSON.stringify(localIntervals.value));
    }
 });
