@@ -55,10 +55,16 @@ def prune_snapshots_by_retention(
 	multiplier = unit_multipliers.get(retention_unit, 0)
  
 	retention_milliseconds = int(retention_time) * multiplier
+	# print(f'retention time: {retention_time}, retention unit: {retention_unit}')
 	if retention_milliseconds == 0:
 		print("Retention period is not valid. No pruning will be performed.")
 	else:
 		snapshots_to_delete = []
+  
+		# print(f"Total snapshots found: {len(snapshots)}")
+		# for snapshot in snapshots:
+		# 	print(f"Snapshot: {snapshot.name} - Created at: {snapshot.creation}")
+
 		for snapshot in snapshots:
 			print(f"Excluded snap: {excluded_snapshot_name}")
    
@@ -334,16 +340,26 @@ def send_snapshot(
 					print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
 					sys.exit(1)
 
+				# # Verify dataset on receiver
+				# snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
+				# snapshot_process = subprocess.run(snapshot_check_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+				# if snapshot_process.returncode != 0:
+				# 	print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr}")
+				# 	sys.exit(1)
+
+				# print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout}")
+
 				# Verify dataset on receiver
 				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				snapshot_process = subprocess.run(snapshot_check_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+				snapshot_process = subprocess.run(snapshot_check_cmd, capture_output=True, text=True)
 
 				if snapshot_process.returncode != 0:
-					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr}")
+					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")
 					sys.exit(1)
 
-				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout}")
-
+				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout.strip()}")
+    
 			except subprocess.TimeoutExpired:
 				print("[Receiver Side] Receiver timed out.")
 				ssh_process_listener.terminate()
