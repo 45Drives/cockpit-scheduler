@@ -16,7 +16,8 @@
 PLUGIN_SRCS=scheduler
 
 # For installing to a remote machine for testing with `make install-remote`
-REMOTE_TEST_HOST=192.168.13.40
+# REMOTE_TEST_HOST=192.168.211.147
+REMOTE_TEST_HOST=192.168.123.5
 REMOTE_TEST_USER=root
 
 # Restarts cockpit after install
@@ -61,10 +62,7 @@ OUTPUTS:=$(addsuffix /dist/index.html, $(PLUGIN_SRCS))
 NPM_PREFIX:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn --cwd' || echo 'npm --prefix')
 NPM_UPDATE:=$(shell command -v yarn > /dev/null 2>&1 && echo 'yarn upgrade --cwd' || echo 'npm update --prefix')
 
-VERSION_FILES:=$(addsuffix /src/version.js, $(PLUGIN_SRCS))
-OS_PACKAGE_RELEASE?=built_from_source
-
-default: $(VERSION_FILES) $(OUTPUTS)
+default: $(OUTPUTS)
 
 all: default
 
@@ -81,9 +79,8 @@ houston-common/Makefile:
 houston-common: houston-common/Makefile bootstrap-yarn
 	$(MAKE) -C houston-common
 
-$(VERSION_FILES): ./manifest.json
-	mkdir -p $(dir $@)
-	echo 'export const pluginVersion = "$(shell jq -r '.version' ./manifest.json)-$(shell jq -r '.buildVersion' ./manifest.json)$(OS_PACKAGE_RELEASE)";' > $@
+houston-common-%:
+	$(MAKE) -C houston-common $*
 
 # build outputs
 .SECONDEXPANSION:
@@ -116,9 +113,10 @@ plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	$(SSH) mkdir -p $(DESTDIR)$(INSTALL_PREFIX)/$*$(INSTALL_SUFFIX)
 	@echo
 	@echo Copying files
-	@test -z "$(SSH)" && \
-		cp -af $*/dist/* $(DESTDIR)$(INSTALL_PREFIX)/$*$(INSTALL_SUFFIX) || \
-		rsync -avh $*/dist/* $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)$(INSTALL_PREFIX)/$*$(INSTALL_SUFFIX)
+	@if test -z "$(SSH)"; then \
+		cp -af $*/dist/* $(DESTDIR)$(INSTALL_PREFIX)/$*$(INSTALL_SUFFIX); else \
+		rsync -avh $*/dist/* $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)$(INSTALL_PREFIX)/$*$(INSTALL_SUFFIX); \
+	fi
 	@echo -e $(call greentext,Done installing $*)
 	@echo
 
@@ -173,5 +171,10 @@ help:
 	@echo
 	@echo 'build cleanup:'
 	@echo '    make clean'
+
+# test-%:
+# 	yarn --cwd $* run test
+
+# test: houston-common-test
 
 FORCE:

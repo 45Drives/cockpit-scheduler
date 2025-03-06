@@ -18,7 +18,7 @@
 				</div>
   
 				<div class="sm:flex items-center">
-				  <div class="w-full mt-3 text-center sm:mt-0 sm:text-left">
+				  <div class="w-full mt-3 text-left sm:mt-0">
 					
 					<DialogTitle as="h3" class="text-base font-semibold leading-6 text-default" tabindex="-1">
 					  <slot name="title"/>

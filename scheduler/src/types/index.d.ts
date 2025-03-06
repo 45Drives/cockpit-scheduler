@@ -3,12 +3,13 @@ interface SchedulerType {
 	taskInstances: TaskInstanceType[];
 
 	async loadTaskInstances(): void;
-	createParameterNodeFromSchema(schema: ParameterNode, parameters: any) : ParameterNode;
+	createParameterNodeFromSchema(schema: ParameterNode, parameters: any): ParameterNode;
 	async registerTaskInstance(taskInstance: TaskInstanceType): void;
 	async updateTaskInstance(taskInstance: TaskInstanceType): void;
 	async runTaskNow(taskInstance: TaskInstanceType): void;
 	async unregisterTaskInstance(taskInstance: TaskInstanceType): void;
-	async getTaskStatusFor(taskInstance: TaskInstanceType): Promise<string | false>;
+	async getServiceStatus(taskInstance: TaskInstanceType): Promise<string | false>
+	async getTimerStatus(taskInstance: TaskInstanceType): Promise<string | false>
 	async enableSchedule(taskInstance: TaskInstanceType): void;
 	async disableSchedule(taskInstance: TaskInstanceType): void;
 	async updateSchedule(taskInstance: TaskInstanceType): void;
@@ -27,6 +28,7 @@ interface TaskInstanceType {
 	template: TaskTemplateType;
 	parameters: ParameterNodeType;
 	schedule: TaskScheduleType;
+	notes: string;
 }
 
 type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
@@ -42,9 +44,9 @@ interface TaskScheduleType {
 }
 
 type TaskScheduleIntervalType = {
-    [K in TimeUnit]?: TimeComponentType;
+	[K in TimeUnit]?: TimeComponentType;
 } & {
-    dayOfWeek?: (DayOfWeek)[];
+	dayOfWeek?: (DayOfWeek)[];
 };
 
 interface LocationType {
@@ -74,8 +76,8 @@ interface SelectionParameterType extends ParameterNodeType {
 }
 
 interface SelectionOptionType {
-    value: string | number | boolean;
-    label: string;
+	value: string | number | boolean;
+	label: string;
 }
 
 interface StringParameterType extends ParameterNodeType {
@@ -100,7 +102,8 @@ interface TaskExecutionLogType {
 	entries: TaskExecutionResultType[];
 
 	async getEntriesFor(taskInstance: TaskInstance, untilTime: string): string;
-	async getLatestEntryFor(taskInstance: TaskInstance): string;
+	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
+	async getLatestEntryFor(taskInstance: TaskInstance): TaskExecutionResult;
 }
 
 interface TaskExecutionResultType {
@@ -111,7 +114,6 @@ interface TaskExecutionResultType {
 }
 
 type ConfirmationCallback = (param?: any) => void;
-
 
 interface DiskData {
 	name: string;
@@ -130,3 +132,35 @@ interface DiskDetails {
 	diskName: string;
 	diskPath: string;
 }
+
+interface CloudSyncRemoteType {
+	name: string;
+	type: string;
+	authParams: CloudAuthParameterType;
+}
+
+interface CloudAuthParameterType {
+	parameters: {
+		[key: string]: CloudSyncParameter;
+	};
+	provider?: string;
+	oAuthSupported?: boolean;
+}
+
+interface CloudSyncParameterType {
+	value: any;
+	type: 'string' | 'bool' | 'int' | 'select' | 'object';
+	allowedValues?: string[];
+	defaultValue?: string | number | boolean | object;
+}
+
+interface RemoteManagerType {
+	cloudSyncRemotes: CloudSyncRemoteType[];
+
+	async getRemotes(): void;
+	async getRemoteByName(remoteName: string): Promise<CloudSyncRemote | null>;
+	createRemote(label: string, key: string, name: string, type: string, parameters: any): CloudSyncRemote;
+	editRemote(key: string, newLabel: string, oldName: string, newType: string, parameters: any): CloudSyncRemote
+	deleteRemote(key: string): Promise<boolean>;
+}
+

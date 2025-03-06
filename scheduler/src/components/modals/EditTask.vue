@@ -42,8 +42,8 @@
 import { inject, provide, ref, Ref } from 'vue';
 import Modal from '../common/Modal.vue';
 import ParameterInput from '../parameters/ParameterInput.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate } from '../../models/Tasks';
-import { pushNotification, Notification } from 'houston-common-ui';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate, CustomTaskTemplate } from '../../models/Tasks';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 
@@ -103,10 +103,15 @@ const cancelCancel: ConfirmationCallback = async () => {
     updateShowCloseConfirmation(false);
 }
 
-
-function validateComponentParams() {
+function clearAllErrors() {
+    errorList.value = [];
     parameterInputComponent.value.clearTaskParamErrorTags();
-    parameterInputComponent.value.validation();
+}
+
+async function validateComponentParams() {
+    clearAllErrors();
+    await parameterInputComponent.value.clearTaskParamErrorTags();
+    await parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
         pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
         return false;
@@ -129,7 +134,7 @@ async function showConfirmationDialog() {
 }
 
 const confirmSaveChanges : ConfirmationCallback = async () => {
-    console.log('Saving and scheduling task now...');
+  //  console.log('Saving and scheduling task now...');
     saving.value = true;
     await saveEditedTask();
     saving.value = false;
@@ -146,6 +151,7 @@ const cancelEdit : ConfirmationCallback = async () => {
 
 async function saveEditedTask() {
     console.log('save changes triggered');
+  //  console.log('params to save:', parameters.value)
     const template = ref();
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
@@ -157,17 +163,21 @@ async function saveEditedTask() {
         template.value = new ScrubTaskTemplate();
     } else if (taskInstance.value?.template.name == "SMART Test") {
         template.value = new SmartTestTemplate();
+    } else if (taskInstance.value?.template.name == "Cloud Sync Task") {
+        template.value = new CloudSyncTaskTemplate();
+    } else if (taskInstance.value?.template.name == "Custom Task") {
+        template.value = new CustomTaskTemplate();
     }
   
     let sanitizedName = taskInstance.value.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
     if (sanitizedName.startsWith('_')) {
         sanitizedName = 'task' + sanitizedName;
     }
-    console.log('sanitizedName:', sanitizedName);
+  //  console.log('sanitizedName:', sanitizedName);
 
     const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
-    const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule);
-    console.log('edited task: ', task);
+    const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,taskInstance.value.notes);
+  //  console.log('edited task: ', task);
 
     await myScheduler.updateTaskInstance(task);
 
@@ -179,9 +189,17 @@ const updateShowSaveConfirmation = (newVal) => {
 }
 
 async function saveChangesBtn() {
-    errorList.value = [];
-    if (validateComponentParams()) {
-        showConfirmationDialog();
+    const hasChanges = parameterInputComponent.value.hasChanges();
+    if (hasChanges) {
+        // console.log('data has changed, triggering save');
+        errorList.value = [];
+        if (await validateComponentParams()) {
+            showConfirmationDialog();
+        }
+    } else {
+        // console.log('no changes');
+        showEditTaskWizard.value = false;
+        pushNotification(new Notification('No Changes Found', `Task saved as-is, no changes detected.`, 'info', 8000));
     }
 }
 

@@ -3,8 +3,8 @@
     "name": "cockpit-scheduler",
     "title": "task scheduler",
     "prerelease": true,
-    "version": "1.0.3",
-    "buildVersion": "1",
+    "version": "1.2.10",
+    "buildVersion": "6",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/cockpit-scheduler",
     "category": "utils",
@@ -28,7 +28,10 @@
                 "python3",
                 "rsync",
                 "findutils",
-                "smartmontools"
+                "smartmontools",
+                "mbuffer",
+                "rclone",
+                "netcat"
             ]
         },
         "el": {
@@ -37,7 +40,10 @@
                 "python3",
                 "rsync",
                 "findutils",
-                "smartmontools"
+                "smartmontools",
+                "mbuffer",
+                "rclone",
+                "netcat"
             ]
         }
     },
@@ -55,8 +61,8 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.0.3",
-        "buildVersion": "1",
+        "version": "1.2.10",
+        "buildVersion": "6",
         "ignore": [],
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",

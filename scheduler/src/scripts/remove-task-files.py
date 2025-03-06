@@ -6,7 +6,7 @@ def delete_task_files(unit_name):
     system_dir = '/etc/systemd/system/'
     
     prefix = "houston_scheduler_"
-    suffixes = ['.env', '.json', '.service', '.timer']
+    suffixes = ['.env', '.json', '.service', '.timer','.txt']
     deleted_count = 0
     
     # Iterate through each file in the system directory
@@ -62,6 +62,7 @@ def main():
         stop_systemd_timer(unit_name)
     remove_systemd_service(unit_name)
     delete_task_files(unit_name)
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
     
 if __name__ == "__main__":
     main()

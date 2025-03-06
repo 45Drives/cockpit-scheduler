@@ -1,12 +1,14 @@
 <template>
     <div>
         <div class="flex flex-row justify-between sm:flex sm:items-center">
-            <div class="px-4 sm:px-0 sm:flex-auto">
-                <p class="mt-4 text-medium text-default">All tasks currently configured on the system are listed here.</p>
+            <div class="text-left">
+                <p class="mt-4 text-medium text-default">
+                    All tasks currently configured on the system are listed here.
+                </p>
             </div>
             <div class="flex flex-row justify-between">
                 <div class="px-3">
-                    <label class="block text-medium font-medium leading-6 text-default">Search Tasks</label>
+                    <label class="block text-medium font-medium leading-6 text-default">Filter By Name</label>
                     <input type="text" @keydown.enter="" v-model="searchItem"
                         class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
                 </div>
@@ -18,6 +20,9 @@
                 <div class="mt-5 py-0.5 px-3">
                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                 </div>
+                <!-- <div class="mt-5 py-0.5 px-3">
+                    <button @click="showNewScheduleComponent()" class="btn btn-primary">CALENDAR</button>
+                </div> -->
             </div>
         </div>
 
@@ -33,7 +38,7 @@
                         <h2>No Tasks Found</h2>
                     </div>
                     <div v-else class="relative">
-	                    <div class="overflow-x-auto">
+                        <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
                                     <tr class="border border-default border-collapse grid grid-cols-8 w-full">
@@ -68,14 +73,17 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div  v-for="taskInstance, index in filteredAndSortedTasks" :key="index">
-                                        <TaskInstanceTableRow :task="taskInstance" :isExpanded="expandedTaskName === taskInstance.name"
-                                       @runTask="(task) => runTaskBtn(task)" @editTask="(task) => editTaskBtn(task)" @manageSchedule="(task) => manageScheduleBtn(task)" 
-                                       @removeTask="(task) => removeTaskBtn(task)" @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
-                                        ref="taskTableRow" :attr="taskInstance"
-                                        />
+                                    <div v-for="taskInstance in filteredAndSortedTasks" :key="taskInstance.name">
+                                        <TaskInstanceTableRow :task="taskInstance"
+                                            :isExpanded="expandedTaskName === taskInstance.name"
+                                            @runTask="(task) => runTaskBtn(task)"
+                                            @editTask="(task) => editTaskBtn(task)"
+                                            @manageSchedule="(task) => manageScheduleBtn(task)"
+                                            @removeTask="(task) => removeTaskBtn(task)"
+                                            @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
+                                            @viewNotes="(task) => viewNotesBtn(task)" ref="taskTableRow"
+                                            :attr="taskInstance" />
                                     </div>
-                                       
                                 </tbody>
                             </table>
                         </div>
@@ -86,17 +94,21 @@
     </div>
 
     <div v-if="showTaskWizard">
-        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler"/>
+        <component :is="addTaskComponent" :id-key="'add-task-modal'" @manageSchedule="addScheduleHandler" />
     </div>
 
     <div v-if="showEditTaskWizard">
-        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!"/>
+        <component :is="editTaskComponent" :id-key="'edit-task-modal'" :task="selectedTask!" />
     </div>
 
     <div v-if="showThisScheduleWizard">
         <component :is="scheduleWizardComponent" @close="updateShowThisScheduleWizardComponent" :task="selectedTask"
             :mode="scheduleMode" />
     </div>
+
+    <!-- <Modal :show="showNewScheduleWizard" v-on:click-outside="showNewScheduleComponent">
+        <CalendarConfig title="New Schedule" :show="showNewScheduleWizard" @close="showNewScheduleComponent"/>
+    </Modal> -->
 
     <div v-if="showRunNowPrompt">
         <component :is="runNowDialog" @close="updateShowRunNowPrompt" :showFlag="showRunNowPrompt" :title="'Run Task'"
@@ -110,6 +122,10 @@
             :confirmNo="removeTaskNo" :operating="removing" :operation="'removing'" />
     </div>
 
+    <div v-if="showNotesPrompt">
+        <component :is="viewNotesComponent" :id-key="'view-notes-task-modal'" :task="selectedTask" />
+    </div>
+
     <div v-if="showLogView">
         <component :is="logViewComponent" @close="updateShowLogViewComponent" :task="selectedTask" />
     </div>
@@ -117,32 +133,27 @@
 </template>
 
 <script setup lang="ts">
-import 'houston-common-css/src/index.css';
-import "houston-common-ui/style.css";
+import "@45drives/houston-common-css/src/index.css";
 import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
+import { pushNotification, Notification, CalendarConfig, Modal } from '@45drives/houston-common-ui';
+import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
+
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-
 const selectedTask = ref<TaskInstanceType>();
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
-// const taskTableRow = ref();
 
 async function updateStatusAndTime(task: TaskInstanceType, index: number) {
-    // console.log('taskTableRow ref:', taskTableRow.value);
     const target = taskTableRow.value[index];
-    // await taskTableRow.value!.updateTaskStatus(task);
-    // await taskTableRow.value!.fetchLatestLog(task);
     await target.updateTaskStatus(task);
     await target.fetchLatestLog(task);
 }
-
 
 /* Refresh Display */
 async function refreshBtn() {
@@ -153,7 +164,7 @@ async function refreshBtn() {
 
 const expandedTaskName = ref(null);
 function toggleDetails(taskName) {
-  expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
+    expandedTaskName.value = expandedTaskName.value === taskName ? null : taskName;
 }
 
 /* Add New Task */
@@ -183,10 +194,29 @@ async function loadEditTaskComponent() {
 }
 
 
+
 /* Generic loading function for Confirmation Dialogs */
 async function loadConfirmationDialog(dialogRef) {
     const module = await import('../components/common/ConfirmationDialog.vue');
     dialogRef.value = module.default;
+}
+/* Task Notes View*/
+const showNotesPrompt = ref(false);
+
+async function viewNotesBtn(task){
+    selectedTask.value = task;
+    console.log("viewNotesBtn triggered with task:", task);
+    await loadViewNotesComponent();
+    showNotesPrompt.value = true
+}
+
+const viewNotesComponent = ref()
+
+async function loadViewNotesComponent(){
+    console.log('load ViewNotes Component triggered in scheduler view');
+
+    const module = await import('../components/modals/Notes.vue')
+    viewNotesComponent.value = module.default;
 }
 
 
@@ -203,20 +233,36 @@ async function showRunNowDialog() {
     await loadConfirmationDialog(runNowDialog);
     showRunNowPrompt.value = true;
 }
-const runNowYes: ConfirmationCallback = async () => {
-    running.value = true;
-    await myScheduler.runTaskNow(selectedTask.value!);
-    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-    updateShowRunNowPrompt(false);
-    running.value = false;
-}
-const runNowNo: ConfirmationCallback = async () => {
-    updateShowRunNowPrompt(false);
-}
+
+
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
 }
+
+const runNowNo: ConfirmationCallback = async () => {
+    updateShowRunNowPrompt(false);
+}
+
+
+const runNowYes: ConfirmationCallback = async () => {
+    running.value = true;
+    // Push a notification that the task has started
+    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
+    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+    updateShowRunNowPrompt(false); // Close the modal
+    // Start the task and close the modal immediately
+    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
+        // Push a success notification when task finishes
+        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
+    }).catch((error) => {
+        // Push a failure notification if the task fails
+        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
+    });
+
+    updateShowRunNowPrompt(false); // Close the modal
+    running.value = false;
+};
 
 
 /* Remove Task */
@@ -237,11 +283,11 @@ async function showRemoveTaskDialog() {
 const removeTaskYes: ConfirmationCallback = async () => {
     removing.value = true;
     await myScheduler.unregisterTaskInstance(selectedTask.value!);
+    removing.value = false;
+    updateShowRemoveTaskPrompt(false);
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
-    removing.value = false;
-    updateShowRemoveTaskPrompt(false);
 }
 const removeTaskNo: ConfirmationCallback = async () => {
     updateShowRemoveTaskPrompt(false);
@@ -267,10 +313,10 @@ const loadScheduleWizardComponent = async () => {
 }
 
 async function showThisScheduleWizardComponent() {
-    console.log('Attempting to load Schedule Wizard Component...');
+  //  console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-        console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
+      //  console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
         // console.log('schedulerView: setting showThisScheduleWizard to true.');
         showThisScheduleWizard.value = true;
     } catch (error) {
@@ -278,7 +324,7 @@ async function showThisScheduleWizardComponent() {
     }
 }
 const updateShowThisScheduleWizardComponent = (newVal) => {
-    console.log('updateShowThisScheduleWizard triggered');
+  //  console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
 }
 
@@ -289,6 +335,11 @@ const addScheduleHandler = async (task) => {
     showThisScheduleWizard.value = true;
 }
 
+const showNewScheduleWizard = ref(false);
+function showNewScheduleComponent() {
+    showNewScheduleWizard.value = !showNewScheduleWizard.value;
+}
+
 
 /* Task Log View */
 const showLogView = ref(false);
@@ -297,11 +348,15 @@ async function viewLogsBtn(task) {
     await loadLogViewComponent();
     showLogView.value = true;
 }
+
+
 const logViewComponent = ref();
 async function loadLogViewComponent() {
     const module = await import('../components/modals/LogView.vue');
     logViewComponent.value = module.default;
 }
+
+
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
 }
@@ -315,6 +370,7 @@ const sort = ref<{ field: keyof TaskInstanceType | null; order: number }>({
     field: null,
     order: 1,
 });
+
 const filteredAndSortedTasks = computed(() => {
     let filteredTasks = taskInstances.value;
 
@@ -325,20 +381,16 @@ const filteredAndSortedTasks = computed(() => {
                 const value = task[key];
                 if (value && value.toString().toLowerCase().includes(searchQuery)) {
                     return true;
-                } // const result = JSON.parse(output.stdout);
-                // return result;
+                }
             }
             return false;
         });
     }
 
-    if (filterItem.value && filterItem.value !== 'no_filter') {
-        // filter based on status (need to figure out and program what status is first)
-        // filteredTasks = filteredTasks.filter(task => formatStatus(task.active) === filterItem.value);
-    }
-
     return sortTasks(filteredTasks);
 });
+
+
 const sortTasks = (tasksToSort: TaskInstanceType[]) => {
     if (!sort.value.field) return tasksToSort;
 
@@ -360,6 +412,8 @@ const sortTasks = (tasksToSort: TaskInstanceType[]) => {
         return factor * ((valueA as number) - (valueB as number));
     });
 };
+
+
 const sortBy = (field: keyof TaskInstanceType) => {
     if (sort.value.field === field) {
         sort.value.order = -sort.value.order;
@@ -369,6 +423,8 @@ const sortBy = (field: keyof TaskInstanceType) => {
     }
     sortIconFlip();
 };
+
+
 function sortIconFlip() {
     if (sort.value.order == 1) {
         sortMode.value = 'asc';
@@ -383,4 +439,6 @@ provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showThisScheduleWizard);
 provide('show-edit-task-wizard', showEditTaskWizard);
 provide('show-log-view', showLogView);
+provide('show-notes-view', showNotesPrompt);
+
 </script>
