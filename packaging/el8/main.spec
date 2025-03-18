@@ -48,10 +48,6 @@ make DESTDIR=%{buildroot} install
 - Re-running build, rpm built before but deb did not
 * Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-2
 - Fixes netcat/ssh port issue
-* Mon Feb 24 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-1
-- Fixes netcat issues found in service testing
-* Thu Feb 13 2025 Jordan Keough <jkeough@45drives.com> 1.2.9-1
-- Adds Ceph as an option in S3 rclone providers
 * Thu Feb 27 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-10
 - now that slack servers are back up should be able to build without api call failing
   action
@@ -61,6 +57,10 @@ make DESTDIR=%{buildroot} install
 - building again
 * Wed Feb 26 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-7
 - Updates package to include zfsreptask destdataset fix
+* Mon Feb 24 2025 Jordan Keough <jkeough@45drives.com> 1.2.10-1
+- Fixes netcat issues found in service testing
+* Thu Feb 13 2025 Jordan Keough <jkeough@45drives.com> 1.2.9-1
+- Adds Ceph as an option in S3 rclone providers
 * Wed Feb 12 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-6
 - Updating testing package to fix zfs replication issues
 * Wed Feb 05 2025 Jordan Keough <jkeough@45drives.com> 1.2.8-5
