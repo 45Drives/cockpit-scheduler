@@ -56,7 +56,7 @@ export const providerLogos: { [key: string]: ProviderLogo } = {
         hoverColor: "#1E90FF"
     },
     "s3-IDrive": {
-        logo: "./img/IDrive.svg",
+        logo: "./img/IDrive.png",
         mainColor: "#00BCF2",
         hoverColor: "#1E90FF"
     }

@@ -30,7 +30,7 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone",
+                "rclone (>= 1.59)",
                 "netcat"
             ]
         },
@@ -42,7 +42,7 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone",
+                "rclone >= 1.59",
                 "netcat"
             ]
         }

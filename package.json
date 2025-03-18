@@ -18,6 +18,7 @@
     "vue-next-heroicons": "^1.0.1"
   },
   "devDependencies": {
+    "esbuild": "^0.25.1",
     "typescript": "^5.8.2"
   },
   "packageManager": "yarn@4.7.0"
