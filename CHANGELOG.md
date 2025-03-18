@@ -1,3 +1,3 @@
-## task scheduler 1.3.2-2
+## task scheduler 1.3.2-3
 
-* fixes yarn lock issue
+* fixes changelog issue from merge
