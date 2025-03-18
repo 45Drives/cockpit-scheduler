@@ -406,7 +406,4 @@ function handleMouseEnter() {
 function handleMouseLeave() {
     isHovered.value = false;
 }
-
-
-
 </script>
