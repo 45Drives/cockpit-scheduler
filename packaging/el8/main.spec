@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-2
+- fixes yarn lock issue
 * Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-1
 - Adds Storj and iDrive e2 as cloud providers for Cloud Sync Tasks
 * Thu Mar 06 2025 Jordan Keough <jkeough@45drives.com> 1.3.1-1
