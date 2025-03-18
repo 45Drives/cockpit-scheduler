@@ -1,3 +1,3 @@
-## task scheduler 1.3.2-3
+## task scheduler 1.3.2-4
 
-* fixes changelog issue from merge
+* fixes final? changelog issue from merge

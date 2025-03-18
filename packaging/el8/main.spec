@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-4
+- fixes final? changelog issue from merge
 * Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-3
 - fixes changelog issue from merge
 * Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-2
