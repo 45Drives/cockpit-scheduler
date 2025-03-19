@@ -113,26 +113,26 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
             acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
         },
     }),
-    "s3-IDrive": new CloudSyncProvider("IDrive e2", "s3", {
-        parameters: {
-            provider: { value: "IDrive", type: 'string', defaultValue: "IDrive" },
-            env_auth: { value: false, type: 'bool', defaultValue: false },
-            access_key_id: { value: "", type: 'string', defaultValue: "" },
-            secret_access_key: { value: "", type: 'string', defaultValue: "" },
-            endpoint: { value: "", type: 'string', defaultValue: "" },
-            acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
-        },
-    }),
-    "storj": new CloudSyncProvider("Storj", "storj", {
-        parameters: {
-            provider: { value: "existing", type: 'select', allowedValues: ["existing", "new"], defaultValue: "existing" },
-            access_grant: { value: "", type: 'string', defaultValue: "" },
-            satellite_address: { value: "us1.storj.io", type: 'select', allowedValues: ["us1.storj.io", "eu1.storj.io", "ap1.storj.io"], defaultValue: "us1.storj.io" },
-            api_key: { value: "", type: 'string', defaultValue: "" },
-            passphrase: { value: "", type: 'string', defaultValue: "" },
-            description: { value: "", type: 'string', defaultValue: "" }
-        },
-    }),
+    // "s3-IDrive": new CloudSyncProvider("IDrive e2", "s3", {
+    //     parameters: {
+    //         provider: { value: "IDrive", type: 'string', defaultValue: "IDrive" },
+    //         env_auth: { value: false, type: 'bool', defaultValue: false },
+    //         access_key_id: { value: "", type: 'string', defaultValue: "" },
+    //         secret_access_key: { value: "", type: 'string', defaultValue: "" },
+    //         endpoint: { value: "", type: 'string', defaultValue: "" },
+    //         acl: { value: "private", type: 'select', allowedValues: ["private", "public-read", "public-read-write", "authenticated-read", "bucket-owner-read", "bucket-owner-full-control"], defaultValue: "private" }
+    //     },
+    // }),
+    // "storj": new CloudSyncProvider("Storj", "storj", {
+    //     parameters: {
+    //         provider: { value: "existing", type: 'select', allowedValues: ["existing", "new"], defaultValue: "existing" },
+    //         access_grant: { value: "", type: 'string', defaultValue: "" },
+    //         satellite_address: { value: "us1.storj.io", type: 'select', allowedValues: ["us1.storj.io", "eu1.storj.io", "ap1.storj.io"], defaultValue: "us1.storj.io" },
+    //         api_key: { value: "", type: 'string', defaultValue: "" },
+    //         passphrase: { value: "", type: 'string', defaultValue: "" },
+    //         description: { value: "", type: 'string', defaultValue: "" }
+    //     },
+    // }),
 };
 
 export interface CloudAuthParameter {
