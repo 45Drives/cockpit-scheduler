@@ -2,9 +2,9 @@
     "__version": "45D-R2",
     "name": "cockpit-scheduler",
     "title": "task scheduler",
-    "prerelease": false,
+    "prerelease": true,
     "version": "1.3.3",
-    "buildVersion": "1",
+    "buildVersion": "2",
     "author": "Jordan Keough <jkeough@45drives.com>",
     "url": "https://github.com/45Drives/cockpit-scheduler",
     "category": "utils",
@@ -30,7 +30,7 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone",
+                "rclone (>= 1.59)",
                 "netcat"
             ]
         },
@@ -42,7 +42,12 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone",
+                {
+                    "name": "rclone",
+                    "version": ">=1.59",
+                    "source": "https://downloads.rclone.org/rclone-current-linux-amd64.rpm",
+                    "install_method": "manual"
+                },
                 "netcat"
             ]
         }
@@ -62,7 +67,7 @@
     "changelog": {
         "urgency": "medium",
         "version": "1.3.3",
-        "buildVersion": "1",
+        "buildVersion": "2",
         "ignore": [],
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
