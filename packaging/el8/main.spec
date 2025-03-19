@@ -28,6 +28,8 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Mar 19 2025 Jordan Keough <jkeough@45drives.com> 1.3.3-2
+- Testing manual rclone version for el8
 * Wed Mar 19 2025 Jordan Keough <jkeough@45drives.com> 1.3.3-1
 - Rolls back update with Storj and iDrive addition due to an issue with dependency
   upgrade for Rclone

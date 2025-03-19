@@ -1,3 +1,3 @@
-## task scheduler 1.3.3-1
+## task scheduler 1.3.3-2
 
-* Rolls back update with Storj and iDrive addition due to an issue with dependency upgrade for Rclone
+* Testing manual rclone version for el8
