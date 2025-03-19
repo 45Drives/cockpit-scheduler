@@ -30,7 +30,7 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                "rclone (>= 1.59)",
+                "rclone",
                 "netcat"
             ]
         },
@@ -42,12 +42,7 @@
                 "findutils",
                 "smartmontools",
                 "mbuffer",
-                {
-                    "name": "rclone",
-                    "version": ">=1.59",
-                    "source": "https://downloads.rclone.org/rclone-current-linux-amd64.rpm",
-                    "install_method": "manual"
-                },
+                "rclone",
                 "netcat"
             ]
         }
