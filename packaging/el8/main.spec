@@ -28,6 +28,9 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Mar 19 2025 Jordan Keough <jkeough@45drives.com> 1.3.4-1
+- Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting
+  latest rclone version on our repos
 * Wed Mar 19 2025 Jordan Keough <jkeough@45drives.com> 1.3.3-1
 - Rolls back update with Storj and iDrive addition due to an issue with dependency
   upgrade for Rclone

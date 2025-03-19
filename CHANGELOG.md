@@ -1,3 +1,3 @@
-## task scheduler 1.3.3-1
+## task scheduler 1.3.4-1
 
-* Rolls back update with Storj and iDrive addition due to an issue with dependency upgrade for Rclone
+* Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting latest rclone version on our repos
