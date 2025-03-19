@@ -28,6 +28,9 @@ make DESTDIR=%{buildroot} install
 /opt/45drives/houston/scheduler/*
 
 %changelog
+* Wed Mar 19 2025 Jordan Keough <jkeough@45drives.com> 1.3.3-1
+- Rolls back update with Storj and iDrive addition due to an issue with dependency
+  upgrade for Rclone
 * Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-4
 - fixes final? changelog issue from merge
 * Tue Mar 18 2025 Jordan Keough <jkeough@45drives.com> 1.3.2-3

@@ -1,3 +1,3 @@
-## task scheduler 1.3.2-4
+## task scheduler 1.3.3-1
 
-* fixes final? changelog issue from merge
+* Rolls back update with Storj and iDrive addition due to an issue with dependency upgrade for Rclone
