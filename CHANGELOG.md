@@ -1,3 +1,3 @@
-## task scheduler 1.3.3-2
+## task scheduler 1.3.3-3
 
-* Testing manual rclone version for el8
+* updates rclone again to see if works with newly hosted rclone in our repo
