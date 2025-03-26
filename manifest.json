@@ -1,69 +1,79 @@
 {
-    "__version": "45D-R2",
+    "schema_version": "45D_AP_V2.0",
     "name": "cockpit-scheduler",
     "title": "task scheduler",
-    "prerelease": false,
+    "description": "Cockpit module for server task automation.",
     "version": "1.3.4",
-    "buildVersion": "1",
+    "build_number": "1",
+    "stable": true,
     "author": "Jordan Keough <jkeough@45drives.com>",
-    "url": "https://github.com/45Drives/cockpit-scheduler",
-    "category": "utils",
-    "priority": "optional",
-    "licence": "GPL-3.0+",
-    "architecture": {
-        "deb": "all",
-        "el": "noarch"
-    },
-    "description": {
-        "long": "task scheduler for automating server tasks",
-        "short": "task scheduler"
-    },
+    "git_url": "https://github.com/45Drives/cockpit-scheduler",
+    "license": "GPL-3.0+",
     "defaults": {
-        "urgency": "medium"
+        "change_urgency": "medium"
+    },
+    "architecture": {
+        "rocky": "x86_64",
+        "debian": "amd64",
+        "ubuntu": "amd64"
     },
     "dependencies": {
-        "deb": {
-            "focal": [
-                "cockpit",
-                "python3",
-                "rsync",
-                "findutils",
-                "smartmontools",
-                "mbuffer",
-                "rclone (>= 1.59)",
-                "netcat"
-            ]
-        },
-        "el": {
-            "el8": [
-                "cockpit",
-                "python3",
-                "rsync",
-                "findutils",
-                "smartmontools",
-                "mbuffer",
-                "rclone >= 1.59",
-                "netcat"
-            ]
-        }
+        "ubuntu_common": [
+            "cockpit",
+            "python3",
+            "rsync",
+            "findutils",
+            "smartmontools",
+            "mbuffer",
+            "rclone (>= 1.59)",
+            "netcat"
+        ],
+        "rocky_common": [
+            "cockpit",
+            "python3",
+            "rsync",
+            "findutils",
+            "smartmontools",
+            "mbuffer",
+            "rclone (>= 1.59)",
+            "netcat"
+        ]
     },
-    "releases": [
+    "builds": [
         {
-            "image": "node-ubuntu-focal-builder",
-            "codeName": "focal",
-            "type": "deb"
+            "group": "ubuntu",
+            "os_name": "ubuntu-focal",
+            "image": "ci.cr.45d.io/ci/simple/ubuntu-focal:1"
         },
         {
-            "image": "node-rocky-el8-builder",
-            "codeName": "el8",
-            "type": "el"
+            "group": "ubuntu",
+            "os_name": "ubuntu-jammy",
+            "image": "ci.cr.45d.io/ci/simple/ubuntu-jammy:1"
+        },
+        {
+            "group": "debian",
+            "os_name": "debian-bookworm",
+            "image": "ci.cr.45d.io/ci/simple/ubuntu-jammy:1"
+        },
+        {
+            "group": "rocky",
+            "os_name": "rocky-el8",
+            "image": "ci.cr.45d.io/ci/simple/rocky-el8:1"
+        },
+        {
+            "group": "rocky",
+            "os_name": "rocky-el9",
+            "image": "ci.cr.45d.io/ci/simple/rocky-el9:1"
         }
+    ],
+    "repos": [
+        "community",
+        "enterprise"
     ],
     "changelog": {
         "urgency": "medium",
         "version": "1.3.4",
-        "buildVersion": "1",
-        "ignore": [],
+        "build_number": "1",
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
         "changes": []
