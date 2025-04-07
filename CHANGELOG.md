@@ -1,3 +1,3 @@
-## task scheduler 1.3.1-1
+## task scheduler 1.3.4-1
 
-* Fixes an issue in replication script when checking remote snapshots
+* Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting latest rclone version on our repos
