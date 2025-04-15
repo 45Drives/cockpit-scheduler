@@ -1,3 +1,3 @@
-## task scheduler 1.3.5-2
+## task scheduler 1.3.5-3
 
-* Updated ToolTip for CloudSync Target Path. Rebuilding package with build v2 process
+* Fixes bug with notes not editing properly for Cloud task
