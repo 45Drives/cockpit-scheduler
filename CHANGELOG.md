@@ -1,3 +1,3 @@
-## task scheduler 1.2.7-1
+## task scheduler 1.3.4-1
 
-* *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters and updates EditTask logic to check for changes before saving.
+* Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting latest rclone version on our repos

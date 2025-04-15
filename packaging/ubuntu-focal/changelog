@@ -1,3 +1,173 @@
+cockpit-scheduler (1.3.4-1focal) focal; urgency=medium
+
+  * Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting
+    latest rclone version on our repos
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 19 Mar 2025 08:42:25 -0300
+
+cockpit-scheduler (1.3.3-1focal) focal; urgency=medium
+
+  * Rolls back update with Storj and iDrive addition due to an issue with dependency
+    upgrade for Rclone
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 19 Mar 2025 06:15:59 -0300
+
+cockpit-scheduler (1.3.2-4focal) focal; urgency=medium
+
+  * fixes final? changelog issue from merge
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 18 Mar 2025 13:01:16 -0300
+
+cockpit-scheduler (1.3.2-3focal) focal; urgency=medium
+
+  * fixes changelog issue from merge
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 18 Mar 2025 12:54:48 -0300
+
+cockpit-scheduler (1.3.2-2focal) focal; urgency=medium
+
+  * fixes yarn lock issue
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 18 Mar 2025 12:50:30 -0300
+
+cockpit-scheduler (1.3.2-1focal) focal; urgency=medium
+
+  * Adds Storj and iDrive e2 as cloud providers for Cloud Sync Tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 18 Mar 2025 12:47:46 -0300
+
+cockpit-scheduler (1.3.1-1focal) focal; urgency=medium
+
+  * Fixes an issue in replication script when checking remote snapshots
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 06 Mar 2025 07:12:49 -0400
+
+cockpit-scheduler (1.3.0-1focal) focal; urgency=medium
+
+  * Introduces Cloud Sync Tasks, Custom Tasks, and adding Notes to tasks. Also adds
+    Netcat as an alternative to SSH when using ZFS Replication, as well as numerous
+    other QoL and UI updates.
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 06 Mar 2025 05:11:11 -0400
+
+cockpit-scheduler (1.2.10-6focal) focal; urgency=medium
+
+  * update build
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 11:24:11 -0400
+
+cockpit-scheduler (1.2.10-5focal) focal; urgency=medium
+
+  * building
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 11:18:26 -0400
+
+cockpit-scheduler (1.2.10-4focal) focal; urgency=medium
+
+  * attempting to build
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 10:27:44 -0400
+
+cockpit-scheduler (1.2.10-3focal) focal; urgency=medium
+
+  * Re-running build, rpm built before but deb did not
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 10:16:15 -0400
+
+cockpit-scheduler (1.2.10-2focal) focal; urgency=medium
+
+  * Fixes netcat/ssh port issue
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 10:00:54 -0400
+
+cockpit-scheduler (1.2.8-10focal) focal; urgency=medium
+
+  * now that slack servers are back up should be able to build without api call failing
+    action
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Feb 2025 04:14:06 -0400
+
+cockpit-scheduler (1.2.8-9focal) focal; urgency=medium
+
+  * building again with testing makefile changes
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Feb 2025 12:00:59 -0400
+
+cockpit-scheduler (1.2.8-8focal) focal; urgency=medium
+
+  * building again
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Feb 2025 11:47:40 -0400
+
+cockpit-scheduler (1.2.8-7focal) focal; urgency=medium
+
+  * Updates package to include zfsreptask destdataset fix
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Feb 2025 11:45:17 -0400
+ 
+cockpit-scheduler (1.2.10-1focal) focal; urgency=medium
+
+  * Fixes netcat issues found in service testing
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 24 Feb 2025 04:49:57 -0400
+
+cockpit-scheduler (1.2.9-1focal) focal; urgency=medium
+
+  * Adds Ceph as an option in S3 rclone providers
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 13 Feb 2025 09:34:14 -0400
+ 
+cockpit-scheduler (1.2.8-6focal) focal; urgency=medium
+
+  * Updating testing package to fix zfs replication issues
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 12 Feb 2025 11:13:16 -0400
+
+cockpit-scheduler (1.2.8-5focal) focal; urgency=medium
+
+  * removed scheduler test from makefile to try and rectify deb build issue
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 07:12:38 -0400
+
+cockpit-scheduler (1.2.8-4focal) focal; urgency=medium
+
+  * Building testing package for Scheduler Phase 3 and 4
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 06:37:25 -0400
+
+cockpit-scheduler (1.2.8-3focal) focal; urgency=medium
+
+  * Building testing package for Scheduler Phase 3 and 4
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 06:22:09 -0400
+
+cockpit-scheduler (1.2.8-2focal) focal; urgency=medium
+
+  * Building testing package for Scheduler Phase 3 and 4
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Feb 2025 06:16:42 -0400
+
+cockpit-scheduler (1.2.7-3focal) focal; urgency=medium
+
+  * building package
+  * release notes
+  * Added netcat functionality, notes functionality and fixed cutom task
+
+ -- Rachit Hans <rhans@45drives.com>  Thu, 09 Jan 2025 08:31:12 -0400
+
+cockpit-scheduler (1.2.7-2-1focal) focal; urgency=medium
+
+  * Building Package
+
+ -- Rachit Hans <rhans@45drives.com>  Thu, 09 Jan 2025 07:35:03 -0400
+
+cockpit-scheduler (1.2.8-1focal) focal; urgency=medium
+
+  * Creating testing package for Cloud-Sync addition
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 06 Jan 2025 07:20:27 -0400
+
+
 cockpit-scheduler (1.2.7-1focal) focal; urgency=medium
 
   * *FIXED VERSION NUMBER* Adds more robust error handling to ZFSRepTask parameters
@@ -11,6 +181,12 @@ cockpit-scheduler (1.2.6-1focal) focal; urgency=medium
     logic to check for changes before saving.
 
  -- Jordan Keough <jkeough@45drives.com>  Thu, 02 Jan 2025 06:50:51 -0400
+
+cockpit-scheduler (1.2.6-1focal) focal; urgency=medium
+
+  * Added Custom Task
+
+ -- Rachit Hans <rhans@45drives.com>  Fri, 20 Dec 2024 05:51:25 -0400
 
 cockpit-scheduler (1.2.5-1focal) focal; urgency=medium
 

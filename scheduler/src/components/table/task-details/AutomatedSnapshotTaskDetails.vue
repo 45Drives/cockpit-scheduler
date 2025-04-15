@@ -34,8 +34,8 @@
                 Keep Snapshots For: <b>{{ findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime') }} {{
                     findValue(taskInstance.parameters, 'snapshotRetention', 'retentionUnit') }}</b>
             </p>
-            <p v-else class="my-2 truncate" :title="`No Snapshot Retention Policy Configured (Keep All)`">
-                <b>No Snapshot Retention Policy Configured</b>
+            <p v-else class="my-2 truncate" :title="`No Retention Policy (Keep All Snapshots)`">
+                <b>No Retention Policy (Keep All Snapshots)</b>
             </p>
         </div>
         <div class="col-span-2 row-span-2">
