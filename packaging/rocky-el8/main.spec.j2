@@ -1,18 +1,18 @@
-Name: ::package_name::
-Version: ::package_version::
-Release: ::package_build_version::%{?dist}
-Summary: ::package_description_short::
-License: ::package_licence::
-URL: ::package_url::
+Name: {{ name }}
+Version: {{ version }}
+Release: {{ build_number }}%{?dist}
+Summary: {{ description }}
+License: {{ license }}
+URL: {{ git_url }}
 Source0: %{name}-%{version}.tar.gz
-BuildArch: ::package_architecture_el::
-Requires: ::package_dependencies_el_el8::
+BuildArch: {{ architecture.rocky }}
+Requires: {{ dependencies.rocky_common | join(',') }}
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 
 %description
-::package_title::
-::package_description_long::
+{{ title }}
+{{ description }}
 
 %prep
 %setup -q
@@ -95,8 +95,6 @@ make DESTDIR=%{buildroot} install
 * Thu Jan 02 2025 Jordan Keough <jkeough@45drives.com> 1.2.6-1
 - Adds more robust error handling to ZFSRepTask parameters and updates EditTask logic
   to check for changes before saving.
-* Fri Dec 20 2024 Rachit Hans <rhans@45drives.com> 1.2.6-1
-- Added Custom Task
 * Thu Dec 12 2024 Jordan Keough <jkeough@45drives.com> 1.2.5-1
 - Fixes issue with task searching/sorting
 * Wed Dec 11 2024 Rachit Hans <rhans@45drives.com> 1.2.4-1

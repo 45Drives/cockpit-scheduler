@@ -61,8 +61,7 @@
                     <div class="flex flex-row justify-between items-center">
                         <label class="block text-sm leading-6 text-default">
                             Transfer Type
-                            <InfoTile class="ml-1"
-                                :title="transferTypeComputed" />
+                            <InfoTile class="ml-1" :title="transferTypeComputed" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.transferType" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -121,8 +120,7 @@
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Local Path
-                            <InfoTile class="ml-1"
-                                :title="localTitleComputed" />
+                            <InfoTile class="ml-1" :title="localTitleComputed" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.localPath" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -130,16 +128,14 @@
                         <input type="text" v-model="localPath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[errorTags.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify Local Path"
-                            :title="localTitleComputed" />
+                            placeholder="Specify Local Path" :title="localTitleComputed" />
                     </div>
                 </div>
                 <div name="destination-path">
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Target Path
-                            <InfoTile class="ml-1"
-                                :title="targetTitleComputed" />
+                            <InfoTile class="ml-1" :title="targetTitleComputed" />
                         </label>
                         <ExclamationCircleIcon v-if="errorTags.targetPath" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -147,8 +143,7 @@
                         <input type="text" v-model="targetPath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[errorTags.targetPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify Target Path"
-                            :title="targetTitleComputed" />
+                            placeholder="Specify Target Path" :title="targetTitleComputed" />
                     </div>
                 </div>
             </div>
@@ -600,12 +595,12 @@ const errorTags = ref({
     numberOfTransfers: false,
     includePattern: false,
     excludePattern: false,
-    customArgs: false, 
+    customArgs: false,
     limitBandwidthKbps: false,
-    includeFromPath: false, 
-    excludeFromPath: false, 
+    includeFromPath: false,
+    excludeFromPath: false,
     maxTransferSize: false,
-    cutoffMode: false, 
+    cutoffMode: false,
     multiThreadChunkSize: false,
     multiThreadCutoff: false,
     multiThreadStreams: false,
@@ -657,7 +652,7 @@ onMounted(async () => {
     await initializeData();
     isTaskLoading.value = false; // Mark loading as complete
 
-  //  console.log("Existing remotes:", existingRemotes);
+    //  console.log("Existing remotes:", existingRemotes);
 });
 
 watch(selectedRemote, (newVal) => {
@@ -670,7 +665,7 @@ watch(selectedRemote, (newVal) => {
 async function initializeData() {
     if (props.task) {
         // enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
-      //  console.log('loading task:', props.task);
+        //  console.log('loading task:', props.task);
         loading.value = true;
 
         const params = props.task.parameters.children;
@@ -702,7 +697,7 @@ async function initializeData() {
         limitBandwidthKbps.value = rcloneOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
         ignoreSize.value = rcloneOptions.find(p => p.key === 'ignore_size_flag')!.value;
         inplace.value = rcloneOptions.find(p => p.key === 'inplace_flag')!.value;
-        
+
         multiThreadChunkSize.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size')!.value;
         multiThreadChunkSizeUnit.value = rcloneOptions.find(p => p.key === 'multithread_chunk_size_unit')!.value || 'MiB';
         multiThreadCutoff.value = rcloneOptions.find(p => p.key === 'multithread_cutoff')!.value;
@@ -872,15 +867,41 @@ const localTitleComputed = computed(() => {
 
 const targetTitleComputed = computed(() => {
     if (!directionSwitched.value) {
-        //Push from local to target
+        // Push from local to remote
         return `This is the destination path on the remote storage. Files from the local path will be uploaded here.
-- Verify the target directory exists or rclone can create it.
-- Avoid uploading directly into the root folder unless necessary.`;
+
+Format: remoteName:bucketName/path/to/folder
+
+- remoteName: The rclone remote (e.g., 'gdrive', 's3remote', 'azureblob')
+- bucketName or container: Required for cloud remotes like S3, B2, Azure, etc.
+- path/to/folder: Optional subdirectory within the bucket/container
+
+Examples:
+- gdrive:Backups/April2025
+- s3remote:my-bucket/daily
+- azureblob:container/data
+
+Tips:
+- Verify the path exists or rclone is allowed to create it.
+- Avoid uploading directly to the root of a bucket unless necessary.`;
     } else {
-        //Pull from target to local
+        // Pull from remote to local
         return `This is the source path on the remote storage. Files from this path will be pulled to your local system.
-- Verify the remote directory exists and contains the files you want.
-- Avoid downloading large or unnecessary directories unless needed.`;
+
+Format: remoteName:bucketName/path/to/folder
+
+- remoteName: The rclone remote (e.g., 'gdrive', 's3remote', 'azureblob')
+- bucketName or container: Required for cloud remotes like S3, B2, Azure, etc.
+- path/to/folder: Specific directory or file path to download
+
+Examples:
+- dropbox:Projects/Reports
+- b2:mybucket/backups
+- idrive:archive/2024
+
+Tips:
+- Make sure the path exists and contains the files you want.
+- Avoid pulling large or unnecessary directories unless required.`;
     }
 });
 
@@ -938,7 +959,7 @@ async function validateLocalPath() {
     // Check if the path exists asynchronously
     const pathExists = await checkLocalPathExists(localPath.value);
     const validPath = validatePath(localPath.value);
-  //  console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
+    //  console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
 
     if (!pathExists) {
         errorList.value.push(`Path does not exist: ${localPath.value}`);
@@ -953,7 +974,7 @@ async function validateLocalPath() {
     }
 
     // If everything is valid
-  //  console.log("Valid source path.");
+    //  console.log("Valid source path.");
     return true;
 }
 
@@ -969,7 +990,7 @@ function validateDestinationPath() {
         // if (!targetPath.value.endsWith('/')) {
         //     targetPath.value += '/';
         // }
-      //  console.log("Valid destination path: " + targetPath.value);
+        //  console.log("Valid destination path: " + targetPath.value);
         return true;
     } else {
         errorList.value.push("Target path is invalid.");
@@ -981,7 +1002,7 @@ function validateDestinationPath() {
 function validatePath(path, isRemote?) {
     //no spaces allowed
     // const pathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\-.]+(?:\\|\/)?)*$/;
-    
+
     if (isRemote) {
         const rcloneRegex = /^[\w\-.]+:[\\/]*(?:[\w\s\-.]+[\\/])*[\w\s\-.]*$/;
         return rcloneRegex.test(path);
@@ -1116,7 +1137,7 @@ async function validateParams() {
 
     if (errorList.value.length == 0 && Object.values(errorTags.value).every(tag => tag === false)) {
         setParams();
-    } 
+    }
 }
 
 function setParams() {
@@ -1161,13 +1182,13 @@ function setParams() {
         );
 
     parameters.value = newParams;
-  //  console.log('newParams:', newParams);
+    //  console.log('newParams:', newParams);
 }
 
 onMounted(async () => {
     await initializeData();
     // console.log("Component mounted");
-  //  console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
+    //  console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
 });
 
 defineExpose({
