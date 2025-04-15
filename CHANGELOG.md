@@ -1,3 +1,3 @@
-## task scheduler 1.3.1-2
+## task scheduler 1.3.5-2
 
-* fixes changelog and rebuilds
+* Updated ToolTip for CloudSync Target Path. Rebuilding package with build v2 process

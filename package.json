@@ -9,9 +9,17 @@
     "build": "yarn build:common && yarn build:app"
   },
   "dependencies": {
+    "@45drives/houston-common-ui": "workspace:^",
+    "@heroicons/vue": "^2.2.0",
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "vue": "^3.5.13",
+    "vue-next-heroicons": "^1.0.1"
   },
-  "packageManager": "yarn@4.6.0"
+  "devDependencies": {
+    "esbuild": "^0.25.1",
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "yarn@4.7.0"
 }
