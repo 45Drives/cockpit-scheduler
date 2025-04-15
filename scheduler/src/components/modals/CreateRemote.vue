@@ -359,7 +359,10 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             try {
                 if (event.origin !== 'https://cloud-sync.45d.io') return;
                 const { accessToken: token, refreshToken: refresh, expiry: expiry, userId: id } = event.data;
-
+                // console.log('accessToken:', token);
+                // console.log('refreshToken:', refresh);
+                // console.log('userId:', id);
+                // console.log('expiry:', expiry);
                 if (token && refresh && id) {
                     accessToken.value = token;
                     refreshToken.value = refresh;

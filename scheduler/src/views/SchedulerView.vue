@@ -20,9 +20,6 @@
                 <div class="mt-5 py-0.5 px-3">
                     <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
                 </div>
-                <!-- <div class="mt-5 py-0.5 px-3">
-                    <button @click="showNewScheduleComponent()" class="btn btn-primary">CALENDAR</button>
-                </div> -->
             </div>
         </div>
 
@@ -40,8 +37,8 @@
                     <div v-else class="relative">
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
-                                <thead class="bg-well">
-                                    <tr class="border border-default border-collapse grid grid-cols-8 w-full">
+                                <!-- <thead class="bg-well">
+                                     <tr class="border border-default border-collapse grid grid-cols-8 w-full">
                                         <th scope="col"
                                             class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
                                             <button @click="sortBy('name')"
@@ -70,8 +67,40 @@
                                             class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
                                             Details
                                         </th>
+                                </thead> -->
+                                <thead class="bg-well">
+                                    <tr class="border border-default border-collapse flex w-full">
+                                        <th v-for="(width, index) in columnWidths" :key="index"
+                                            :style="{ width: width + 'px' }"
+                                            class="relative px-3 py-3.5 text-left text-sm font-semibold text-default border border-default flex items-center">
+
+                                            <!-- Sortable "Name" Column -->
+                                            <div v-if="headers[index] === 'Name'" class="flex justify-between w-full">
+                                                <button @click="sortBy('name')"
+                                                    class="flex w-full justify-between whitespace-nowrap">
+                                                    <span>{{ headers[index] }}</span>
+                                                    <BarsArrowDownIcon class="ml-1 w-5 h-5 text-muted"
+                                                        v-if="sort.field === 'name' && sortMode == 'desc'" />
+                                                    <BarsArrowUpIcon class="ml-1 w-5 h-5 text-muted"
+                                                        v-else-if="sort.field === 'name' && sortMode == 'asc'" />
+                                                    <Bars3Icon class="ml-1 w-5 h-5 text-muted" v-else />
+                                                </button>
+                                            </div>
+
+                                            <!-- Non-sortable columns -->
+                                            <div v-else class="flex justify-between w-full">
+                                                <span>{{ headers[index] }}</span>
+                                            </div>
+
+                                            <!-- Resize Handle -->
+                                            <div v-if="index < columnWidths.length - 1"
+                                                class="resize-handle w-2 h-full absolute right-0 top-0 cursor-col-resize"
+                                                @mousedown="startResizing(index, $event)">
+                                            </div>
+                                        </th>
                                     </tr>
                                 </thead>
+
                                 <tbody class="bg-accent">
                                     <div v-for="taskInstance in filteredAndSortedTasks" :key="taskInstance.name">
                                         <TaskInstanceTableRow :task="taskInstance"
@@ -106,10 +135,6 @@
             :mode="scheduleMode" />
     </div>
 
-    <!-- <Modal :show="showNewScheduleWizard" v-on:click-outside="showNewScheduleComponent">
-        <CalendarConfig title="New Schedule" :show="showNewScheduleWizard" @close="showNewScheduleComponent"/>
-    </Modal> -->
-
     <div v-if="showRunNowPrompt">
         <component :is="runNowDialog" @close="updateShowRunNowPrompt" :showFlag="showRunNowPrompt" :title="'Run Task'"
             :message="'Do you wish to run this task now?'" :confirmYes="runNowYes" :confirmNo="runNowNo"
@@ -134,15 +159,14 @@
 
 <script setup lang="ts">
 import "@45drives/houston-common-css/src/index.css";
-import { computed, ref, provide } from 'vue';
+import { computed, ref, provide, onUnmounted } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { pushNotification, Notification, CalendarConfig, Modal } from '@45drives/houston-common-ui';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { TaskInstance } from '../models/Tasks';
-
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
@@ -203,7 +227,7 @@ async function loadConfirmationDialog(dialogRef) {
 /* Task Notes View*/
 const showNotesPrompt = ref(false);
 
-async function viewNotesBtn(task){
+async function viewNotesBtn(task) {
     selectedTask.value = task;
     console.log("viewNotesBtn triggered with task:", task);
     await loadViewNotesComponent();
@@ -212,7 +236,7 @@ async function viewNotesBtn(task){
 
 const viewNotesComponent = ref()
 
-async function loadViewNotesComponent(){
+async function loadViewNotesComponent() {
     console.log('load ViewNotes Component triggered in scheduler view');
 
     const module = await import('../components/modals/Notes.vue')
@@ -313,10 +337,10 @@ const loadScheduleWizardComponent = async () => {
 }
 
 async function showThisScheduleWizardComponent() {
-  //  console.log('Attempting to load Schedule Wizard Component...');
+    //  console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-      //  console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
+        //  console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
         // console.log('schedulerView: setting showThisScheduleWizard to true.');
         showThisScheduleWizard.value = true;
     } catch (error) {
@@ -324,7 +348,7 @@ async function showThisScheduleWizardComponent() {
     }
 }
 const updateShowThisScheduleWizardComponent = (newVal) => {
-  //  console.log('updateShowThisScheduleWizard triggered');
+    //  console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
 }
 
@@ -333,11 +357,6 @@ const addScheduleHandler = async (task) => {
     scheduleMode.value = 'new';
     await loadScheduleWizardComponent();
     showThisScheduleWizard.value = true;
-}
-
-const showNewScheduleWizard = ref(false);
-function showNewScheduleComponent() {
-    showNewScheduleWizard.value = !showNewScheduleWizard.value;
 }
 
 
@@ -435,6 +454,48 @@ function sortIconFlip() {
     }
 }
 
+
+
+/* Adjustable Columns */
+const headers = ['Name', 'Status', 'Last Run', 'Scheduled', 'Details']
+
+const columnWidths = ref<number[]>([200, 150, 180, 100, 100]); // Example widths
+const resizingColumn = ref<number | null>(null);
+const startX = ref<number>(0);
+const startWidth = ref<number>(0);
+
+const startResizing = (index: number, event: MouseEvent) => {
+    resizingColumn.value = index;
+    startX.value = event.clientX;
+    startWidth.value = columnWidths.value[index];
+
+    document.addEventListener("mousemove", resizeColumn);
+    document.addEventListener("mouseup", stopResizing);
+};
+
+const resizeColumn = (event: MouseEvent) => {
+    if (resizingColumn.value === null) return;
+
+    const deltaX = event.clientX - startX.value;
+    const newWidth = startWidth.value + deltaX;
+
+    if (newWidth > 50) { // Prevent shrinking too much
+        columnWidths.value[resizingColumn.value] = newWidth;
+    }
+};
+
+const stopResizing = () => {
+    resizingColumn.value = null;
+    document.removeEventListener("mousemove", resizeColumn);
+    document.removeEventListener("mouseup", stopResizing);
+};
+
+// Cleanup listeners on unmount
+onUnmounted(() => {
+    document.removeEventListener("mousemove", resizeColumn);
+    document.removeEventListener("mouseup", stopResizing);
+});
+
 provide('show-task-wizard', showTaskWizard);
 provide('show-schedule-wizard', showThisScheduleWizard);
 provide('show-edit-task-wizard', showEditTaskWizard);
@@ -442,3 +503,21 @@ provide('show-log-view', showLogView);
 provide('show-notes-view', showNotesPrompt);
 
 </script>
+
+
+<style scoped>
+.resize-handle {
+    width: 6px;
+    height: 100%;
+    background-color: transparent;
+    cursor: col-resize;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+}
+
+.resize-handle:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+}
+</style>
