@@ -2,6 +2,7 @@ import subprocess
 import sys
 import datetime
 import os
+import json
 # import time
 
 class Snapshot:
@@ -9,23 +10,74 @@ class Snapshot:
 		self.name = name
 		self.guid = guid
 		self.creation = creation
+def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
+    try:
+        dbus_script = "/opt/45drives/houston/houston-notify"
+        subprocess.run([
+            "python3",
+            dbus_script,
+            json.dumps(payload)
+        ], stdout=open(debug_log, "a"), stderr=subprocess.STDOUT)
+    except Exception as e:
+        print(f"⚠️ Failed to send D-Bus notification: {e}")
 	 
 def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
-	command = [ 'zfs', 'snapshot' ]
-	if is_recursive:
-		command.append('-r')
-	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
-  
-	if custom_name:
-		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
-	else:
-		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
-  
-	command.append(new_snap)
-	subprocess.run(command)
-	print(f"new snapshot created: {new_snap}")
+    command = ['zfs', 'snapshot']
+    if is_recursive:
+        command.append('-r')
 
-	return new_snap
+    timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+
+    if custom_name:
+        new_snap = f'{filesystem}@{custom_name}-{task_name}-{timestamp}'
+    else:
+        new_snap = f'{filesystem}@{task_name}-{timestamp}'
+
+    command.append(new_snap)
+
+    try:
+        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        message = (
+            f"Snapshot {new_snap} was successfully created "
+            f"on filesystem {filesystem}."
+        )
+        print(message)
+
+        notify_payload = {
+            "timestamp": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "event": "snapshot_created",
+            "filesystem": filesystem,
+            "snapshot": new_snap,
+            "subject": "ZFS Snapshot Created",
+            "email_message": message,
+            "severity": "info"
+        }
+
+        send_dbus_notification(notify_payload)
+        return new_snap
+
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode().strip() if e.stderr else str(e)
+        message = (
+            f"Snapshot creation failed for {new_snap}"
+            f"on filesystem {filesystem}."
+            f"Error: {error_msg}"
+        )
+        print(message)
+
+        notify_payload = {
+            "timestamp": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "event": "snapshot_failed",
+            "fileSystem": filesystem,
+            "snapShot": new_snap,
+            "subject": "ZFS Snapshot Failed",
+            "email_message": message,
+            "severity": "warning",
+            "errors": error_msg
+        }
+
+        send_dbus_notification(notify_payload)
+        return None
 
 def get_local_snapshots(filesystem):
     command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]

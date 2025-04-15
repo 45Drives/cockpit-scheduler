@@ -8,4 +8,4 @@ cockpit-scheduler (1.2.7-1bookworm) focal; urgency=medium
 
   * Initial build for bookworm
 
- -- Jordan Keough <jkeough@45drives.com>  Tue, 04 Feb 2025 06:52:11 -0400
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 04 Feb 2025 06:52:11 -0400cockpit-scheduler (1.3.5-1bookworm) bookworm; urgency=medium

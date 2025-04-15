@@ -3,12 +3,24 @@ import sys
 import datetime
 import os
 import time
+import json
 
 class Snapshot:
 	def __init__(self, name, guid, creation):
 		self.name = name
 		self.guid = guid
 		self.creation = creation
+def send_houston_notification(payload):
+    try:
+        dbus_script = "/opt/45drives/houston/houston-notify"
+        debug_log = "/tmp/zfs_replication_debug.log"
+        subprocess.run([
+            "python3",
+            dbus_script,
+            json.dumps(payload)
+        ], stdout=open(debug_log, "a"), stderr=subprocess.STDOUT)
+    except Exception as notify_error:
+        print(f"Failed to send D-Bus notification: {notify_error}")
 	 
 def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
 	command = [ 'zfs', 'snapshot' ]
@@ -491,9 +503,46 @@ def main():
    			transferMethod
 		)
 
+		send_houston_notification({
+			"timestamp": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+			"event": "zfs_replication_success",
+			"subject": "ZFS Replication Completed",
+			"email_message": (
+                f"Snapshot {newSnap} from filesystem {sourceFilesystem} "
+                f"was successfully replicated to {receivingFilesystem}."
+                ),
+			"fileSystem": sourceFilesystem,
+			"snapShot": newSnap,
+			"replicationDestination": receivingFilesystem,
+			"severity": "info",
+		})
+
 	except Exception as e:
+		newSnap = locals().get("newSnap", "unknown")
+		sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
+		receivingFilesystem = os.environ.get('zfsRepConfig_destDataset_dataset', '')
+
+		email_error_message = (
+			f"ZFS replication failed while sending snapshot {newSnap} "
+			f"from {sourceFilesystem} to {receivingFilesystem}"
+			f"Error: {str(e)}"
+		)
+		ui_error_message = str(e)
+
+		send_houston_notification({
+			"timestamp": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+			"event": "zfs_replication_failed",
+			"subject": "ZFS Replication Failed",
+			"email_message": email_error_message,
+			"fileSystem": sourceFilesystem,
+			"snapShot": newSnap,
+			"replicationDestination": receivingFilesystem,
+			"severity": "warning",
+			"errors": ui_error_message
+		})
 		print(f"Exception: {e}")
 		sys.exit(1)
+
 
 
 if __name__ == "__main__":

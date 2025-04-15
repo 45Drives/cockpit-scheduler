@@ -2,7 +2,7 @@ import { createApp } from 'vue';
 import './assets/scheduler.css';
 import App from './App.vue';
 import '@45drives/houston-common-css/src/index.css';
-import "../../houston-common/houston-common-ui/dist/style.css";
+import "@45drives/houston-common-ui/style.css";
 
 const app = createApp(App);
 
