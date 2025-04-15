@@ -1,3 +1,3 @@
-## task scheduler 1.3.4-1
+## task scheduler 1.3.5-2
 
-* Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting latest rclone version on our repos
+* Updated ToolTip for CloudSync Target Path. Rebuilding package with build v2 process
