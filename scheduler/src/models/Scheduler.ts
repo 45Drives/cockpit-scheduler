@@ -347,7 +347,6 @@ export class Scheduler implements SchedulerType {
 
     async updateTaskNotes(taskInstance) {
         //populate data from env file and then delete + recreate task files
-   
         const templateName = formatTemplateName(taskInstance.template.name);
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
