@@ -1,3 +1,3 @@
-## task scheduler 1.3.5-3
+## task scheduler 1.3.6-1
 
-* Fixes bug with notes not editing properly for Cloud task
+* Fixes syntax issue in autosnap-script.py so it works on Python 3.8+
