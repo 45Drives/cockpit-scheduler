@@ -155,7 +155,7 @@ def main():
 
 	createdSnapName = create_snapshot(filesystem, isRecursiveSnap, taskName, customName)
 
-	if retentionTime is not 0 and retentionTime is not '0' and retentionUnit is not '':
+	if retentionTime != 0 and retentionTime != '0' and retentionUnit != '':
 		prune_snapshots_by_retention(filesystem, taskName, retentionTime, retentionUnit, createdSnapName)
 
 if __name__ == "__main__":
