@@ -113,7 +113,7 @@ async function validateComponentParams() {
     await parameterInputComponent.value.clearTaskParamErrorTags();
     await parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-        pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
+        pushNotification(new Notification('Task Edit Failed', `Task edit has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 6000));
         return false;
     } else {
         return true;
@@ -181,7 +181,7 @@ async function saveEditedTask() {
 
     await myScheduler.updateTaskInstance(task);
 
-    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 8000));
+    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 6000));
 }
 
 const updateShowSaveConfirmation = (newVal) => {
@@ -199,7 +199,7 @@ async function saveChangesBtn() {
     } else {
         // console.log('no changes');
         showEditTaskWizard.value = false;
-        pushNotification(new Notification('No Changes Found', `Task saved as-is, no changes detected.`, 'info', 8000));
+        pushNotification(new Notification('No Changes Found', `Task saved as-is, no changes detected.`, 'info', 6000));
     }
 }
 

@@ -516,7 +516,7 @@ function validateFields(interval) {
     if (errorList.value.length > 0) {
         // Handle errors
         console.log('Validation errors:', errorList);
-        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
+        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 6000));
         return false;
     } else {
         // No errors, continue with processing
@@ -539,7 +539,7 @@ function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
 
 function saveInterval(interval) {
     if (usingSnapshotRetention.value) {
-        pushNotification(new Notification('Interval Limit Reached', 'Tasks using Snapshot Retention Policy can currently only have one scheduled interval.\nCreate multiple tasks to handle different retention policies.', 'warning', 8000));
+        pushNotification(new Notification('Interval Limit Reached', 'Tasks using Snapshot Retention Policy can currently only have one scheduled interval.\nCreate multiple tasks to handle different retention policies.', 'warning', 6000));
     }
 
     if (validateFields(interval)) {
@@ -610,10 +610,10 @@ const confirmScheduleTask : ConfirmationCallback = async () => {
   //  console.log('task:', thisTask.value);
     if (props.mode == 'new') {
         await myScheduler.registerTaskInstance(thisTask.value);
-        pushNotification(new Notification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000));
+        pushNotification(new Notification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 6000));
     } else {
         await myScheduler.updateSchedule(thisTask.value);
-        pushNotification(new Notification('Schedule Save Successful', `Schedule has been updated.`, 'success', 8000));
+        pushNotification(new Notification('Schedule Save Successful', `Schedule has been updated.`, 'success', 6000));
     }
     
     updateShowSaveConfirmation(false);
@@ -639,7 +639,7 @@ const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 async function saveScheduleBtn() {
     if (localIntervals.value.length < 1) {
-        pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 8000));
+        pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 6000));
     } else {
       //  console.log('intervals before (saveBtn):', intervals.value);
       //  console.log('localIntervals (saveBtn):', localIntervals.value);

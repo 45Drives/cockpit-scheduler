@@ -173,7 +173,7 @@ async function saveEditedTask() {
 
     await myScheduler.updateTaskNotes(task);
 
-    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 8000));
+    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 6000));
 }
 
 const updateShowSaveConfirmation = (newVal) => {

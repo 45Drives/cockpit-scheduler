@@ -1541,6 +1541,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/node@npm:^24":
+  version: 24.2.1
+  resolution: "@types/node@npm:24.2.1"
+  dependencies:
+    undici-types: "npm:~7.10.0"
+  checksum: 10c0/439a3c7edf88a298e0c92e46f670234070b892589c3b06e82cc86c47a7e1cf220f4a4b4736ec6ac7e4b9e1c40d7b6d443a1e22f99dd17f13f9dd15de3b32011b
+  languageName: node
+  linkType: hard
+
 "@types/p5@npm:^1.7.6":
   version: 1.7.6
   resolution: "@types/p5@npm:1.7.6"
@@ -1946,6 +1955,13 @@ __metadata:
     de-indent: "npm:^1.0.2"
     he: "npm:^1.2.0"
   checksum: 10c0/c76c3fad770b9a7da40b314116cc9da173da20e5fd68785c8ed8dd8a87d02f239545fa296e16552e040ec86b47bfb18283b39447b250c2e76e479bd6ae475bb3
+  languageName: node
+  linkType: hard
+
+"@vue/devtools-api@npm:^6.6.4":
+  version: 6.6.4
+  resolution: "@vue/devtools-api@npm:6.6.4"
+  checksum: 10c0/0a993ae23618166e1bee5a7c14cebd8312752b93c143cbdd48fb2d0f7ade070d0e6baf757cd920d4681fef8f9acf29515162160f38cc7410f9a684d2df21b6de
   languageName: node
   linkType: hard
 
@@ -2626,6 +2642,7 @@ __metadata:
     "@headlessui/vue": "npm:^1.7.13"
     "@heroicons/vue": "npm:^2.2.0"
     "@tailwindcss/forms": "npm:^0.5.2"
+    "@types/node": "npm:^24"
     "@vitejs/plugin-vue": "npm:^3.0.0"
     autoprefixer: "npm:^10.4.8"
     heroicons: "npm:^2.0.18"
@@ -6656,6 +6673,7 @@ __metadata:
     typescript: "npm:^5.8.2"
     vue: "npm:^3.5.13"
     vue-next-heroicons: "npm:^1.0.1"
+    vue-router: "npm:^4.5.1"
   languageName: unknown
   linkType: soft
 
@@ -7580,6 +7598,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"undici-types@npm:~7.10.0":
+  version: 7.10.0
+  resolution: "undici-types@npm:7.10.0"
+  checksum: 10c0/8b00ce50e235fe3cc601307f148b5e8fb427092ee3b23e8118ec0a5d7f68eca8cee468c8fc9f15cbb2cf2a3797945ebceb1cbd9732306a1d00e0a9b6afa0f635
+  languageName: node
+  linkType: hard
+
 "unicorn-magic@npm:^0.3.0":
   version: 0.3.0
   resolution: "unicorn-magic@npm:0.3.0"
@@ -8050,6 +8075,17 @@ __metadata:
   version: 1.0.1
   resolution: "vue-next-heroicons@npm:1.0.1"
   checksum: 10c0/cf9ea60c2d1b70e68b24441ac07bfc455d0aef5b3f8e12760944f70614c3901e410c38d970f64f7d0179048f74fa55d3ee06666e8cd39b9ba0e8b5668953d9e5
+  languageName: node
+  linkType: hard
+
+"vue-router@npm:^4.5.1":
+  version: 4.5.1
+  resolution: "vue-router@npm:4.5.1"
+  dependencies:
+    "@vue/devtools-api": "npm:^6.6.4"
+  peerDependencies:
+    vue: ^3.2.0
+  checksum: 10c0/89fbc11e46c19a4c4d62b807596a0210726dc09bd9e6a319ded1ac0951e6933e581c56acd1b846d3891673b9bad7348564d28ecd8424126d63578b3b5d291d96
   languageName: node
   linkType: hard
 

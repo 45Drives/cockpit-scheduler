@@ -1,337 +1,420 @@
 <template>
-    <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
-        <div
-            class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
-            <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
-                :fillColor="'fill-gray-500'" />
-        </div>
+    <!-- SIMPLE MODE -->
+    <div v-if="props.simple" class="space-y-4 my-2">
+
+        <!-- What to copy -->
+        <SimpleFormCard title="What do you want to copy?"
+            description="Pick the folders to copy. We’ll handle the rest.">
+            <label class="block text-sm mt-1 text-default">From (Source)</label>
+            <input type="text" v-model="sourcePath" @blur="ensureTrailingSlash('source')" :class="[
+                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]" placeholder="e.g. /mnt/data/projects/" />
+            <p class="text-[11px] text-muted mt-1">
+                Tip: Source should end with a <code>/</code>. We’ll add it for you if missing.
+            </p>
+
+            <div class="w-full mt-3 flex items-center justify-between bg-plugin-header rounded-lg p-2">
+                <span class="text-default text-sm font-medium">
+                    Copy Direction — {{ directionSwitched ? 'Pull (Target ← Source)' : 'Push (Source → Target)' }}
+                </span>
+                <Switch v-model="directionSwitched" :class="[
+                    directionSwitched ? 'bg-secondary' : 'bg-well',
+                    'relative inline-flex h-6 w-11 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2'
+                ]">
+                    <span class="sr-only">Toggle copy direction</span>
+                    <span aria-hidden="true" :class="[
+                        directionSwitched ? 'translate-x-5' : 'translate-x-0',
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200'
+                    ]" />
+                </Switch>
+            </div>
+
+            <label class="block text-sm mt-3 text-default">To (Target)</label>
+            <input type="text" v-model="destPath" @blur="ensureTrailingSlash('dest')" :class="[
+                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]" placeholder="e.g. /mnt/backup/projects/" />
+            <p class="text-[11px] text-muted mt-1">
+                Tip: Target should end with a <code>/</code>. We’ll add it for you if missing.
+            </p>
+        </SimpleFormCard>
+
+        <!-- Copy to another server (optional) -->
+        <SimpleFormCard title="Copy to another server (optional)"
+            description="Leave “Server address” empty to copy on this machine.">
+            <template #header-right>
+                <button v-if="!testingSSH" @click="handleTestSSH" class="btn btn-secondary h-fit">
+                    Test SSH
+                </button>
+                <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
+            </template>
+
+            <label class="block text-sm mt-1 text-default">Server address</label>
+            <input type="text" v-model="destHost" :class="[
+                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]" placeholder="e.g. backup.example.com or 10.0.0.5" />
+
+            <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="block text-sm mt-3 text-default">User</label>
+                    <input type="text" v-model="destUser"
+                        class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
+                        placeholder="root (default)" :disabled="!destHost" />
+                </div>
+                <div>
+                    <label class="block text-sm mt-3 text-default">Port</label>
+                    <input type="number" v-model="destPort" min="1" max="65535"
+                        class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
+                        placeholder="22 (default)" :disabled="!destHost" />
+                </div>
+                <div>
+                    <label class="block text-sm mt-3 text-default" for="dest-pass">Password</label>
+                    <div class="relative mt-1">
+                        <input :type="showPassword ? 'text' : 'password'" id="dest-pass" v-model="destUserPass"
+                            class="block w-full input-textlike sm:text-sm bg-default text-default pr-10"
+                            :disabled="!destHost" />
+                        <button type="button" @click="togglePassword"
+                            class="absolute inset-y-0 right-0 px-3 flex items-center text-muted"
+                            :aria-label="showPassword ? 'Hide password' : 'Show password'">
+                            <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+                            <EyeSlashIcon v-else class="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <template #footer>
+                <p class="text-[11px] text-muted">
+                    We’ll use SSH for remote copies. Keep the server field empty for local copies.
+                </p>
+            </template>
+        </SimpleFormCard>
     </div>
-    <div v-else class="grid grid-cols-2 my-2 gap-2 h-full" style="grid-template-rows: auto auto 1fr;">
-        <!-- TOP LEFT -->
-        <div name="paths-data" class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent"
-            style="grid-row: 1 / span 1;">
-            <label class="mt-1 mb-2 col-span-1 block text-base leading-6 text-default">Transfer Details</label>
-            <div name="source-path">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">
-                        Source
-                        <!-- <InfoTile class="ml-1" title="Use a trailing slash (/) if you wish to transfer just the source directory's contents. Leave trailing slash out if you wish to transfer the entire directory." /> -->
-                        <InfoTile class="ml-1"
-                            title="Source directory must always have a trailing slash (If none is provided it will be added automatically.)" />
-                    </label>
-                    <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger" />
-                </div>
-                <div>
-                    <input type="text" v-model="sourcePath"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        :class="[sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                        placeholder="Specify Source Path" />
-                </div>
-            </div>
-            <div name="destination-path">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">
-                        Target
-                        <InfoTile class="ml-1"
-                            title="Target directory must always have a trailing slash (If none is provided it will be added automatically.)" />
-                    </label>
-                    <ExclamationCircleIcon v-if="destPathErrorTag" class="mt-1 w-5 h-5 text-danger" />
-                </div>
-                <div>
-                    <input type="text" v-model="destPath"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        :class="[destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                        placeholder="Specify Target Path" />
-                </div>
-            </div>
-            <div name="direction" class="">
-                <div class="w-full mt-2 flex flex-row justify-between items-center text-center space-x-2 text-default">
-                    <span v-if="directionSwitched" class="">Direction - Pull</span>
-                    <span v-else class="">Direction - Push</span>
-                    <Switch v-model="directionSwitched"
-                        :class="[directionSwitched ? 'bg-secondary' : 'bg-well', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2']">
-                        <span class="sr-only">Use setting</span>
-                        <span aria-hidden="true"
-                            :class="[directionSwitched ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out']" />
-                    </Switch>
-                </div>
-                <div class="w-full mt-2 justify-center items-center">
-                    <div
-                        class="flex flex-row justify-around text-center items-center space-x-1 bg-plugin-header rounded-lg p-2">
-                        <span class="text-default">Source</span>
-                        <div class="relative flex items-center justify-around">
-                            <span
-                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
-                                <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
-                            </span>
-                            <span
-                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
-                                <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
-                            </span>
-                            <span
-                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
-                                <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
-                            </span>
-                        </div>
-                        <span class="text-default">Target</span>
-                    </div>
-                </div>
+
+    <div v-else>
+        <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+            <div
+                class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
+                <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
+                    :fillColor="'fill-gray-500'" />
             </div>
         </div>
+        <div v-else class="grid grid-cols-2 my-2 gap-2 h-full" style="grid-template-rows: auto auto 1fr;">
+            <!-- TOP LEFT -->
+            <div name="paths-data"
+                class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent"
+                style="grid-row: 1 / span 1;">
+                <label class="mt-1 mb-2 col-span-1 block text-base leading-6 text-default">Transfer Details</label>
+                <div name="source-path">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">
+                            Source
 
-        <!-- TOP RIGHT -->
-        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent"
-            style="grid-row: 1 / span 1;">
-            <div class="grid grid-cols-2">
-                <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
-                <div class="col-span-1 items-end text-end justify-end">
-                    <button disabled v-if="testingSSH" class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
-                        <svg aria-hidden="true" role="status"
-                            class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101"
-                            fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
-                                fill="currentColor" />
-                            <path
-                                d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
-                                fill="text-success" />
-                        </svg>
-                        Testing...
-                    </button>
-                    <button v-else @click="confirmTest(destHost, destUser)"
-                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
-                </div>
-            </div>
-            <div name="destination-host" class="mt-1">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="block text-sm leading-6 text-default">Host</label>
-                    <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
-                </div>
-                <input type="text" v-model="destHost"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                    :class="[destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                    placeholder="Leave blank for local transfer." />
-            </div>
-            <div name="destination-user" class="mt-1">
-                <label class="block text-sm leading-6 text-default">User</label>
-                <input v-if="destHost === ''" disabled type="text" v-model="destUser"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                    placeholder="'root' is default" />
-                <input v-else type="text" v-model="destUser"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                    placeholder="'root' is default" />
-            </div>
-            <div name="destination-port" class="mt-1">
-                <label class="block text-sm leading-6 text-default">Port</label>
-                <input v-if="destHost === ''" disabled type="number" v-model="destPort"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                    max="65535" placeholder="22 is default" />
-                <input v-else type="number" v-model="destPort"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                    max="65535" placeholder="22 is default" />
-            </div>
-        </div>
-
-        <!-- BOTTOM -->
-        <div name="send-options"
-            class="border border-default rounded-md p-2 col-span-2 row-span-1 row-start-2 bg-accent"
-            style="grid-row: 2 / span 1;">
-            <label class="mt-1 block text-base leading-6 text-default">Rsync Options</label>
-            <!-- Basic options -->
-            <div class="grid grid-cols-4 gap-4">
-                <div class="col-span-1">
-                    <div name="options-archive" class="flex flex-row justify-between items-center mt-1 col-span-1">
-                        <label class="block text-sm leading-6 text-default mt-0.5">
-                            Archive
                             <InfoTile class="ml-1"
-                                title="Archive mode. Equivalent to Recursive + Preserve the following: Times, Symbolic Links, Permissions, Groups, Owner, Devices/Specials (cli flags: -rlptgoD)" />
+                                title="Source directory must always have a trailing slash (If none is provided it will be added automatically.)" />
                         </label>
-                        <input type="checkbox" v-model="isArchive" class=" h-4 w-4 rounded"
-                            :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
+                        <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger" />
                     </div>
-                    <div name="options-recursive" class="flex flex-row justify-between items-center mt-1 col-span-1">
-                        <label class="block text-sm leading-6 text-default mt-0.5">
-                            Recursive
-                            <InfoTile class="ml-1" title="Recurse into directories." />
-                        </label>
-                        <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
-                        <input v-else type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"/> -->
-                        <input type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"
-                            :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
-                    </div>
-                    <div name="options-compressed" class="flex flex-row justify-between items-center mt-1 col-span-1">
-                        <label class="block text-sm leading-6 text-default mt-0.5">
-                            Compressed
-                            <InfoTile class="ml-1" title="Compress file data during the transfer." />
-                        </label>
-                        <input type="checkbox" v-model="isCompressed" class=" h-4 w-4 rounded" />
-                    </div>
-                    <div name="options-preserve-times"
-                        class="flex flex-row justify-between items-center mt-1 col-span-1">
-                        <label class="block text-sm leading-6 text-default mt-0.5">
-                            Preserve Times
-                            <InfoTile class="ml-1" title="Preserve modification times." />
-                        </label>
-                        <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
-                        <input v-else type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded"/> -->
-                        <input type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded" />
-                    </div>
-                    <div name="options-delete" class="flex flex-row justify-between items-center mt-1 col-span-1">
-                        <label class="block text-sm leading-6 text-default mt-0.5">
-                            Delete Files
-                            <InfoTile class="ml-1"
-                                title="Deletes files in target path that do not exist in source. (REQUIRES Archive or Recursive)" />
-                        </label>
-                        <input type="checkbox" v-model="deleteFiles" class=" h-4 w-4 rounded" />
-                    </div>
-                    <div name="options-quiet" class="flex flex-row justify-between items-center mt-1 col-span-1">
-                        <label class="block text-sm leading-6 text-default mt-0.5">
-                            Quiet
-                            <InfoTile class="ml-1" title="Suppress non-error messages." />
-                        </label>
-                        <input type="checkbox" v-model="isQuiet" class=" h-4 w-4 rounded" />
-                    </div>
-                </div>
-
-                <div class="-mt-1 col-span-3 grid grid-cols-2 gap-2">
-                    <div class="grid grid-cols-2 col-span-2 gap-2 w-full justify-center items-center text-center">
-                        <div name="options-include" class="col-span-1">
-                            <div class="flex flex-row justify-between items-center">
-                                <label class="mt-1 block text-sm leading-6 text-default">
-                                    Include Pattern
-                                    <InfoTile class="ml-1"
-                                        title="Pattern applying to specific directories/files to include. Separate patterns with commas (,)." />
-                                </label>
-                            </div>
-                            <input type="text" v-model="includePattern"
-                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. */, *.txt" />
-                        </div>
-                        <div name="options-exclude" class="col-span-1">
-                            <div class="flex flex-row justify-between items-center">
-                                <label class="mt-1 block text-sm leading-6 text-default">
-                                    Exclude Pattern
-                                    <InfoTile class="ml-1"
-                                        title="Pattern applying to specific directories/files to exclude. Separate patterns with commas (,)." />
-                                </label>
-                            </div>
-                            <input type="text" v-model="excludePattern"
-                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. temp*, *.py" />
-                        </div>
-                    </div>
-                    <div name="options-extra-params" class="col-span-2">
-                        <div class="flex flex-row justify-between items-center">
-                            <label class="block text-sm leading-6 text-default">
-                                Extra Parameters
-                                <InfoTile class="ml-1"
-                                    title="Separate any extra parameters, flags or options you wish to include with commas (,)." />
-                            </label>
-                        </div>
-                        <input type="text" v-model="extraUserParams"
+                    <div>
+                        <input type="text" v-model="sourcePath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            placeholder="Eg. --partial, -c, -d" />
+                            :class="[sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                            placeholder="Specify Source Path" />
                     </div>
                 </div>
+                <div name="destination-path">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">
+                            Target
+                            <InfoTile class="ml-1"
+                                title="Target directory must always have a trailing slash (If none is provided it will be added automatically.)" />
+                        </label>
+                        <ExclamationCircleIcon v-if="destPathErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <div>
+                        <input type="text" v-model="destPath"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            :class="[destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                            placeholder="Specify Target Path" />
+                    </div>
+                </div>
+                <div name="direction" class="">
+                    <div
+                        class="w-full mt-2 flex flex-row justify-between items-center text-center space-x-2 text-default">
+                        <span v-if="directionSwitched" class="">Direction - Pull</span>
+                        <span v-else class="">Direction - Push</span>
+                        <Switch v-model="directionSwitched"
+                            :class="[directionSwitched ? 'bg-secondary' : 'bg-well', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2']">
+                            <span class="sr-only">Use setting</span>
+                            <span aria-hidden="true"
+                                :class="[directionSwitched ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out']" />
+                        </Switch>
+                    </div>
+                    <div class="w-full mt-2 justify-center items-center">
+                        <div
+                            class="flex flex-row justify-around text-center items-center space-x-1 bg-plugin-header rounded-lg p-2">
+                            <span class="text-default">Source</span>
+                            <div class="relative flex items-center justify-around">
+                                <span
+                                    :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                    <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
+                                </span>
+                                <span
+                                    :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                    <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
+                                </span>
+                                <span
+                                    :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                    <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
+                                </span>
+                            </div>
+                            <span class="text-default">Target</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                <div class="col-span-4">
-                    <Disclosure v-slot="{ open }">
-                        <DisclosureButton
-                            class="bg-default mt-2 w-full justify-start text-center rounded-md flex flex-row">
-                            <div class="m-1">
-                                <ChevronUpIcon class="h-7 w-7 text-default transition-all duration-200 transform"
-                                    :class="{ 'rotate-90': !open, 'rotate-180': open, }" />
+            <!-- TOP RIGHT -->
+            <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent"
+                style="grid-row: 1 / span 1;">
+                <div class="grid grid-cols-2">
+                    <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
+                    <div class="col-span-1 items-end text-end justify-end">
+                        <button disabled v-if="testingSSH"
+                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                            <svg aria-hidden="true" role="status"
+                                class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
+                                viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+                                    fill="currentColor" />
+                                <path
+                                    d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+                                    fill="text-success" />
+                            </svg>
+                            Testing...
+                        </button>
+                        <button v-else @click="confirmTest(destHost, destUser)"
+                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                    </div>
+                </div>
+                <div name="destination-host" class="mt-1">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="block text-sm leading-6 text-default">Host</label>
+                        <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <input type="text" v-model="destHost"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        :class="[destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                        placeholder="Leave blank for local transfer." />
+                </div>
+                <div name="destination-user" class="mt-1">
+                    <label class="block text-sm leading-6 text-default">User</label>
+                    <input v-if="destHost === ''" disabled type="text" v-model="destUser"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="'root' is default" />
+                    <input v-else type="text" v-model="destUser"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="'root' is default" />
+                </div>
+                <div name="destination-port" class="mt-1">
+                    <label class="block text-sm leading-6 text-default">Port</label>
+                    <input v-if="destHost === ''" disabled type="number" v-model="destPort"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
+                        max="65535" placeholder="22 is default" />
+                    <input v-else type="number" v-model="destPort"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
+                        max="65535" placeholder="22 is default" />
+                </div>
+            </div>
+
+            <!-- BOTTOM -->
+            <div name="send-options"
+                class="border border-default rounded-md p-2 col-span-2 row-span-1 row-start-2 bg-accent"
+                style="grid-row: 2 / span 1;">
+                <label class="mt-1 block text-base leading-6 text-default">Rsync Options</label>
+                <!-- Basic options -->
+                <div class="grid grid-cols-4 gap-4">
+                    <div class="col-span-1">
+                        <div name="options-archive" class="flex flex-row justify-between items-center mt-1 col-span-1">
+                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                Archive
+                                <InfoTile class="ml-1"
+                                    title="Archive mode. Equivalent to Recursive + Preserve the following: Times, Symbolic Links, Permissions, Groups, Owner, Devices/Specials (cli flags: -rlptgoD)" />
+                            </label>
+                            <input type="checkbox" v-model="isArchive" class=" h-4 w-4 rounded"
+                                :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
+                        </div>
+                        <div name="options-recursive"
+                            class="flex flex-row justify-between items-center mt-1 col-span-1">
+                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                Recursive
+                                <InfoTile class="ml-1" title="Recurse into directories." />
+                            </label>
+
+                            <input type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"
+                                :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
+                        </div>
+                        <div name="options-compressed"
+                            class="flex flex-row justify-between items-center mt-1 col-span-1">
+                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                Compressed
+                                <InfoTile class="ml-1" title="Compress file data during the transfer." />
+                            </label>
+                            <input type="checkbox" v-model="isCompressed" class=" h-4 w-4 rounded" />
+                        </div>
+                        <div name="options-preserve-times"
+                            class="flex flex-row justify-between items-center mt-1 col-span-1">
+                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                Preserve Times
+                                <InfoTile class="ml-1" title="Preserve modification times." />
+                            </label>
+
+                            <input type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded" />
+                        </div>
+                        <div name="options-delete" class="flex flex-row justify-between items-center mt-1 col-span-1">
+                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                Delete Files
+                                <InfoTile class="ml-1"
+                                    title="Deletes files in target path that do not exist in source. (REQUIRES Archive or Recursive)" />
+                            </label>
+                            <input type="checkbox" v-model="deleteFiles" class=" h-4 w-4 rounded" />
+                        </div>
+                        <div name="options-quiet" class="flex flex-row justify-between items-center mt-1 col-span-1">
+                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                Quiet
+                                <InfoTile class="ml-1" title="Suppress non-error messages." />
+                            </label>
+                            <input type="checkbox" v-model="isQuiet" class=" h-4 w-4 rounded" />
+                        </div>
+                    </div>
+
+                    <div class="-mt-1 col-span-3 grid grid-cols-2 gap-2">
+                        <div class="grid grid-cols-2 col-span-2 gap-2 w-full justify-center items-center text-center">
+                            <div name="options-include" class="col-span-1">
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="mt-1 block text-sm leading-6 text-default">
+                                        Include Pattern
+                                        <InfoTile class="ml-1"
+                                            title="Pattern applying to specific directories/files to include. Separate patterns with commas (,)." />
+                                    </label>
+                                </div>
+                                <input type="text" v-model="includePattern"
+                                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                    placeholder="Eg. */, *.txt" />
                             </div>
-                            <div class="ml-3 mt-1.5">
-                                <span class="text-start text-base text-default">Advanced Options</span>
+                            <div name="options-exclude" class="col-span-1">
+                                <div class="flex flex-row justify-between items-center">
+                                    <label class="mt-1 block text-sm leading-6 text-default">
+                                        Exclude Pattern
+                                        <InfoTile class="ml-1"
+                                            title="Pattern applying to specific directories/files to exclude. Separate patterns with commas (,)." />
+                                    </label>
+                                </div>
+                                <input type="text" v-model="excludePattern"
+                                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                    placeholder="Eg. temp*, *.py" />
                             </div>
-                        </DisclosureButton>
-                        <DisclosurePanel>
-                            <div class="w-full grid grid-cols-4 gap-4 bg-default p-4 -mt-1">
-                                <div class="col-span-2 grid grid-cols-2">
-                                    <div name="options-preserve-hard-links"
-                                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                        <label class="block text-sm leading-6 text-default mt-0.5">
-                                            Preserve Hard Links
-                                        </label>
-                                        <input type="checkbox" v-model="preserveHardLinks" class=" h-4 w-4 rounded" />
+                        </div>
+                        <div name="options-extra-params" class="col-span-2">
+                            <div class="flex flex-row justify-between items-center">
+                                <label class="block text-sm leading-6 text-default">
+                                    Extra Parameters
+                                    <InfoTile class="ml-1"
+                                        title="Separate any extra parameters, flags or options you wish to include with commas (,)." />
+                                </label>
+                            </div>
+                            <input type="text" v-model="extraUserParams"
+                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                placeholder="Eg. --partial, -c, -d" />
+                        </div>
+                    </div>
+
+                    <div class="col-span-4">
+                        <Disclosure v-slot="{ open }">
+                            <DisclosureButton
+                                class="bg-default mt-2 w-full justify-start text-center rounded-md flex flex-row">
+                                <div class="m-1">
+                                    <ChevronUpIcon class="h-7 w-7 text-default transition-all duration-200 transform"
+                                        :class="{ 'rotate-90': !open, 'rotate-180': open, }" />
+                                </div>
+                                <div class="ml-3 mt-1.5">
+                                    <span class="text-start text-base text-default">Advanced Options</span>
+                                </div>
+                            </DisclosureButton>
+                            <DisclosurePanel>
+                                <div class="w-full grid grid-cols-4 gap-4 bg-default p-4 -mt-1">
+                                    <div class="col-span-2 grid grid-cols-2">
+                                        <div name="options-preserve-hard-links"
+                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
+                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                                Preserve Hard Links
+                                            </label>
+                                            <input type="checkbox" v-model="preserveHardLinks"
+                                                class=" h-4 w-4 rounded" />
+                                        </div>
+                                        <div name="options-preserve-extended-attributes"
+                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
+                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                                Preserve Extended Attrs.
+                                            </label>
+                                            <input type="checkbox" v-model="preserveXattr" class=" h-4 w-4 rounded" />
+                                        </div>
+                                        <div name="options-limit-bw" class="col-span-2">
+                                            <label class="mt-1 block text-sm leading-6 text-default">
+                                                Limit Bandwidth (Kbps)
+                                                <InfoTile class="ml-1" title="Limit I/O bandwidth; KBytes per second" />
+                                            </label>
+                                            <input type="number" v-model="limitBandwidthKbps"
+                                                class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                                placeholder="0" />
+                                        </div>
                                     </div>
-                                    <div name="options-preserve-extended-attributes"
-                                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                        <label class="block text-sm leading-6 text-default mt-0.5">
-                                            Preserve Extended Attrs.
-                                        </label>
-                                        <input type="checkbox" v-model="preserveXattr" class=" h-4 w-4 rounded" />
-                                    </div>
-                                    <div name="options-limit-bw" class="col-span-2">
-                                        <label class="mt-1 block text-sm leading-6 text-default">
-                                            Limit Bandwidth (Kbps)
-                                            <InfoTile class="ml-1" title="Limit I/O bandwidth; KBytes per second" />
-                                        </label>
-                                        <input type="number" v-model="limitBandwidthKbps"
-                                            class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                            placeholder="0" />
+
+                                    <div class="col-span-2 grid grid-cols-2">
+                                        <div name="options-preserve-permissions"
+                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
+                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                                Preserve Permissions
+                                            </label>
+
+                                            <input type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded" />
+                                        </div>
+
+                                        <div name="options-parallel"
+                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
+                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                                Use Parallel Threads
+                                                <InfoTile class="ml-1"
+                                                    title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
+                                            </label>
+                                            <input type="checkbox" v-model="isParallel" class=" h-4 w-4 rounded" />
+
+
+                                        </div>
+
+                                        <div name="options-parallel-threads" class="col-span-1 col-start-1">
+                                            <label class="mt-1 block text-sm leading-6 text-default">
+                                                # of Threads
+                                                <InfoTile class="ml-1"
+                                                    title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
+                                            </label>
+                                            <input v-if="isParallel" type="number" v-model="parallelThreads"
+                                                class="mt-1 block w-min text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                                placeholder="" />
+                                            <input v-else disabled type="number" v-model="parallelThreads"
+                                                class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                                placeholder="" />
+
+                                        </div>
                                     </div>
                                 </div>
-
-                                <div class="col-span-2 grid grid-cols-2">
-                                    <div name="options-preserve-permissions"
-                                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                        <label class="block text-sm leading-6 text-default mt-0.5">
-                                            Preserve Permissions
-                                        </label>
-                                        <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
-                                        <input v-else type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded"/> -->
-                                        <input type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded" />
-                                    </div>
-
-                                    <div name="options-parallel"
-                                        class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                        <label class="block text-sm leading-6 text-default mt-0.5">
-                                            Use Parallel Threads
-                                            <InfoTile class="ml-1"
-                                                title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
-                                        </label>
-                                        <input type="checkbox" v-model="isParallel" class=" h-4 w-4 rounded" />
-
-                                        <!-- <label class="block text-sm leading-6 text-muted mt-0.5">
-                                            Use Parallel Threads
-                                            <InfoTile class="ml-1" title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
-                                        </label>
-                                        <input type="checkbox" disabled v-model="isParallel" class=" h-4 w-4 rounded bg-accent"/> -->
-                                    </div>
-                                    <!-- <div class="col-span-1 col-start-2 mt-1 ml-3">
-                                        <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
-                                            ** COMING SOON **
-                                        </label>
-                                    </div> -->
-                                    <div name="options-parallel-threads" class="col-span-1 col-start-1">
-                                        <label class="mt-1 block text-sm leading-6 text-default">
-                                            # of Threads
-                                            <InfoTile class="ml-1"
-                                                title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
-                                        </label>
-                                        <input v-if="isParallel" type="number" v-model="parallelThreads"
-                                            class="mt-1 block w-min text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                            placeholder="" />
-                                        <input v-else disabled type="number" v-model="parallelThreads"
-                                            class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                            placeholder="" />
-                                        <!-- <label class="mt-1 block text-sm leading-6 text-muted">
-                                            # of Threads
-                                            <InfoTile class="ml-1" title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
-                                        </label>
-                                        <input disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> -->
-                                    </div>
-                                    <!-- <div class="col-span-1 col-start-2 mt-1 ml-3">
-                                        <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
-                                            ** COMING SOON **
-                                        </label>
-                                    </div> -->
-                                </div>
-                            </div>
-                        </DisclosurePanel>
-                    </Disclosure>
+                            </DisclosurePanel>
+                        </Disclosure>
+                    </div>
                 </div>
             </div>
         </div>
@@ -342,16 +425,18 @@
 
 import { ref, Ref, onMounted, inject } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
-import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter } from '../../../models/Parameters';
-import { testSSH } from '../../../composables/utility';
+import { testSSH, testOrSetupSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
+import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 
 interface RsyncTaskParamsProps {
     parameterSchema: ParameterNodeType;
     task?: TaskInstanceType;
+    simple?: boolean;
 }
 
 const props = defineProps<RsyncTaskParamsProps>();
@@ -368,6 +453,9 @@ const destHost = ref('');
 const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
+const destUserPass = ref('');
+const showPassword = ref(false);
+
 const directionSwitched = ref(false)
 
 const isArchive = ref(true);
@@ -396,6 +484,42 @@ const testingSSH = ref(false);
 const sshTestResult = ref(false);
 
 const errorList = inject<Ref<string[]>>('errors')!;
+
+
+const sshReady = ref(false);
+
+async function handleTestSSH() {
+    testingSSH.value = true;
+    try {
+        const res = await testOrSetupSSH({
+            host: destHost.value,
+            user: destUser.value || 'root',
+            port: destPort.value || 22,
+            passwordRef: destUserPass, // will be scrubbed by utility
+            onEvent: ({ type, title, message }) => {
+                // notifications stay in the UI layer
+                pushNotification(new Notification(title, message, type, type === 'info' ? 8000 : 6000));
+            }
+        });
+        sshReady.value = res.success; // optional: track local state
+    } finally {
+        testingSSH.value = false;
+    }
+}
+/**
+ * Simple-mode QoL: ensure trailing slash on blur
+ */
+function ensureTrailingSlash(which: 'source' | 'dest') {
+    if (which === 'source') {
+        if (sourcePath.value && !sourcePath.value.endsWith('/')) sourcePath.value += '/'
+    } else {
+        if (destPath.value && !destPath.value.endsWith('/')) destPath.value += '/'
+    }
+}
+
+const togglePassword = () => {
+    showPassword.value = !showPassword.value;
+};
 
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
@@ -520,7 +644,7 @@ function validateSourcePath() {
         if (!sourcePath.value.endsWith('/')) {
             // sourcePathErrorTag.value = true;
             // errorList.value.push("Source path has no trailing slash (/), entire directory will be transferred if not added.");
-            // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 8000));
+            // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 6000));
             sourcePath.value += '/';
         }
       //  console.log("Valid source path.");
@@ -632,9 +756,9 @@ async function confirmTest(destHost, destUser) {
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for remote transfers.`, 'success', 8000));
+        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for remote transfers.`, 'success', 6000));
     } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000));
+        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
     }
     testingSSH.value = false;
 }

@@ -309,13 +309,13 @@ const createRemoteBtn = async () => {
       //  console.log('parametersToSave:', parametersToSave);
         const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
       //  console.log('newRemote:', newRemote);
-        pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 8000));
+        pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 6000));
         creating.value = false;
         showCreateRemote.value = false;
 
     } catch (error: any) {
         console.error('Error during save:', error);
-        pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 8000));
+        pushNotification(new Notification('Save Failed', `${error.message}`, 'error', 6000));
     }
 }
 
@@ -375,7 +375,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     oAuthenticated.value = true;
                     providerValues.token = JSON.stringify(fullToken);
 
-                    pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
+                    pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 6000));
 
                     // Remove the event listener after it has been handled
                     window.removeEventListener('message', handleAuthMessage);
@@ -385,7 +385,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             } catch (error: any) {
                 console.error('Error during authentication:', error);
                 oAuthenticated.value = false;
-                pushNotification(new Notification('Authentication Failed', `${error.message}`, 'error', 8000));
+                pushNotification(new Notification('Authentication Failed', `${error.message}`, 'error', 6000));
             }
         };
 
@@ -393,7 +393,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
         window.addEventListener('message', handleAuthMessage);
     } catch (error: any) {
         console.error('Error initializing OAuth:', error);
-        pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 8000));
+        pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 6000));
     }
 }
 

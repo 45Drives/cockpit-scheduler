@@ -1,18 +1,19 @@
 <template>
     <div class="mt-3">
-        <ZfsRepTaskParams v-if="template.name == 'ZFS Replication Task'" ref="activeComponent"
-            :parameterSchema="template.parameterSchema" :task="props.task" />
-        <AutomatedSnapshotTaskParams v-else-if="template.name == 'Automated Snapshot Task'" ref="activeComponent"
-            :parameterSchema="template.parameterSchema" :task="props.task" />
-        <RsyncTaskParams v-else-if="template.name == 'Rsync Task'" ref="activeComponent"
-            :parameterSchema="template.parameterSchema" :task="props.task" />
-        <ScrubTaskParams v-else-if="template.name == 'Scrub Task'" ref="activeComponent"
-            :parameterSchema="template.parameterSchema" :task="props.task" />
-        <SmartTestTaskParams v-else-if="template.name == 'SMART Test'" ref="activeComponent"
-            :parameterSchema="template.parameterSchema" :task="props.task" />
-        <CloudSyncParams v-else-if="template.name == 'Cloud Sync Task'" ref="activeComponent"
-            :parameterSchema="template.parameterSchema" :task="props.task" />
-        <CustomTaskParams v-else-if="template.name == 'Custom Task'" ref="activeComponent" :parameterSchema="template.parameterSchema" :task="props.task"/>
+        <ZfsRepTaskParams v-if="template!.name == 'ZFS Replication Task'" ref="activeComponent" :simple="props.simple"
+            :parameterSchema="template!.parameterSchema" :task="props.task" />
+        <AutomatedSnapshotTaskParams v-else-if="template!.name == 'Automated Snapshot Task'" ref="activeComponent"
+            :simple="props.simple" :parameterSchema="template!.parameterSchema" :task="props.task" />
+        <RsyncTaskParams v-else-if="template!.name == 'Rsync Task'" ref="activeComponent" :simple="props.simple"
+            :parameterSchema="template!.parameterSchema" :task="props.task" />
+        <ScrubTaskParams v-else-if="template!.name == 'Scrub Task'" ref="activeComponent"
+            :parameterSchema="template!.parameterSchema" :task="props.task" />
+        <SmartTestTaskParams v-else-if="template!.name == 'SMART Test'" ref="activeComponent"
+            :parameterSchema="template!.parameterSchema" :task="props.task" />
+        <CloudSyncParams v-else-if="template!.name == 'Cloud Sync Task'" ref="activeComponent" :simple="props.simple"
+            :parameterSchema="template!.parameterSchema" :task="props.task" />
+        <CustomTaskParams v-else-if="template!.name == 'Custom Task'" ref="activeComponent"
+            :parameterSchema="template!.parameterSchema" :task="props.task" />
     </div>
 </template>
 <script setup lang="ts">
@@ -29,11 +30,28 @@ import CustomTaskParams from './task-parameters/CustomTaskParams.vue';
 interface ParameterInputProps {
     selectedTemplate: TaskTemplateType;
     task?: TaskInstanceType;
+    simple?: boolean;
 }
 
 const props = defineProps<ParameterInputProps>();
 
-const template = computed(() => props.selectedTemplate);
+// Define allowed template names for simple mode
+const simpleAllowed = [
+    'ZFS Replication Task',
+    'Automated Snapshot Task',
+    'Scrub Task',
+    'Rsync Task',
+    'Cloud Sync Task'
+];
+
+// const template = computed(() => props.selectedTemplate);
+const template = computed(() => {
+    if (props.simple && !simpleAllowed.includes(props.selectedTemplate.name)) {
+        return null; // Block disallowed components
+    }
+    return props.selectedTemplate;
+});
+
 const activeComponent = ref<InstanceType<typeof ZfsRepTaskParams | typeof AutomatedSnapshotTaskParams | typeof RsyncTaskParams | typeof ScrubTaskParams | typeof SmartTestTaskParams | typeof CloudSyncParams | typeof CustomTaskParams  > | null>(null);
 
 async function validation() {

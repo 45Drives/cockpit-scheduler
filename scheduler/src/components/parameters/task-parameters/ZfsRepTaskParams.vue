@@ -1,311 +1,460 @@
 <template>
-    <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
-        <div
-            class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
-            <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
-                :fillColor="'fill-gray-500'" />
-        </div>
-    </div>
-    <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
-        <!-- TOP LEFT -->
-        <div name="source-data"
-            class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
-            <div class="flex flex-row justify-between items-center text-center">
-                <label class="-mt-1 block text-base leading-6 text-default">Source Location</label>
-                <div class="mt-1 flex flex-col items-center text-center">
-                    <label class="block text-xs text-default">Custom</label>
-                    <input type="checkbox" v-model="useCustomSource" class="h-4 w-4 rounded" />
+    <!-- SIMPLE MODE -->
+    <div v-if="props.simple" class="space-y-4 my-2">
+
+        <!-- What to copy -->
+        <SimpleFormCard title="What do you want to copy?"
+            description="Pick the pool and folder (dataset) you want to back up.">
+            <label class="block text-sm mt-1 text-default">Pool</label>
+            <select v-model="sourcePool" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
+                <option value="">Select a Pool</option>
+                <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :key="pool" :value="pool">{{ pool }}
+                </option>
+                <option v-if="loadingSourcePools">Loading...</option>
+            </select>
+
+            <label class="block text-sm mt-3 text-default">Folder (Dataset)</label>
+            <select v-model="sourceDataset" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                sourceDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
+                <option value="">Select a Dataset</option>
+                <option v-if="!loadingSourceDatasets" v-for="ds in sourceDatasets" :key="ds" :value="ds">{{ ds }}
+                </option>
+                <option v-if="loadingSourceDatasets">Loading...</option>
+            </select>
+        </SimpleFormCard>
+
+        <!-- Where to store copies -->
+        <SimpleFormCard title="Where should the copies live?" description="Choose the destination pool and folder.">
+            <label class="block text-sm mt-1 text-default">Destination Pool</label>
+            <select v-model="destPool" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
+                <option value="">Select a Pool</option>
+                <option v-if="!loadingDestPools" v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
+                <option v-if="loadingDestPools">Loading...</option>
+            </select>
+
+            <label class="block text-sm mt-3 text-default">Destination Folder (Dataset)</label>
+            <select v-model="destDataset" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
+                <option value="">Select a Dataset</option>
+                <option v-if="!loadingDestDatasets" v-for="ds in destDatasets" :key="ds" :value="ds">{{ ds }}</option>
+                <option v-if="loadingDestDatasets">Loading...</option>
+            </select>
+        </SimpleFormCard>
+
+        <!-- Copy to another server (optional) -->
+        <SimpleFormCard title="Copy to another server (optional)"
+            description="Leave “Server address” empty to keep copies on this machine.">
+            <template #header-right>
+                <button v-if="!testingSSH" @click="handleTestSSH"
+                    class="btn btn-secondary h-fit">Test SSH</button>
+                <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
+            </template>
+
+            <label class="block text-sm mt-1 text-default">Server address</label>
+            <input type="text" v-model="destHost" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                placeholder="e.g. backup.example.com or 10.0.0.5" />
+
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-sm mt-3 text-default">User</label>
+                    <input type="text" v-model="destUser"
+                        class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
+                        placeholder="root (default)" :disabled="!destHost" />
+                </div>
+                <div>
+                    <label class="block text-sm mt-3 text-default">Port</label>
+                    <input type="number" v-model="destPort" min="1" max="65535" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                        netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                        placeholder="22 (default)" :disabled="!destHost" />
                 </div>
             </div>
-            <div name="source-pool">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
-                    <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag"
-                        class="mt-1 w-5 h-5 text-danger" />
+        </SimpleFormCard>
+
+        <!-- How long to keep copies -->
+        <SimpleFormCard title="How long should we keep copies?"
+            description="Choose for each side. Turn on “Forever” to keep everything.">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-1">
+
+                <!-- Source retention -->
+                <SimpleFormCard dense title="On this server (source)">
+                    <div class="flex items-center justify-between">
+                        <span class="sr-only">Forever toggle</span>
+                        <label class="flex items-center gap-2 text-xs ml-auto">
+                            <input type="checkbox" v-model="srcKeepForever" class="h-4 w-4 rounded" />
+                            Forever
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 mt-2"
+                        :class="srcKeepForever ? 'opacity-50 pointer-events-none' : ''">
+                        <input type="number" min="1" v-model.number="srcRetentionTime"
+                            class="col-span-1 block w-full input-textlike sm:text-sm bg-default text-default" />
+                        <select v-model="srcRetentionUnit"
+                            class="col-span-2 block w-full input-textlike sm:text-sm bg-default text-default">
+                            <option value="hours">hours</option>
+                            <option value="days">days</option>
+                            <option value="weeks">weeks</option>
+                            <option value="months">months</option>
+                            <option value="years">years</option>
+                        </select>
+                    </div>
+                    <template #footer>
+                        <p class="text-[11px] text-muted">Tip: “Forever” = keep all snapshots.</p>
+                    </template>
+                </SimpleFormCard>
+
+                <!-- Destination retention -->
+                <SimpleFormCard dense title="On the destination">
+                    <div class="flex items-center justify-between">
+                        <span class="sr-only">Forever toggle</span>
+                        <label class="flex items-center gap-2 text-xs ml-auto">
+                            <input type="checkbox" v-model="destKeepForever" class="h-4 w-4 rounded" />
+                            Forever
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 mt-2"
+                        :class="destKeepForever ? 'opacity-50 pointer-events-none' : ''">
+                        <input type="number" min="1" v-model.number="destRetentionTime"
+                            class="col-span-1 block w-full input-textlike sm:text-sm bg-default text-default" />
+                        <select v-model="destRetentionUnit"
+                            class="col-span-2 block w-full input-textlike sm:text-sm bg-default text-default">
+                            <option value="hours">hours</option>
+                            <option value="days">days</option>
+                            <option value="weeks">weeks</option>
+                            <option value="months">months</option>
+                            <option value="years">years</option>
+                        </select>
+                    </div>
+                    <template #footer>
+                        <p class="text-[11px] text-muted">
+                            Warning: If a schedule is paused longer than your chosen time, older copies may be cleaned
+                            up when it resumes.
+                        </p>
+                    </template>
+                </SimpleFormCard>
+
+            </div>
+        </SimpleFormCard>
+    </div>
+    <div v-else>
+        <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+            <div
+                class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
+                <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
+                    :fillColor="'fill-gray-500'" />
+            </div>
+        </div>
+        <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+            <!-- TOP LEFT -->
+            <div name="source-data"
+                class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
+                <div class="flex flex-row justify-between items-center text-center">
+                    <label class="-mt-1 block text-base leading-6 text-default">Source Location</label>
+                    <div class="mt-1 flex flex-col items-center text-center">
+                        <label class="block text-xs text-default">Custom</label>
+                        <input type="checkbox" v-model="useCustomSource" class="h-4 w-4 rounded" />
+                    </div>
                 </div>
-                <div v-if="useCustomSource">
-                    <input type="text" v-model="sourcePool" :class="[
+                <div name="source-pool">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                        <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag"
+                            class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <div v-if="useCustomSource">
+                        <input type="text" v-model="sourcePool" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customSrcPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]" placeholder="Specify Pool" />
-                </div>
-                <div v-else>
-                    <select v-model="sourcePool" :class="[
+                    </div>
+                    <div v-else>
+                        <select v-model="sourcePool" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                        <option value="">Select a Pool</option>
-                        <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
-                        <option v-if="loadingSourcePools">Loading...</option>
-                    </select>
+                            <option value="">Select a Pool</option>
+                            <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}
+                            </option>
+                            <option v-if="loadingSourcePools">Loading...</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
-            <div name="source-dataset">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
-                    <ExclamationCircleIcon v-if="sourceDatasetErrorTag || customSrcDatasetErrorTag"
-                        class="mt-1 w-5 h-5 text-danger" />
-                </div>
-                <div v-if="useCustomSource">
+                <div name="source-dataset">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
+                        <ExclamationCircleIcon v-if="sourceDatasetErrorTag || customSrcDatasetErrorTag"
+                            class="mt-1 w-5 h-5 text-danger" />
+                    </div>
                     <div v-if="useCustomSource">
-                        <input type="text" v-model="sourceDataset" :class="[
+                        <div v-if="useCustomSource">
+                            <input type="text" v-model="sourceDataset" :class="[
                             'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                             customSrcDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                         ]" placeholder="Specify Dataset" />
+                        </div>
                     </div>
-                </div>
-                <div v-else>
-                    <select v-model="sourceDataset" :class="[
+                    <div v-else>
+                        <select v-model="sourceDataset" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         sourceDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                        <option value="">Select a Dataset</option>
-                        <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{
-                            dataset }}</option>
-                        <option v-if="loadingSourceDatasets">Loading...</option>
-                    </select>
+                            <option value="">Select a Dataset</option>
+                            <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{
+                                dataset }}</option>
+                            <option v-if="loadingSourceDatasets">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+                <div name="source-snapshot-retention" class="">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
+                            Source Retention Policy
+                            <InfoTile class="ml-1"
+                                :title="`How long to keep source snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
+                        </label>
+                    </div>
+                    <div class="flex flex-row gap-2 w-full items-center justify-between">
+                        <input type="number" min="0" v-model="srcRetentionTime"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            placeholder="" />
+                        <select v-model="srcRetentionUnit"
+                            class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                            <option value="">Select an Interval</option>
+                            <option v-for="option in retentionUnitOptions" :key="option" :value="option">
+                                {{ option }}
+                            </option>
+                        </select>
+                    </div>
                 </div>
             </div>
-            <div name="source-snapshot-retention" class="">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                        Source Retention Policy
-                        <InfoTile class="ml-1"
-                            :title="`How long to keep source snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
-                    </label>
-                </div>
-                <div class="flex flex-row gap-2 w-full items-center justify-between">
-                    <input type="number" min="0" v-model="srcRetentionTime"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
-                    <select v-model="srcRetentionUnit"
-                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select an Interval</option>
-                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
-                            {{ option }}
-                        </option>
-                    </select>
-                </div>
-            </div>
-        </div>
 
-        <!-- BOTTOM LEFT -->
-        <div name="destination-data"
-            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
-            <div class="flex flex-row justify-between items-center">
-                <label class="-mt-1 block text-base leading-6 text-default">Target Location</label>
-                <div class="mt-1 flex flex-col items-center text-center">
-                    <label class="block text-xs text-default">Custom</label>
-                    <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded" />
-                </div>
-            </div>
-            <div name="destination-pool">
+            <!-- BOTTOM LEFT -->
+            <div name="destination-data"
+                class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
                 <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
-                    <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
-                        class="mt-1 w-5 h-5 text-danger" />
+                    <label class="-mt-1 block text-base leading-6 text-default">Target Location</label>
+                    <div class="mt-1 flex flex-col items-center text-center">
+                        <label class="block text-xs text-default">Custom</label>
+                        <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded" />
+                    </div>
                 </div>
-                <div v-if="useCustomTarget">
-                    <input type="text" v-model="destPool" :class="[
+                <div name="destination-pool">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                        <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
+                            class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <div v-if="useCustomTarget">
+                        <input type="text" v-model="destPool" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customDestPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]" placeholder="Specify Target Pool" />
-                </div>
-                <div v-else>
-                    <select v-model="destPool" :class="[
+                    </div>
+                    <div v-else>
+                        <select v-model="destPool" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                        <option value="">Select a Pool</option>
-                        <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                        <option v-if="loadingDestPools">Loading...</option>
-                    </select>
+                            <option value="">Select a Pool</option>
+                            <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                            <option v-if="loadingDestPools">Loading...</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
-            <div name="destination-dataset">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
-                    <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag"
-                        class="mt-1 w-5 h-5 text-danger" />
-                </div>
-                <div v-if="useCustomTarget">
-                    <div class="flex flex-row justify-between items-center w-full flex-grow">
-                        <input type="text" v-model="destDataset" :class="[
+                <div name="destination-dataset">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
+                        <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag"
+                            class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <div v-if="useCustomTarget">
+                        <div class="flex flex-row justify-between items-center w-full flex-grow">
+                            <input type="text" v-model="destDataset" :class="[
                             'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                             customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                         ]" placeholder="Specify Target Dataset" />
-                        <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
-                            <label class="block text-xs text-default">Create</label>
-                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                            <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
+                                <label class="block text-xs text-default">Create</label>
+                                <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div v-else>
-                    <select v-model="destDataset" :class="[
+                    <div v-else>
+                        <select v-model="destDataset" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                        <option value="">Select a Dataset</option>
-                        <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{ dataset
-                            }}</option>
-                        <option v-if="loadingDestDatasets">Loading...</option>
-                    </select>
+                            <option value="">Select a Dataset</option>
+                            <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{
+                                dataset
+                                }}</option>
+                            <option v-if="loadingDestDatasets">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+                <div name="destination-snapshot-retention" class="">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
+                            Destination Retention Policy
+                            <InfoTile class="ml-1"
+                                :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
+                        </label>
+                    </div>
+                    <div class="flex flex-row gap-2 w-full items-center justify-between">
+                        <input type="number" min="0" v-model="destRetentionTime"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            placeholder="" />
+                        <select v-model="destRetentionUnit"
+                            class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                            <option value="">Select an Interval</option>
+                            <option v-for="option in retentionUnitOptions" :key="option" :value="option">
+                                {{ option }}
+                            </option>
+                        </select>
+                    </div>
                 </div>
             </div>
-            <div name="destination-snapshot-retention" class="">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                        Destination Retention Policy
-                        <InfoTile class="ml-1"
-                            :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
-                    </label>
-                </div>
-                <div class="flex flex-row gap-2 w-full items-center justify-between">
-                    <input type="number" min="0" v-model="destRetentionTime"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
-                    <select v-model="destRetentionUnit"
-                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select an Interval</option>
-                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
-                            {{ option }}
-                        </option>
-                    </select>
-                </div>
-            </div>
-        </div>
 
-        <!-- TOP RIGHT -->
-        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
-            <div class="grid grid-cols-2">
-                <label class="mt-1 col-span-1 block text-base leading-6 text-default" >Select Transfer Method</label>
-                <select v-model="transferMethod" class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"id="method">
-                    <option value="ssh">SSH</option>
-                    <option value="netcat">Netcat</option>
-                </select>
+            <!-- TOP RIGHT -->
+            <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
+                <div class="grid grid-cols-2">
+                    <label class="mt-1 col-span-1 block text-base leading-6 text-default">Select Transfer Method</label>
+                    <select v-model="transferMethod"
+                        class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"
+                        id="method">
+                        <option value="ssh">SSH</option>
+                        <option value="netcat">Netcat</option>
+                    </select>
 
-            </div>
-            <div class="grid grid-cols-2 mt-2">
-                <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
-                <div class="col-span-1 items-end text-end justify-end">
-                    <button disabled v-if="testingNetcat || testingSSH " class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
-                        <svg aria-hidden="true" role="status"
-                            class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101"
-                            fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
-                                fill="currentColor" />
-                            <path
-                                d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
-                                fill="text-success" />
-                        </svg>
-                        Testing...
-                    </button>
-                    <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
-                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
-                    <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
-                    class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
                 </div>
-            </div>
-            <div name="destination-host" class="mt-1">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="block text-sm leading-6 text-default">Host</label>
-                    <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                <div class="grid grid-cols-2 mt-2">
+                    <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
+                    <div class="col-span-1 items-end text-end justify-end">
+                        <button disabled v-if="testingNetcat || testingSSH "
+                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                            <svg aria-hidden="true" role="status"
+                                class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
+                                viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+                                    fill="currentColor" />
+                                <path
+                                    d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+                                    fill="text-success" />
+                            </svg>
+                            Testing...
+                        </button>
+                        <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
+                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                        <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
+                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
+                    </div>
                 </div>
-                <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
+                <div name="destination-host" class="mt-1">
+                    <div class="flex flex-row justify-between items-center">
+                        <label class="block text-sm leading-6 text-default">Host</label>
+                        <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                    </div>
+                    <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
                     'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                     destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" placeholder="Leave blank for local replication." />
-            </div>
-            <div name="destination-user" class="mt-1">
-                <label class="block text-sm leading-6 text-default">User</label>
-                <input v-if="destHost === ''" disabled type="text" v-model="destUser"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                    placeholder="'root' is default" />
-                <input v-else type="text" v-model="destUser"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                    placeholder="'root' is default" />
-            </div>
-            <div name="destination-port" class="mt-1">
-                <div class="flex flex-row justify-between items-center"><label class="block text-sm leading-6 text-default">Port</label>
-                <ExclamationCircleIcon v-if="netCatPortError"
-                        class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <input v-if="destHost === ''" disabled type="number" class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6" 
-                v-model="destPort"  min="0" max="65535" placeholder="22 is default"/>
-                <input v-else type="number" v-model="destPort"
-                :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
-                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
-                    ]" 
-                    max="65535" :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
-                    @input="validatePort" />
-            </div>
-        </div>
-
-        <!-- BOTTOM RIGHT -->
-        <div name="send-options"
-            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
-            <label class="mt-1 block text-base leading-6 text-default">Send Options</label>
-            <div class="grid grid-cols-2 mt-1">
-                <div name="send-opt-raw" class="flex flex-row items-center gap-2 mt-1 col-span-1">
-                    <label class="block text-sm leading-6 text-default">Send Raw</label>
-                    <input type="checkbox" v-model="sendRaw" @change="handleCheckboxChange('sendRaw')"
-                        class=" h-4 w-4 rounded" />
+                <div name="destination-user" class="mt-1">
+                    <label class="block text-sm leading-6 text-default">User</label>
+                    <input v-if="destHost === ''" disabled type="text" v-model="destUser"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="'root' is default" />
+                    <input v-else type="text" v-model="destUser"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="'root' is default" />
                 </div>
-                <div name="send-opt-compressed" class="flex flex-row items-center gap-2 mt-1 col-span-1">
-                    <label class="block text-sm leading-6 text-default">Send Compressed</label>
-                    <input type="checkbox" v-model="sendCompressed" @change="handleCheckboxChange('sendCompressed')"
-                        class=" h-4 w-4 rounded" />
-                </div>
-            </div>
-            <div name="send-opt-recursive" class="flex flex-row items-center gap-2 mt-2">
-                <label class="block text-sm leading-6 text-default">Send Recursive</label>
-                <input type="checkbox" v-model="sendRecursive" class="h-4 w-4 rounded" />
-            </div>
-            <div name="send-opt-custom-name mt-2">
-                <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
-                    <div class="flex flex-row items-center gap-2 mt-2">
-                        <label class="block text-sm leading-6 text-default">Use Custom Snapshot Name?</label>
-                        <input type="checkbox" v-model="useCustomName" class=" h-4 w-4 rounded" />
+                <div name="destination-port" class="mt-1">
+                    <div class="flex flex-row justify-between items-center"><label
+                            class="block text-sm leading-6 text-default">Port</label>
+                        <ExclamationCircleIcon v-if="netCatPortError" class="mt-1 w-5 h-5 text-danger" />
                     </div>
-                    <ExclamationCircleIcon v-if="customNameErrorTag" class="mt-2 w-5 h-5 text-danger" />
+                    <input v-if="destHost === ''" disabled type="number"
+                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6"
+                        v-model="destPort" min="0" max="65535" placeholder="22 is default" />
+                    <input v-else type="number" v-model="destPort" :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
+                    ]" max="65535"
+                        :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
+                        @input="validatePort" />
                 </div>
-                <div name="custom-snapshot-name-field" class="mt-1">
-                    <input v-if="useCustomName" type="text" v-model="customName" :class="[
+            </div>
+
+            <!-- BOTTOM RIGHT -->
+            <div name="send-options"
+                class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
+                <label class="mt-1 block text-base leading-6 text-default">Send Options</label>
+                <div class="grid grid-cols-2 mt-1">
+                    <div name="send-opt-raw" class="flex flex-row items-center gap-2 mt-1 col-span-1">
+                        <label class="block text-sm leading-6 text-default">Send Raw</label>
+                        <input type="checkbox" v-model="sendRaw" @change="handleCheckboxChange('sendRaw')"
+                            class=" h-4 w-4 rounded" />
+                    </div>
+                    <div name="send-opt-compressed" class="flex flex-row items-center gap-2 mt-1 col-span-1">
+                        <label class="block text-sm leading-6 text-default">Send Compressed</label>
+                        <input type="checkbox" v-model="sendCompressed" @change="handleCheckboxChange('sendCompressed')"
+                            class=" h-4 w-4 rounded" />
+                    </div>
+                </div>
+                <div name="send-opt-recursive" class="flex flex-row items-center gap-2 mt-2">
+                    <label class="block text-sm leading-6 text-default">Send Recursive</label>
+                    <input type="checkbox" v-model="sendRecursive" class="h-4 w-4 rounded" />
+                </div>
+                <div name="send-opt-custom-name mt-2">
+                    <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
+                        <div class="flex flex-row items-center gap-2 mt-2">
+                            <label class="block text-sm leading-6 text-default">Use Custom Snapshot Name?</label>
+                            <input type="checkbox" v-model="useCustomName" class=" h-4 w-4 rounded" />
+                        </div>
+                        <ExclamationCircleIcon v-if="customNameErrorTag" class="mt-2 w-5 h-5 text-danger" />
+                    </div>
+                    <div name="custom-snapshot-name-field" class="mt-1">
+                        <input v-if="useCustomName" type="text" v-model="customName" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]" placeholder="Name is TaskName + CustomName + Timestamp" />
-                    <input v-else disabled type="text" v-model="customName"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="Name is TaskName + Timestamp" />
+                        <input v-else disabled type="text" v-model="customName"
+                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            placeholder="Name is TaskName + Timestamp" />
+                    </div>
                 </div>
-            </div>
-            <div class="grid grid-cols-2 mt-2">
-                <div name="send-opt-mbuffer" class="col-span-1">
-                    <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
-                    <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" min="1"
-                        class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1" />
-                    <input v-else type="number" v-model="mbufferSize" min="1"
-                        class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="1" />
-                </div>
-                <div name="send-opt-mbuffer" class="col-span-1">
-                    <div name="send-opt-mbuffer-unit">
-                        <label class="block text-sm leading-6 text-default">mBuffer Unit (Remote)</label>
-                        <select v-if="destHost === ''" disabled v-model="mbufferUnit"
-                            class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
-                            <option value="b">b</option>
-                            <option value="k">k</option>
-                            <option value="M">M</option>
-                            <option value="G">G</option>
-                        </select>
-                        <select v-else v-model="mbufferUnit"
-                            class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
-                            <option value="b">b</option>
-                            <option value="k">k</option>
-                            <option value="M">M</option>
-                            <option value="G">G</option>
-                        </select>
+                <div class="grid grid-cols-2 mt-2">
+                    <div name="send-opt-mbuffer" class="col-span-1">
+                        <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
+                        <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" min="1"
+                            class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default"
+                            placeholder="1" />
+                        <input v-else type="number" v-model="mbufferSize" min="1"
+                            class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                            placeholder="1" />
+                    </div>
+                    <div name="send-opt-mbuffer" class="col-span-1">
+                        <div name="send-opt-mbuffer-unit">
+                            <label class="block text-sm leading-6 text-default">mBuffer Unit (Remote)</label>
+                            <select v-if="destHost === ''" disabled v-model="mbufferUnit"
+                                class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
+                                <option value="b">b</option>
+                                <option value="k">k</option>
+                                <option value="M">M</option>
+                                <option value="G">G</option>
+                            </select>
+                            <select v-else v-model="mbufferUnit"
+                                class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
+                                <option value="b">b</option>
+                                <option value="k">k</option>
+                                <option value="M">M</option>
+                                <option value="G">G</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -315,17 +464,19 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, watch, inject } from 'vue';
+import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat } from '../../../composables/utility';
+import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat, testOrSetupSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
+import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 
 interface ZfsRepTaskParamsProps {
     parameterSchema: ParameterNodeType;
     task?: TaskInstanceType;
+    simple?: boolean;
 }
 
 const props = defineProps<ZfsRepTaskParamsProps>();
@@ -358,6 +509,10 @@ const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
 
+const destUserPass = ref('');   // add this for SIMPLE if you want auto setup
+
+const sshReady = ref(false);
+
 const sendRaw = ref(false);
 const sendCompressed = ref(false);
 const sendRecursive = ref(false);
@@ -372,6 +527,35 @@ const srcRetentionUnit = ref('');
 const destRetentionTime = ref(0);
 const destRetentionUnit = ref('');
 const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
+
+// Simple-mode helpers (optional QoL)
+const srcKeepForever = computed({
+    get: () => Number(srcRetentionTime || 0) === 0,
+    set: (v: boolean) => { if (v) srcRetentionTime.value = 0; else if (srcRetentionTime.value === 0) srcRetentionTime.value = 30 }
+})
+const destKeepForever = computed({
+    get: () => Number(destRetentionTime || 0) === 0,
+    set: (v: boolean) => { if (v) destRetentionTime.value = 0; else if (destRetentionTime.value === 0) destRetentionTime.value = 30 }
+})
+
+
+async function handleTestSSH() {
+    testingSSH.value = true;
+    try {
+        const res = await testOrSetupSSH({
+            host: destHost.value,
+            user: destUser.value || 'root',
+            port: destPort.value || 22,
+            passwordRef: destUserPass,
+            onEvent: ({ type, title, message }) => {
+                pushNotification(new Notification(title, message, type, type === 'info' ? 8000 : 6000));
+            }
+        });
+        sshReady.value = res.success;
+    } finally {
+        testingSSH.value = false;
+    }
+}
 
 const useCustomTarget = ref(false);
 const useCustomSource = ref(false);
@@ -417,13 +601,13 @@ async function initializeData() {
             const sshTarget = destUser.value + '@' + destHost.value;
             isRemoteAccessible.value = await testSSH(sshTarget);
             if (isRemoteAccessible.value) {
-                pushNotification(new Notification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000))
+                pushNotification(new Notification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 6000))
                 await getRemoteDestinationPools();
                 destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
                 await getRemoteDestinationDatasets();
                 destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
             } else {
-                pushNotification(new Notification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 8000));
+                pushNotification(new Notification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 6000));
                 await getLocalDestinationPools();
                 destPool.value = '';
                 await getLocalDestinationDatasets();
@@ -969,9 +1153,9 @@ async function confirmSSHTest(destHost, destUser) {
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000));
+        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 6000));
     } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000));
+        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
     }
     testingSSH.value = false;
 }

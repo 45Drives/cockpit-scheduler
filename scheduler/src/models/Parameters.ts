@@ -184,6 +184,54 @@ export class ZfsDatasetParameter extends ParameterNode implements ParameterNodeT
     }
 }
 
+// export class Location implements LocationType {
+//     host: string;
+//     port: number;
+//     user: string;
+//     root: string;
+//     path: string;
+
+//     constructor(host: string, port: number, user: string, root: string, path: string) {
+//         this.host = host;
+//         this.port = port;
+//         this.user = user;
+//         this.root = root;
+//         this.path = path;
+//     }
+// }
+
+// export class LocationParameter extends ParameterNode implements ParameterNodeType {
+//     constructor(label: string, key: string, host: string = "", port: number = 0, user: string = "", root: string = "", path: string = "", pass: string = "") {
+//         super(label, key);
+//         this.addChild(new StringParameter("Host", "host", host));
+//         this.addChild(new IntParameter("Port", "port", port));
+//         this.addChild(new StringParameter("User", "user", user));
+//         this.addChild(new StringParameter("Root", "root", root));
+//         this.addChild(new StringParameter("Path", "path", path));
+//         this.addChild(new StringParameter("Password", "pass", pass))
+//     } 
+
+//     // Method to create ZfsDatasetParameter from a location
+//     static fromLocation(label: string, key: string, location: Location): LocationParameter {
+//         const {host, port, user, root, path } = location;
+//         return new LocationParameter(label, key, host, port, user, root, path);
+//     }
+
+//     // Method to convert ZfsDatasetParameter to a location
+//     toLocation(): Location {
+//         const label = (this.children[0] as StringParameter).value;
+//         const key = (this.children[1] as StringParameter).value;
+//         const transferMethod = (this.children[2] as StringParameter).value;
+//         const host = (this.children[3] as StringParameter).value;
+//         const port = (this.children[4] as IntParameter).value;
+//         const user = (this.children[5] as StringParameter).value;
+//         const root = (this.children[6] as SelectionParameter).value;
+//         const path = (this.children[7] as SelectionParameter).value;
+
+//         return {host, port, user, root, path };
+//     }
+// }
+
 export class Location implements LocationType {
     host: string;
     port: number;
@@ -201,35 +249,45 @@ export class Location implements LocationType {
 }
 
 export class LocationParameter extends ParameterNode implements ParameterNodeType {
-    constructor(label: string, key: string, host: string = "", port: number = 0, user: string = "", root: string = "", path: string = "") {
+    constructor(
+        label: string,
+        key: string,
+        host: string = "",
+        port: number = 22,
+        user: string = "",
+        root: string = "",
+        path: string = "",
+        pass: string = "" // optional
+    ) {
         super(label, key);
         this.addChild(new StringParameter("Host", "host", host));
         this.addChild(new IntParameter("Port", "port", port));
         this.addChild(new StringParameter("User", "user", user));
         this.addChild(new StringParameter("Root", "root", root));
         this.addChild(new StringParameter("Path", "path", path));
-    } 
-
-    // Method to create ZfsDatasetParameter from a location
-    static fromLocation(label: string, key: string, location: Location): LocationParameter {
-        const {host, port, user, root, path } = location;
-        return new LocationParameter(label, key, host, port, user, root, path);
+        this.addChild(new StringParameter("Password (optional)", "pass", pass)); // mask in UI if you can
     }
 
-    // Method to convert ZfsDatasetParameter to a location
-    toLocation(): Location {
-        const label = (this.children[0] as StringParameter).value;
-        const key = (this.children[1] as StringParameter).value;
-        const transferMethod = (this.children[2] as StringParameter).value;
-        const host = (this.children[3] as StringParameter).value;
-        const port = (this.children[4] as IntParameter).value;
-        const user = (this.children[5] as StringParameter).value;
-        const root = (this.children[6] as SelectionParameter).value;
-        const path = (this.children[7] as SelectionParameter).value;
+    static fromLocation(label: string, key: string, location: Location): LocationParameter {
+        const { host, port, user, root, path } = location;
+        return new LocationParameter(label, key, host, port, user, root, path, "");
+    }
 
-        return {host, port, user, root, path };
+    toLocation(): Location {
+        const host = (this.children[0] as StringParameter).value;
+        const port = (this.children[1] as IntParameter).value;
+        const user = (this.children[2] as StringParameter).value;
+        const root = (this.children[3] as StringParameter).value;
+        const path = (this.children[4] as StringParameter).value;
+        return new Location(host, port, user, root, path);
+    }
+
+    getPassword(): string | undefined {
+        const pass = (this.children[5] as StringParameter)?.value?.trim();
+        return pass ? pass : undefined;
     }
 }
+
 
 export class ObjectParameter extends ParameterNode implements ParameterNodeType {
     constructor(label: string, key: string, obj: { [key: string]: any }) {
