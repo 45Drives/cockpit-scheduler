@@ -1,3 +1,3 @@
-## task scheduler 1.3.6-1
+## task scheduler 1.3.7-1
 
-* Fixes syntax issue in autosnap-script.py so it works on Python 3.8+
+* TESTING -> Adds simple UI for use in Setup Wizard's Remote Backup Tasks
