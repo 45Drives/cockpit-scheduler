@@ -660,4 +660,59 @@ export class Scheduler implements SchedulerType {
 
         return elements.filter(e => e).join(', ');
     }
+
+    parseIntervalIntoShortString(interval: any): string {
+        const v = (k: 'minute' | 'hour' | 'day' | 'month' | 'year') =>
+            interval?.[k]?.value?.toString?.() ?? '*';
+
+        const pad2 = (n: string | number) => String(n).padStart(2, '0');
+        const minute = v('minute'), hour = v('hour'), day = v('day'), month = v('month'), year = v('year');
+        const dows = Array.isArray(interval?.dayOfWeek) ? interval.dayOfWeek : [];
+        const dowName = (n: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][Number(n)] ?? String(n);
+        const monthName = (m: number) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+        const hhmm = () =>
+            (hour !== '*' && minute !== '*') ? `${pad2(hour)}:${pad2(minute)}` :
+                (hour !== '*' && minute === '*') ? `${pad2(hour)}:00` : '';
+
+        // every N minutes
+        if (hour === '*' && /^\*\/\d+$/.test(minute) && day === '*' && month === '*' && year === '*') {
+            return `every ${minute.slice(2)} min`;
+        }
+
+        // hourly at :MM
+        if (hour === '*' && minute !== '*' && !minute.includes('/')) {
+            return `hourly at :${pad2(minute)}`;
+        }
+
+        // weekly: prefer DOW phrasing, suppress "every day/month/year"
+        if (dows.length && hour !== '*' && minute !== '*') {
+            return `${dows.map(dowName).join(', ')} @ ${hhmm()}`;
+        }
+
+        // daily @ time
+        if (day === '*' && month === '*' && year === '*' && hour !== '*' && minute !== '*') {
+            return `daily @ ${hhmm()}`;
+        }
+
+        // monthly on <day> @ time
+        if (day !== '*' && month === '*' && year === '*' && hour !== '*' && minute !== '*') {
+            return `monthly on ${day} @ ${hhmm()}`;
+        }
+
+        // yearly fixed date/time
+        if (day !== '*' && month !== '*' && year !== '*' && hour !== '*' && minute !== '*') {
+            return `${monthName(Number(month))} ${day}, ${year} @ ${hhmm()}`;
+        }
+
+        // fallback compact
+        const parts: string[] = [];
+        if (dows.length) parts.push(dows.map(dowName).join(', '));
+        if (year !== '*') parts.push(year);
+        if (month !== '*') parts.push(monthName(Number(month)));
+        if (day !== '*') parts.push(`day ${day}`);
+        const t = hhmm();
+        if (t) parts.push(`@ ${t}`);
+        return parts.length ? parts.join(' ') : 'any time';
+    }
+
 }

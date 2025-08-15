@@ -47,17 +47,18 @@
         <SimpleFormCard title="Copy to another server (optional)"
             description="Leave “Server address” empty to keep copies on this machine.">
             <template #header-right>
-                <button v-if="!testingSSH" @click="handleTestSSH"
-                    class="btn btn-secondary h-fit">Test SSH</button>
+                <button v-if="!testingSSH" @click="handleTestSSH" class="btn btn-secondary h-fit">Test SSH</button>
                 <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
             </template>
 
-            <label class="block text-sm mt-1 text-default">Server address</label>
-            <input type="text" v-model="destHost" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                placeholder="e.g. backup.example.com or 10.0.0.5" />
+            <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="block text-sm mt-3 text-default">Server address</label>
+                    <input type="text" v-model="destHost" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                        destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                        placeholder="e.g. backup.example.com or 10.0.0.5" />
 
-            <div class="grid grid-cols-2 gap-2">
+                </div>
                 <div>
                     <label class="block text-sm mt-3 text-default">User</label>
                     <input type="text" v-model="destUser"
@@ -65,11 +66,25 @@
                         placeholder="root (default)" :disabled="!destHost" />
                 </div>
                 <div>
+                    <label class="block text-sm mt-3 text-default" for="dest-pass">Password</label>
+                    <div class="relative mt-1">
+                        <input :type="showPassword ? 'text' : 'password'" id="dest-pass" v-model="destUserPass"
+                            class="block w-full input-textlike sm:text-sm bg-default text-default pr-10"
+                            :disabled="!destHost" />
+                        <button type="button" @click="togglePassword"
+                            class="absolute inset-y-0 right-0 px-3 flex items-center text-muted"
+                            :aria-label="showPassword ? 'Hide password' : 'Show password'">
+                            <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+                            <EyeSlashIcon v-else class="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+                <!-- <div>
                     <label class="block text-sm mt-3 text-default">Port</label>
                     <input type="number" v-model="destPort" min="1" max="65535" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                         netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                         placeholder="22 (default)" :disabled="!destHost" />
-                </div>
+                </div> -->
             </div>
         </SimpleFormCard>
 
@@ -566,6 +581,8 @@ const customDestDatasetErrorTag = ref(false);
 
 const makeNewDestDataset = ref(false);
 
+const showPassword = ref(false);
+
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
 
@@ -577,6 +594,10 @@ const netCatPortError = ref(false);
 
 
 const errorList = inject<Ref<string[]>>('errors')!;
+
+const togglePassword = () => {
+    showPassword.value = !showPassword.value;
+};
 
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)

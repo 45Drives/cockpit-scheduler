@@ -1,111 +1,133 @@
 <template>
-    <CardContainer class="overflow-y-auto min-h-full w-full ">
-        <div class="h-full bg-accent text-default rounded-md border border-default p-2">
-            <div name="task-name">
-                <div class="flex flex-row justify-between items-center">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="block text-sm leading-6 text-default">Task Name</label>
-                        <InfoTile class="ml-1"
-                            title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save." />
+    <div class="h-full w-full overflow-hidden">
+        <CardContainer class="min-h-0 h-full overflow-y-auto">
+            <div class="grid grid-cols-2 gap-4 min-h-0 h-full">
+                <div class="h-full bg-accent text-default rounded-md border border-default p-2 col-span-1">
+                    <!-- Task Name -->
+                    <div name="task-name" class="mb-2">
+                        <div class="flex flex-row justify-between items-center">
+                            <div class="flex flex-row items-center">
+                                <label class="block text-sm leading-6 text-default">Task Name</label>
+                                <InfoTile class="ml-1"
+                                    title="Name can have letters, numbers, and underscores. Spaces convert to underscores upon save." />
+                            </div>
+                            <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                        </div>
+                        <input type="text" v-model="newTaskName"
+                            :class="['my-1 block w-full input-textlike text-default', newTaskNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                            placeholder="New Task"
+                            title="Name can have letters, numbers, and underscores. Spaces convert to underscores upon save." />
                     </div>
-                    <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                    <!-- Template -->
+                    <div name="task-template" v-if="allowedTemplates.length > 0" class="mb-2">
+                        <label for="task-template-selection" class="block text-sm leading-6 text-default">Task
+                            Template</label>
+                        <select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection"
+                            class="text-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                            <option :value="undefined">Select Type of Task to Add</option>
+                            <option v-for="template, idx in allowedTemplates" :key="idx" :value="template">{{
+                                displayName(template) }}</option>
+                        </select>
+                    </div>
+                    <!-- Parameters -->
+                    <div v-if="selectedTemplate">
+                        <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
+                            :selectedTemplate="selectedTemplate" :simple="true" :task="originalTask || undefined" />
+                    </div>
                 </div>
-                <input type="text" v-model="newTaskName" :class="[
-                    'my-1 block w-full input-textlike text-default',
-                    newTaskNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                ]" placeholder="New Task"
-                    title="Name can have letters, numbers, and underscores. Spaces will convert to underscores upon save." />
-            </div>
-            <div name="task-template" v-if="allowedTemplates.length > 0">
-                <label for="task-template-selection" class="block text-sm leading-6 text-default">Task
-                    Template</label>
-                <select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection"
-                    class="text-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                    <option :value="undefined">Select Type of Task to Add</option>
-                    <option v-for="template, idx in allowedTemplates" :key="idx" :value="template">{{ displayName(template) }}
-                    </option>
-                </select>
-            </div>
-            <div v-if="selectedTemplate">
-                <ParameterInput ref="parameterInputComponent" :selectedTemplate="selectedTemplate" :simple="true" />
-            </div>
-        </div>
-        <!-- Footer Buttons -->
-        <template #footer>
-            <div class="button-group-row justify-start w-full">
-                <button @click="goBack" class="btn btn-secondary h-20 w-40">Back</button>
 
-                <!-- <div class="button-group-row justify-end gap-3">
-                    <button class="btn btn-secondary px-4 py-2" :disabled="!selectedBackup"
-                        @click="deselectAll">Deselect All</button>
-                    <button class="btn btn-secondary px-4 py-2" :disabled="!selectedBackup" @click="selectAll">Select
-                        All</button>
-                    <button class="btn btn-secondary px-4 py-2" :disabled="!selectedBackup"
-                        @click="openSelectedBackupFolder">
-                        Open Folder
-                    </button>
-                    <button class="btn btn-danger px-4 py-2" :disabled="multiSelectedUuids.length === 0"
-                        @click="deleteSelectedBackups">
-                        Delete Selected Backups
-                    </button>
-                    <button class="btn btn-primary px-4 py-2" :disabled="!selectedBackup || selectedFilesCount === 0"
-                        @click="restoreSelected">
-                        Restore Selected Files
-                    </button>
-                </div> -->
+                <div class="h-full p-2 col-span-1">
+                    <SimpleCalendar :title="'Schedule Task'" v-model:taskSchedule="uiSchedule" />
+                </div>
             </div>
-        </template>
-    </CardContainer>
 
+
+            <!-- Footer: single action row -->
+            <template #footer>
+                <div class="button-group-row justify-between w-full">
+                    <button @click="goBack" class="btn btn-secondary h-20 w-40">Back</button>
+                    <div class="">
+                        <button :disabled="!isDirty || adding" @click="saveAll" class="btn btn-primary h-20 w-48">
+                            {{ isEditMode ? (adding ? 'Saving…' : 'Save Changes') : (adding ? 'Creating…' : 'Create Task') }}
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </CardContainer>
+    </div>
 </template>
+
 <script setup lang="ts">
-import { computed, inject, provide, ref, Ref } from 'vue';
-import ParameterInput from '../parameters/ParameterInput.vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
-import InfoTile from '../common/InfoTile.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate, CustomTaskTemplate } from '../../models/Tasks';
-import { pushNotification, Notification, CardContainer } from '@45drives/houston-common-ui';
-import { injectWithCheck } from '../../composables/utility'
-import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
+import { computed, inject, nextTick, onMounted, provide, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import ParameterInput from '../parameters/ParameterInput.vue';
+import SimpleCalendar from './SimpleCalendar.vue';
+import InfoTile from '../common/InfoTile.vue';
+import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import { pushNotification, Notification, CardContainer } from '@45drives/houston-common-ui';
+import {
+    TaskInstance,
+    ZFSReplicationTaskTemplate,
+    TaskSchedule as ModelTaskSchedule,
+    AutomatedSnapshotTaskTemplate,
+    RsyncTaskTemplate,
+    ScrubTaskTemplate,
+    SmartTestTemplate,
+    CloudSyncTaskTemplate,
+    CustomTaskTemplate,
+} from '../../models/Tasks';
+import type { TaskInstance as TaskInstanceType, TaskTemplate as TaskTemplateType } from '../../models/Tasks';
+import type { TaskSchedule as UITaskSchedule } from '@45drives/houston-common-lib';
+import { useTaskDraftStore } from '../../stores/taskDraft';
+import { injectWithCheck } from '../../composables/utility';
+import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
+// ---- props ----
+const props = defineProps<{ mode?: 'create' | 'edit', existingTask?: TaskInstanceType }>();
+const draft = useTaskDraftStore();
+
+// Return the actual task (not the store object)
+const originalTask = computed<TaskInstanceType | null>(() => props.existingTask ?? draft.draft ?? null);
+
+// Treat either prop mode or store mode as the source of truth
+const isEditMode = computed(() => (props.mode ?? draft.mode) === 'edit');
+
+watch(isEditMode, (edit) => {
+    if (!edit) {
+        newTaskName.value = '';
+        selectedTemplate.value = undefined;
+        parameters.value = undefined;
+        notesTask.value = '';
+        uiSchedule.value = toUISchedule(null);
+        paramInputKey.value++; // reset ParameterInput
+    }
+}, { immediate: true });
+
+// ---- deps ----
 const router = useRouter();
-function goBack() {
-    router.push({ name: 'SimpleTasks' });
-}
-const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
-const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, "taskTemplates not provided!");
-const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
-const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+const taskInstances = injectWithCheck(taskInstancesInjectionKey, 'taskInstances not provided!');
+const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, 'taskTemplates not provided!');
+const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
+const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
 
-const emit = defineEmits(['manageSchedule']);
-
-const newTask = ref<TaskInstanceType>();
-
-const showTaskWizard = inject<Ref<boolean>>('show-task-wizard')!;
+// ---- state/refs ----
+const newTask = ref<TaskInstance | null>(null);
 const adding = ref(false);
-
 const errorList = ref<string[]>([]);
 const newTaskName = ref('');
 const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
 const parameterInputComponent = ref();
-const parameters = ref();
+const parameters = ref<any>();
 const notesTask = ref('');
+const paramInputKey = ref(0);
 
-const simpleAllowed = [
-    'Rsync Task',
-    'Cloud Sync Task',
-    'ZFS Replication Task',
-    'Automated Snapshot Task',
-    'Scrub Task',
-];
-
+const simpleAllowed = ['Rsync Task', 'Cloud Sync Task'];
 const allowedTemplates = computed(() => {
-    const orderMap = Object.fromEntries(simpleAllowed.map((name, i) => [name, i]));
+    const orderMap = Object.fromEntries(simpleAllowed.map((n, i) => [n, i]));
     return taskTemplates
-        .filter(t => simpleAllowed.includes(t.name))
-        .sort((a, b) => orderMap[a.name] - orderMap[b.name]);
+        .filter((t: any) => simpleAllowed.includes(t.name))
+        .sort((a: any, b: any) => orderMap[a.name] - orderMap[b.name]);
 });
 
 const nameOverrides: Record<string, string> = {
@@ -113,64 +135,168 @@ const nameOverrides: Record<string, string> = {
     'Automated Snapshot Task': 'Automatic Snapshots',
     'Scrub Task': 'ZFS Scrub',
     'Rsync Task': 'Server-to-Server Backup',
-    'Cloud Sync Task': 'Cloud Backup'
+    'Cloud Sync Task': 'Cloud Backup',
 };
 
-const displayName = (template: TaskTemplateType) => {
-    return nameOverrides[template.name] || template.name;
-};
+const displayName = (template: TaskTemplateType) => nameOverrides[template.name] || template.name;
 
-
-const cancelingAddTask = ref(false);
-const showCloseConfirmation = ref(false);
-const closeConfirmationComponent = ref();
-async function loadCloseConfirmationComponent() {
-    const module = await import('../common/ConfirmationDialog.vue');
-    closeConfirmationComponent.value = module.default;
-}
-
-const closeBtn = async () => {
-    if (!selectedTemplate.value) {
-        // closeModal();
-    } else {
-        await loadCloseConfirmationComponent();
-        showCloseConfirmation.value = true;
+// ---- schedule bridge (UI <-> model) ----
+function toUISchedule(model?: ModelTaskSchedule | null): UITaskSchedule {
+    const now = new Date();
+    if (!model || !Array.isArray(model.intervals) || model.intervals.length === 0) {
+        return { repeatFrequency: 'day', startDate: now } as UITaskSchedule;
     }
-};
+    const intv: any = model.intervals[0] ?? {};
+    const v = (x: any) => (x?.value ?? x);
+    const isStar = (x: any) => String(v(x) ?? '*') === '*';
+    const asNum = (x: any, fb: number) => {
+        const s = String(v(x) ?? '');
+        const n = Number(s);
+        return Number.isFinite(n) ? n : fb;
+    };
 
-const updateShowCloseConfirmation = (newVal) => {
-    showCloseConfirmation.value = newVal;
+    const hasDOW = Array.isArray(intv.dayOfWeek) && intv.dayOfWeek.length > 0;
+    const hourStar = isStar(intv.hour);
+    const dayStar = isStar(intv.day);
+    const monthStar = isStar(intv.month);
+    const yearStar = isStar(intv.year);
+
+    let repeatFrequency: 'hour' | 'day' | 'week' | 'month' = 'day';
+    if (hourStar && dayStar && monthStar && yearStar) repeatFrequency = 'hour';
+    else if (hasDOW) repeatFrequency = 'week';
+    else if (!dayStar && monthStar) repeatFrequency = 'month';
+    else repeatFrequency = 'day';
+
+    // hour/minute always come from interval if present, otherwise default to "now"
+    const hour = asNum(intv.hour, now.getHours());
+    const minute = asNum(intv.minute, now.getMinutes());
+
+    if (repeatFrequency === 'week') {
+        const targetDow = Number(intv.dayOfWeek[0]); // 0..6
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+        const delta = (targetDow - start.getDay() + 7) % 7;
+        if (delta !== 0 || start <= now) start.setDate(start.getDate() + (delta || 7));
+        return { repeatFrequency, startDate: start } as UITaskSchedule;
+    }
+
+    if (repeatFrequency === 'hour') {
+        // Next top-of-hour-ish preview with the saved minute (or 0)
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), minute, 0, 0);
+        if (start <= now) start.setHours(start.getHours() + 1);
+        return { repeatFrequency, startDate: start } as UITaskSchedule;
+    }
+
+    // daily/monthly/yearly
+    const year = asNum(intv.year, now.getFullYear());
+    const month = asNum(intv.month, now.getMonth() + 1);
+    const day = asNum(intv.day, now.getDate());
+    return { repeatFrequency, startDate: new Date(year, Math.min(11, Math.max(0, month - 1)), day, hour, minute) } as UITaskSchedule;
 }
 
-const confirmCancel: ConfirmationCallback = async () => {
-    // closeModal();
+function toModelSchedule(ui: UITaskSchedule): ModelTaskSchedule {
+    const d = ui.startDate;
+    const baseInterval: any = {
+        minute: { value: String(d.getMinutes()) },
+        hour: { value: ui.repeatFrequency === 'hour' ? '*' : String(d.getHours()) },
+        year: { value: String(d.getFullYear()) },
+    };
+
+    if (ui.repeatFrequency !== 'hour') {
+        baseInterval.day = { value: String(d.getDate()) };
+        baseInterval.month = { value: String(d.getMonth() + 1) };
+    } else {
+        // Hourly: day/month/year all '*' to match your preset & parser
+        baseInterval.day = { value: '*' };
+        baseInterval.month = { value: '*' };
+        baseInterval.year = { value: '*' };
+    }
+
+    if (ui.repeatFrequency === 'week') {
+        baseInterval.day = { value: '*' };
+        baseInterval.month = { value: '*' };
+        baseInterval.year = { value: '*' };
+        baseInterval.dayOfWeek = [d.getDay()];
+    }
+
+    return new ModelTaskSchedule(true, [baseInterval]);
 }
 
-const cancelCancel: ConfirmationCallback = async () => {
-    updateShowCloseConfirmation(false);
+// schedule bridge init
+const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
+
+// schedule bridge watch
+watch(() => originalTask.value, (t) => {
+    uiSchedule.value = toUISchedule(t?.schedule);
+}, { immediate: true });
+
+
+// ---- prefill helpers ----
+function makeLocalSchemaByName(name: string) {
+    if (name === 'Rsync Task') return new RsyncTaskTemplate().parameterSchema;
+    if (name === 'Cloud Sync Task') return new CloudSyncTaskTemplate().parameterSchema;
+    if (name === 'ZFS Replication Task') return new ZFSReplicationTaskTemplate().parameterSchema;
+    if (name === 'Automated Snapshot Task') return new AutomatedSnapshotTaskTemplate().parameterSchema;
+    if (name === 'Scrub Task') return new ScrubTaskTemplate().parameterSchema;
+    if (name === 'SMART Test') return new SmartTestTemplate().parameterSchema;
+    if (name === 'Custom Task') return new CustomTaskTemplate().parameterSchema;
+    return null;
 }
 
-// Validation
+function hydrateSchemaWithRaw(schema: any, raw: any) {
+    if (!schema || !raw) return schema;
+    if ('value' in raw && raw.value !== undefined) schema.value = raw.value;
+    if (Array.isArray(raw.children) && Array.isArray(schema.children)) {
+        for (const rawChild of raw.children) {
+            const target = schema.children.find((c: any) => c.key === rawChild.key);
+            if (target) hydrateSchemaWithRaw(target, rawChild);
+        }
+    }
+    return schema;
+}
+
+function prefillFromTask(task: any) {
+    if (!task) return;
+    newTaskName.value = task.name;
+    const found = taskTemplates.find((t: any) => t.name === task.template?.name);
+    if (found) selectedTemplate.value = found;
+    const localSchema = makeLocalSchemaByName(task.template?.name);
+    parameters.value = localSchema ? hydrateSchemaWithRaw(localSchema, task.parameters) : task.parameters;
+    notesTask.value = task.notes ?? '';
+    paramInputKey.value++;
+}
+
+const canPrefill = computed(() => !!originalTask.value && allowedTemplates.value.length > 0);
+
+watch(canPrefill, async (ok) => {
+    if (!ok) return;
+    await nextTick();
+    prefillFromTask(originalTask.value);   // uses name, template, parameters
+}, { immediate: true });
+
+// ---- validation ----
 function clearAllErrors() {
     errorList.value = [];
     newTaskNameErrorTag.value = false;
-    parameterInputComponent.value.clearTaskParamErrorTags();
+    parameterInputComponent.value?.clearTaskParamErrorTags?.();
 }
 
+// name uniqueness check
 function doesTaskNameExist(name: string): boolean {
-    return taskInstances.value.some(task => task.name === name);
+    const currentName = originalTask.value?.name;
+    return taskInstances.value.some((task: any) =>
+        task.name === name && (!isEditMode.value || task.name !== currentName)
+    );
 }
 
 async function validateTaskName() {
     if (newTaskName.value === '') {
-        errorList.value.push("Task name cannot be empty.");
+        errorList.value.push('Task name cannot be empty.');
         newTaskNameErrorTag.value = true;
     } else if (!/^[a-zA-Z0-9_ ]+$/.test(newTaskName.value)) {
-        // Checks if the task name contains only letters, digits, underscores, and spaces
-        errorList.value.push("Task name can only contain letters, numbers, spaces, and underscores.");
+        errorList.value.push('Task name can only contain letters, numbers, spaces, and underscores.');
         newTaskNameErrorTag.value = true;
     } else if (doesTaskNameExist(newTaskName.value)) {
-        errorList.value.push("Task already exists with this name.");
+        errorList.value.push('Task already exists with this name.');
         newTaskNameErrorTag.value = true;
     }
 }
@@ -178,119 +304,90 @@ async function validateTaskName() {
 async function validateComponentParams() {
     clearAllErrors();
     await validateTaskName();
-    await parameterInputComponent.value.validation();
+    await parameterInputComponent.value?.validation?.();
     if (errorList.value.length > 0) {
-        pushNotification(new Notification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 6000));
+        pushNotification(new Notification('Task Save Failed', `Task submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 6000));
         return false;
-    } else {
-        return true;
     }
+    return true;
 }
 
-// Schedule Prompt
-const showSchedulePrompt = ref(false);
-const isStandaloneTask = ref(false);
-
-const confirmationComponent = ref();
-const loadConfirmationComponent = async () => {
-    const module = await import('../common/ConfirmationDialog.vue');
-    confirmationComponent.value = module.default;
+// ---- save builders ----
+function templateFromSelection() {
+    const n = selectedTemplate.value?.name;
+    if (n === 'ZFS Replication Task') return new ZFSReplicationTaskTemplate();
+    if (n === 'Automated Snapshot Task') return new AutomatedSnapshotTaskTemplate();
+    if (n === 'Rsync Task') return new RsyncTaskTemplate();
+    if (n === 'Scrub Task') return new ScrubTaskTemplate();
+    if (n === 'SMART Test') return new SmartTestTemplate();
+    if (n === 'Cloud Sync Task') return new CloudSyncTaskTemplate();
+    if (n === 'Custom Task') return new CustomTaskTemplate();
+    return undefined as any;
 }
 
-async function showSchedulePromptDialog() {
-    await loadConfirmationComponent();
-
-    showSchedulePrompt.value = true;
-    // console.log('Showing confirmation dialog...');
+function sanitizeName(n: string) {
+    let s = n.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    if (s.startsWith('_')) s = 'task' + s;
+    return s;
 }
 
-const makeScheduleLater: ConfirmationCallback = async () => {
-    adding.value = true;
-    isStandaloneTask.value = true;
-    console.log('Make Schedule Later. isStandalone Task:', isStandaloneTask.value);
-    await saveTask();
-    updateShowSchedulePrompt(false);
-    // closeModal();
-    adding.value = true;
+function buildTask(): TaskInstance | null {
+    const tpl = templateFromSelection();
+    if (!tpl) return null;
+    const notes = notesTask.value || '';
+    const schedule = toModelSchedule(uiSchedule.value);
+    const inst = new TaskInstance(sanitizeName(newTaskName.value), tpl, parameters.value, schedule, notes);
+    return inst;
 }
 
-const makeScheduleNow: ConfirmationCallback = async () => {
-    isStandaloneTask.value = false;
-    console.log('Make Schedule Now. isStandalone:', isStandaloneTask.value);
-    await saveTask();
-    emit('manageSchedule', newTask.value);
-    updateShowSchedulePrompt(false);
-    // showScheduleWizardComponent();
-    // closeModal();
+// ---- dirty tracking ----
+function jsonStable(v: any) { try { return JSON.stringify(v); } catch { return String(v); } }
+const isDirty = computed(() => {
+    if (!originalTask.value) return true; // creating
+    const candidate = buildTask();
+    if (!candidate) return false;
+    const a = originalTask.value;
+    return (
+        a.name !== candidate.name ||
+        a.template?.name !== candidate.template?.name ||
+        jsonStable(a.parameters) !== jsonStable(candidate.parameters) ||
+        jsonStable(a.schedule) !== jsonStable(candidate.schedule) ||
+        (a.notes || '') !== (candidate.notes || '')
+    );
+});
+
+// ---- navigation ----
+function goBack() { router.push({ name: 'SimpleTasks' }); }
+
+// ---- actions ----
+async function saveAll() {
+    if (!(await validateComponentParams())) return;
+    const built = buildTask();
+    if (!built) return;
+    try {
+        adding.value = true; loading.value = true;
+        if (isEditMode.value) {
+            if (typeof (myScheduler as any).updateTaskInstance === 'function') {
+                await (myScheduler as any).updateTaskInstance(built);
+                await (myScheduler as any).updateSchedule(built);
+            } else {
+                await myScheduler.registerTaskInstance(built);
+            }
+            await myScheduler.loadTaskInstances();
+            pushNotification(new Notification('Task Updated', 'Your task changes were saved.', 'success', 6000));
+        } else {
+            await myScheduler.registerTaskInstance(built);
+            await myScheduler.loadTaskInstances();
+            pushNotification(new Notification('Task Created', 'Your task was created and scheduled.', 'success', 6000));
+        }
+        router.push({ name: 'SimpleTasks' });
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 8000));
+    } finally { adding.value = false; loading.value = false; }
 }
 
-const updateShowSchedulePrompt = (newVal) => {
-    showSchedulePrompt.value = newVal;
-}
-
-async function saveTask() {
-    console.log('saveTask triggered');
-    const template = ref();
-    if (selectedTemplate.value?.name == 'ZFS Replication Task') {
-        template.value = new ZFSReplicationTaskTemplate();
-    } else if (selectedTemplate.value?.name == 'Automated Snapshot Task') {
-        template.value = new AutomatedSnapshotTaskTemplate();
-    } else if (selectedTemplate.value?.name == 'Rsync Task') {
-        template.value = new RsyncTaskTemplate();
-    } else if (selectedTemplate.value?.name == "Scrub Task") {
-        template.value = new ScrubTaskTemplate();
-    } else if (selectedTemplate.value?.name == "SMART Test") {
-        template.value = new SmartTestTemplate();
-    } else if (selectedTemplate.value?.name == "Cloud Sync Task") {
-        template.value = new CloudSyncTaskTemplate();
-    } else if (selectedTemplate.value?.name == "Custom Task") {
-        template.value = new CustomTaskTemplate();
-    }
-
-    let sanitizedName = newTaskName.value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
-    if (sanitizedName.startsWith('_')) {
-        sanitizedName = 'task' + sanitizedName;
-    }
-    //  console.log('sanitizedName:', sanitizedName);
-
-    console.log("template: ", template, " parameters ", parameters)
-    // const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
-    const notes = notesTask.value ? notesTask.value : '';  // Ensure notes is always a string
-    if (isStandaloneTask.value) {
-        const schedule = new TaskSchedule(false, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes || '');
-        //  console.log('task (no schedule):', task);
-        console.log("Saving task with notes:", JSON.stringify(notes));
-        console.log("Task instance:", JSON.stringify(task));
-
-        await myScheduler.registerTaskInstance(task);
-        pushNotification(new Notification('Task Save Successful', `Task has been saved.`, 'success', 6000));
-        loading.value = true;
-        await myScheduler.loadTaskInstances();
-        loading.value = false;
-    } else {
-        const schedule = new TaskSchedule(true, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes);
-        //  console.log('task (for scheduling):', task);
-        console.log("Saving task with notes:", JSON.stringify(notes));
-        console.log("Task instance:", JSON.stringify(task));
-
-        newTask.value = task;
-    }
-}
-
-async function addTaskBtn() {
-    if (await validateComponentParams()) {
-        showSchedulePromptDialog();
-    }
-}
-
-
+// ---- provide for children that read these symbols ----
 provide('new-task', newTask);
 provide('parameters', parameters);
 provide('errors', errorList);
-provide('show-schedule-prompt', showSchedulePrompt);
-provide('is-standalone-task', isStandaloneTask);
-provide('show-task-wizard', showTaskWizard);
-
 </script>

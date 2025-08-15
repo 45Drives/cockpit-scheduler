@@ -14,7 +14,7 @@
                 Tip: Source should end with a <code>/</code>. We’ll add it for you if missing.
             </p>
 
-            <div class="w-full mt-3 flex items-center justify-between bg-plugin-header rounded-lg p-2">
+            <!-- <div class="w-full mt-3 flex items-center justify-between bg-plugin-header rounded-lg p-2">
                 <span class="text-default text-sm font-medium">
                     Copy Direction — {{ directionSwitched ? 'Pull (Target ← Source)' : 'Push (Source → Target)' }}
                 </span>
@@ -28,7 +28,7 @@
                         'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200'
                     ]" />
                 </Switch>
-            </div>
+            </div> -->
 
             <label class="block text-sm mt-3 text-default">To (Target)</label>
             <input type="text" v-model="destPath" @blur="ensureTrailingSlash('dest')" :class="[
@@ -50,25 +50,27 @@
                 <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
             </template>
 
-            <label class="block text-sm mt-1 text-default">Server address</label>
-            <input type="text" v-model="destHost" :class="[
-                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-            ]" placeholder="e.g. backup.example.com or 10.0.0.5" />
-
             <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="block text-sm mt-3 text-default">Server address</label>
+                    <input type="text" v-model="destHost" :class="[
+                        'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                        destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]" placeholder="e.g. backup.example.com or 10.0.0.5" />
+
+                </div>
                 <div>
                     <label class="block text-sm mt-3 text-default">User</label>
                     <input type="text" v-model="destUser"
                         class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
                         placeholder="root (default)" :disabled="!destHost" />
                 </div>
-                <div>
+                <!-- <div>
                     <label class="block text-sm mt-3 text-default">Port</label>
                     <input type="number" v-model="destPort" min="1" max="65535"
                         class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
                         placeholder="22 (default)" :disabled="!destHost" />
-                </div>
+                </div> -->
                 <div>
                     <label class="block text-sm mt-3 text-default" for="dest-pass">Password</label>
                     <div class="relative mt-1">
@@ -533,7 +535,70 @@ async function initializeData() {
         destHost.value = targetInfoParams.find(p => p.key === 'host')!.value;
         destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
         destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
-        destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
+        destPort.value = targetInfoParams.find(p => p.key === 'port')!.value; async function initializeData() {
+            // if props.task, then edit mode active (retrieve data)
+            if (props.task) {
+                loading.value = true;
+                const params = props.task.parameters.children;
+
+                sourcePath.value = params.find(p => p.key === 'local_path')!.value;
+                const targetInfoParams = params.find(p => p.key === 'target_info')!.children;
+                destPath.value = targetInfoParams.find(p => p.key === 'path')!.value;
+                destHost.value = targetInfoParams.find(p => p.key === 'host')!.value;
+                destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
+                destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
+                destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
+                const transferDirection = params.find(p => p.key === 'direction')!.value;
+                if (transferDirection == 'pull') {
+                    directionSwitched.value = true;
+                } else {
+                    directionSwitched.value = false;
+                }
+                const rsyncOptions = params.find(p => p.key === 'rsyncOptions')!.children;
+                isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
+                isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
+                isCompressed.value = rsyncOptions.find(p => p.key === 'compressed_flag')!.value;
+                isQuiet.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
+                deleteFiles.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
+                preserveTimes.value = rsyncOptions.find(p => p.key === 'times_flag')!.value;
+                preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
+                preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
+                preserveXattr.value = rsyncOptions.find(p => p.key === 'xattr_flag')!.value;
+                limitBandwidthKbps.value = (parseInt(rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value) == 0 ? 0 : rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value);
+                includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value.replace(/^'|'$/g, '');
+                excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value.replace(/^'|'$/g, '');
+                extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value.replace(/^'|'$/g, '');
+                isParallel.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
+                parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
+
+                initialParameters.value = JSON.parse(JSON.stringify({
+                    sourcePath: sourcePath.value,
+                    destPath: destPath.value,
+                    destHost: destHost.value,
+                    destUser: destUser.value,
+                    destRoot: destRoot.value,
+                    destPort: destPort.value,
+                    directionSwitched: directionSwitched.value,
+                    isArchive: isArchive.value,
+                    isRecursive: isRecursive.value,
+                    isCompressed: isCompressed.value,
+                    isQuiet: isQuiet.value,
+                    deleteFiles: deleteFiles.value,
+                    preserveTimes: preserveTimes.value,
+                    preserveHardLinks: preserveHardLinks.value,
+                    preservePerms: preservePerms.value,
+                    preserveXattr: preserveXattr.value,
+                    limitBandwidthKbps: limitBandwidthKbps.value,
+                    includePattern: includePattern.value,
+                    excludePattern: excludePattern.value,
+                    extraUserParams: extraUserParams.value,
+                    isParallel: isParallel.value,
+                    parallelThreads: parallelThreads.value
+                }));
+
+                loading.value = false;
+            }
+        }
         const transferDirection = params.find(p => p.key === 'direction')!.value;
         if (transferDirection == 'pull') {
             directionSwitched.value = true;
@@ -544,8 +609,8 @@ async function initializeData() {
         isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
         isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
         isCompressed.value = rsyncOptions.find(p => p.key === 'compressed_flag')!.value;
-        isQuiet.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
-        deleteFiles.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
+        isQuiet.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
+        deleteFiles.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
         preserveTimes.value = rsyncOptions.find(p => p.key === 'times_flag')!.value;
         preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
         preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;

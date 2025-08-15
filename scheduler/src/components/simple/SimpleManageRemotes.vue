@@ -180,7 +180,7 @@
                             </select>
                         </SimpleFormCard>
 
-                        <SimpleFormCard title="Authentication" class="p-3 rounded-md border border-default">>
+                        <SimpleFormCard title="Authentication" class="p-3 rounded-md border border-default">
                             <template #header-right>
                                 <div class="button-group-row">
                                     <button v-if="edit.provider?.providerParams.oAuthSupported"
