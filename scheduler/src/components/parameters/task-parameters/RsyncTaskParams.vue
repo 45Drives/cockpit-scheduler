@@ -420,8 +420,8 @@ async function initializeData() {
         isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
         isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
         isCompressed.value = rsyncOptions.find(p => p.key === 'compressed_flag')!.value;
-        isQuiet.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
-        deleteFiles.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
+        isQuiet.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
+        deleteFiles.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
         preserveTimes.value = rsyncOptions.find(p => p.key === 'times_flag')!.value;
         preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
         preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
