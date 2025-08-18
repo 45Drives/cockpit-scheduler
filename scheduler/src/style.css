@@ -1,0 +1,171 @@
+:root {
+  /* fallback (same as default) */
+  --btn-primary-bg: #D92B2F;
+  --btn-primary-border: #D92B2F;
+  --btn-primary-hover-bg: #b02428;
+  --btn-primary-hover-border: #b02428;
+
+  --btn-secondary-bg: #a02226;
+  --btn-secondary-border: #a02226;
+  --btn-secondary-hover-bg: #821b1f;
+  --btn-secondary-hover-border: #821b1f;
+
+  --checkbox-border: #737373;
+  --checkbox-checked-border: #D92B2F;
+  --checkbox-checked-bg: #b02428;
+  --outline-color: black;
+
+  --wizard-glow-color: rgba(255, 255, 255, 0.7);
+}
+
+.theme-default {
+  --btn-primary-bg: #D92B2F;
+  --btn-primary-border: #D92B2F;
+  --btn-primary-hover-bg: #b02428;
+  --btn-primary-hover-border: #b02428;
+
+  --btn-secondary-bg: #a02226;
+  --btn-secondary-border: #a02226;
+  --btn-secondary-hover-bg: #821b1f;
+  --btn-secondary-hover-border: #821b1f;
+
+  --checkbox-checked-border: #D92B2F;
+  --checkbox-checked-bg: #b02428;
+  --outline-color: black;
+}
+
+.theme-homelab {
+  --btn-primary-bg: #2563EB;
+  --btn-primary-border: #2563EB;
+  --btn-primary-hover-bg: #1E4FCB;
+  --btn-primary-hover-border: #1E4FCB;
+
+  --btn-secondary-bg: #1B50C1;
+  --btn-secondary-border: #1B50C1;
+  --btn-secondary-hover-bg: #153fa0;
+  --btn-secondary-hover-border: #153fa0;
+
+  --checkbox-checked-border: #2563EB;
+  --checkbox-checked-bg: #1E4FCB;
+  --outline-color: black;
+}
+
+.theme-professional {
+  --btn-primary-bg: #65A443;
+  --btn-primary-border: #65A443;
+  --btn-primary-hover-bg: #4F8F37;
+  --btn-primary-hover-border: #4F8F37;
+
+  --btn-secondary-bg: #447c31;
+  --btn-secondary-border: #447c31;
+  --btn-secondary-hover-bg: #346527;
+  --btn-secondary-hover-border: #346527;
+
+  --checkbox-checked-border: #65A443;
+  --checkbox-checked-bg: #4F8F37;
+  --outline-color: black;
+}
+
+.dark {
+  --outline-color: white;
+}
+
+.btn-primary {
+  background-color: var(--btn-primary-bg) !important;
+  border-color: var(--btn-primary-border) !important;
+  color: white !important;
+  z-index: 10;
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-primary-hover-bg) !important;
+  border-color: var(--btn-primary-hover-border) !important;
+  z-index: 10;
+}
+
+.btn-secondary {
+  background-color: var(--btn-secondary-bg) !important;
+  border-color: var(--btn-secondary-border) !important;
+  color: white !important;
+  z-index: 10;
+}
+
+.btn-secondary:hover {
+  background-color: var(--btn-secondary-hover-bg) !important;
+  border-color: var(--btn-secondary-hover-border) !important;
+  z-index: 10;
+}
+
+/* Disabled state */
+.btn-secondary:disabled,
+.btn-primary:disabled,
+.btn-secondary.disabled,
+.btn-primary.disabled {
+  background-color: #d3d3d3 !important;
+  border-color: #d3d3d3 !important;
+  color: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+  z-index: 10;
+}
+
+.bg-primary {
+  background-color: var(--btn-primary-bg) !important;
+  border-color: var(--btn-primary-border) !important;
+  color: white !important;
+}
+
+.bg-secondary {
+  background-color: var(--btn-secondary-bg) !important;
+  border-color: var(--btn-secondary-border) !important;
+  color: white !important;
+}
+
+.border-primary {
+  border-color: var(--btn-primary-border);
+}
+
+.border-secondary {
+  border-color: var(--btn-secondary-border);
+}
+
+.input-checkbox {
+  background-color: var(--checkbox-bg, #fff);
+  border: 1px solid var(--checkbox-border, #737373);
+  border-radius: 0.25rem;
+  height: 1rem;
+  width: 1rem;
+  outline: none;
+  box-shadow: 0 0 0 2px transparent;
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.input-checkbox:checked {
+  border-color: var(--checkbox-checked-border, #D92B2F);
+  background-color: var(--checkbox-checked-bg, #D92B2F);
+}
+
+/* Wizard Highlight Glow */
+.animate-glow {
+  outline: 2px solid var(--outline-color);
+  border-radius: 0.375rem;
+  position: relative;
+  z-index: 1;
+}
+
+.animate-glow:hover {
+  outline-width: 3px;
+}
+
+/* Wizard Button Styling */
+.wizard-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  will-change: transform;
+}
+
+.wizard-btn:hover {
+  transform: scale(1.03);
+}

@@ -37,8 +37,9 @@
         </SimpleFormCard>
 
         <!-- Direction + behavior -->
-        <SimpleFormCard title="How should we transfer?" description="Set direction and behavior.">
-            <div class="flex items-center justify-between bg-plugin-header rounded-lg p-2 cursor-pointer select-none"
+        <!-- <SimpleFormCard title="How should we transfer?" description="Set direction and behavior."> -->
+        <SimpleFormCard title="How should we transfer?">
+            <!-- <div class="flex items-center justify-between bg-plugin-header rounded-lg p-2 cursor-pointer select-none"
                 role="button" tabindex="0" @click="directionSwitched = !directionSwitched"
                 @keydown.enter.prevent="directionSwitched = !directionSwitched"
                 @keydown.space.prevent="directionSwitched = !directionSwitched">
@@ -56,10 +57,10 @@
                         'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200'
                     ]" />
                 </Switch>
-            </div>
+            </div> -->
 
-            <!-- Simple transfer behavior radios -->
-            <fieldset class="mt-3">
+
+            <fieldset class="mt-2">
                 <legend class="sr-only">Transfer behavior</legend>
                 <div class="grid gap-2 sm:grid-cols-3">
                     <label
@@ -106,7 +107,7 @@
                 Tip: add a trailing <code>/</code> to copy folder contents.
             </p>
 
-            <label class="block text-sm mt-3 text-default">
+            <label class="block text-sm mt-2 text-default">
                 Cloud folder <span v-if="selectedRemote">({{ selectedRemote.name }})</span>
             </label>
             <input type="text" v-model="targetPath"
@@ -740,7 +741,7 @@ const errorTags = ref({
 const localPath = ref('');
 const targetPath = ref('');
 const directionSwitched = ref(false)
-const transferType = ref(undefined);
+const transferType = ref('copy');
 const selectedRemote = ref<CloudSyncRemote>();
 const checkFirst = ref(false);
 const checksum = ref(false);
