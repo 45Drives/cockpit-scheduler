@@ -36,7 +36,7 @@
                     </div>
                 </div>
 
-                <div class="h-full p-2 col-span-1">
+                <div class="col-span-1">
                     <SimpleCalendar :title="'Schedule Task'" v-model:taskSchedule="uiSchedule" />
                 </div>
             </div>
@@ -92,24 +92,6 @@ const originalTask = computed<TaskInstanceType | null>(() => props.existingTask 
 // Treat either prop mode or store mode as the source of truth
 const isEditMode = computed(() => (props.mode ?? draft.mode) === 'edit');
 
-watch(isEditMode, (edit) => {
-    if (!edit) {
-        newTaskName.value = '';
-        selectedTemplate.value = undefined;
-        parameters.value = undefined;
-        notesTask.value = '';
-        uiSchedule.value = toUISchedule(null);
-        paramInputKey.value++; // reset ParameterInput
-    }
-}, { immediate: true });
-
-// ---- deps ----
-const router = useRouter();
-const taskInstances = injectWithCheck(taskInstancesInjectionKey, 'taskInstances not provided!');
-const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, 'taskTemplates not provided!');
-const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
-const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
-
 // ---- state/refs ----
 const newTask = ref<TaskInstance | null>(null);
 const adding = ref(false);
@@ -121,6 +103,31 @@ const parameterInputComponent = ref();
 const parameters = ref<any>();
 const notesTask = ref('');
 const paramInputKey = ref(0);
+
+
+// schedule bridge init
+const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
+
+// helper used by watcher
+function resetForm() {
+    newTaskName.value = '';
+    selectedTemplate.value = undefined;
+    parameters.value = undefined;
+    notesTask.value = '';
+    uiSchedule.value = toUISchedule(null);
+    paramInputKey.value++; // reset ParameterInput
+}
+
+watch(isEditMode, (edit) => {
+    if (!edit) resetForm();
+}, { immediate: true });
+
+// ---- deps ----
+const router = useRouter();
+const taskInstances = injectWithCheck(taskInstancesInjectionKey, 'taskInstances not provided!');
+const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, 'taskTemplates not provided!');
+const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
+const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
 
 const simpleAllowed = ['Rsync Task', 'Cloud Sync Task'];
 const allowedTemplates = computed(() => {
@@ -165,14 +172,20 @@ function toUISchedule(model?: ModelTaskSchedule | null): UITaskSchedule {
     if (hourStar && dayStar && monthStar && yearStar) repeatFrequency = 'hour';
     else if (hasDOW) repeatFrequency = 'week';
     else if (!dayStar && monthStar) repeatFrequency = 'month';
-    else repeatFrequency = 'day';
 
-    // hour/minute always come from interval if present, otherwise default to "now"
     const hour = asNum(intv.hour, now.getHours());
     const minute = asNum(intv.minute, now.getMinutes());
 
     if (repeatFrequency === 'week') {
-        const targetDow = Number(intv.dayOfWeek[0]); // 0..6
+        const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const raw = intv.dayOfWeek[0];
+        const targetDow = typeof raw === 'number'
+            ? raw
+            : (() => {
+                const idx = DOW_NAMES.indexOf(String(raw).slice(0, 3));
+                return idx >= 0 ? idx : now.getDay();
+            })();
+
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
         const delta = (targetDow - start.getDay() + 7) % 7;
         if (delta !== 0 || start <= now) start.setDate(start.getDate() + (delta || 7));
@@ -180,18 +193,18 @@ function toUISchedule(model?: ModelTaskSchedule | null): UITaskSchedule {
     }
 
     if (repeatFrequency === 'hour') {
-        // Next top-of-hour-ish preview with the saved minute (or 0)
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), minute, 0, 0);
         if (start <= now) start.setHours(start.getHours() + 1);
         return { repeatFrequency, startDate: start } as UITaskSchedule;
     }
 
-    // daily/monthly/yearly
     const year = asNum(intv.year, now.getFullYear());
     const month = asNum(intv.month, now.getMonth() + 1);
     const day = asNum(intv.day, now.getDate());
     return { repeatFrequency, startDate: new Date(year, Math.min(11, Math.max(0, month - 1)), day, hour, minute) } as UITaskSchedule;
 }
+
+const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function toModelSchedule(ui: UITaskSchedule): ModelTaskSchedule {
     const d = ui.startDate;
@@ -205,7 +218,6 @@ function toModelSchedule(ui: UITaskSchedule): ModelTaskSchedule {
         baseInterval.day = { value: String(d.getDate()) };
         baseInterval.month = { value: String(d.getMonth() + 1) };
     } else {
-        // Hourly: day/month/year all '*' to match your preset & parser
         baseInterval.day = { value: '*' };
         baseInterval.month = { value: '*' };
         baseInterval.year = { value: '*' };
@@ -215,14 +227,11 @@ function toModelSchedule(ui: UITaskSchedule): ModelTaskSchedule {
         baseInterval.day = { value: '*' };
         baseInterval.month = { value: '*' };
         baseInterval.year = { value: '*' };
-        baseInterval.dayOfWeek = [d.getDay()];
+        baseInterval.dayOfWeek = [DOW_NAMES[d.getDay()]];   // <-- now a STRING like "Thu"
     }
 
     return new ModelTaskSchedule(true, [baseInterval]);
 }
-
-// schedule bridge init
-const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
 
 // schedule bridge watch
 watch(() => originalTask.value, (t) => {

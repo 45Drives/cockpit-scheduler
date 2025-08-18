@@ -253,7 +253,7 @@ export class Scheduler implements SchedulerType {
       //  console.log('jsonFilePath:', jsonFilePath);
 
         //run script to generate notes file
-        console.log("genrating notes file");
+        console.log("generating notes file");
         const notesFilePath = `/etc/systemd/system/${houstonSchedulerPrefix}${templateName}_${taskInstance.name}.txt`;
         //const notes = taskInstance.notes
         const notes = taskInstance.notes
@@ -713,6 +713,54 @@ export class Scheduler implements SchedulerType {
         const t = hhmm();
         if (t) parts.push(`@ ${t}`);
         return parts.length ? parts.join(' ') : 'any time';
+    }
+
+    // Returns a human label for the interval's cadence: "Weekly", "Daily", etc.
+    intervalFrequency(interval: any): string {
+        const v = (k: 'minute' | 'hour' | 'day' | 'month' | 'year') =>
+            interval?.[k]?.value?.toString?.() ?? '*';
+
+        const minute = v('minute');
+        const hour = v('hour');
+        const day = v('day');
+        const month = v('month');
+        const year = v('year');
+        const dows = Array.isArray(interval?.dayOfWeek) ? interval.dayOfWeek : [];
+
+        const isStep = (s: string) => typeof s === 'string' && s.includes('/');
+        const stepOf = (s: string) => (s.split('/')[1] ?? '').trim();
+
+        // One-time if a specific year is set
+        if (year !== '*') return 'One-time';
+
+        // Every N minutes
+        if (hour === '*' && /^\*\/\d+$/.test(minute) && day === '*' && month === '*')
+            return `Every ${minute.slice(2)} min`;
+
+        // Hourly (at :MM or every N hours)
+        if (hour === '*' && minute !== '*' && !minute.includes('/')) return 'Hourly';
+        if (isStep(hour) && day === '*' && month === '*') return `Every ${stepOf(hour)} hours`;
+
+        // Weekly if any DOW is present
+        if (dows.length) return 'Weekly';
+
+        // Daily (fixed time, any day/month)
+        if (day === '*' && month === '*' && hour !== '*' && minute !== '*') return 'Daily';
+
+        // Every N days
+        if (isStep(day) && month === '*') return `Every ${stepOf(day)} days`;
+
+        // Monthly on <day>
+        if (day !== '*' && month === '*') return 'Monthly';
+
+        // Every N months
+        if (isStep(month)) return `Every ${stepOf(month)} months`;
+
+        // Yearly (fixed month/day, any year)
+        if (month !== '*' && day !== '*') return 'Yearly';
+
+        // Fallback
+        return 'Custom';
     }
 
 }

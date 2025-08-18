@@ -1,7 +1,7 @@
 <template>
-    <CardContainer class="bg-accent">
-        <div class="grid grid-cols-1 gap-2 text-default">
-            <div class="border border-default rounded-md p-2 w-full mx-auto">
+    <CardContainer class="h-full bg-accent text-default rounded-md border border-default p-2 min-h-0 overflow-y-auto ">
+        <div class="grid grid-cols-1 bg-accent text-default">
+            <div class="rounded-md w-full">
                 <label for="frequency-select" class="block text-sm font-medium">Backup Frequency</label>
                 <select id="frequency-select" v-model="schedule.repeatFrequency" class="input-textlike w-full">
                     <option value="hour">Hourly</option>
@@ -15,17 +15,18 @@
                     <div v-if="schedule.repeatFrequency !== 'week'">
                         <label class="block text-sm">Start Day</label>
                         <input type="number" v-model="dayValue" @input="updateStartDate" min="1" max="31"
-                            :disabled="schedule.repeatFrequency === 'hour'"
-                            class="input-textlike w-full" placeholder="Day" />
+                            :disabled="schedule.repeatFrequency === 'hour'" class="input-textlike w-full"
+                            placeholder="Day" />
                     </div>
                     <div v-if="schedule.repeatFrequency === 'week'">
                         <label class="block text-sm">Weekday</label>
-                        <select class="input-textlike w-full" v-model.number="weekdayValue" @change="setWeekday">
-                            <option v-for="(n, i) in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']" :key="i"
-                                :value="i">{{
-                                    n }}</option>
+                        <select class="input-textlike w-full" v-model="weekdayName" @change="setWeekdayByName">
+                            <option v-for="n in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']" :key="n" :value="n">
+                                {{ n }}
+                            </option>
                         </select>
                     </div>
+
                     <!-- Month Input -->
                     <div>
                         <label class="block text-sm">Start Month</label>
@@ -57,13 +58,13 @@
             </div>
 
             <div :title="parsedIntervalString"
-                class="col-span-1 mt-2 text-base text-default bg-well p-2 rounded-md text-center w-full max-w-[600px] mx-auto">
+                class="items-center col-span-1 mt-2 text-base text-default bg-well p-2 rounded-md text-center w-full max-w-[600px] max-h-96 mx-auto">
                 <p class="mt-1 text-sm text-default">Start date/time: {{ schedule.startDate.toLocaleString() }}</p>
 
                 <p><strong>Will run backup {{ parsedIntervalString }}.</strong> </p>
             </div>
 
-            <div class="border border-default rounded-md p-2 ">
+            <div class="rounded-md p-2 mt-4">
                 <div class="text-center">
                     <div class="flex justify-between w-full mb-4">
                         <button @click="changeMonth(-1)" class="btn btn-secondary">
@@ -77,7 +78,7 @@
                         </button>
                     </div>
                     <div class="grid grid-cols-7 w-full mb-2">
-                        <div v-for="day in weekDays" :key="day" class="text-center text-default font-medium">
+                        <div v-for="day in DOW_NAMES" :key="day" class="text-center text-default font-medium">
                             {{ day }}
                         </div>
                     </div>
@@ -109,14 +110,16 @@ const props = defineProps<Props>();
 
 // const schedule = toRef(props, 'taskSchedule')
 const schedule = defineModel<TaskSchedule>('taskSchedule', { required: true });
-const weekdayValue = ref(schedule.value.startDate.getDay());
-function setWeekday() {
+const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const weekdayName = ref(DOW_NAMES[schedule.value.startDate.getDay()]);
+function setWeekdayByName() {
     const now = new Date();
+    const targetIdx = DOW_NAMES.indexOf(String(weekdayName.value).slice(0, 3));
     const d = new Date(
         now.getFullYear(), now.getMonth(), now.getDate(),
         schedule.value.startDate.getHours(), schedule.value.startDate.getMinutes()
     );
-    const delta = (weekdayValue.value - d.getDay() + 7) % 7;
+    const delta = (targetIdx - d.getDay() + 7) % 7;
     if (delta !== 0 || d <= now) d.setDate(d.getDate() + (delta || 7));
     schedule.value = { ...schedule.value, startDate: d };
 }
@@ -191,22 +194,21 @@ watch([hourValue, minuteValue, dayValue, monthValue, yearValue], () => {
         updateStartDate();
     }
 });
-
 watch(
     () => props.taskSchedule.startDate,
     (newDate) => {
         dayValue.value = newDate.getDate();
         monthValue.value = newDate.getMonth() + 1;
-        yearValue.value = newDate.getFullYear();  
-        currentMonth.value = newDate.getMonth(); 
+        yearValue.value = newDate.getFullYear();
+        currentMonth.value = newDate.getMonth();
         hourValue.value = newDate.getHours();
         minuteValue.value = newDate.getMinutes();
+        weekdayName.value = DOW_NAMES[newDate.getDay()]; // <-- keep select in sync
     },
     { immediate: true }
 );
 
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const days = computed(() => {
     const firstDayOfMonth = new Date(currentYear.value, currentMonth.value, 1).getDay();

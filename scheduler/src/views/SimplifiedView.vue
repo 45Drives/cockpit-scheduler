@@ -196,7 +196,14 @@ function getRemoteName(t: any) {
 function getSchedule(t: any) {
     const ivals = t?.schedule?.intervals ?? [];
     if (!ivals.length) return '—';
-    return ivals.map((i: any) => myScheduler.parseIntervalIntoShortString(i)).join(' + ');
+
+    return ivals
+        .map((i: any) => {
+            const freq = myScheduler.intervalFrequency(i);                   // <— new
+            const when = myScheduler.parseIntervalIntoShortString(i);       // e.g., "Thu @ 09:44"
+            return `${freq} — ${when}`;
+        })
+        .join(' + ');
 }
 
 /**
@@ -212,24 +219,44 @@ function typeLabel(t: any) {
     return '—';
 }
 
+function isBlank(v: any) {
+    return v === undefined || v === null || String(v).trim() === '' || v === '—';
+}
+
+function formatRsyncDestination(t: any) {
+    const host = getHost(t);
+    const path = getTargetPath(t);
+    if (isBlank(host)) {
+        // no host → just show the path (local/undefined remote)
+        return isBlank(path) ? '—' : String(path);
+    }
+    const user = getUser(t);
+    const portNum = Number(getPort(t));
+    const userPart = isBlank(user) ? '' : `${user}@`;
+    const portPart = Number.isFinite(portNum) && portNum > 0 ? `:${portNum}` : '';
+    const pathPart = isBlank(path) ? '' : `:${path}`;
+    return `${userPart}${host}${portPart}${pathPart}`;
+}
+
+function formatCloudDestination(t: any) {
+    const remote = getRemoteName(t);
+    const path = getTargetPath(t);
+    if (isBlank(remote)) return isBlank(path) ? '—' : String(path);
+    return `${remote}${isBlank(path) ? '' : `:${path}`}`;
+}
+
 function detailsFor(t: any) {
     const source = getSource(t);
     if (isRsync(t)) {
-        const user = getUser(t);
-        const host = getHost(t);
-        const port = getPort(t);
-        const path = getTargetPath(t);
         return {
             source,
-            destination: `${user}@${host}:${port}${path ? `:${path}` : ''}`,
+            destination: formatRsyncDestination(t),
             extra: undefined,
         };
     } else if (isCloud(t)) {
-        const remote = getRemoteName(t);
-        const path = getTargetPath(t);
         return {
             source,
-            destination: `${remote}:${path}`,
+            destination: formatCloudDestination(t),
             extra: undefined,
         };
     }
