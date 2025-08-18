@@ -3,7 +3,7 @@
     "name": "cockpit-scheduler",
     "title": "task scheduler",
     "description": "task scheduler for automating server tasks",
-    "version": "1.3.7",
+    "version": "1.3.8",
     "build_number": "1",
     "stable": false,
     "author": "Jordan Keough <jkeough@45drives.com>",
@@ -82,7 +82,7 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.3.7",
+        "version": "1.3.8",
         "build_number": "1",
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
