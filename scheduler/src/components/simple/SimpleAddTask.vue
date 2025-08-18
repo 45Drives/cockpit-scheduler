@@ -208,26 +208,28 @@ const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function toModelSchedule(ui: UITaskSchedule): ModelTaskSchedule {
     const d = ui.startDate;
+
     const baseInterval: any = {
         minute: { value: String(d.getMinutes()) },
         hour: { value: ui.repeatFrequency === 'hour' ? '*' : String(d.getHours()) },
-        year: { value: String(d.getFullYear()) },
+        // Default to recurring years unless we ever support one-time:
+        year: { value: '*' },
     };
 
-    if (ui.repeatFrequency !== 'hour') {
+    if (ui.repeatFrequency === 'hour') {
+        baseInterval.day = { value: '*' };
+        baseInterval.month = { value: '*' };
+        // year already '*'
+    } else if (ui.repeatFrequency === 'day') {
+        baseInterval.day = { value: '*' };
+        baseInterval.month = { value: '*' };
+    } else if (ui.repeatFrequency === 'week') {
+        baseInterval.day = { value: '*' };
+        baseInterval.month = { value: '*' };
+        baseInterval.dayOfWeek = [DOW_NAMES[d.getDay()]]; // "Sun"..."Sat"
+    } else if (ui.repeatFrequency === 'month') {
         baseInterval.day = { value: String(d.getDate()) };
-        baseInterval.month = { value: String(d.getMonth() + 1) };
-    } else {
-        baseInterval.day = { value: '*' };
         baseInterval.month = { value: '*' };
-        baseInterval.year = { value: '*' };
-    }
-
-    if (ui.repeatFrequency === 'week') {
-        baseInterval.day = { value: '*' };
-        baseInterval.month = { value: '*' };
-        baseInterval.year = { value: '*' };
-        baseInterval.dayOfWeek = [DOW_NAMES[d.getDay()]];   // <-- now a STRING like "Thu"
     }
 
     return new ModelTaskSchedule(true, [baseInterval]);
@@ -373,15 +375,26 @@ async function saveAll() {
     if (!(await validateComponentParams())) return;
     const built = buildTask();
     if (!built) return;
+
     try {
         adding.value = true; loading.value = true;
+
         if (isEditMode.value) {
-            if (typeof (myScheduler as any).updateTaskInstance === 'function') {
-                await (myScheduler as any).updateTaskInstance(built);
-                await (myScheduler as any).updateSchedule(built);
-            } else {
+            const old = originalTask.value!;
+            const nameChanged = old.name !== built.name;
+            const templateChanged = old.template?.name !== built.template?.name;
+
+            if (nameChanged || templateChanged) {
+                // full replace to avoid duplicate systemd units
+                await myScheduler.unregisterTaskInstance(old);
                 await myScheduler.registerTaskInstance(built);
+            } else {
+                await (myScheduler as any).updateTaskInstance(built);
             }
+
+            // keep these after either path
+            await (myScheduler as any).updateSchedule(built);
+            await (myScheduler as any).updateTaskNotes?.(built);
             await myScheduler.loadTaskInstances();
             pushNotification(new Notification('Task Updated', 'Your task changes were saved.', 'success', 6000));
         } else {
@@ -389,11 +402,13 @@ async function saveAll() {
             await myScheduler.loadTaskInstances();
             pushNotification(new Notification('Task Created', 'Your task was created and scheduled.', 'success', 6000));
         }
+
         router.push({ name: 'SimpleTasks' });
     } catch (e: any) {
         pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 8000));
     } finally { adding.value = false; loading.value = false; }
 }
+
 
 // ---- provide for children that read these symbols ----
 provide('new-task', newTask);

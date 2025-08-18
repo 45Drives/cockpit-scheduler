@@ -661,106 +661,96 @@ export class Scheduler implements SchedulerType {
         return elements.filter(e => e).join(', ');
     }
 
-    parseIntervalIntoShortString(interval: any): string {
+    // One function to produce: "Weekly — Fri @ 13:00", "Daily — @ 11:22 (starts Aug 18, 2025)",
+    // "Hourly — every 15 min", "Monthly — on 18 @ 11:22", etc.
+    describeInterval(interval: any): string {
         const v = (k: 'minute' | 'hour' | 'day' | 'month' | 'year') =>
             interval?.[k]?.value?.toString?.() ?? '*';
 
         const pad2 = (n: string | number) => String(n).padStart(2, '0');
-        const minute = v('minute'), hour = v('hour'), day = v('day'), month = v('month'), year = v('year');
-        const dows = Array.isArray(interval?.dayOfWeek) ? interval.dayOfWeek : [];
-        const dowName = (n: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][Number(n)] ?? String(n);
+        const minute = v('minute'), hour = v('hour'), day = v('day'),
+            month = v('month'), year = v('year');
+
+        // --- Day-of-week normalization (accepts "Fri", "Friday", 5, "5")
+        const rawDows: any[] = Array.isArray(interval?.dayOfWeek) ? interval.dayOfWeek : [];
+        const toDowIndex = (x: any): number => {
+            if (typeof x === 'number') return x;
+            const s = String(x).trim();
+            if (/^\d+$/.test(s)) { const n = Number(s); return (n >= 0 && n <= 6) ? n : NaN; }
+            const short = s.slice(0, 3).toLowerCase();
+            const map: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+            return map[short] ?? NaN;
+        };
+        const dows: number[] = rawDows.map(toDowIndex).filter((n) => Number.isFinite(n)) as number[];
+
+        const dowName = (n: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n] ?? String(n);
         const monthName = (m: number) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
-        const hhmm = () =>
-            (hour !== '*' && minute !== '*') ? `${pad2(hour)}:${pad2(minute)}` :
-                (hour !== '*' && minute === '*') ? `${pad2(hour)}:00` : '';
 
-        // every N minutes
-        if (hour === '*' && /^\*\/\d+$/.test(minute) && day === '*' && month === '*' && year === '*') {
-            return `every ${minute.slice(2)} min`;
-        }
-
-        // hourly at :MM
-        if (hour === '*' && minute !== '*' && !minute.includes('/')) {
-            return `hourly at :${pad2(minute)}`;
-        }
-
-        // weekly: prefer DOW phrasing, suppress "every day/month/year"
-        if (dows.length && hour !== '*' && minute !== '*') {
-            return `${dows.map(dowName).join(', ')} @ ${hhmm()}`;
-        }
-
-        // daily @ time
-        if (day === '*' && month === '*' && year === '*' && hour !== '*' && minute !== '*') {
-            return `daily @ ${hhmm()}`;
-        }
-
-        // monthly on <day> @ time
-        if (day !== '*' && month === '*' && year === '*' && hour !== '*' && minute !== '*') {
-            return `monthly on ${day} @ ${hhmm()}`;
-        }
-
-        // yearly fixed date/time
-        if (day !== '*' && month !== '*' && year !== '*' && hour !== '*' && minute !== '*') {
-            return `${monthName(Number(month))} ${day}, ${year} @ ${hhmm()}`;
-        }
-
-        // fallback compact
-        const parts: string[] = [];
-        if (dows.length) parts.push(dows.map(dowName).join(', '));
-        if (year !== '*') parts.push(year);
-        if (month !== '*') parts.push(monthName(Number(month)));
-        if (day !== '*') parts.push(`day ${day}`);
-        const t = hhmm();
-        if (t) parts.push(`@ ${t}`);
-        return parts.length ? parts.join(' ') : 'any time';
-    }
-
-    // Returns a human label for the interval's cadence: "Weekly", "Daily", etc.
-    intervalFrequency(interval: any): string {
-        const v = (k: 'minute' | 'hour' | 'day' | 'month' | 'year') =>
-            interval?.[k]?.value?.toString?.() ?? '*';
-
-        const minute = v('minute');
-        const hour = v('hour');
-        const day = v('day');
-        const month = v('month');
-        const year = v('year');
-        const dows = Array.isArray(interval?.dayOfWeek) ? interval.dayOfWeek : [];
-
+        const isStar = (s: string) => s === '*';
         const isStep = (s: string) => typeof s === 'string' && s.includes('/');
-        const stepOf = (s: string) => (s.split('/')[1] ?? '').trim();
+        const stepN = (s: string) => (s.split('/')[1] ?? '').trim();
+        const isFixed = (s: string) => !isStar(s) && !isStep(s);
 
-        // One-time if a specific year is set
-        if (year !== '*') return 'One-time';
+        const hhmm = () =>
+            (hour !== '*' && minute !== '*') ? `${pad2(hour)}:${pad2(minute)}`
+                : (hour !== '*' && minute === '*') ? `${pad2(hour)}:00`
+                    : '';
 
-        // Every N minutes
-        if (hour === '*' && /^\*\/\d+$/.test(minute) && day === '*' && month === '*')
-            return `Every ${minute.slice(2)} min`;
+        // --- WEEKLY (any DOW wins)
+        if (dows.length) {
+            const when = hhmm();
+            return `Weekly — ${dows.map((d) => dowName(d)).join(', ')}${when ? ` @ ${when}` : ''}`;
+        }
 
-        // Hourly (at :MM or every N hours)
-        if (hour === '*' && minute !== '*' && !minute.includes('/')) return 'Hourly';
-        if (isStep(hour) && day === '*' && month === '*') return `Every ${stepOf(hour)} hours`;
+        // --- HOURLY (every N minutes / every N hours / :MM each hour)
+        if (isStar(hour) && /^\*\/\d+$/.test(minute) && isStar(day) && isStar(month)) {
+            return `Hourly — every ${minute.slice(2)} min`;
+        }
+        if (isStep(hour) && isStar(day) && isStar(month)) {
+            const n = stepN(hour);
+            return `Hourly — every ${n} hours${(minute !== '*' && !isStep(minute)) ? ` @ :${pad2(minute)}` : ''}`;
+        }
+        if (isStar(hour) && minute !== '*' && !isStep(minute) && isStar(day) && isStar(month)) {
+            return `Hourly — at :${pad2(minute)}`;
+        }
 
-        // Weekly if any DOW is present
-        if (dows.length) return 'Weekly';
+        // --- DAILY with explicit start date (never "One-time")
+        if (isFixed(year) && isFixed(month) && isFixed(day)) {
+            const when = hhmm();
+            const start = `${monthName(Number(month))} ${day}, ${year}`;
+            return `Daily — ${when ? `@ ${when} ` : ''}(starts ${start})`;
+        }
 
-        // Daily (fixed time, any day/month)
-        if (day === '*' && month === '*' && hour !== '*' && minute !== '*') return 'Daily';
+        // --- MONTHLY (day-of-month drives)
+        if (!isStar(day) && !isStep(day) && isStar(year)) {
+            const when = hhmm();
+            if (isStep(month)) {
+                return `Monthly — on ${day} every ${stepN(month)} months${when ? ` @ ${when}` : ''}`;
+            }
+            if (!isStar(month)) {
+                return `Monthly — on ${day} in ${monthName(Number(month))}${when ? ` @ ${when}` : ''}`;
+            }
+            return `Monthly — on ${day}${when ? ` @ ${when}` : ''}`;
+        }
 
-        // Every N days
-        if (isStep(day) && month === '*') return `Every ${stepOf(day)} days`;
+        // --- DAILY (default recurring daily)
+        const when = hhmm();
+        if (isStep(day) && isStar(month)) {
+            return `Daily — every ${stepN(day)} days${when ? ` @ ${when}` : ''}`;
+        }
+        if (isStar(day) && isStar(month)) {
+            return `Daily — ${when ? `@ ${when}` : 'any time'}`;
+        }
 
-        // Monthly on <day>
-        if (day !== '*' && month === '*') return 'Monthly';
+        // --- If month is constrained but not DOW: treat as monthly cadence
+        if (!isStar(month)) {
+            if (isStep(month)) return `Monthly — every ${stepN(month)} months${when ? ` @ ${when}` : ''}`;
+            return `Monthly — in ${monthName(Number(month))}${when ? ` @ ${when}` : ''}`;
+        }
 
-        // Every N months
-        if (isStep(month)) return `Every ${stepOf(month)} months`;
-
-        // Yearly (fixed month/day, any year)
-        if (month !== '*' && day !== '*') return 'Yearly';
-
-        // Fallback
-        return 'Custom';
+        // Fallback: pick a sensible bucket (daily)
+        return `Daily — ${when ? `@ ${when}` : 'any time'}`;
     }
+
 
 }

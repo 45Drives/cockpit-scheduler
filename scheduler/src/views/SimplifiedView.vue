@@ -17,7 +17,7 @@
 
         <!-- Empty / loading states -->
         <div class="my-4">
-            <div v-if="!everLoaded && (fetching || loading)" class="flex items-center justify-center">
+            <div v-if="showInitialSpinner" class="flex items-center justify-center">
                 <CustomLoadingSpinner :width="'w-24'" :height="'h-24'" :baseColor="'text-gray-200'"
                     :fillColor="'fill-gray-500'" />
             </div>
@@ -28,7 +28,13 @@
             </div>
 
             <!-- Table -->
-            <div v-else class="overflow-x-auto mt-3">
+            <div v-else class="relative overflow-x-auto mt-3">
+                <div v-if="showOverlaySpinner"
+                    class="absolute inset-0 z-[100] flex items-center justify-center bg-well/60 backdrop-blur-sm">
+                    <CustomLoadingSpinner :width="'w-16'" :height="'h-16'" :baseColor="'text-gray-200'"
+                        :fillColor="'fill-gray-500'" />
+                </div>
+
                 <table class="task-table min-w-full bg-well rounded-md border border-default p-1">
                     <thead>
                         <tr>
@@ -118,6 +124,10 @@ const fetching = ref(false);
 const everLoaded = ref(false);
 const cachedRows = ref<any[]>([]);
 
+const isBusy = computed(() => fetching.value || loading.value);
+const showInitialSpinner = computed(() => !everLoaded.value && isBusy.value);
+const showOverlaySpinner = computed(() => everLoaded.value && isBusy.value);
+
 const boot = async () => {
     if (fetching.value) return;       // guard against double calls
     fetching.value = true;
@@ -196,15 +206,9 @@ function getRemoteName(t: any) {
 function getSchedule(t: any) {
     const ivals = t?.schedule?.intervals ?? [];
     if (!ivals.length) return '—';
-
-    return ivals
-        .map((i: any) => {
-            const freq = myScheduler.intervalFrequency(i);                   // <— new
-            const when = myScheduler.parseIntervalIntoShortString(i);       // e.g., "Thu @ 09:44"
-            return `${freq} — ${when}`;
-        })
-        .join(' + ');
+    return ivals.map((i: any) => myScheduler.describeInterval(i)).join(' + ');
 }
+
 
 /**
  * UI field builders
@@ -322,10 +326,9 @@ watch(rows, (r) => {
 }, { immediate: true });
 
 const displayRows = computed(() => {
-    if (!everLoaded.value) return rows.value;                 // before first load
-    if ((fetching.value || loading.value) && rows.value.length === 0)
-        return cachedRows.value;                                // show cache during refresh
-    return rows.value;                                        // normal
+    if (!everLoaded.value) return rows.value;      // first load path
+    if (isBusy.value) return cachedRows.value;     // keep UI steady during work
+    return rows.value;
 });
 
 
