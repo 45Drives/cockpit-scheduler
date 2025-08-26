@@ -1,100 +1,87 @@
 <template>
-    <CardContainer class="h-full bg-accent text-default rounded-md border border-default p-2 min-h-0 overflow-y-auto ">
-        <div class="grid grid-cols-1 bg-accent text-default">
-            <div class="rounded-md w-full">
-                <label for="frequency-select" class="block text-sm font-medium">Backup Frequency</label>
-                <select id="frequency-select" v-model="schedule.repeatFrequency" class="input-textlike w-full">
-                    <option value="hour">Hourly</option>
-                    <option value="day">Daily</option>
-                    <option value="week">Weekly</option>
-                    <option value="month">Monthly</option>
-                </select>
+    <div class="h-full rounded-md border border-default flex flex-col bg-accent text-default min-h-0">
+        <div class="p-2 shrink-0">
+            <label for="frequency-select" class="block text-sm font-medium">Backup Frequency</label>
+            <select id="frequency-select" v-model="schedule.repeatFrequency" class="input-textlike w-full ">
+                <option value="hour">Hourly</option>
+                <option value="day">Daily</option>
+                <option value="week">Weekly</option>
+                <option value="month">Monthly</option>
+            </select>
 
-                <div class="col-span-1 grid grid-cols-2 gap-1 mt-2">
-                    <!-- Day Input -->
-                    <div v-if="schedule.repeatFrequency !== 'week'">
-                        <label class="block text-sm">Start Day</label>
-                        <input type="number" v-model="dayValue" @input="updateStartDate" min="1" max="31"
-                            :disabled="schedule.repeatFrequency === 'hour'" class="input-textlike w-full"
-                            placeholder="Day" />
-                    </div>
-                    <div v-if="schedule.repeatFrequency === 'week'">
-                        <label class="block text-sm">Weekday</label>
-                        <select class="input-textlike w-full" v-model="weekdayName" @change="setWeekdayByName">
-                            <option v-for="n in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']" :key="n" :value="n">
-                                {{ n }}
-                            </option>
-                        </select>
-                    </div>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+                <div v-if="schedule.repeatFrequency !== 'week'">
+                    <label class="block text-sm">Start Day</label>
+                    <input type="number" v-model="dayValue" @input="updateStartDate" min="1" max="31"
+                        :disabled="schedule.repeatFrequency === 'hour'" class="input-textlike w-full text-sm" />
+                </div>
 
-                    <!-- Month Input -->
-                    <div>
-                        <label class="block text-sm">Start Month</label>
-                        <input type="number" v-model="monthValue" @input="updateStartDate" min="1" max="12"
-                            :disabled="schedule.repeatFrequency === 'hour' || schedule.repeatFrequency === 'week'"
-                            class="input-textlike w-full" placeholder="Month" />
-                    </div>
+                <div v-else>
+                    <label class="block text-sm">Weekday</label>
+                    <select class="input-textlike w-full text-sm" v-model="weekdayName" @change="setWeekdayByName">
+                        <option v-for="n in DOW_NAMES" :key="n" :value="n">{{ n }}</option>
+                    </select>
+                </div>
 
-                    <!-- Hour Input -->
-                    <div>
-                        <label class="block text-sm">Start Hour</label>
-                        <input type="number" v-model="hourValue" @input="updateStartDate" min="0" max="23"
-                            class="input-textlike w-full" placeholder="Hour" />
-                    </div>
-                    <!-- Minute Input -->
-                    <div>
-                        <label class="block text-sm">Start Minute</label>
-                        <input type="number" v-model="minuteValue" @input="updateStartDate" min="0" max="59"
-                            class="input-textlike w-full" placeholder="Minute" />
-                    </div>
+                <div>
+                    <label class="block text-sm">Start Month</label>
+                    <input type="number" v-model="monthValue" @input="updateStartDate" min="1" max="12"
+                        :disabled="schedule.repeatFrequency === 'hour' || schedule.repeatFrequency === 'week'"
+                        class="input-textlike w-full text-sm" />
+                </div>
+
+                <div>
+                    <label class="block text-sm">Start Hour</label>
+                    <input type="number" v-model="hourValue" @input="updateStartDate" min="0" max="23"
+                        class="input-textlike w-full text-sm" />
+                </div>
+
+                <div>
+                    <label class="block text-sm">Start Minute</label>
+                    <input type="number" v-model="minuteValue" @input="updateStartDate" min="0" max="59"
+                        class="input-textlike w-full text-sm" />
                 </div>
             </div>
 
-            <div v-if="showInvalidDateWarning">
-                <p class="text-warning text-sm mt-1">
-                    Selected day is invalid for this month. Adjusted to last valid day.
-                </p>
+            <p v-if="showInvalidDateWarning" class="text-warning text-base mt-1">
+                Selected day is invalid for this month. Adjusted to last valid day.
+            </p>
+        </div>
 
+        <div :title="parsedIntervalString"
+            class="items-center col-span-1 text-base text-default bg-well p-1 rounded-md text-center w-full max-w-[600px] max-h-64 mx-auto shrink-0">
+            <p class="text-sm text-default">Start date/time: {{ schedule.startDate.toLocaleString() }}</p>
+
+            <p><strong>Will run backup {{ parsedIntervalString }}.</strong> </p>
+        </div>
+
+        <div class="p-1 mt-1 flex-1 min-h-0 text-center border border-default rounded-md">
+            <div class="flex justify-between w-full p-1 bg-default text-center rounded-md">
+                <button @click="changeMonth(-1)" class="btn btn-secondary">
+                    Prev
+                </button>
+                <span class="text-lg font-semibold text-default">{{ monthNames[currentMonth] }} {{
+                    currentYear
+                    }}</span>
+                <button @click="changeMonth(1)" class="btn btn-secondary">
+                    Next
+                </button>
             </div>
-
-            <div :title="parsedIntervalString"
-                class="items-center col-span-1 mt-2 text-base text-default bg-well p-2 rounded-md text-center w-full max-w-[600px] max-h-96 mx-auto">
-                <p class="mt-1 text-sm text-default">Start date/time: {{ schedule.startDate.toLocaleString() }}</p>
-
-                <p><strong>Will run backup {{ parsedIntervalString }}.</strong> </p>
+            <div class="grid grid-cols-7 w-full my-1">
+                <div v-for="day in DOW_NAMES" :key="day" class="text-center text-default font-medium">
+                    {{ day }}
+                </div>
             </div>
-
-            <div class="rounded-md p-2 mt-4">
-                <div class="text-center">
-                    <div class="flex justify-between w-full mb-4">
-                        <button @click="changeMonth(-1)" class="btn btn-secondary">
-                            Prev
-                        </button>
-                        <span class="text-lg font-semibold text-default mt-2">{{ monthNames[currentMonth] }} {{
-                            currentYear
-                            }}</span>
-                        <button @click="changeMonth(1)" class="btn btn-secondary">
-                            Next
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-7 w-full mb-2">
-                        <div v-for="day in DOW_NAMES" :key="day" class="text-center text-default font-medium">
-                            {{ day }}
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-7 gap-1 w-full grid-rows-6 auto-rows-fr">
-                        <div v-for="day in days" :key="day.id"
-                            :class="[ day.isPadding ? 'bg-accent text-muted cursor-default' : 'cursor-pointer hover:bg-gray-700',
-                            day.isMarked && !day.isPadding ? 'bg-green-600 dark:bg-green-800 text-white' : 'bg-default' ]"
-                            class="p-2 text-default text-center border border-default rounded"
-                            @click="!day.isPadding && selectDay(Number(day.date))">
-                            {{ day.date }}
-                        </div>
-                    </div>
+            <div class="grid grid-cols-7 gap-1 w-full grid-rows-6 auto-rows-fr">
+                <div v-for="day in days" :key="day.id" :class="[ day.isPadding ? 'bg-accent text-muted cursor-default' : 'cursor-pointer hover:bg-gray-700',
+                        day.isMarked && !day.isPadding ? 'bg-green-600 dark:bg-green-800 text-white' : 'bg-default' ]"
+                    class="p-2 text-default text-center border border-default rounded"
+                    @click="!day.isPadding && selectDay(Number(day.date))">
+                    {{ day.date }}
                 </div>
             </div>
         </div>
-    </CardContainer>
+    </div>
 </template>
 
 <script setup lang="ts">

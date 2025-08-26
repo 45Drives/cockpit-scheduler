@@ -1,99 +1,107 @@
 <template>
-    <div class="flex flex-col h-full p-2 bg-default text-default">
-        <!-- Header / toolbar -->
-        <div class="flex items-center justify-between gap-2">
-            <div class="flex flex-col">
-                <p class="mt-4 text-medium text-default">
-                    Here are the remote backup tasks currently configured.
-                </p>
-            </div>
-            <div class="flex items-center gap-2">
-                <button class="btn btn-secondary mt-6" @click="refresh" :disabled="loading">
-                    <ArrowPathIcon class="w-5 h-5" />
+    <!-- mirror host: transparent bg, fill height -->
+    <div class="h-full flex flex-col bg-well text-default p-2">
+        <!-- Toolbar (same as BackUpListView) -->
+        <div class="flex flex-row items-center justify-between font-bold">
+            <div class="flex items-center justify-start">
+                <button class="btn btn-primary text-sm mr-3" @click="openAdd" :disabled="loading">
+                    <PlusIcon class="w-5 h-5 text-white" />
                 </button>
-                <button class="btn btn-primary mt-6" @click="openAdd">Add New Task</button>
+                Schedule New Backup
+            </div>
+            <div class="flex items-center justify-end">
+                Refresh Backup List
+                <button class="btn btn-secondary text-sm ml-3" @click="refresh" :disabled="loading">
+                    <ArrowPathIcon class="w-5 h-5 text-white" />
+                </button>
             </div>
         </div>
 
-        <!-- Empty / loading states -->
-        <div class="my-4">
-            <div v-if="showInitialSpinner" class="flex items-center justify-center">
+        <!-- Content area fills remaining height; one scroll container -->
+        <div class="flex-1 min-h-0 mt-2 relative">
+            <!-- initial load -->
+            <div v-if="showInitialSpinner" class="absolute inset-0 flex items-center justify-center">
                 <CustomLoadingSpinner :width="'w-24'" :height="'h-24'" :baseColor="'text-gray-200'"
                     :fillColor="'fill-gray-500'" />
             </div>
 
-            <div v-else-if="displayRows.length === 0" class="bg-well p-6 rounded-md text-center">
-                <h2 class="text-default">No Remote Backup Tasks Found</h2>
-                <p class="text-muted mt-1">Click “Add New Task” to create one.</p>
+            <!-- empty state -->
+            <div v-else-if="displayRows.length === 0" class="h-full flex items-center justify-center">
+                <div class="text-center">
+                    <h2 class="text-default">No Remote Backup Tasks Found</h2>
+                    <p class="text-muted mt-1">Click “Add New Task” to create one.</p>
+                </div>
             </div>
 
-            <!-- Table -->
-            <div v-else class="relative overflow-x-auto mt-3">
+            <!-- table -->
+            <div v-else class="h-full overflow-hidden">
+                <!-- busy overlay while keeping table visible -->
                 <div v-if="showOverlaySpinner"
                     class="absolute inset-0 z-[100] flex items-center justify-center bg-well/60 backdrop-blur-sm">
                     <CustomLoadingSpinner :width="'w-16'" :height="'h-16'" :baseColor="'text-gray-200'"
                         :fillColor="'fill-gray-500'" />
                 </div>
 
-                <table class="task-table min-w-full bg-well rounded-md border border-default p-1">
-                    <thead>
-                        <tr>
-                            <th class="text-left p-2">Task Name</th>
-                            <th class="text-left p-2">Type</th>
-                            <th class="text-left p-2">Details</th>
-                            <th class="text-left p-2">Status</th>
-                            <th class="text-left p-2">Schedule</th>
-                            <th class="text-left p-2">Last Run</th>
-                            <th class="text-left p-2">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="row in displayRows" :key="row.id" class="border-t border-default/10">
-                            <td class="p-2 align-top">
-                                <div class="font-medium">{{ row.name }}</div>
-                            </td>
-                            <td class="p-2 align-top">
-                                <span
-                                    class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
-                                    :title="row.type">
-                                    {{ row.type }}
-                                </span>
-                            </td>
-                            <td class="p-2 align-top">
-                                <div class="text-sm leading-5">
-                                    <div><span class="text-muted">Source:</span> {{ row.details.source }}</div>
-                                    <div><span class="text-muted">Destination:</span> {{ row.details.destination }}
+                <!-- match BackUpListView: border, rounded, sticky header, single scroll -->
+                <div class="h-full overflow-auto border border-default rounded-md">
+                    <table class="min-w-full text-sm">
+                        <thead class="text-left sticky top-0 bg-accent z-10">
+                            <tr class="border-b border-default">
+                                <th class="px-3 py-2">Task Name</th>
+                                <th class="px-3 py-2">Type</th>
+                                <th class="px-3 py-2">Details</th>
+                                <th class="px-3 py-2">Status</th>
+                                <th class="px-3 py-2">Schedule</th>
+                                <th class="px-3 py-2">Last Run</th>
+                                <th class="px-3 py-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="row in displayRows" :key="row.id"
+                                class="border-b border-default bg-default hover:bg-well">
+                                <td class="px-3 py-2 align-top">
+                                    <div class="font-medium">{{ row.name }}</div>
+                                </td>
+                                <td class="px-3 py-2 align-top">
+                                    <span
+                                        class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
+                                        :title="row.type">
+                                        {{ row.type }}
+                                    </span>
+                                </td>
+                                <td class="px-3 py-2 align-top">
+                                    <div class="text-sm leading-5">
+                                        <div><span class="text-muted">Source:</span> {{ row.details.source }}</div>
+                                        <div><span class="text-muted">Destination:</span> {{ row.details.destination }}
+                                        </div>
+                                        <div v-if="row.details.extra"><span class="text-muted">Info:</span> {{
+                                            row.details.extra }}</div>
                                     </div>
-                                    <div v-if="row.details.extra"><span class="text-muted">Info:</span> {{
-                                        row.details.extra }}</div>
-                                </div>
-                            </td>
-                            <td class="p-2 align-top">
-                                <span class="text-sm" :class="taskStatusClass(row.status)">{{ row.status || '—'
-                                    }}</span>
-                            </td>
-                            <td class="p-2 align-top">
-                                <span class="text-sm">{{ row.schedule }}</span>
-                            </td>
-                            <td class="p-2 align-top">
-                                <span class="text-sm">{{ row.lastRun }}</span>
-                            </td>
-                            <td class="p-2 align-top">
-                                <div class="flex gap-2">
-                                    <button class="btn btn-xs btn-primary" @click="runNow(row.raw)" :disabled="loading">
-                                        Run Now
-                                    </button>
-                                    <button class="btn btn-xs btn-secondary" @click="edit(row.raw)" :disabled="loading">
-                                        Edit
-                                    </button>
-                                    <button class="btn btn-xs btn-danger" @click="remove(row.raw)" :disabled="loading">
-                                        Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                                </td>
+                                <td class="px-3 py-2 align-top">
+                                    <span class="text-sm" :class="taskStatusClass(row.status)">{{ row.status || '—'
+                                        }}</span>
+                                </td>
+                                <td class="px-3 py-2 align-top">
+                                    <span class="text-sm">{{ row.schedule }}</span>
+                                </td>
+                                <td class="px-3 py-2 align-top">
+                                    <span class="text-sm">{{ row.lastRun }}</span>
+                                </td>
+                                <td class="px-3 py-2 align-top">
+                                    <div class="flex gap-2">
+                                        <button class="btn btn-xs btn-primary" @click="runNow(row.raw)"
+                                            :disabled="loading">Run Now</button>
+                                        <button class="btn btn-xs btn-secondary" @click="edit(row.raw)"
+                                            :disabled="loading">Edit</button>
+                                        <button class="btn btn-xs btn-danger" @click="remove(row.raw)"
+                                            :disabled="loading">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div> <!-- /bordered scroll box -->
             </div>
         </div>
     </div>
@@ -101,14 +109,14 @@
 
 <script setup lang="ts">
 import { computed, ref, onActivated, onUnmounted, onMounted, watch } from 'vue';
-import { ArrowPathIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, logInjectionKey } from '../keys/injection-keys';
 import { Notification, pushNotification, confirm } from '@45drives/houston-common-ui';
 import { useRouter } from 'vue-router';
 import { useTaskDraftStore } from '../stores/taskDraft';
-import { useLiveTaskStatus, taskStatusClass } from '../composables/useLiveTaskStatus'; // NEW
+import { useLiveTaskStatus, taskStatusClass } from '../composables/useLiveTaskStatus';
 
 const router = useRouter();
 const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
@@ -380,7 +388,7 @@ async function remove(t: any) {
  * Add New Task
  */
 async function openAdd() {
-    draftStore.clear(); 
+    draftStore.clear();
     router.push({ name: 'SimpleAddTask' });
 }
 </script>
