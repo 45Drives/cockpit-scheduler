@@ -1,3 +1,3 @@
-## task scheduler 1.3.8-1
+## task scheduler 1.3.9-1
 
-* Adds new Simple UI for use in Setup Wizard client app.
+* Updates simplified UI to better mesh with Setup Wizard webview
