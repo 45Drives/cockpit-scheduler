@@ -1,62 +1,76 @@
 <template>
-    <div class="h-full w-full overflow-hidden">
-        <CardContainer class="min-h-0 h-full overflow-y-auto">
-            <div class="grid grid-cols-2 gap-4 min-h-0 h-full">
-                <div class="h-full bg-accent text-default rounded-md border border-default p-2 col-span-1">
-                    <!-- Task Name -->
-                    <div name="task-name" class="mb-2">
-                        <div class="flex flex-row justify-between items-center">
-                            <div class="flex flex-row items-center">
-                                <label class="block text-sm leading-6 text-default">Task Name</label>
-                                <InfoTile class="ml-1"
-                                    title="Name can have letters, numbers, and underscores. Spaces convert to underscores upon save." />
+    <div class="h-full w-full flex flex-col bg-well p-2">
+        <!-- Single scroll area (same height/feel as local list) --> <!-- Top toolbar (mirrors List toolbar) -->
+        <div class="flex flex-row items-center justify-between font-bold shrink-0 text-default">
+            <div class="flex items-center">
+                <button class="btn btn-danger text-sm mr-3" @click="goBack">Cancel</button>
+                {{ isEditMode ? 'Edit Backup Task' : 'Create Backup Task' }}
+            </div>
+            <button class="btn btn-primary text-sm" :disabled="!isDirty || adding" @click="saveAll">
+                {{ isEditMode ? (adding ? 'Saving…' : 'Save Changes') : (adding ? 'Creating…' : 'Create Task') }}
+            </button>
+        </div>
+
+        <div class="flex-1 min-h-0 mt-2 border border-default rounded-md bg-well overflow-auto">
+            <div class="grid grid-cols-12 gap-2 p-2 items-stretch">
+                <!-- LEFT: parameters card -->
+                <div class="col-span-12 xl:col-span-6 min-h-0">
+                    <div class="h-full flex-1 bg-accent text-default rounded-md border border-default p-2">
+                        <!-- Task Name -->
+                        <div name="task-name" class="mb-2">
+                            <div class="flex flex-row justify-between items-center">
+                                <div class="flex flex-row items-center">
+                                    <label class="block text-sm leading-6 text-default">Task Name</label>
+                                    <InfoTile class="ml-1"
+                                        title="Name can have letters, numbers, and underscores. Spaces convert to underscores upon save." />
+                                </div>
+                                <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger" />
                             </div>
-                            <ExclamationCircleIcon v-if="newTaskNameErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                            <input type="text" v-model="newTaskName"
+                                :class="['my-1 block w-full input-textlike text-default', newTaskNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                                placeholder="New Task"
+                                title="Name can have letters, numbers, and underscores. Spaces convert to underscores upon save." />
                         </div>
-                        <input type="text" v-model="newTaskName"
-                            :class="['my-1 block w-full input-textlike text-default', newTaskNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="New Task"
-                            title="Name can have letters, numbers, and underscores. Spaces convert to underscores upon save." />
-                    </div>
-                    <!-- Template -->
-                    <div name="task-template" v-if="allowedTemplates.length > 0" class="mb-2">
-                        <label for="task-template-selection" class="block text-sm leading-6 text-default">Task
-                            Template</label>
-                        <select id="task-template-selection" v-model="selectedTemplate" name="task-template-selection"
-                            class="text-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                            <option :value="undefined">Select Type of Task to Add</option>
-                            <option v-for="template, idx in allowedTemplates" :key="idx" :value="template">{{
-                                displayName(template) }}</option>
-                        </select>
-                    </div>
-                    <!-- Parameters -->
-                    <div v-if="selectedTemplate">
-                        <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
-                            :selectedTemplate="selectedTemplate" :simple="true" :task="originalTask || undefined" />
+
+                        <!-- Template -->
+                        <div name="task-template" v-if="allowedTemplates.length > 0" class="mb-2">
+                            <label for="task-template-selection" class="block text-sm leading-6 text-default">Task
+                                Template</label>
+                            <select id="task-template-selection" v-model="selectedTemplate"
+                                name="task-template-selection"
+                                class="text-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                                <option :value="undefined">Select Type of Task to Add</option>
+                                <option v-for="template, idx in allowedTemplates" :key="idx" :value="template">
+                                    {{ displayName(template) }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Parameters -->
+                        <div v-if="selectedTemplate" class="min-h-0">
+                            <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
+                                :selectedTemplate="selectedTemplate" :simple="true" :task="originalTask || undefined" />
+                        </div>
                     </div>
                 </div>
 
-                <div class="col-span-1">
-                    <SimpleCalendar :title="'Schedule Task'" v-model:taskSchedule="uiSchedule" />
+                <!-- RIGHT: calendar (fills column) -->
+                <div class="col-span-12 xl:col-span-6 min-h-0 flex">
+                    <SimpleCalendar :title="'Schedule Task'" v-model:taskSchedule="uiSchedule"
+                        class="w-full h-full flex-1" />
                 </div>
             </div>
+        </div>
 
-
-            <!-- Footer: single action row -->
-            <template #footer>
-                <div class="button-group-row justify-between w-full">
-                    <button @click="goBack" class="btn btn-secondary h-20 w-40">Back</button>
-                    <div class="">
-                        <button :disabled="!isDirty || adding" @click="saveAll" class="btn btn-primary h-20 w-48">
-                            {{ isEditMode ? (adding ? 'Saving…' : 'Save Changes') : (adding ? 'Creating…' : 'Create Task') }}
-                        </button>
-                    </div>
-                </div>
-            </template>
-        </CardContainer>
+        <!-- Bottom action bar (pinned, matches your local bottom controls) -->
+        <!-- <div class="shrink-0 mt-2 flex items-center justify-between">
+            <button @click="goBack" class="btn btn-secondary h-16 w-40">Back</button>
+            <button :disabled="!isDirty || adding" @click="saveAll" class="btn btn-primary h-16 w-48">
+                {{ isEditMode ? (adding ? 'Saving…' : 'Save Changes') : (adding ? 'Creating…' : 'Create Task') }}
+            </button>
+        </div> -->
     </div>
 </template>
-
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, provide, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';

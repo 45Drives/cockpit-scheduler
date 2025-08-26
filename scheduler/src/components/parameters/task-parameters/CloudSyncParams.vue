@@ -796,7 +796,7 @@ watch(selectedRemote, (newVal) => {
 async function initializeData() {
     if (props.task) {
         // enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
-        //  console.log('loading task:', props.task);
+         console.log('loading task:', props.task);
         loading.value = true;
 
         const params = props.task.parameters.children;
