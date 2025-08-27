@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router';
+import { createRouter, createWebHashHistory, RouteRecordRaw, RouteLocationNormalized } from 'vue-router';
 import { useTaskDraftStore } from './stores/taskDraft';
 
 const SimplifiedView = () => import('./views/SimplifiedView.vue');
@@ -28,10 +28,15 @@ export const router = createRouter({
     routes,
 });
 
-// keep the guard; also clear the draft when going to "new" so the form is fresh
-router.beforeEach((to) => {
+
+router.beforeEach((to, from) => {
     const store = useTaskDraftStore();
-    if (to.name === 'SimpleAddTask') store.clear?.();
-    if (to.name === 'SimpleEditTask' && (!store.draft)) return { name: 'SimpleTasks' };
+    const comingBackFromRemotes = from.name === 'SimpleManageRemotes';
+
+    if (to.name === 'SimpleAddTask' && !comingBackFromRemotes) store.clear?.();
+
+    if (to.name === 'SimpleEditTask') {
+        if (!store.draft && !comingBackFromRemotes) return { name: 'SimpleTasks' };
+    }
     return true;
 });

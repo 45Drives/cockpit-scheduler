@@ -1,6 +1,5 @@
 <template>
-    <!-- mirror host: transparent bg, fill height -->
-    <div class="h-full flex flex-col bg-well text-default p-2">
+    <div class="h-full flex flex-col bg-well text-default">
         <!-- Toolbar (same as BackUpListView) -->
         <div class="flex flex-row items-center justify-between font-bold">
             <div class="flex items-center justify-start">
@@ -108,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onActivated, onUnmounted, onMounted, watch } from 'vue';
+import { computed, ref, onActivated, onUnmounted, onMounted, watch, provide } from 'vue';
 import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
@@ -238,25 +237,29 @@ function isBlank(v: any) {
 function formatRsyncDestination(t: any) {
     const host = getHost(t);
     const path = getTargetPath(t);
-    if (isBlank(host)) {
-        // no host → just show the path (local/undefined remote)
-        return isBlank(path) ? '—' : String(path);
-    }
+    if (isBlank(host)) return isBlank(path) ? '—' : String(path);
+
     const user = getUser(t);
     const portNum = Number(getPort(t));
     const userPart = isBlank(user) ? '' : `${user}@`;
-    const portPart = Number.isFinite(portNum) && portNum > 0 ? `:${portNum}` : '';
+    const includePort = Number.isFinite(portNum) && portNum > 0 && portNum !== 22; // ← only show non-22 ports
+    const portPart = includePort ? `:${portNum}` : '';
     const pathPart = isBlank(path) ? '' : `:${path}`;
+
     return `${userPart}${host}${portPart}${pathPart}`;
 }
 
 function formatCloudDestination(t: any) {
-    const remote = getRemoteName(t);
-    const path = getTargetPath(t);
-    if (isBlank(remote)) return isBlank(path) ? '—' : String(path);
+    const remote = String(getRemoteName(t) ?? '').trim();
+    const rawPath = String(getTargetPath(t) ?? '').trim();
+
+    if (isBlank(remote)) return isBlank(rawPath) ? '—' : rawPath;
+
+    // If path already starts with "<remote>:", strip that prefix
+    let path = rawPath.startsWith(`${remote}:`) ? rawPath.slice(remote.length + 1) : rawPath;
+
     return `${remote}${isBlank(path) ? '' : `:${path}`}`;
 }
-
 function detailsFor(t: any) {
     const source = getSource(t);
     if (isRsync(t)) {
@@ -365,7 +368,9 @@ async function runNow(t: any) {
 
 async function edit(t: any) {
     draftStore.setDraft(t, 'edit');
-    router.push({ name: 'SimpleEditTask' });
+    // router.push({ name: 'SimpleEditTask' });
+    router.push({ name: 'SimpleEditTask', query: { session: t.id || t.name } });
+
 }
 
 async function remove(t: any) {
@@ -389,6 +394,8 @@ async function remove(t: any) {
  */
 async function openAdd() {
     draftStore.clear();
-    router.push({ name: 'SimpleAddTask' });
+    // router.push({ name: 'SimpleAddTask' });
+    const session = Date.now().toString(); // or nanoid/uuid
+    router.push({ name: 'SimpleAddTask', query: { session } });
 }
 </script>

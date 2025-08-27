@@ -60,7 +60,7 @@
                 <button @click="changeMonth(-1)" class="btn btn-secondary">
                     Prev
                 </button>
-                <span class="text-lg font-semibold text-default">{{ monthNames[currentMonth] }} {{
+                <span class="text-lg font-semibold text-default text-center">{{ monthNames[currentMonth] }} {{
                     currentYear
                     }}</span>
                 <button @click="changeMonth(1)" class="btn btn-secondary">

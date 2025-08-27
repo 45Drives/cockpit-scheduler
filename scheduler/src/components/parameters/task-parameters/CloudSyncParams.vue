@@ -2,6 +2,54 @@
     <!-- SIMPLE MODE -->
     <div v-if="props.simple" class="space-y-4 my-2">
 
+        <!-- Paths -->
+        <SimpleFormCard title="What do you want to copy?" description="Choose a folder stored on this server that was
+            created by a client backup. This is the backed-up copy of your files, not your live PC.">
+            <label class="block text-sm mt-1 text-default">Local folder</label>
+
+            <!-- loading -->
+            <div v-if="loadingFolders" class="mt-2 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'"
+                    :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Discovering your folders…</span>
+            </div>
+
+            <!-- error -->
+            <div v-else-if="discoveryError" class="mt-2 p-2 rounded bg-danger/10 text-danger text-sm">
+                {{ discoveryError }}
+                <div class="mt-1 text-xs text-default/70">
+                    You can still type a path manually below.
+                    <button class="btn btn-xxs btn-secondary ml-2" @click="folderList.refresh()">Retry</button>
+                </div>
+            </div>
+
+            <!-- select when we have options -->
+            <div v-else-if="opts.length">
+                <select v-model="localPath" class="input-textlike text-sm w-full text-default bg-default rounded-md">
+                    <option v-for="opt in opts" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                    </option>
+                </select>
+                <p class="text-[11px] text-muted mt-1">
+                    Scope: {{ shareRoot || '—' }}
+                    <span> • Full Path: {{ localPath }}</span>
+                    <span v-if="smbUser"> • User: {{ smbUser }}</span>
+                </p>
+            </div>
+
+            <!-- manual input fallback -->
+            <div v-else class="mt-1">
+                <input type="text" v-model="localPath" @blur="ensureTrailingSlash('local')" :class="[
+                    'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                    errorTags?.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" placeholder="/data/photos/" />
+                <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
+                <p class="text-[11px] text-muted mt-1">
+                    Tip: Local path should end with a <code>/</code>. We’ll add it for you if missing.
+                </p>
+            </div>
+
+        </SimpleFormCard>
         <!-- Remote/account -->
         <SimpleFormCard title="Choose your cloud account" description="Pick an existing account or add a new one.">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
@@ -77,7 +125,8 @@
                         <input type="radio" class="mt-1 h-4 w-4" value="sync" v-model="transferType" />
                         <div>
                             <div class="text-sm text-default font-medium">Sync</div>
-                            <div class="text-[11px] text-muted">Make destination match source (may delete extras).</div>
+                            <div class="text-[11px] text-muted">Make destination match source (may delete extras).
+                            </div>
                         </div>
                     </label>
 
@@ -94,18 +143,7 @@
         </SimpleFormCard>
 
         <!-- Paths -->
-        <SimpleFormCard title="What do you want to copy?"
-            description="Choose the local folder and where it lives in the cloud.">
-            <label class="block text-sm mt-1 text-default">
-                Local folder
-            </label>
-            <input type="text" v-model="localPath"
-                class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
-                :class="[errorTags?.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                placeholder="/data/photos/" />
-            <p class="text-[11px] text-muted mt-1">
-                Tip: add a trailing <code>/</code> to copy folder contents.
-            </p>
+        <SimpleFormCard title="Where do you want to copy it to?" description="Choose where it will live in the cloud.">
 
             <label class="block text-sm mt-2 text-default">
                 Cloud folder <span v-if="selectedRemote">({{ selectedRemote.name }})</span>
@@ -670,7 +708,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref, onMounted, inject, provide, watch, computed } from 'vue';
+import { ref, Ref, onMounted, inject, provide, watch, computed, watchEffect } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
@@ -681,6 +719,9 @@ import { injectWithCheck, checkLocalPathExists } from '../../../composables/util
 import { rcloneRemotesInjectionKey, remoteManagerInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
+import { useClientContextStore } from '../../../stores/clientContext';
+
 const router = useRouter()
 const route = useRoute()
 
@@ -792,6 +833,82 @@ watch(selectedRemote, (newVal) => {
         targetPath.value = `${selectedRemote.value!.name}:`;
     }
 });
+
+// ---------- User-scoped folder discovery (same as Rsync) ----------
+const ctx = useClientContextStore();
+
+function parseFromHash(): string {
+    const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+const installId = computed(() => ctx.clientId || parseFromHash() || '');
+
+// depth=2 like your Rsync version
+const folderList = useUserScopedFolderListByInstall(installId, 2);
+
+// pipe state to console if you like
+watchEffect(() => {
+    console.log('[cloud-sync folderList]',
+        'loading=', folderList.loading.value,
+        'error=', folderList.error.value,
+        'shareRoot=', folderList.shareRoot.value,
+        'smbUser=', folderList.smbUser.value,
+        'abs=', folderList.absDirs.value.length
+    );
+});
+
+// derived values for template
+const loadingFolders = folderList.loading;
+const discoveryError = folderList.error;
+const shareRoot = computed(() => folderList.shareRoot.value);
+const smbUser = computed(() => folderList.smbUser.value);
+const isEditMode = computed(() => !!props.task);
+
+// label builder to hide UUID segment (same as Rsync)
+function prettyLabelFromAbs(abs: string) {
+    const root = shareRoot.value || '';
+    if (!abs.startsWith(root)) return abs;
+    const rel = abs.slice(root.length).replace(/^\/+/, '');
+    const parts = rel.split('/').filter(Boolean);
+    // drop UUID segment
+    return parts.length >= 2 ? parts.slice(1).join('/') + '/' : rel + '/';
+}
+
+const opts = computed<Array<{ value: string; label: string }>>(() =>
+    (folderList.absDirs.value ?? []).map(abs => ({
+        value: abs,
+        label: prettyLabelFromAbs(abs),
+    }))
+);
+
+// choose a sane default when options arrive
+watch(opts, (list) => {
+    if (!props.simple || isEditMode.value) return;           // ⟵ only in Simple mode
+    if (!list.length) return;
+    if (!localPath.value || !folderList.underRoot(localPath.value)) {
+        localPath.value = list[0].value;
+    }
+}, { immediate: true });
+
+watch([() => folderList.absDirs.value, () => folderList.shareRoot.value], ([abs]) => {
+    if (!props.simple || isEditMode.value) return;           // ⟵ only in Simple mode
+    const list = abs || [];
+    if (!list.length) return;
+    if (!localPath.value || !folderList.underRoot(localPath.value)) {
+        localPath.value = list[0];
+    }
+}, { immediate: true });
+
+// trailing slash helper (mirrors Rsync)
+function ensureTrailingSlash(which: 'local' | 'target') {
+    if (which === 'local') {
+        if (localPath.value && !localPath.value.endsWith('/')) localPath.value += '/';
+    } else {
+        if (targetPath.value && !targetPath.value.endsWith('/')) targetPath.value += '/';
+    }
+}
+
 
 async function initializeData() {
     if (props.task) {

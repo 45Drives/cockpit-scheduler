@@ -3,16 +3,52 @@
     <div v-if="props.simple" class="space-y-4 my-2">
 
         <!-- What to copy -->
-        <SimpleFormCard title="What do you want to copy?"
-            description="Pick the folders to copy. We’ll handle the rest.">
+        <SimpleFormCard title="What do you want to copy?" description="Choose a folder stored on this server that was
+            created by a client backup. This is the backed-up copy of your files, not your live PC.">
             <label class="block text-sm mt-1 text-default">From (Source)</label>
-            <input type="text" v-model="sourcePath" @blur="ensureTrailingSlash('source')" :class="[
-                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-            ]" placeholder="e.g. /mnt/data/projects/" />
-            <p class="text-[11px] text-muted mt-1">
-                Tip: Source should end with a <code>/</code>. We’ll add it for you if missing.
-            </p>
+
+            <!-- loading -->
+            <div v-if="loadingFolders" class="mt-2 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'"
+                    :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Discovering your folders…</span>
+            </div>
+
+            <!-- error -->
+            <div v-else-if="discoveryError" class="mt-2 p-2 rounded bg-danger/10 text-danger text-sm">
+                {{ discoveryError }}
+                <div class="mt-1 text-xs text-default/70">
+                    You can still type a path manually below.
+                    <button class="btn btn-xxs btn-secondary ml-2" @click="folderList.refresh()">Retry</button>
+                </div>
+            </div>
+
+            <!-- select when we have options -->
+            <div v-else-if="opts.length">
+                <select v-model="sourcePath" class="input-textlike text-sm w-full text-default bg-default rounded-md">
+                    <option v-for="opt in opts" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                    </option>
+                </select>
+                <p class="text-[11px] text-muted mt-1">
+                    Scope: {{ shareRoot || '—' }}
+                    <span> • Full Path: {{ sourcePath }}</span>
+                    <span v-if="smbUser"> • User: {{ smbUser }}</span>
+                </p>
+            </div>
+
+            <!-- manual input fallback -->
+            <div v-else class="mt-1">
+                <input type="text" v-model="sourcePath" @blur="ensureTrailingSlash('source')" :class="[
+                    'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                    sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" placeholder="e.g. /mnt/backup/projects/" />
+                <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
+                <p class="text-[11px] text-muted mt-1">
+                    Tip: Source should end with a <code>/</code>. We’ll add it for you if missing.
+                </p>
+            </div>
+
 
             <!-- <div class="w-full mt-3 flex items-center justify-between bg-plugin-header rounded-lg p-2">
                 <span class="text-default text-sm font-medium">
@@ -114,7 +150,6 @@
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Source
-
                             <InfoTile class="ml-1"
                                 title="Source directory must always have a trailing slash (If none is provided it will be added automatically.)" />
                         </label>
@@ -425,7 +460,8 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, inject } from 'vue';
+import { ref, Ref, onMounted, inject, watch, computed, watchEffect } from 'vue';
+import { useRoute } from 'vue-router'
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
@@ -434,6 +470,8 @@ import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionP
 import { testSSH, testOrSetupSSH } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
+import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
+import { useClientContextStore } from '../../../stores/clientContext';
 
 interface RsyncTaskParamsProps {
     parameterSchema: ParameterNodeType;
@@ -487,7 +525,6 @@ const sshTestResult = ref(false);
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
-
 const sshReady = ref(false);
 
 async function handleTestSSH() {
@@ -508,6 +545,7 @@ async function handleTestSSH() {
         testingSSH.value = false;
     }
 }
+
 /**
  * Simple-mode QoL: ensure trailing slash on blur
  */
@@ -518,6 +556,79 @@ function ensureTrailingSlash(which: 'source' | 'dest') {
         if (destPath.value && !destPath.value.endsWith('/')) destPath.value += '/'
     }
 }
+
+const ctx = useClientContextStore();
+
+function parseFromHash(): string {
+    const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+const installId = computed(() => ctx.clientId || parseFromHash() || '');
+
+console.log('[RsyncTaskParams] client_id =', installId.value)
+
+// drive the server-side discovery
+const folderList = useUserScopedFolderListByInstall(installId, 2);
+console.log('[RsyncTaskParams] folderList created');
+
+// force one manual run (in case your first run happened before id was ready)
+// folderList.refresh().catch(e => console.error('[RsyncTaskParams] manual refresh error:', e));
+
+// stream state to console
+watchEffect(() => {
+    console.log('[folderList state]',
+        'loading=', folderList.loading.value,
+        'error=', folderList.error.value,
+        'shareRoot=', folderList.shareRoot.value,
+        'smbUser=', folderList.smbUser.value,
+        'uuids=', folderList.uuids.value,
+        'abs=', folderList.absDirs.value.length
+    );
+});
+
+// derived values for your template
+const loadingFolders = folderList.loading
+const discoveryError = folderList.error
+const shareRoot = computed(() => folderList.shareRoot.value)
+const smbUser = computed(() => folderList.smbUser.value)
+const isEditMode = computed(() => !!props.task);
+
+// helper that builds a nice label from an absolute path
+function prettyLabelFromAbs(abs: string) {
+    const root = shareRoot.value || '';
+    if (!abs.startsWith(root)) return abs;
+    const rel = abs.slice(root.length).replace(/^\/+/, '');
+    const parts = rel.split('/').filter(Boolean);
+    // drop UUID segment
+    return parts.length >= 2 ? parts.slice(1).join('/') + '/' : rel + '/';
+}
+
+// strong typing helps intellisense
+const opts = computed<Array<{ value: string; label: string }>>(() =>
+    (folderList.absDirs.value ?? []).map(abs => ({
+        value: abs,
+        label: prettyLabelFromAbs(abs),
+    }))
+);
+
+watch(opts, (list) => {
+    if (!props.simple || isEditMode.value) return;             //  ⟵ only in Simple mode
+    if (!list.length) return;
+    if (!sourcePath.value || !folderList.underRoot(sourcePath.value)) {
+        sourcePath.value = list[0].value;
+    }
+}, { immediate: true });
+
+watch([() => folderList.absDirs.value, () => folderList.shareRoot.value], ([abs]) => {
+    if (!props.simple || isEditMode.value) return;             //  ⟵ only in Simple mode
+    const list = abs || [];
+    if (!list.length) return;
+    if (!sourcePath.value || !folderList.underRoot(sourcePath.value)) {
+        sourcePath.value = list[0];
+    }
+}, { immediate: true });
+
 
 const togglePassword = () => {
     showPassword.value = !showPassword.value;
@@ -535,70 +646,7 @@ async function initializeData() {
         destHost.value = targetInfoParams.find(p => p.key === 'host')!.value;
         destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
         destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
-        destPort.value = targetInfoParams.find(p => p.key === 'port')!.value; async function initializeData() {
-            // if props.task, then edit mode active (retrieve data)
-            if (props.task) {
-                loading.value = true;
-                const params = props.task.parameters.children;
-
-                sourcePath.value = params.find(p => p.key === 'local_path')!.value;
-                const targetInfoParams = params.find(p => p.key === 'target_info')!.children;
-                destPath.value = targetInfoParams.find(p => p.key === 'path')!.value;
-                destHost.value = targetInfoParams.find(p => p.key === 'host')!.value;
-                destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
-                destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
-                destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
-                const transferDirection = params.find(p => p.key === 'direction')!.value;
-                if (transferDirection == 'pull') {
-                    directionSwitched.value = true;
-                } else {
-                    directionSwitched.value = false;
-                }
-                const rsyncOptions = params.find(p => p.key === 'rsyncOptions')!.children;
-                isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
-                isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
-                isCompressed.value = rsyncOptions.find(p => p.key === 'compressed_flag')!.value;
-                isQuiet.value = rsyncOptions.find(p => p.key === 'quiet_flag')!.value;
-                deleteFiles.value = rsyncOptions.find(p => p.key === 'delete_flag')!.value;
-                preserveTimes.value = rsyncOptions.find(p => p.key === 'times_flag')!.value;
-                preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
-                preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
-                preserveXattr.value = rsyncOptions.find(p => p.key === 'xattr_flag')!.value;
-                limitBandwidthKbps.value = (parseInt(rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value) == 0 ? 0 : rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value);
-                includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value.replace(/^'|'$/g, '');
-                excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value.replace(/^'|'$/g, '');
-                extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value.replace(/^'|'$/g, '');
-                isParallel.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
-                parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
-
-                initialParameters.value = JSON.parse(JSON.stringify({
-                    sourcePath: sourcePath.value,
-                    destPath: destPath.value,
-                    destHost: destHost.value,
-                    destUser: destUser.value,
-                    destRoot: destRoot.value,
-                    destPort: destPort.value,
-                    directionSwitched: directionSwitched.value,
-                    isArchive: isArchive.value,
-                    isRecursive: isRecursive.value,
-                    isCompressed: isCompressed.value,
-                    isQuiet: isQuiet.value,
-                    deleteFiles: deleteFiles.value,
-                    preserveTimes: preserveTimes.value,
-                    preserveHardLinks: preserveHardLinks.value,
-                    preservePerms: preservePerms.value,
-                    preserveXattr: preserveXattr.value,
-                    limitBandwidthKbps: limitBandwidthKbps.value,
-                    includePattern: includePattern.value,
-                    excludePattern: excludePattern.value,
-                    extraUserParams: extraUserParams.value,
-                    isParallel: isParallel.value,
-                    parallelThreads: parallelThreads.value
-                }));
-
-                loading.value = false;
-            }
-        }
+        destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
         const transferDirection = params.find(p => p.key === 'direction')!.value;
         if (transferDirection == 'pull') {
             directionSwitched.value = true;

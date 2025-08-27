@@ -1,12 +1,12 @@
 <template>
-    <div class="h-full w-full flex flex-col bg-well p-2">
+    <div class="h-full w-full flex flex-col bg-well">
         <!-- Single scroll area (same height/feel as local list) --> <!-- Top toolbar (mirrors List toolbar) -->
         <div class="flex flex-row items-center justify-between font-bold shrink-0 text-default">
             <div class="flex items-center">
                 <button class="btn btn-danger text-sm mr-3" @click="goBack">Cancel</button>
                 {{ isEditMode ? 'Edit Backup Task' : 'Create Backup Task' }}
             </div>
-            <button class="btn btn-primary text-sm" :disabled="!isDirty || adding" @click="saveAll">
+            <button class="btn btn-success text-sm" :disabled="!isDirty || adding" @click="saveAll">
                 {{ isEditMode ? (adding ? 'Saving…' : 'Save Changes') : (adding ? 'Creating…' : 'Create Task') }}
             </button>
         </div>
@@ -96,6 +96,7 @@ import { useTaskDraftStore } from '../../stores/taskDraft';
 import { injectWithCheck } from '../../composables/utility';
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
+defineOptions({ name: 'SimpleTaskForm' });
 // ---- props ----
 const props = defineProps<{ mode?: 'create' | 'edit', existingTask?: TaskInstanceType }>();
 const draft = useTaskDraftStore();

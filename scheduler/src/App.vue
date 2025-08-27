@@ -1,6 +1,12 @@
 <template>
 	<!-- <SimplifiedView v-if="isSimple" /> -->
-	<router-view v-if="isSimple" />
+	<router-view v-if="isSimple" v-slot="{ Component, route }">
+		<keep-alive include="SimpleTaskForm">
+			<component :is="Component" :key="(route.query.session as string) || (route.name as string)" />
+		</keep-alive>
+	</router-view>
+
+
 	<NotificationView v-if="isSimple" />
 
 	<HoustonAppContainer v-else moduleName="Task Scheduler" :appVersion="appVersion">
