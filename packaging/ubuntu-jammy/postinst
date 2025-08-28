@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+# Create state dirs (idempotent)
+install -d -m 0755 /var/lib/houston/scheduler
+install -d -m 0755 /var/lib/houston/user-units
+install -d -m 0755 /var/lib/houston/rclone
+
+# Reload systemd; enable & start the D-Bus service
+systemctl daemon-reexec || true
+systemctl daemon-reload || true
+
+if systemctl cat org.45drives.Scheduler.service &>/dev/null; then
+    systemctl enable --now org.45drives.Scheduler.service || true
+fi
+
+exit 0

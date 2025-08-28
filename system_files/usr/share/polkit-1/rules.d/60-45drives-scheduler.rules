@@ -1,0 +1,7 @@
+polkit.addRule(function(action, subject) {
+  const inGroup = subject.isInGroup("smbusers");   // pick your group
+  if (action.id === "com.45drives.scheduler.list" && inGroup)
+    return polkit.Result.YES;
+  if (action.id === "com.45drives.scheduler.modify" && inGroup)
+    return polkit.Result.AUTH_SELF_KEEP;
+});

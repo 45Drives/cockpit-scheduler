@@ -1,0 +1,476 @@
+#!/usr/bin/env python3
+import os, json, pwd, subprocess, pathlib, logging, grp, signal
+import dbus, dbus.service, dbus.mainloop.glib
+from gi.repository import GLib, Polkit
+
+# ---- IDs
+BUS_NAME  = 'org.houston.Scheduler'
+OBJ_PATH  = '/org/houston/Scheduler'
+IFACE     = 'org.houston.Scheduler1'
+
+# ---- Layout
+SCRIPTS_DIR    = pathlib.Path('/opt/45drives/houston/scheduler/scripts')
+TEMPLATES_DIR  = pathlib.Path('/opt/45drives/houston/scheduler/templates')
+STATE_ROOT     = pathlib.Path('/var/lib/houston/scheduler')     # per-user state (.env/.json/.txt, registry)
+UNITS_ROOT     = pathlib.Path('/var/lib/houston/user-units')    # per-user unit sources (root-writable)
+
+# Optional marker support (legacy)
+MARKER_NAME    = '.houston'
+
+ROOT_TEMPLATES = {'AutomatedSnapshotTask','ZfsReplicationTask','ScrubTask','SmartTest'}
+USER_TEMPLATES = {'RsyncTask','CloudSyncTask'}
+
+logging.basicConfig(level=logging.INFO, format='[schedulerd] %(levelname)s: %(message)s')
+
+def ensure(p: pathlib.Path, mode=0o755):
+    p.mkdir(parents=True, exist_ok=True)
+
+# ---- Small helpers to make subprocesses quick & interruptible
+def _run_quiet(argv, *, timeout=8, check=False):
+    try:
+        return subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=timeout,
+            check=check
+        )
+    except subprocess.TimeoutExpired as e:
+        logging.error("Command timed out: %s", ' '.join(argv))
+        raise
+    except subprocess.CalledProcessError as e:
+        # Let callers decide; we still log the useful bits.
+        logging.error("Command failed [%s]: %s\nSTDOUT:\n%s\nSTDERR:\n%s",
+                      e.returncode, ' '.join(argv), e.stdout, e.stderr)
+        if check:
+            raise
+        return e  # return object with .returncode
+
+def _cmd_out(argv, *, timeout=6):
+    try:
+        cp = _run_quiet(argv, timeout=timeout)
+        return cp.stdout if cp.returncode == 0 else ''
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ''
+
+class Daemon(dbus.service.Object):
+    def __init__(self, bus, loop, name_owner):
+        super().__init__(bus, OBJ_PATH)
+        self.bus = bus
+        self.loop = loop
+        self.name_owner = name_owner
+
+    # ---- Caller identity + polkit
+    def _ids_from_sender(self, sender):
+        dbus_obj = self.bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
+        api = dbus.Interface(dbus_obj, 'org.freedesktop.DBus')
+        pid = int(api.GetConnectionUnixProcessID(sender))
+        uid = int(api.GetConnectionUnixUser(sender))
+        return pid, uid
+
+    def _username_from_sender(self, sender):
+        _, uid = self._ids_from_sender(sender)
+        return pwd.getpwuid(uid).pw_name
+
+    def _auth(self, action_id, sender):
+        pid, _ = self._ids_from_sender(sender)
+        auth = Polkit.Authority.get_sync(None)
+        res = auth.check_authorization_sync(
+            Polkit.UnixProcess.new(pid),
+            action_id, None,
+            Polkit.CheckAuthorizationFlags.ALLOW_USER_INTERACTION,
+            None
+        )
+        if not (res.get_is_authorized() or res.get_is_challenge()):
+            raise PermissionError(f'Not authorized for {action_id}')
+
+    # ---- Helpers (naming)
+    def _unit_base(self, template: str, name: str) -> str:
+        return f'houston_scheduler_{template}_{name}'
+
+    def _unit_user(self, template: str, name: str, user: str) -> str:
+        uid, _, _ = self._user_ids(user)
+        return f'houston_scheduler_{template}_{name}__u{uid}'
+
+    # ---- Paths
+    def _user_state_dir(self, user, unit):
+        p = STATE_ROOT / user / unit
+        ensure(p)
+        return p
+
+    def _user_units_dir(self, user):
+        p = UNITS_ROOT / user
+        ensure(p)
+        return p
+
+    def _registry_path(self, user):
+        ensure(STATE_ROOT / user)
+        p = STATE_ROOT / user / 'tasks.json'
+        if not p.exists():
+            p.write_text('[]\n')
+        return p
+
+    def _user_ids(self, user):
+        e = pwd.getpwnam(user)
+        return e.pw_uid, e.pw_gid, e.pw_dir
+
+    def _runtime_user_unit_dir(self, user):
+        uid, _, _ = self._user_ids(user)
+        return pathlib.Path(f'/run/user/{uid}/systemd/user')
+
+    def _systemctl_user(self, user, cmd):
+        """Run a systemctl --user command for 'user', ensuring the user manager is addressable."""
+        uid, _, _ = self._user_ids(user)
+
+        # ensure a user manager exists (non-fatal if these fail/timeout)
+        try: _run_quiet(['loginctl', 'enable-linger', user], timeout=4)
+        except Exception: pass
+        try: _run_quiet(['systemctl', 'start', f'user@{uid}.service'], timeout=4)
+        except Exception: pass
+
+        # export both vars so systemctl can talk to the user bus
+        env1 = f'XDG_RUNTIME_DIR=/run/user/{uid}'
+        env2 = f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus'
+
+        full = ['runuser', '-u', user, '--', 'env', env1, env2, 'bash', '-lc', cmd]
+        cp = _run_quiet(full, timeout=12)  # keep tight so restarts aren't held up
+
+        if cp.returncode != 0:
+            logging.error(
+                "systemctl --user failed (user=%s): %s\nSTDOUT:\n%s\nSTDERR:\n%s",
+                user, cmd, cp.stdout, cp.stderr
+            )
+            raise RuntimeError(
+                f"systemctl --user failed (user={user}): {cmd}\n"
+                f"rc={cp.returncode}\nSTDOUT:\n{cp.stdout}\nSTDERR:\n{cp.stderr}"
+            )
+
+    def _link_user_units(self, user, units_dir, unit):
+        """Ask systemd to place runtime links for the user's unit files."""
+        try: self._systemctl_user(user, 'systemctl --user daemon-reload || true')
+        except Exception: pass
+        self._systemctl_user(user, f'systemctl --user link --runtime "{units_dir}/{unit}.service"')
+        # timer may not exist for one-shot tasks
+        try:
+            self._systemctl_user(user, f'systemctl --user link --runtime "{units_dir}/{unit}.timer"')
+        except Exception:
+            pass
+        try: self._systemctl_user(user, 'systemctl --user daemon-reload || true')
+        except Exception: pass
+
+    # ---------- ZFS roots discovery (NO config file) ----------
+    def _zfs_pool_mounts(self):
+        """
+        Return mountpoints of top-level ZFS pools.
+        1) Prefer `zpool list` + `zfs get mountpoint <pool>`
+        2) Fallback: parse /proc/self/mounts (fstype=zfs), keep shallowest mountpoints.
+        """
+        mps = set()
+
+        pools_txt = _cmd_out(['zpool', 'list', '-H', '-o', 'name']).strip()
+        if pools_txt:
+            for pool in pools_txt.splitlines():
+                pool = pool.strip()
+                if not pool:
+                    continue
+                mp = _cmd_out(['zfs', 'get', '-H', '-o', 'value', 'mountpoint', pool]).strip()
+                if mp and mp != '-' and os.path.isdir(mp):
+                    mps.add(pathlib.Path(mp))
+
+        if not mps:
+            try:
+                with open('/proc/self/mounts', 'r') as f:
+                    lines = f.read().splitlines()
+                zfs_mps = [pathlib.Path(l.split()[1]) for l in lines if len(l.split()) >= 3 and l.split()[2] == 'zfs']
+                zfs_mps = [p for p in zfs_mps if p.exists()]
+                zset = set(zfs_mps)
+                for p in zfs_mps:
+                    if p.parent not in zset:
+                        mps.add(p)
+            except Exception as e:
+                logging.debug("mounts parse failed: %s", e)
+
+        return sorted(mps, key=lambda p: (len(p.parts), str(p)))
+
+    def _backup_roots(self):
+        """
+        Return subdirectories under each ZFS pool mountpoint whose group owner is 'smbusers'.
+        These are treated as "backup roots".
+        """
+        try:
+            gid = grp.getgrnam('smbusers').gr_gid
+        except KeyError:
+            logging.warning("Group 'smbusers' not found; no backup roots will be discovered.")
+            return []
+
+        roots = []
+        for pool_mp in self._zfs_pool_mounts():
+            try:
+                for entry in pool_mp.iterdir():
+                    if not entry.is_dir():
+                        continue
+                    try:
+                        st = entry.stat()
+                    except FileNotFoundError:
+                        continue
+                    if st.st_gid == gid:
+                        roots.append(entry.resolve())
+            except Exception as e:
+                logging.debug("scan error in %s: %s", pool_mp, e)
+
+        # de-dupe
+        seen = set(); out=[]
+        for r in roots:
+            if r not in seen:
+                seen.add(r); out.append(r)
+        return out
+
+    def _list_user_owned_dirs(self, base: pathlib.Path, uid: int):
+        """
+        Immediate subdirs of `base` that are owned by `uid`.
+        Also accept a subdir that contains a legacy marker directory (MARKER_NAME).
+        """
+        out = []
+        try:
+            for entry in base.iterdir():
+                if not entry.is_dir():
+                    continue
+                try:
+                    st = entry.stat()
+                except FileNotFoundError:
+                    continue
+                if st.st_uid == uid or (entry / MARKER_NAME).is_dir():
+                    out.append(str(entry))
+        except Exception as e:
+            logging.debug("scan error in %s: %s", base, e)
+        return sorted(out)
+
+    # ---- API
+    @dbus.service.method(IFACE, in_signature='', out_signature='a{sv}')
+    def GetCapabilities(self):
+        return {'version': '1', 'userUnits': True, 'rootUnits': True, 'rootsConfig': False}
+
+    @dbus.service.method(IFACE, in_signature='', out_signature='as', sender_keyword='sender')
+    def ListClientBackupFolders(self, sender=None):
+        self._auth('com.45drives.scheduler.list', sender)
+        _, uid = self._ids_from_sender(sender)
+
+        out = []
+        for root in self._backup_roots():
+            if not root.exists():
+                continue
+            out.extend(self._list_user_owned_dirs(root, uid))
+        return sorted(set(out))
+
+    @dbus.service.method(IFACE, in_signature='s', out_signature='s', sender_keyword='sender')
+    def ListTasks(self, scope, sender=None):
+        self._auth('com.45drives.scheduler.list', sender)
+        user = self._username_from_sender(sender)
+        if scope == 'user':
+            return (self._registry_path(user)).read_text()
+        else:
+            etc = pathlib.Path('/etc/systemd/system')
+            items = sorted({f.name.split('.',1)[0] for f in etc.glob('houston_scheduler_*.*')})
+            return json.dumps([{'unit': u, 'scope':'system'} for u in items])
+
+    @dbus.service.method(IFACE, in_signature='sa{ss}sa{sv}ss', out_signature='b', sender_keyword='sender')
+    def CreateTask(self, template, env, script_path, schedule, notes, run_as, sender=None):
+        self._auth('com.45drives.scheduler.modify', sender)
+        user = self._username_from_sender(sender)
+
+        name = env.get('taskName') or 'unnamed'
+        base_legacy = self._unit_base(template, name)
+        use_user = (run_as == 'user') or (run_as == 'auto' and template in USER_TEMPLATES)
+
+        if use_user:
+            unit = self._unit_user(template, name, user)
+
+            # Persist state under /var/lib (root-writable)
+            state_dir = self._user_state_dir(user, unit)
+            units_dir = self._user_units_dir(user)   # write unit sources here
+
+            env_text = '\n'.join([f'{k}={v}' for k, v in env.items() if str(v) not in ('', '0')])
+            (state_dir / f'{unit}.env').write_text(env_text)
+            (state_dir / f'{unit}.json').write_text(json.dumps(schedule, indent=2))
+            (state_dir / f'{unit}.txt').write_text(notes or '')
+
+            # Build service & timer from templates
+            svc_tpl = (TEMPLATES_DIR / 'Task.service').read_text()
+            exec_start = f'/usr/bin/python3 {script_path}'
+            svc_text = (svc_tpl
+                        .replace('{task_name}', unit)
+                        .replace('{env_path}', str(state_dir / f'{unit}.env'))
+                        .replace('{ExecStart}', exec_start))
+            (units_dir / f'{unit}.service').write_text(svc_text)
+
+            tim_tpl = (TEMPLATES_DIR / 'Schedule.timer').read_text()
+            itvs = schedule.get('intervals') or [{}]
+            def val(d, k, default='*'): return str(d.get(k, {}).get('value', default))
+            oncal_lines = '\n'.join(
+                f"OnCalendar={val(i,'year')}-{val(i,'month')}-{val(i,'day')} {val(i,'hour','*')}:{val(i,'minute','*')}:00"
+                for i in itvs
+            )
+            tim_text = (tim_tpl
+                .replace('{description}', f'Timer for {unit}')
+                .replace('{unit_name}', unit)
+                .replace('{on_calendar_lines}', oncal_lines)
+            )
+            (units_dir / f'{unit}.timer').write_text(tim_text)
+
+            # Load into the user manager (runtime links only; no writes to HOME)
+            self._link_user_units(user, units_dir, unit)
+            if schedule.get('enabled'):
+                self._systemctl_user(user, f'systemctl --user enable --now --runtime {unit}.timer')
+
+            # Update per-user registry
+            regp = self._registry_path(user)
+            try:
+                tasks = json.loads(regp.read_text())
+            except Exception:
+                tasks = []
+            tasks = [t for t in tasks if not (t.get('name') == name and t.get('template') == template)]
+            tasks.append({'name': name, 'template': template, 'schedule': schedule, 'notes': notes, 'scope': 'user'})
+            regp.write_text(json.dumps(tasks, indent=2))
+            return True
+
+        # --- system/legacy branch (root scope) ---
+        unit = base_legacy
+        etc = pathlib.Path('/etc/systemd/system'); ensure(etc)
+        env_path = etc / f'{unit}.env'
+        env_text = '\n'.join([f'{k}={v}' for k, v in env.items() if str(v) not in ('', '0')])
+        env_path.write_text(env_text)
+        (etc / f'{unit}.json').write_text(json.dumps(schedule, indent=2))
+        (etc / f'{unit}.txt').write_text(notes or '')
+
+        timer_tpl = TEMPLATES_DIR / 'Schedule.timer'
+        _run_quiet([
+            '/usr/bin/env','python3', str(SCRIPTS_DIR / 'task-file-creation.py'),
+            '-t','create-task-schedule',
+            '-tN', template,
+            '-sP', script_path,
+            '-e', str(env_path),
+            '-tt', str(timer_tpl),
+            '-s',  str(etc / f'{unit}.json')
+        ], timeout=12, check=True)
+        return True
+
+    @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
+    def RunNow(self, template, name, sender=None):
+        self._auth('com.45drives.scheduler.modify', sender)
+        user = self._username_from_sender(sender)
+        unit_user = self._unit_user(template, name, user)
+        unit_sys  = self._unit_base(template, name)
+
+        # Prefer user-scope if unit source exists
+        ud = self._user_units_dir(user)
+        if (ud / f'{unit_user}.service').exists():
+            self._link_user_units(user, ud, unit_user)
+            self._systemctl_user(user, f'systemctl --user start {unit_user}.service')
+            return True
+
+        # Legacy/system
+        _run_quiet(['/usr/bin/env','python3', str(SCRIPTS_DIR / 'run-task-now.py'), unit_sys], timeout=10, check=True)
+        return True
+
+    @dbus.service.method(IFACE, in_signature='sss', out_signature='b', sender_keyword='sender')
+    def EnableSchedule(self, template, name, enabled, sender=None):
+        self._auth('com.45drives.scheduler.modify', sender)
+        user = self._username_from_sender(sender)
+        unit_user = self._unit_user(template, name, user)
+        unit_sys  = self._unit_base(template, name)
+
+        ud = self._user_units_dir(user)
+        if (ud / f'{unit_user}.timer').exists():
+            self._link_user_units(user, ud, unit_user)
+            if enabled == 'true':
+                self._systemctl_user(user, f'systemctl --user enable --now --runtime {unit_user}.timer')
+            else:
+                self._systemctl_user(user, f'systemctl --user disable --now --runtime {unit_user}.timer')
+            return True
+
+        _run_quiet(['systemctl','daemon-reload'], timeout=6)
+        cmd = ['systemctl','enable','--now',f'{unit_sys}.timer'] if enabled=='true' \
+              else ['systemctl','disable','--now',f'{unit_sys}.timer']
+        _run_quiet(cmd, timeout=10, check=True)
+        return True
+
+    @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
+    def DeleteTask(self, template, name, sender=None):
+        self._auth('com.45drives.scheduler.modify', sender)
+        user = self._username_from_sender(sender)
+        unit_user = self._unit_user(template, name, user)
+        unit_sys  = self._unit_base(template, name)
+
+        # User-scope cleanup
+        ud = self._user_units_dir(user)
+        svc = ud / f'{unit_user}.service'
+        tim = ud / f'{unit_user}.timer'
+        if svc.exists() or tim.exists():
+            try:
+                self._systemctl_user(user, f'systemctl --user disable --now --runtime {unit_user}.timer')
+            except Exception:
+                pass
+            try: self._systemctl_user(user, 'systemctl --user daemon-reload || true')
+            except Exception: pass
+
+            for p in (tim, svc):
+                try: p.unlink()
+                except FileNotFoundError: pass
+
+            try: self._systemctl_user(user, 'systemctl --user daemon-reload || true')
+            except Exception: pass
+
+            # remove state + registry
+            sdir = self._user_state_dir(user, unit_user)
+            for p in list(sdir.glob('*')):
+                try: p.unlink()
+                except Exception as e: logging.warning("unlink failed: %s", e)
+            try: sdir.rmdir()
+            except Exception:
+                pass
+
+            regp = self._registry_path(user)
+            try:
+                tasks = json.loads(regp.read_text())
+            except Exception:
+                tasks = []
+            tasks = [t for t in tasks if not (t.get('template')==template and t.get('name')==name)]
+            regp.write_text(json.dumps(tasks, indent=2))
+            return True
+
+        # Legacy/system
+        _run_quiet(['/usr/bin/env','python3', str(SCRIPTS_DIR / 'remove-task-files.py'), unit_sys], timeout=10, check=True)
+        return True
+
+# ---- Clean shutdown: drop the D-Bus name immediately and quit GLib loop
+def main():
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+    loop = GLib.MainLoop()
+    name_owner = dbus.service.BusName(BUS_NAME, bus)
+
+    daemon = Daemon(bus, loop, name_owner)
+
+    def _shutdown(signum, frame):
+        logging.info("Shutdown signal received, releasing D-Bus name and quitting loop...")
+        try:
+            name_owner.release()  # free the name ASAP so the next instance can start
+        except Exception:
+            pass
+        try:
+            bus.close()
+        except Exception:
+            pass
+        try:
+            GLib.idle_add(loop.quit)
+        except Exception:
+            pass
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
+    loop.run()
+
+if __name__ == '__main__':
+    main()
