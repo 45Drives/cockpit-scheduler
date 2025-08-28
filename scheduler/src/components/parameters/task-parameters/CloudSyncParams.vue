@@ -837,12 +837,25 @@ watch(selectedRemote, (newVal) => {
 // ---------- User-scoped folder discovery (same as Rsync) ----------
 const ctx = useClientContextStore();
 
+// function parseFromHash(): string {
+//     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
+//     return m ? decodeURIComponent(m[1]) : '';
+// }
+
+// const installId = computed(() => ctx.clientId || parseFromHash() || '');
+
+// when false → hash only; when true → hash, else context
+const allowContextFallback = ref(false); // flip to true only when you want the store
+
 function parseFromHash(): string {
     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
     return m ? decodeURIComponent(m[1]) : '';
 }
 
-const installId = computed(() => ctx.clientId || parseFromHash() || '');
+const installId = computed(() => {
+    const fromHash = parseFromHash();
+    return fromHash || (allowContextFallback.value ? (ctx.clientId || '') : '');
+});
 
 // depth=2 like your Rsync version
 const folderList = useUserScopedFolderListByInstall(installId, 2);

@@ -559,12 +559,26 @@ function ensureTrailingSlash(which: 'source' | 'dest') {
 
 const ctx = useClientContextStore();
 
+// function parseFromHash(): string {
+//     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
+//     return m ? decodeURIComponent(m[1]) : '';
+// }
+
+// const installId = computed(() => ctx.clientId || parseFromHash() || '');
+
+// when false → hash only; when true → hash, else context
+const allowContextFallback = ref(false); // flip to true only when you want the store
+
 function parseFromHash(): string {
     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
     return m ? decodeURIComponent(m[1]) : '';
 }
 
-const installId = computed(() => ctx.clientId || parseFromHash() || '');
+const installId = computed(() => {
+    const fromHash = parseFromHash();
+    return fromHash || (allowContextFallback.value ? (ctx.clientId || '') : '');
+});
+
 
 console.log('[RsyncTaskParams] client_id =', installId.value)
 
