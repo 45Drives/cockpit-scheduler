@@ -677,3 +677,9 @@ export async function testOrSetupSSH(opts: {
 		return { success: false, outcome: 'error', message: msg };
 	}
 }
+
+export async function currentUserIsPrivileged(): Promise<boolean> {
+	const u = await (window as any).cockpit.user();
+	const groups: string[] = u?.groups || [];
+	return (u?.id === 0) || groups.includes('wheel') || groups.includes('sudo');
+}

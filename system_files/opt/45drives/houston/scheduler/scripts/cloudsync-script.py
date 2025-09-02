@@ -1,12 +1,8 @@
-import subprocess
-import sys
-import os
-import json
-import configparser
+import subprocess, sys, os, json, configparser, shlex
 from datetime import datetime, timedelta, timezone
 import requests
 
-RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
+DEFAULT_RCLONE_CONF = '/root/.config/rclone/rclone.conf'
 SERVER_URL = 'https://cloud-sync.45d.io'
 
 OAUTH_TYPES = {
@@ -15,6 +11,29 @@ OAUTH_TYPES = {
     "dropbox": "dropbox",
     # "onedrive": "onedrive",
 }
+
+def resolve_rclone_conf_path() -> str:
+    # 1) explicit from task env (you can add it into the .env file)
+    p = os.environ.get('cloudSyncConfig_rclone_config_path')
+    if p:
+        return p
+
+    # 2) standard env that rclone understands
+    p = os.environ.get('RCLONE_CONFIG')
+    if p:
+        return p
+
+    # 3) user config (works for systemd --user units)
+    home = os.path.expanduser('~')
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config')
+    user_conf = os.path.join(xdg, 'rclone', 'rclone.conf')
+    if os.path.isfile(user_conf):
+        return user_conf
+
+    # 4) legacy root fallback (keeps old/system tasks working)
+    return DEFAULT_RCLONE_CONF
+
+RCLONE_CONF_PATH = resolve_rclone_conf_path()
 
 def load_rclone_config():
     """
@@ -85,42 +104,6 @@ def normalize_to_utc(expiry):
     # Return as timezone-aware datetime
     return dt_utc.replace(tzinfo=timezone.utc)
 
-def normalize_to_utc(expiry):
-    """
-    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
-    """
-    if not isinstance(expiry, str):
-        raise ValueError(f"Expiry must be a string, got {type(expiry)}: {expiry}")
-
-    try:
-        # Check for offset and split accordingly
-        if '+' in expiry:
-            dt_part, offset_part = expiry.split('+', maxsplit=1)
-            sign = 1
-        elif '-' in expiry and not expiry.endswith('Z'):
-            dt_part, offset_part = expiry.rsplit('-', maxsplit=1)
-            sign = -1
-        else:
-            # Handle UTC format without offset
-            return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
-
-        # Truncate fractional seconds to six digits if present
-        if '.' in dt_part:
-            base, frac = dt_part.split('.')
-            dt_part = f"{base}.{frac[:6]}"
-
-        # Parse datetime and offset
-        dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
-        offset_hours, offset_minutes = map(int, offset_part.split(':'))
-        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
-
-        # Adjust datetime to UTC
-        return (dt - sign * offset).replace(tzinfo=timezone.utc)
-
-    except Exception as e:
-        raise ValueError(f"Failed to normalize expiry '{expiry}' to UTC: {e}")
-
-
 def is_token_expired(token_data):
     """
     Check if the token is expired based on the expiry time.
@@ -160,11 +143,10 @@ def refresh_token_via_server(config, remote_name, remote_type, token_data):
             token_data["access_token"] = new_token_data["accessToken"]
             token_data["expiry"] = new_token_data["expiry"]
 
-            # Update the rclone.conf file
             config.set(remote_name, "token", json.dumps(token_data))
+            os.makedirs(os.path.dirname(RCLONE_CONF_PATH), exist_ok=True)
             with open(RCLONE_CONF_PATH, "w") as conf_file:
                 config.write(conf_file)
-
             print(f"Token refreshed and updated for remote '{remote_name}'")
         else:
             raise Exception(f"Failed to refresh token: {response.text}")
@@ -192,7 +174,7 @@ def build_rclone_command(options):
     """
     Construct the rclone command based on options.
     """
-    command = ['rclone', options['type'], '-v']
+    command = ['rclone', f'--config={RCLONE_CONF_PATH}', options['type'], '-v']
 
     option_flags = {
         'check_first_flag': '--check-first',

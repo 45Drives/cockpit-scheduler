@@ -34,18 +34,16 @@ make DESTDIR=%{buildroot} install
 
 # Systemd unit (you currently stage it under /etc)
 # (Do NOT mark as %config to avoid unmanaged divergence)
-#/usr/lib/systemd/system/org.45drives.Scheduler.service   <-- preferred path
-/etc/systemd/system/org.45drives.Scheduler.service
+/usr/lib/systemd/system/org.45drives.Scheduler.service
 
 # State dirs owned by the package (created if missing)
-%dir /var/lib/houston
-%dir /var/lib/houston/scheduler
-%dir /var/lib/houston/user-units
-%dir /var/lib/houston/rclone
+%dir /var/lib/45drives/houston
+%dir /var/lib/45drives/houston/scheduler
+%dir /var/lib/45drives/houston/rclone
 
 %post
 # Ensure state dirs exist (idempotent)
-mkdir -p /var/lib/houston/scheduler /var/lib/houston/user-units /var/lib/houston/rclone || true
+mkdir -p /var/lib/45drives/houston/schedule /var/lib/45drives/houston/rclone || true
 
 # Reload systemd so the new unit is recognized
 /bin/systemctl daemon-reexec || true

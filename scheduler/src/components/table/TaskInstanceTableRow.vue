@@ -1,6 +1,6 @@
 <template>
 	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
-		class="grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+		class="grid grid-cols-9 grid-flow-cols w-full text-center items-center rounded-sm p-1">
 		<td :title="taskInstance.name"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
 			{{ taskInstance.name }}
@@ -17,6 +17,12 @@
 				{{ taskStatus || 'N/A' }}
 			</span>
 		</td>
+		<td :title="taskInstance.scope"
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
+			<span>
+				{{ taskInstance.scope }}
+			</span>
+		</td>
 		<td :title="latestTaskExecution" class="truncate font-medium border-r border-default text-left ml-4 col-span-2">
 			<span>
 				{{ latestTaskExecution }}
@@ -28,7 +34,8 @@
 				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
 				:checked="taskInstance.schedule.enabled" @click.prevent="toggleTaskSchedule"
 				class="ml-2 h-4 w-4 rounded" />
-			<input v-else disabled type="checkbox" :title="'No Schedule Found, Manage Schedule + add intervals to Enable'"
+			<input v-else disabled type="checkbox"
+				:title="'No Schedule Found, Manage Schedule + add intervals to Enable'"
 				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
 		</td>
 		<td class="truncate text-base font-medium text-default border-default m-1 col-span-1">
@@ -37,7 +44,7 @@
 				Details</button>
 			<button v-else @click="toggleTaskDetails()" class="btn btn-secondary">View Details</button>
 		</td>
-		<td v-if="isExpanded" class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
+		<td v-if="isExpanded" class="col-span-9 h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
 				<TaskInstanceDetails :task="taskInstance" />
 			</div>
@@ -116,7 +123,7 @@ function manageScheduleBtn() {
 	emit('manageSchedule', props.task);
 }
 
-let intervalId: number | undefined;
+let intervalId: NodeJS.Timeout | number | undefined;
 
 function removeTaskBtn() {
 	if (intervalId) {

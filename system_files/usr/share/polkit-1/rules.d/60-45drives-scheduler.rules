@@ -1,7 +1,13 @@
-polkit.addRule(function(action, subject) {
-  const inGroup = subject.isInGroup("smbusers");   // pick your group
-  if (action.id === "com.45drives.scheduler.list" && inGroup)
+polkit.addRule(function (action, subject) {
+  if (action.id == "com.45drives.scheduler.list")
     return polkit.Result.YES;
-  if (action.id === "com.45drives.scheduler.modify" && inGroup)
-    return polkit.Result.AUTH_SELF_KEEP;
+
+  if (action.id == "com.45drives.scheduler.modify.user") {
+    if (subject.active) return polkit.Result.YES;          // any logged-in user
+  }
+
+  if (action.id == "com.45drives.scheduler.modify.system") {
+    if (subject.isInGroup("wheel") || subject.isInGroup("sudo"))
+      return polkit.Result.YES;                             // admins only
+  }
 });

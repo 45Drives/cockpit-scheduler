@@ -29,6 +29,7 @@ interface TaskInstanceType {
 	parameters: ParameterNodeType;
 	schedule: TaskScheduleType;
 	notes: string;
+	scope?: 'user' | 'system';
 }
 
 type TimeUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';

@@ -137,6 +137,21 @@ watch(isEditMode, (edit) => {
     if (!edit) resetForm();
 }, { immediate: true });
 
+onMounted(async () => {
+    await nextTick();
+
+    if (isEditMode.value && originalTask.value) {
+        // Editing: load the task’s existing schedule + other fields
+        uiSchedule.value = toUISchedule(originalTask.value.schedule);
+        prefillFromTask(originalTask.value);
+    } else {
+        // Creating: clear to defaults (blank schedule + empty form)
+        resetForm();                   // clears name/template/params/notes
+        uiSchedule.value = toUISchedule(null); // default blank UI schedule
+    }
+});
+
+
 // ---- deps ----
 const router = useRouter();
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, 'taskInstances not provided!');
@@ -165,9 +180,22 @@ const displayName = (template: TaskTemplateType) => nameOverrides[template.name]
 // ---- schedule bridge (UI <-> model) ----
 function toUISchedule(model?: ModelTaskSchedule | null): UITaskSchedule {
     const now = new Date();
+
+    // ----- DEFAULT when no model schedule: DAILY @ 00:00 -----
     if (!model || !Array.isArray(model.intervals) || model.intervals.length === 0) {
-        return { repeatFrequency: 'day', startDate: now } as UITaskSchedule;
+        const midnightToday = new Date(
+            now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0
+        );
+        // If we're past today's midnight, start at next midnight
+        const start =
+            now <= midnightToday
+                ? midnightToday
+                : new Date(midnightToday.getTime() + 24 * 60 * 60 * 1000);
+
+        return { repeatFrequency: 'day', startDate: start } as UITaskSchedule;
     }
+    // ---------------------------------------------------------
+
     const intv: any = model.intervals[0] ?? {};
     const v = (x: any) => (x?.value ?? x);
     const isStar = (x: any) => String(v(x) ?? '*') === '*';

@@ -4,30 +4,28 @@ After=network.target dbus.service
 Requires=dbus.service
 
 [Service]
+Environment=SCHED_LOG=DEBUG
 Type=dbus
 BusName=org.houston.Scheduler
-
-# Run Python unbuffered so logs flush immediately and systemd tracks the real PID
 ExecStart=/usr/bin/python3 -u /usr/local/libexec/45drives-schedulerd
-
 User=root
 Group=root
 
-# Faster, cleaner restarts
+# Restarts
 KillSignal=SIGINT
 TimeoutStopSec=10s
 Restart=on-failure
 RestartSec=250ms
 KillMode=control-group
 
-# Hardening (kept), but allow the paths this service genuinely writes to.
+# Core hardening
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=read-only
-# We need to write under /var/lib/houston (state), /run/user (user manager runtime links),
-# and (for legacy/system tasks) /etc/systemd/system.
-ReadWritePaths=/var/lib/houston /run/user /etc/systemd/system
+
+ReadWritePaths=/var/lib/45drives/houston/scheduler /run/user
+LogsDirectory=45drives
 
 [Install]
 WantedBy=multi-user.target
