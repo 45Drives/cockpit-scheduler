@@ -20,7 +20,7 @@ export class TaskExecutionLog {
         if (scope === 'user') {
             const cockpitUser = await (window as any).cockpit.user();
             const uid: number = cockpitUser?.id;
-            return `${base}__u${uid}`;
+            return `${base}_u${uid}`;
         }
         return base; // legacy/system
     }

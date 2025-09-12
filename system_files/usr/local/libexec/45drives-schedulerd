@@ -75,7 +75,18 @@ class Daemon(dbus.service.Object):
         return pid, uid
 
     def _username_from_sender(self, sender):
-        _, uid = self._ids_from_sender(sender)
+        pid, uid = self._ids_from_sender(sender)
+
+        # Prefer the loginuid of the caller process (cockpit-bridge keeps the real user here)
+        try:
+            with open(f"/proc/{pid}/loginuid", "r") as f:
+                luid = int((f.read() or "").strip())
+            if luid >= 0:
+                return pwd.getpwuid(luid).pw_name
+        except Exception:
+            pass
+
+        # Fallback to the D-Bus connection uid
         return pwd.getpwuid(uid).pw_name
 
     def _auth(self, action_id, sender):
@@ -116,6 +127,65 @@ class Daemon(dbus.service.Object):
             return nd
         ld = self._legacy_state_dir(user, unit)
         return nd if nd.exists() else ld
+
+    def _find_user_owner_any(self, template: str, name: str) -> str:
+        """
+        Search STATE_ROOT/<user>/<name>/<unit_user>.service to find the owning user
+        for a user-scope task. Returns username or '' if not found.
+        """
+        if not STATE_ROOT.exists():
+            return ''
+        for entry in STATE_ROOT.iterdir():
+            if not entry.is_dir():
+                continue
+            user = entry.name
+            try:
+                unit = self._unit_user(template, name, user)
+            except KeyError:
+                continue
+            cand = entry / name / f'{unit}.service'
+            if cand.exists():
+                return user
+        return ''
+    
+    def _owner_for(self, template: str, name: str, sender) -> str:
+        # Prefer the real owner on disk; fall back to the DBus sender’s user
+        return self._find_user_owner_any(template, name) or self._username_from_sender(sender)
+
+    def _write_user_task_files(self, user: str, template: str, name: str,
+                            env: dict, schedule: dict, notes: str, script_path: str):
+        """Write env/json/txt + .service/.timer for a user task (idempotent)."""
+        unit = self._unit_user(template, name, user)
+        task_dir = self._task_dir(user, name)
+
+        env_text = '\n'.join([f'{k}={v}' for k, v in env.items() if str(v) not in ('', '0')])
+        (task_dir / f'{unit}.env').write_text(env_text)
+        (task_dir / f'{unit}.json').write_text(json.dumps(schedule, indent=2))
+        (task_dir / f'{unit}.txt').write_text(notes or '')
+
+        svc_tpl = (TEMPLATES_DIR / 'Task.service').read_text()
+        exec_start = f'/usr/bin/python3 {script_path}'
+        svc_text = (svc_tpl
+                    .replace('{task_name}', unit)
+                    .replace('{env_path}', str(task_dir / f'{unit}.env'))
+                    .replace('{ExecStart}', exec_start))
+        (task_dir / f'{unit}.service').write_text(svc_text)
+
+        tim_tpl = (TEMPLATES_DIR / 'Schedule.timer').read_text()
+        oncal_lines = self._oncalendar_lines(schedule)
+        tim_text = (tim_tpl
+                    .replace('{description}', f'Timer for {unit}')
+                    .replace('{unit_name}', unit)
+                    .replace('{on_calendar_lines}', oncal_lines))
+        (task_dir / f'{unit}.timer').write_text(tim_text)
+
+        self._link_user_units(user, task_dir, unit)
+        if schedule.get('enabled'):
+            self._systemctl_user(user, f'systemctl --user start {unit}.timer')
+        else:
+            # Best-effort to stop if previously enabled
+            try: self._systemctl_user(user, f'systemctl --user stop {unit}.timer || true')
+            except Exception: pass
 
     # ---- Paths
     def _registry_path(self, user):
@@ -302,15 +372,21 @@ class Daemon(dbus.service.Object):
         except Exception as e:
             logging.debug("scan error in %s: %s", base, e)
         return sorted(out)
-
+    
     def _systemctl_user_out(self, user, cmd):
-        """Run systemctl --user CMD and return stdout (no raise on non-zero)."""
+        """Run systemctl --user CMD and return stdout; ensure user manager exists."""
         uid, _, _ = self._user_ids(user)
+        # ensure a user manager exists (best effort)
+        try: _run_quiet(['loginctl', 'enable-linger', user], timeout=4)
+        except Exception: pass
+        try: _run_quiet(['systemctl', 'start', f'user@{uid}.service'], timeout=4)
+        except Exception: pass
+
         env1 = f'XDG_RUNTIME_DIR=/run/user/{uid}'
         env2 = f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus'
-        full = ['runuser', '-u', user, '--', 'env', env1, env2, 'bash', '-lc', cmd]
-        cp = _run_quiet(full, timeout=12)   # do not set check=True; we only want stdout
-        return (cp.stdout or '') if hasattr(cp, 'stdout') else ''
+        full = ['runuser','-u',user,'--','env',env1,env2,'bash','-lc', cmd]
+        cp = _run_quiet(full, timeout=12)  # no check=True; we want stdout even on non-zero
+        return cp.stdout if hasattr(cp,'stdout') else ''
 
     def _discover_user_units(self, user: str):
         """
@@ -453,7 +529,7 @@ class Daemon(dbus.service.Object):
     @dbus.service.method(IFACE, in_signature='s', out_signature='s', sender_keyword='sender')
     def ListTasks(self, scope, sender=None):
         self._auth('com.45drives.scheduler.list', sender)
-        user = self._username_from_sender(sender)
+        user = self._owner_for(template, name, sender) 
 
         def _read_kv(path):
             d = {}
@@ -583,7 +659,7 @@ class Daemon(dbus.service.Object):
         use_user = (run_as == 'user') or (run_as == 'auto' and template in USER_TEMPLATES)
         action = 'com.45drives.scheduler.modify.user' if use_user else 'com.45drives.scheduler.modify.system'
         self._auth(action, sender)
-        user = self._username_from_sender(sender)
+        user = self._owner_for(template, name, sender) 
 
         if template == 'CloudSyncTask':
             if use_user:
@@ -665,7 +741,7 @@ class Daemon(dbus.service.Object):
 
     @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
     def RunNow(self, template, name, sender=None):
-        user = self._username_from_sender(sender)
+        user = self._owner_for(template, name, sender) 
         unit_user = self._unit_user(template, name, user)
         unit_sys  = self._unit_base(template, name)
         task_dir = self._find_task_dir(user, name, unit_user)
@@ -685,7 +761,7 @@ class Daemon(dbus.service.Object):
 
     @dbus.service.method(IFACE, in_signature='sss', out_signature='b', sender_keyword='sender')
     def EnableSchedule(self, template, name, enabled, sender=None):
-        user = self._username_from_sender(sender)
+        user = self._owner_for(template, name, sender) 
         unit_user = self._unit_user(template, name, user)
         unit_sys  = self._unit_base(template, name)
         task_dir = self._find_task_dir(user, name, unit_user)
@@ -711,7 +787,7 @@ class Daemon(dbus.service.Object):
 
     @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
     def DeleteTask(self, template, name, sender=None):
-        user = self._username_from_sender(sender)
+        user = self._owner_for(template, name, sender) 
         unit_user = self._unit_user(template, name, user)
         unit_sys  = self._unit_base(template, name)
         task_dir = self._find_task_dir(user, name, unit_user)
@@ -770,27 +846,179 @@ class Daemon(dbus.service.Object):
                 timeout=10, check=True)
         return True
     
+    @dbus.service.method(IFACE, in_signature='ssa{ss}ssss', out_signature='b', sender_keyword='sender')
+    def UpdateTask(self, template, old_name, env, script_path, schedule_json, notes, run_as, sender=None):
+        """
+        Update an existing task (user or system).
+        - If env['taskName'] changes, this becomes a rename(old_name -> new_name).
+        - run_as: 'user' | 'system' | 'auto' (same semantics as CreateTask).
+        """
+        schedule = json.loads(schedule_json) if schedule_json else {}
+        caller_user = self._owner_for(template, name, sender) 
+
+        # CloudSync rclone config parity with CreateTask
+        if template == 'CloudSyncTask':
+            if run_as == 'user' or (run_as == 'auto' and template in USER_TEMPLATES):
+                _, _, home = self._user_ids(caller_user)
+                rclone_conf = os.path.join(home, '.config', 'rclone', 'rclone.conf')
+            else:
+                rclone_conf = '/root/.config/rclone/rclone.conf'
+            env['RCLONE_CONFIG'] = rclone_conf
+            env['cloudSyncConfig_rclone_config_path'] = rclone_conf
+
+        new_name = env.get('taskName') or old_name
+        is_rename = (new_name != old_name)
+
+        # Decide scope + owner
+        # 1) Prefer explicit run_as; 2) If 'auto': prefer existing owner (user scope) if found; else template policy.
+        use_user = False
+        owner_user = caller_user
+        if run_as == 'user':
+            use_user = True
+            owner_user = caller_user
+        elif run_as == 'system':
+            use_user = False
+        elif run_as == 'auto':
+            # First, does a user-scope task exist already for ANY user?
+            owner_guess = self._find_user_owner_any(template, old_name)
+            if owner_guess:
+                use_user = True
+                owner_user = owner_guess
+            else:
+                use_user = (template in USER_TEMPLATES)
+        else:
+            # Fallback: behave like 'auto'
+            owner_guess = self._find_user_owner_any(template, old_name)
+            if owner_guess:
+                use_user = True
+                owner_user = owner_guess
+            else:
+                use_user = (template in USER_TEMPLATES)
+
+        if use_user:
+            # --- USER SCOPE ---
+            self._auth('com.45drives.scheduler.modify.user', sender)
+
+            unit_old = self._unit_user(template, old_name, owner_user)
+            unit_new = self._unit_user(template, new_name, owner_user)
+            dir_old  = self._find_task_dir(owner_user, old_name, unit_old)
+            dir_new  = self._task_dir(owner_user, new_name)
+
+            # Write/refresh new files
+            self._write_user_task_files(owner_user, template, new_name, env, schedule, notes, script_path)
+
+            # If rename, clean old files/links/registry safely
+            if is_rename:
+                # stop/unlink old
+                try: self._systemctl_user(owner_user, f'systemctl --user disable --now --runtime {unit_old}.timer || true')
+                except Exception: pass
+                try: self._systemctl_user(owner_user, f'systemctl --user stop {unit_old}.service || true')
+                except Exception: pass
+                try:
+                    self._systemctl_user(owner_user, f'systemctl --user unlink "{dir_old}/{unit_old}.timer" || true')
+                    self._systemctl_user(owner_user, f'systemctl --user unlink "{dir_old}/{unit_old}.service" || true')
+                    self._unlink_runtime_slot(owner_user, f'{unit_old}.service')
+                    self._unlink_runtime_slot(owner_user, f'{unit_old}.timer')
+                except Exception:
+                    pass
+                try: self._systemctl_user(owner_user, 'systemctl --user daemon-reload || true')
+                except Exception: pass
+
+                for p in ((dir_old / f'{unit_old}.timer'),
+                        (dir_old / f'{unit_old}.service'),
+                        (dir_old / f'{unit_old}.env'),
+                        (dir_old / f'{unit_old}.json'),
+                        (dir_old / f'{unit_old}.txt')):
+                    try: p.unlink()
+                    except FileNotFoundError: pass
+                try: dir_old.rmdir()
+                except Exception: pass
+
+            # Update registry to reflect latest (idempotent)
+            regp = self._registry_path(owner_user)
+            try: tasks = json.loads(regp.read_text())
+            except Exception: tasks = []
+            tasks = [t for t in tasks if not (t.get('template') == template and t.get('name') in (old_name, new_name))]
+            tasks.append({'name': new_name, 'template': template, 'schedule': schedule, 'notes': notes, 'scope': 'user'})
+            regp.write_text(json.dumps(tasks, indent=2))
+            return True
+
+        # --- SYSTEM / LEGACY SCOPE ---
+        self._auth('com.45drives.scheduler.modify.system', sender)
+
+        unit_old = self._unit_base(template, old_name)
+        unit_new = self._unit_base(template, new_name)
+        etc = pathlib.Path('/etc/systemd/system'); ensure(etc)
+
+        # If renaming, create new first, then remove old
+        def _write_system(unit):
+            env_path = etc / f'{unit}.env'
+            env_text = '\n'.join([f'{k}={v}' for k, v in env.items() if str(v) not in ('', '0')])
+            env_path.write_text(env_text)
+            (etc / f'{unit}.json').write_text(json.dumps(schedule, indent=2))
+            (etc / f'{unit}.txt').write_text(notes or '')
+            timer_tpl = TEMPLATES_DIR / 'Schedule.timer'
+            _run_quiet([
+                '/usr/bin/env','python3', str(SCRIPTS_DIR / 'task-file-creation.py'),
+                '-t','create-task-schedule',
+                '-tN', template,
+                '-sP', script_path,
+                '-e', str(env_path),
+                '-tt', str(timer_tpl),
+                '-s',  str(etc / f'{unit}.json')
+            ], timeout=12, check=True)
+            _run_quiet(['systemctl','daemon-reload'], timeout=6)
+            if schedule.get('enabled'):
+                _run_quiet(['systemctl','enable','--now',f'{unit}.timer'], timeout=10, check=True)
+            else:
+                _run_quiet(['systemctl','disable','--now',f'{unit}.timer'], timeout=10)
+
+        _write_system(unit_new)
+
+        if is_rename and unit_old != unit_new:
+            # best-effort removal of old
+            _run_quiet(['systemctl','disable','--now',f'{unit_old}.timer'], timeout=10)
+            _run_quiet(['/usr/bin/env','python3', str(SCRIPTS_DIR / 'remove-task-files.py'), unit_old],
+                    timeout=10)   # non-fatal if already gone
+
+        return True
+
+    
     @dbus.service.method(IFACE, in_signature='ss', out_signature='a{sv}', sender_keyword='sender')
     def GetStatus(self, template, name, sender=None):
         self._auth('com.45drives.scheduler.list', sender)
-        user = self._username_from_sender(sender)
+        user = self._owner_for(template, name, sender) 
         unit_user = self._unit_user(template, name, user)
         unit_sys  = self._unit_base(template, name)
 
-        def _show_sys(u):
-            return _cmd_out(['systemctl','show',u,'--no-pager',
-                            '--property','LoadState,ActiveState,SubState,Result,ActiveEnterTimestamp,MergedUnit'])
-
-        def _show_user(u):
-            return self._systemctl_user_out(user,
-                f'systemctl --user show {u} --no-pager --property=LoadState,ActiveState,SubState,Result,ActiveEnterTimestamp,MergedUnit'
-            )
+        # Common property set the UI needs
+        props = ('LoadState,ActiveState,SubState,Result,'
+                'LastTriggerUSec,LastTrigger,NextElapseUSecRealtime,'
+                'ActiveEnterTimestampUSec,ActiveEnterTimestamp,'
+                'ExecMainStartTimestampUSec,ExecMainStartTimestamp,'
+                'MergedUnit')
 
         task_dir = self._find_task_dir(user, name, unit_user)
-        if (task_dir / f'{unit_user}.service').exists():
-            return {'scope':'user','unit':unit_user,
-                    'service':_show_user(f'{unit_user}.service'),
-                    'timer':  _show_user(f'{unit_user}.timer')}
+        if (task_dir / f'{unit_user}.service').exists() or (task_dir / f'{unit_user}.timer').exists():
+            # Link + reload (idempotent)
+            try:
+                self._link_user_units(user, task_dir, unit_user)
+            except Exception:
+                pass
+
+            svc = self._systemctl_user_out(
+                user,
+                f'systemctl --user show {unit_user}.service --no-pager --property={props}'
+            )
+            tim = self._systemctl_user_out(
+                user,
+                f'systemctl --user show {unit_user}.timer --no-pager --property={props}'
+            )
+            return {'scope':'user','unit':unit_user,'service':svc,'timer':tim}
+
+        # system scope
+        def _show_sys(u):
+            return _cmd_out(['systemctl','show',u,'--no-pager','--property',props])
         return {'scope':'system','unit':unit_sys,
                 'service':_show_sys(f'{unit_sys}.service'),
                 'timer':  _show_sys(f'{unit_sys}.timer')}

@@ -2,7 +2,7 @@ import { ref } from 'vue';
 import { legacy } from '@45drives/houston-common-lib';
 import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate, CustomTaskTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
-import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
+import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 import { chooseBackend } from '../utils/bootstrapBackend';
 import { daemon } from '../utils/daemonClient';
@@ -61,9 +61,10 @@ export class Scheduler implements SchedulerType {
     private isDaemon(): boolean { return this.backend === 'daemon'; }
 
 
-    // NEW: canonical template key helper
     private templateKey(ti: TaskInstanceType, hint?: string): string {
-        return (ti as any)._templateKey || hint || formatTemplateName(ti.template.name);
+        return (ti as any)._templateKey
+            || (hint ? this.normalizeTemplateKey(hint) : '')
+            || this.normalizeTemplateKey(ti.template.name);
     }
 
     // NEW: single source of truth for unit names
@@ -71,7 +72,7 @@ export class Scheduler implements SchedulerType {
         const key = this.templateKey(ti);
         const scope = (ti as any).scope as ('user' | 'system' | undefined);
 
-        // system/legacy never has __u<uid>, and legacy backend always behaves like "system"
+        // system/legacy never has _u<uid>, and legacy backend always behaves like "system"
         if (scope === 'system' || !this.isDaemon()) {
             return `houston_scheduler_${key}_${ti.name}`;
         }
@@ -87,8 +88,150 @@ export class Scheduler implements SchedulerType {
         return `houston_scheduler_${templateKey}_${taskName}_u${uid}`;
     }
 
+    private usToMs(us: number): number | 0 {
+        return us && Number.isFinite(us) ? Math.floor(us / 1000) : 0;
+    }
 
-    // Inside Scheduler class
+    // Put this helper in your Scheduler class
+    private parseListTasks(raw: any): any[] {
+        try {
+            if (Array.isArray(raw)) {
+                if (raw.length === 1 && typeof raw[0] === 'string') {
+                    return JSON.parse(raw[0] || '[]');
+                }
+                return raw;
+            }
+            const s = typeof raw === 'string' ? raw :
+                (raw && typeof raw === 'object' && typeof (raw as any).value === 'string') ? (raw as any).value :
+                    (raw && typeof raw.toString === 'function') ? raw.toString() : '';
+            return JSON.parse(s || '[]');
+        } catch (e) {
+            console.warn('ListTasks parse failed:', e, raw);
+            return [];
+        }
+    }
+
+    /**
+     * Unified, view-friendly status + timestamps
+     * - statusText: what you already show (“Active (Pending)”, etc.)
+     * - lastRunMs: Date.now()-compatible ms (picked from timer/service)
+     * - nextRunMs: optional ms for “Next run” (handy later)
+     */
+    async getDisplayMeta(ti: TaskInstanceType): Promise<{
+        unit: string;
+        statusText: string;
+        lastRunMs: number;       // 0 if unknown
+        nextRunMs?: number;      // 0/undefined if unknown
+    }> {
+        await this.ensureBackend();
+
+        // We’ll reuse your existing calls but also parse the numeric bits
+        const log = new TaskExecutionLog([]);
+        const tplKey = this.templateKey(ti, this.normalizeTemplateKey(ti.template.name));
+        const unit = await this.unitNameFor(ti);
+
+        let timerOut = '', serviceOut = '';
+        if (this.isDaemon()) {
+            try {
+                const st: any = await daemon.getStatus(tplKey, ti.name);
+                // daemon returns .unit, .timer, .service
+                const u = String(st?.unit || unit);
+                timerOut = String(st?.timer || '');
+                serviceOut = String(st?.service || '');
+                const preferTimer = !!ti?.schedule?.enabled;
+
+                const statusText = await this.parseTaskStatus(preferTimer ? timerOut : serviceOut, u, log, ti);
+
+                // numeric parse
+                const t = this.parseShow(timerOut);
+                const s = this.parseShow(serviceOut);
+
+                const lastRunUs = t.lastTriggerUSec || s.serviceStartUSec || 0;
+                const nextRunUs = t.nextElapseUSec || 0;
+
+                return {
+                    unit: u,
+                    statusText: String(statusText || '—'),
+                    lastRunMs: this.usToMs(Number(lastRunUs)),
+                    nextRunMs: this.usToMs(Number(nextRunUs)),
+                };
+            } catch {
+                // fall back to legacy path below
+            }
+        }
+
+        // Legacy/direct path: query both units then compute once
+        try {
+            const [tRes, sRes] = await Promise.all([
+                legacy.useSpawn(
+                    ['systemctl', 'show', `${unit}.timer`, '--no-pager',
+                        '--property', 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit'],
+                    { superuser: 'try' }
+                ).promise(),
+                legacy.useSpawn(
+                    ['systemctl', 'show', `${unit}.service`, '--no-pager',
+                        '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ExecMainStartTimestampUSec,MergedUnit'],
+                    { superuser: 'try' }
+                ).promise(),
+            ]);
+
+            timerOut = String(tRes?.stdout || '');
+            serviceOut = String(sRes?.stdout || '');
+
+            const preferTimer = !!ti?.schedule?.enabled;
+            const statusText = await this.parseTaskStatus(preferTimer ? timerOut : serviceOut, unit, log, ti);
+
+            const t = this.parseShow(timerOut);
+            const s = this.parseShow(serviceOut);
+
+            const lastRunUs = t.lastTriggerUSec || s.serviceStartUSec || 0;
+            const nextRunUs = t.nextElapseUSec || 0;
+
+            return {
+                unit,
+                statusText: String(statusText || '—'),
+                lastRunMs: this.usToMs(Number(lastRunUs)),
+                nextRunMs: this.usToMs(nextRunUs),
+            };
+        } catch {
+            return { unit, statusText: '—', lastRunMs: 0 };
+        }
+    }
+
+    formatLocal(ms?: number): string {
+        if (!ms) return '—';
+        const d = new Date(ms);
+
+        // Weekday (short) in current locale
+        const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
+
+        // Get a real tz abbreviation (ADT/EDT/etc), falling back from long name
+        const tzShort = (() => {
+            // Try Intl short first (force en-US to improve chances of getting an acronym)
+            const parts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(d);
+            let v = parts.find(p => p.type === 'timeZoneName')?.value ?? '';
+
+            // Fallback if it's just "GMT-3" or empty: build acronym from "(Atlantic Daylight Time)"
+            if (/^GMT[+-]/i.test(v) || v === '') {
+                const m = d.toString().match(/\(([^)]+)\)$/); // "... (Atlantic Daylight Time)"
+                if (m && m[1]) {
+                    const abbr = m[1].split(/\s+/).map(w => w[0]).join('');
+                    if (abbr && abbr.length <= 5) v = abbr; // ADT, EDT, AST, PST, etc.
+                }
+            }
+            return v;
+        })();
+
+        const y = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const da = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+
+        return `${weekday} ${y}-${mo}-${da} ${hh}:${mm}:${ss}${tzShort ? ' ' + tzShort : ''}`;
+    }
+
     private normalizeTemplateKey(x: any): string {
         const s = String(x ?? '').trim();
         if (!s) return s;
@@ -145,16 +288,6 @@ export class Scheduler implements SchedulerType {
         (inst as any).scope = scope; // typed thanks to augmentation, harmless otherwise
     }
 
-    private async readFirstExisting(paths: string[]): Promise<string> {
-        for (const p of paths) {
-            try {
-                const txt = await this.readTextRoot(p);
-                if (txt && txt.length) return txt;
-            } catch { }
-        }
-        return '';
-    }
-
     private safeBuildParamNode(schema: ParameterNode, params: Record<string, any>): ParameterNode {
         try {
             return this.createParameterNodeFromSchema(schema, params);
@@ -185,6 +318,42 @@ export class Scheduler implements SchedulerType {
         }
         return root;
     }
+
+    private async desiredScopeFor(inst: TaskInstanceType, forCreate = false): Promise<'user' | 'system' | 'auto'> {
+        const explicit = (inst as any).scope;
+        if (explicit === 'user' || explicit === 'system') return explicit;
+
+        // For creates (no prior unit), be conservative
+        if (forCreate) return (await this.isAdminUser()) ? 'auto' : 'user';
+
+        // For updates, try to detect current scope via daemon
+        try {
+            const st: any = await daemon.getStatus(this.normalizeTemplateKey(inst.template.name), inst.name);
+            const s = String(st?.scope || '');
+            if (s === 'user' || s === 'system') return s as any;
+        } catch {
+            /* ignore */
+        }
+        return (await this.isAdminUser()) ? 'auto' : 'user';
+    }
+
+
+    // One canonical root (as requested)
+    private static readonly STATE_ROOT = '/var/lib/45drives/houston/scheduler';
+
+    // Read a file if it exists; otherwise return ''
+    private async readMaybe(path: string): Promise<string> {
+        try { return await this.readTextRoot(path); } catch { return ''; }
+    }
+
+    // Try a list of paths and return the first non-empty
+    private async readFirst(paths: string[]): Promise<string> {
+        for (const p of paths) {
+            const txt = await this.readMaybe(p);
+            if (txt) return txt;
+        }
+        return '';
+    }
    
     async loadTaskInstances() {
         await this.ensureBackend();
@@ -193,128 +362,160 @@ export class Scheduler implements SchedulerType {
         const coerceTemplateName = (tpl: any): string => {
             if (typeof tpl === 'string') return tpl;
             if (tpl && typeof tpl === 'object') return String(tpl.name || tpl.type || '');
-            return String(tpl ?? '');
+            const output = String(tpl ?? '');
+            // console.log('[Scheduler -> loadTaskInstances]: coerceTemplateName returns', output);
+            return output;
         };
-
-        const readFromKnownRoots = async (username: string, unit: string, taskName: string) => {
-            // New layout: /var/lib/45drives/houston/scheduler/<user>/<taskName>/<unit>.(env|json|txt)
-            // Legacy layout: /var/lib/45drives/houston/scheduler/<user>/<unit>/<unit>.(env|json|txt)
-            const roots = [
-                '/var/lib/45drives/houston/scheduler',
-                '/var/lib/houston/scheduler', // fallback for older images, just in case
-            ];
-            const tryPaths = (rel: string) => roots.map(r => `${r}/${username}/${rel}`);
-
-            const envText = await this.readFirstExisting([
-                ...tryPaths(`${taskName}/${unit}.env`),
-                ...tryPaths(`${unit}/${unit}.env`),
-            ]);
-            const jsonText = await this.readFirstExisting([
-                ...tryPaths(`${taskName}/${unit}.json`),
-                ...tryPaths(`${unit}/${unit}.json`),
-            ]);
-            const notes = await this.readFirstExisting([
-                ...tryPaths(`${taskName}/${unit}.txt`),
-                ...tryPaths(`${unit}/${unit}.txt`),
-            ]);
-            return { envText, jsonText, notes };
-        };
-
-        const toPlainObj = (x: any) => JSON.parse(JSON.stringify(x ?? {}));
 
         const safeParseItems = (raw: any): any[] => {
             if (Array.isArray(raw)) return raw;
-            try { return JSON.parse(String(raw || '[]')); } catch { return []; }
+            let result = [];
+            try { result = JSON.parse(String(raw || '[]')); } catch { result = []; }
+            // console.log('[Scheduler -> loadTaskInstances]: safeParseItems returns', result);
+            return result;
         };
 
         if (this.backend === 'daemon') {
-            // --- USER tasks via daemon
             try {
-                const { name: username } = await (window as any).cockpit.user();
-                // const items = safeParseItems(await daemon.listTasks('user'));
-                const raw = await daemon.listTasks('user');
-                let items: any[] = [];
-                if (Array.isArray(raw)) {
-                    items = raw;
-                } else if (typeof raw === 'string') {
-                    try { items = JSON.parse(raw); } catch { }
-                } else if (raw && typeof raw.toString === 'function') {
-                    try { items = JSON.parse(raw.toString()); } catch { }
-                }
+                const { id: uid, name: username } = await (window as any).cockpit.user();
+
+                const items = this.parseListTasks(await daemon.listTasks('user'));
+                console.log('[sched] daemon user items:', items.length, items);
 
                 for (const t of items) {
                     try {
                         if (!t?.name || !t?.template) continue;
 
-                        const templateKey = this.normalizeTemplateKey(coerceTemplateName(t.template));
+                        const templateKey = this.normalizeTemplateKey(
+                            typeof t.template === 'string' ? t.template : String(t.template?.name || t.template?.type || '')
+                        );
+
+                        console.log('[Scheduler -> loadTaskInstances]: templateKey', templateKey);
                         const tpl = this.resolveTemplate(templateKey);
 
+                        console.log('[Scheduler -> loadTaskInstances]: tpl', tpl);
+
+                        // Unit from daemon if present; otherwise derive
                         const unit = String(t.unit || await this.unitNameFromParts(templateKey, t.name, 'user'));
+                        console.log('[Scheduler -> loadTaskInstances]: unit', unit);
+                        // *** TRUST the daemon’s data; only fall back to disk if missing ***
+                        const paramsObj = (t.params ?? t.parameters ?? {});
+                        const schedObj = (t.schedule ?? { enabled: false, intervals: [] });
+                        const notes = (t.notes ?? '');
 
-                        const { envText, jsonText, notes } = await readFromKnownRoots(username, unit, t.name);
+                        // If you still want a soft fallback to files, keep this tiny block:
+                        if ((!paramsObj || !Object.keys(paramsObj).length) || !schedObj) {
+                            const basePaths = [
+                                `${Scheduler.STATE_ROOT}/${username}/${t.name}`,
+                                `${Scheduler.STATE_ROOT}/${uid}/${t.name}`,
+                            ];
+                            const envText = await this.readFirst(basePaths.map(b => `${b}/${unit}.env`));
+                            const jsonText = await this.readFirst(basePaths.map(b => `${b}/${unit}.json`));
+                            if (envText) Object.assign(paramsObj, this.parseEnvTextToParams(envText));
+                            if (jsonText) Object.assign(schedObj, JSON.parse(jsonText));
+                        }
 
-                        // Prefer parsed env; else fallback to daemon’s params (t.params), and last-resort t.parameters
-                        const paramsFromEnv = this.parseEnvTextToParams(envText);
-                        const paramsObj = Object.keys(paramsFromEnv).length
-                            ? paramsFromEnv
-                            : toPlainObj(t.params ?? t.parameters ?? {});
+                        const intervals = Array.isArray(schedObj.intervals)
+                            ? schedObj.intervals.map((i: any) => new TaskScheduleInterval(i))
+                            : [];
+                        const schedule = new TaskSchedule(!!schedObj.enabled, intervals);
 
-                        // Prefer file schedule if present; else daemon’s schedule
-                        const sObj = (() => {
-                            if (jsonText?.trim()) {
-                                try { return JSON.parse(jsonText); } catch { }
-                            }
-                            return toPlainObj(t.schedule ?? { enabled: false, intervals: [] });
-                        })();
-
-                        const intervals = (sObj.intervals ?? []).map((i: any) => new TaskScheduleInterval(i));
-                        const schedule = new TaskSchedule(!!sObj.enabled, intervals);
-
-                        // ✅ Build the node from the flat params
                         const paramNode = this.safeBuildParamNode(tpl.parameterSchema, paramsObj);
 
-                        const inst = new TaskInstance(t.name, tpl, paramNode, schedule, notes ?? (t.notes || ''));
+                        const inst = new TaskInstance(t.name, tpl, paramNode, schedule, notes);
                         (inst as any)._templateKey = templateKey;
-                        this.setScope(inst, 'user');
+                        this.setScope(inst, t.scope === 'system' ? 'system' : 'user'); // keep explicit
+
+                        console.log('[sched] backend =', this.backend);
+                        console.log('[sched] pushing TaskInstance:', t.name, templateKey, schedObj?.enabled);
+
                         this.taskInstances.push(inst);
                     } catch (e) {
-                        console.warn('skip bad task record:', e);
+                        console.warn('skip bad daemon task record:', e, t);
                     }
                 }
             } catch (e) {
                 console.warn('ListTasks(user) failed:', e);
             }
 
-            // --- SYSTEM/legacy tasks (admins only)
+            // --- SYSTEM tasks (ADMIN ONLY): merge daemon + python, dedupe (prefer daemon)
             try {
                 if (await this.isAdminUser()) {
-                    const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_tasks_script], { superuser: 'try' });
-                    const out = (await state.promise()).stdout!;
-                    const systemTasksData = safeParseItems(out);
+                    const seenSys = new Set<string>();
+                    const keyOf = (tpl: string, name: string) =>
+                        `${this.normalizeTemplateKey(tpl)}:${name}`;
 
-                    for (const task of systemTasksData) {
-                        try {
-                            if (!task?.name || !task?.template) continue;
+                    // 1) From daemon
+                    try {
+                        const rawSys = await daemon.listTasks('system');
+                        const dItems = this.parseListTasks(rawSys);
 
-                            const templateKey = this.normalizeTemplateKey(coerceTemplateName(task.template));
-                            const tpl = this.resolveTemplate(templateKey);
+                        for (const t of dItems) {
+                            try {
+                                if (!t?.name || !t?.template) continue;
+                                const templateKey = this.normalizeTemplateKey(String(t.template));
+                                const tpl = this.resolveTemplate(templateKey);
 
-                            const paramNode = this.createParameterNodeFromSchema(tpl.parameterSchema, task.parameters || {});
-                            const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
-                            const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
+                                const intervals = (t.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
+                                const schedule = new TaskSchedule(!!t.schedule?.enabled, intervals);
 
-                            const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
-                            (inst as any)._templateKey = templateKey;
-                            this.setScope(inst, 'system');
-                            this.taskInstances.push(inst);
-                        } catch (e) {
-                            console.warn('skip bad system task record:', e);
+                                const params = t.params ?? t.parameters ?? {};
+                                const paramNode = this.safeBuildParamNode(tpl.parameterSchema, params);
+
+                                const inst = new TaskInstance(t.name, tpl, paramNode, schedule, t.notes || '');
+                                (inst as any)._templateKey = templateKey;
+                                this.setScope(inst, 'system');
+
+                                this.taskInstances.push(inst);
+                                seenSys.add(keyOf(templateKey, t.name));
+                            } catch (e) {
+                                console.warn('skip bad daemon system record:', e);
+                            }
                         }
+                    } catch (e) {
+                        console.warn('daemon.listTasks(system) failed:', e);
+                    }
+
+                    // 2) From Python (legacy)
+                    try {
+                        const state = useSpawn(['/usr/bin/env', 'python3', '-c', get_tasks_script], { superuser: 'try' });
+                        const out = (await state.promise()).stdout!;
+                        const pyItems: any[] = Array.isArray(out) ? out : JSON.parse(String(out || '[]'));
+
+                        for (const task of pyItems) {
+                            try {
+                                if (!task?.name || !task?.template) continue;
+
+                                const templateKey = this.normalizeTemplateKey(
+                                    typeof task.template === 'string' ? task.template : String(task.template?.name || task.template?.type || '')
+                                );
+                                const k = keyOf(templateKey, task.name);
+                                if (seenSys.has(k)) continue; // prefer daemon version
+
+                                const tpl = this.resolveTemplate(templateKey);
+                                const paramNode = this.createParameterNodeFromSchema(tpl.parameterSchema, task.parameters || {});
+                                const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
+                                const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
+
+                                const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
+                                (inst as any)._templateKey = templateKey;
+                                this.setScope(inst, 'system');
+
+                                this.taskInstances.push(inst);
+                                seenSys.add(k);
+                            } catch (e) {
+                                console.warn('skip bad python system record:', e);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('python system listing failed:', e);
                     }
                 }
             } catch (e) {
-                console.warn('system task discovery failed:', e);
+                console.warn('system task discovery (admin gate) failed:', e);
             }
+
+
             return;
         }
 
@@ -400,7 +601,8 @@ export class Scheduler implements SchedulerType {
 
     parseEnvKeyValues(envKeyValues: string[], templateName: string) {
         let envObject = envKeyValues.reduce((acc, curr) => {
-            const [key, value] = curr.split('=');
+            const [key, ...rest] = curr.split('=');
+            const value = rest.join('=');
             acc[key] = value;
             return acc;
         }, {});
@@ -484,7 +686,7 @@ export class Scheduler implements SchedulerType {
         // generate env file with key/value pairs (Task Parameters)
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         //  console.log('envKeyVals Before Parse:', envKeyValues);
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
         let scriptPath = '';
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
         envObject['taskName'] = taskInstance.name;
@@ -500,6 +702,7 @@ export class Scheduler implements SchedulerType {
 
         // === DAEMON path ===
         if (this.backend === 'daemon') {
+            const scope = await this.desiredScopeFor(taskInstance, true);
             const scheduleForDbus = this.toPlain(taskInstance.schedule);
             await daemon.createTask(
                 templateName,
@@ -507,7 +710,7 @@ export class Scheduler implements SchedulerType {
                 scriptPath,
                 scheduleForDbus,
                 taskInstance.notes ?? '',
-                'auto'
+                scope
             );
             return; // stop here; no legacy file writes
         }
@@ -598,38 +801,49 @@ export class Scheduler implements SchedulerType {
         }
     }
 
-    async updateTaskInstance(taskInstance) {
+    async updateTaskInstance(taskInstance, opts?:{oldName?: string}) {
         await this.ensureBackend();
         //populate data from env file and then delete + recreate task files
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
         // console.log('envKeyVals:', envKeyValues);
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
         envObject['taskName'] = taskInstance.name;
 
-        const scriptFileName = this.getScriptFromTemplateName(templateName);
-        const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
-
-        if (this.backend === 'daemon') {
-            await daemon.createTask(
-                templateName,
-                envObject,
-                scriptPath,
-                taskInstance.schedule,
-                taskInstance.notes ?? '',
-                'auto'
-            );
-            // If schedule.enabled changed, the daemon respects it on create; nothing else to do.
-            return;
+        // const scriptFileName = this.getScriptFromTemplateName(templateName);
+        // const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
+        let scriptPath: string;
+        if (templateName === 'CustomTask') {
+            const pathParam = taskInstance.parameters?.children?.find((c: any) => c.key === 'path');
+            scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
+        } else {
+            const scriptFileName = this.getScriptFromTemplateName(templateName);
+            scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
         }
 
+        const scope = await this.desiredScopeFor(taskInstance); // see §3
+        const oldName = opts?.oldName ?? taskInstance.name;     // <— NEW
+        await daemon.updateTask(
+              templateName,
+              oldName,                // tell daemon the *old* logical name
+              envObject,
+              scriptPath,
+              taskInstance.schedule,
+              taskInstance.notes ?? '',
+              scope
+            );
 
         // === LEGACY path  ===
         if (templateName === 'CloudSyncTask') {
             envObject['RCLONE_CONFIG'] = '/root/.config/rclone/rclone.conf';
             envObject['cloudSyncConfig_rclone_config_path'] = '/root/.config/rclone/rclone.conf';
         }
+
+        // if (oldName !== taskInstance.name) {
+        //     await this.renameLegacyTaskFiles(templateName, oldName, taskInstance.name, !!taskInstance.schedule.enabled);
+        // }
+
         // Remove empty values from envObject
         const filteredEnvObject = Object.fromEntries(Object.entries(envObject).filter(([key, value]) => value !== '' && value !== 0));
 
@@ -663,13 +877,50 @@ export class Scheduler implements SchedulerType {
         await state.promise();
     }
 
+    // private async renameLegacyTaskFiles(templateName: string, oldName: string, newName: string, wantEnabled: boolean) {
+    //     const prefix = 'houston_scheduler_';
+    //     const etc = '/etc/systemd/system';
+    //     const oldBase = `${prefix}${templateName}_${oldName}`;
+    //     const newBase = `${prefix}${templateName}_${newName}`;
+
+    //     const sh = (cmd: string) => legacy.useSpawn(['bash', '-lc', cmd], { superuser: 'try' }).promise();
+
+    //     // was enabled? (don’t fail if unit missing)
+    //     let wasEnabled = false;
+    //     try {
+    //         const st = await legacy.useSpawn(['bash', '-lc', `systemctl is-enabled ${oldBase}.timer`], { superuser: 'try' }).promise();
+    //         wasEnabled = /enabled/.test(st.stdout || '');
+    //     } catch { }
+
+    //     // stop/disable old
+    //     await sh(`systemctl stop ${oldBase}.timer ${oldBase}.service 2>/dev/null || true`);
+    //     await sh(`systemctl disable ${oldBase}.timer 2>/dev/null || true`);
+
+    //     // move state files if present
+    //     await sh(`[ -e ${etc}/${oldBase}.env ]  && mv ${etc}/${oldBase}.env  ${etc}/${newBase}.env  || true`);
+    //     await sh(`[ -e ${etc}/${oldBase}.json ] && mv ${etc}/${oldBase}.json ${etc}/${newBase}.json || true`);
+    //     await sh(`[ -e ${etc}/${oldBase}.txt ]  && mv ${etc}/${oldBase}.txt  ${etc}/${newBase}.txt  || true`);
+
+    //     // service/timer files are regenerated from templates (safer than mv due to embedded names)
+    //     await sh(`rm -f ${etc}/${oldBase}.service ${etc}/${oldBase}.timer || true`);
+    //     await sh(`systemctl daemon-reload`);
+
+    //     // re-enable if it *was* enabled or the UI wants it enabled
+    //     const enable = wantEnabled || wasEnabled;
+    //     if (enable) {
+    //         await sh(`systemctl enable --now ${newBase}.timer 2>/dev/null || true`);
+    //     }
+    // }
+
+
     async updateTaskNotes(taskInstance) {
         await this.ensureBackend();
         //populate data from env file and then delete + recreate task files
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
         // --- DAEMON
         if (this.isDaemon()) {
+            const scope = await this.desiredScopeFor(taskInstance, true);
             // Re-emit the task with updated notes (idempotent in daemon)
             const envKeyValues = taskInstance.parameters.asEnvKeyValues();
             const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
@@ -684,7 +935,14 @@ export class Scheduler implements SchedulerType {
                 scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
             }
 
-            await daemon.createTask(templateName, envObject, scriptPath, taskInstance.schedule, taskInstance.notes ?? '', 'auto');
+            await daemon.createTask(
+                templateName, 
+                envObject, 
+                scriptPath, 
+                taskInstance.schedule, 
+                taskInstance.notes ?? '', 
+                scope
+            );
             return;
         }
 
@@ -717,7 +975,7 @@ export class Scheduler implements SchedulerType {
         await this.ensureBackend();
         //delete task + associated files
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
         if (this.backend === 'daemon') {
             await daemon.deleteTask(templateName, taskInstance.name);
@@ -738,7 +996,7 @@ export class Scheduler implements SchedulerType {
         await this.ensureBackend();
         //execute service file now
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
         if (this.backend === 'daemon') {
             await daemon.runNow(templateName, taskInstance.name);
@@ -758,7 +1016,7 @@ export class Scheduler implements SchedulerType {
     async getTimerStatus(ti: TaskInstanceType): Promise<string | false> {
         await this.ensureBackend();
         const log = new TaskExecutionLog([]);
-        const tplKey = this.templateKey(ti, formatTemplateName(ti.template.name));
+        const tplKey = this.templateKey(ti, this.normalizeTemplateKey(ti.template.name));
 
         if (this.isDaemon()) {
             try {
@@ -777,7 +1035,7 @@ export class Scheduler implements SchedulerType {
         try {
             const state = useSpawn(
                 ['systemctl', 'show', `${unit}.timer`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestamp,MergedUnit'],
+                    '--property', 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,LastTrigger,NextElapseUSecRealtime,MergedUnit'],
                 { superuser: 'try' }
             );
             const res: any = await state.promise();
@@ -797,7 +1055,7 @@ export class Scheduler implements SchedulerType {
     async getServiceStatus(ti: TaskInstanceType): Promise<string | false> {
         await this.ensureBackend();
         const log = new TaskExecutionLog([]);
-        const tplKey = this.templateKey(ti, formatTemplateName(ti.template.name));
+        const tplKey = this.templateKey(ti, this.normalizeTemplateKey(ti.template.name));
 
         if (this.isDaemon()) {
             try {
@@ -816,7 +1074,7 @@ export class Scheduler implements SchedulerType {
         try {
             const state = useSpawn(
                 ['systemctl', 'show', `${unit}.service`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestamp,MergedUnit'],
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,MergedUnit'],
                 { superuser: 'try' }
             );
             const res: any = await state.promise();
@@ -832,19 +1090,44 @@ export class Scheduler implements SchedulerType {
         }
     }
 
-
     private parseShow(output: string) {
         const m = new Map<string, string>();
         for (const line of (output || '').split(/\r?\n/)) {
             const i = line.indexOf('=');
             if (i > 0) m.set(line.slice(0, i), line.slice(i + 1));
         }
-        // normalize a few fields we care about
+
+        const num = (k: string) => {
+            const v = m.get(k);
+            const n = v ? Number(v) : NaN;
+            return Number.isFinite(n) && n > 0 ? n : 0;
+        };
+
+        // If USec (microseconds) is missing, fall back to the wallclock string and parse it.
+        // Date.parse → ms since epoch; multiply by 1000 to get µs so callers stay consistent.
+        const ts = (numKey: string, strKey: string) => {
+            const u = num(numKey);
+            if (u) return u;
+            const s = m.get(strKey);
+            if (s) {
+                const ms = Date.parse(s);
+                if (Number.isFinite(ms)) return ms * 1000;
+            }
+            return 0;
+        };
+
         return {
             load: m.get('LoadState') || '',
             active: m.get('ActiveState') || '',
             sub: m.get('SubState') || '',
             result: m.get('Result') || '',
+            // timers
+            lastTriggerUSec: ts('LastTriggerUSec', 'LastTrigger'),
+            nextElapseUSec: num('NextElapseUSecRealtime'),
+            // services (prefer ExecMainStart, fall back to ActiveEnter)
+            serviceStartUSec:
+                ts('ExecMainStartTimestampUSec', 'ExecMainStartTimestamp') ||
+                ts('ActiveEnterTimestampUSec', 'ActiveEnterTimestamp'),
         };
     }
 
@@ -916,13 +1199,13 @@ export class Scheduler implements SchedulerType {
     async enableSchedule(taskInstance) {
         await this.ensureBackend();
         if (this.backend === 'daemon') {
-            await daemon.enableSchedule(formatTemplateName(taskInstance.template.name), taskInstance.name, true);
+            await daemon.enableSchedule(this.normalizeTemplateKey(taskInstance.template.name), taskInstance.name, true);
             taskInstance.schedule.enabled = true;
             return;
         }
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         const timerName = `${fullTaskName}.timer`;
@@ -950,13 +1233,13 @@ export class Scheduler implements SchedulerType {
     async disableSchedule(taskInstance) {
         await this.ensureBackend();
         if (this.backend === 'daemon') {
-            await daemon.enableSchedule(formatTemplateName(taskInstance.template.name), taskInstance.name, false);
+            await daemon.enableSchedule(this.normalizeTemplateKey(taskInstance.template.name), taskInstance.name, false);
             taskInstance.schedule.enabled = false;
             return;
         }
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         const timerName = `${fullTaskName}.timer`;
@@ -991,9 +1274,10 @@ export class Scheduler implements SchedulerType {
 
     async updateSchedule(taskInstance) {
         await this.ensureBackend();
-        const templateName = formatTemplateName(taskInstance.template.name);
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
         if (this.backend === 'daemon') {
+            const scope = await this.desiredScopeFor(taskInstance, true);
             const envKeyValues = taskInstance.parameters.asEnvKeyValues();
             const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
             envObject['taskName'] = taskInstance.name;
@@ -1002,7 +1286,14 @@ export class Scheduler implements SchedulerType {
             const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
 
             const scheduleForDbus = this.toPlain(taskInstance.schedule);
-            await daemon.createTask(templateName, envObject, scriptPath, scheduleForDbus, taskInstance.notes ?? '', 'auto');
+            await daemon.createTask(
+                templateName, 
+                envObject, 
+                scriptPath, 
+                scheduleForDbus, 
+                taskInstance.notes ?? '', 
+                scope
+            );
             await daemon.enableSchedule(templateName, taskInstance.name, !!taskInstance.schedule.enabled);
             return;
         }

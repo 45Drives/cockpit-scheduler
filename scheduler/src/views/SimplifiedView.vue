@@ -57,7 +57,7 @@
                         </thead>
                         <tbody>
                             <tr v-for="row in displayRows" :key="row.id"
-                                class="border-b border-default bg-default hover:bg-well">
+                                class="border-b border-default bg-default hover:bg-well text-left">
                                 <td class="px-3 py-2 align-top">
                                     <div class="font-medium">{{ row.name }}</div>
                                 </td>
@@ -65,7 +65,7 @@
                                     <span
                                         class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
                                         :title="row.type">
-                                        {{ row.type }}
+                                        {{ row.type }} (Scope: {{ row.scope }})
                                     </span>
                                 </td>
                                 <td class="px-3 py-2 align-top">
@@ -326,6 +326,7 @@ const rows = computed(() => {
             schedule: getSchedule(t),
             lastRun: live.lastRunFor(t) ?? getLastRun(t),
             raw: t,
+            scope: t.scope
         }));
 });
 

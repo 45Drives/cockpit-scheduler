@@ -111,6 +111,7 @@ const isEditMode = computed(() => (props.mode ?? draft.mode) === 'edit');
 const newTask = ref<TaskInstance | null>(null);
 const adding = ref(false);
 const errorList = ref<string[]>([]);
+const originalName = ref(props.existingTask?.name);
 const newTaskName = ref('');
 const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
@@ -180,21 +181,17 @@ const displayName = (template: TaskTemplateType) => nameOverrides[template.name]
 // ---- schedule bridge (UI <-> model) ----
 function toUISchedule(model?: ModelTaskSchedule | null): UITaskSchedule {
     const now = new Date();
-
-    // ----- DEFAULT when no model schedule: DAILY @ 00:00 -----
+    // ----- DEFAULT when no model schedule: HOURLY, start in 1 hour -----
     if (!model || !Array.isArray(model.intervals) || model.intervals.length === 0) {
-        const midnightToday = new Date(
-            now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0
-        );
-        // If we're past today's midnight, start at next midnight
-        const start =
-            now <= midnightToday
-                ? midnightToday
-                : new Date(midnightToday.getTime() + 24 * 60 * 60 * 1000);
+        // assume `now` already exists; if not: const now = new Date();
+        const start = new Date(now);
+        start.setMinutes(0, 0, 0);
+        if (start <= now) start.setHours(start.getHours() + 1);
 
-        return { repeatFrequency: 'day', startDate: start } as UITaskSchedule;
+        return { repeatFrequency: 'hour', startDate: start } as UITaskSchedule;
     }
     // ---------------------------------------------------------
+
 
     const intv: any = model.intervals[0] ?? {};
     const v = (x: any) => (x?.value ?? x);
@@ -429,8 +426,9 @@ async function saveAll() {
 
             if (nameChanged || templateChanged) {
                 // full replace to avoid duplicate systemd units
-                await myScheduler.unregisterTaskInstance(old);
-                await myScheduler.registerTaskInstance(built);
+                // await myScheduler.unregisterTaskInstance(old);
+                // await myScheduler.registerTaskInstance(built);
+                await myScheduler.updateTaskInstance(built, { oldName: originalName.value });
             } else {
                 await (myScheduler as any).updateTaskInstance(built);
             }

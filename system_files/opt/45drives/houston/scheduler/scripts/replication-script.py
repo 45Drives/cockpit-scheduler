@@ -364,7 +364,7 @@ def send_snapshot(
 
 				# Verify dataset on receiver
 				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				snapshot_process = subprocess.run(snapshot_check_cmd, capture_output=True, text=True)
+				snapshot_process = subprocess.run(snapshot_check_cmd, capture_output=True, universal_newlines=True)
 
 				if snapshot_process.returncode != 0:
 					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")

@@ -29,7 +29,7 @@ export function useLiveTaskStatus(
     tasksRef: { value: AnyTask[] | undefined | null },
     scheduler: any,
     log: any,
-    opts?: { intervalMs?: number }
+    opts?: { intervalMs?: number; formatMs?: (ms: number) => string }
 ) {
     const statusMap = ref<Record<string, string>>({});
     const lastRunMap = ref<Record<string, string>>({});
@@ -39,44 +39,56 @@ export function useLiveTaskStatus(
     async function refreshOne(t: AnyTask) {
         const id = taskId(t);
 
-        // --- STATUS (robust) ---
+        // prefer a formatter the caller passed in → else scheduler.formatLocal → else toLocaleString
+        const fmtMs = (ms: number) => {
+            if (!ms) return "Task hasn't run yet.";
+            if (opts?.formatMs) return opts.formatMs(ms);
+            if (typeof scheduler?.formatLocal === 'function') return scheduler.formatLocal(ms);
+            return new Date(ms).toLocaleString();
+        };
+
+        try {
+            // ---- Primary path: one call that gives us status + timestamps
+            const meta = await scheduler.getDisplayMeta(t);
+            statusMap.value[id] = meta?.statusText ?? 'Inactive (Disabled)';
+            lastRunMap.value[id] = meta?.lastRunMs ? fmtMs(meta.lastRunMs) : (lastRunMap.value[id] ?? "Task hasn't run yet.");
+            return; // success
+        } catch (e) {
+            // continue to fallback below
+            console.debug('[useLiveTaskStatus] getDisplayMeta failed; falling back:', e);
+        }
+
+        // ---- Fallback (old behavior) ----
         try {
             const enabled = !!t?.schedule?.enabled;
             let status: any;
-
-            // try the expected unit first
-            try {
-                status = enabled ? await scheduler.getTimerStatus(t)
-                    : await scheduler.getServiceStatus(t);
-            } catch {
-                // fallbacks: try both in case the first one failed
-                try { status = await scheduler.getServiceStatus(t); } catch { }
-                if (!status) {
-                    try { status = await scheduler.getTimerStatus(t); } catch { }
-                }
-            }
-
+            try { status = enabled ? await scheduler.getTimerStatus(t) : await scheduler.getServiceStatus(t); } catch { }
+            if (!status) { try { status = await scheduler.getServiceStatus(t); } catch { } }
+            if (!status) { try { status = await scheduler.getTimerStatus(t); } catch { } }
             statusMap.value[id] = String(status ?? 'Inactive (Disabled)');
         } catch {
             statusMap.value[id] = 'Inactive (Disabled)';
         }
 
-        // --- LAST RUN (don’t show — when never run) ---
         try {
-            const latest = await log.getLatestEntryFor(t);
-            const ts = [latest?.startDate, latest?.finishDate].find(s => s && String(s).trim() !== '');
-            lastRunMap.value[id] = ts ? formatDateLike(ts) : "Task hasn't run yet.";
-            
-            if (latest) {
-                const ts = pickNonEmpty(latest.startDate, latest.finishDate);
-                lastRunMap.value[id] = ts ? formatDateLike(ts) : "Task hasn't run yet.";
+            const latest = await (log?.getLatestEntryFor?.(t));
+            const raw = latest?.finishDate ?? latest?.startDate;
+            if (raw) {
+                let ms = 0;
+                if (typeof raw === 'number') ms = raw.toString().length === 10 ? raw * 1000 : raw;
+                else {
+                    const parsed = Date.parse(String(raw));
+                    if (Number.isFinite(parsed)) ms = parsed;
+                }
+                lastRunMap.value[id] = ms ? fmtMs(ms) : (lastRunMap.value[id] ?? "Task hasn't run yet.");
             } else {
-                lastRunMap.value[id] = "Task hasn't run yet.";
+                lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";
             }
         } catch {
-            lastRunMap.value[id] = "Task hasn't run yet.";
+            lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";
         }
     }
+
 
     async function refreshAll() {
         const tasks = tasksRef.value ?? [];
