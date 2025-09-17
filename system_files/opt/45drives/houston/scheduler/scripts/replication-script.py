@@ -221,17 +221,20 @@ def send_snapshot(
 	mBufferSize=1, 
 	mBufferUnit="G", 
 	forceOverwrite=False,
-	transferMethod=""
+	transferMethod="",
+ 	recursive=False, 
 ):
 	try:
 		# Build the zfs send command
 		send_cmd = ['zfs', 'send']
+		if recursive:
+			send_cmd.append('-R')
 		if compressed:
 			send_cmd.append('-Lce')
 		if raw:
 			send_cmd.append('-w')
 		if sendName2 != "":
-			send_cmd.extend(['-i', sendName2])
+			send_cmd.extend(['-I' if recursive else '-i', sendName2])
 		send_cmd.append(sendName)
 
 		if sendName2 != "":
@@ -546,7 +549,8 @@ def main():
 			str(mBufferSize),
 			mBufferUnit,
 			forceOverwrite,
-			transferMethod
+			transferMethod,
+			recursive=isRecursiveSnap, 
 		)
 
 		# ---------- prune ----------
