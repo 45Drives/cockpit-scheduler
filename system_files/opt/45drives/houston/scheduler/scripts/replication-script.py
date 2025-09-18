@@ -10,20 +10,39 @@ class Snapshot:
 		self.guid = guid
 		self.creation = creation
 	 
-def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
-	command = [ 'zfs', 'snapshot' ]
-	if is_recursive:
-		command.append('-r')
-	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
-	if custom_name:
-		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
-	else:
-		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
-	command.append(new_snap)
-	subprocess.run(command, check=True)
-	print(f"new snapshot created: {new_snap}")
+# def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
+# 	command = [ 'zfs', 'snapshot' ]
+# 	if is_recursive:
+# 		command.append('-r')
+# 	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+# 	if custom_name:
+# 		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
+# 	else:
+# 		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
+# 	command.append(new_snap)
+# 	subprocess.run(command, check=True)
+# 	print(f"new snapshot created: {new_snap}")
 
-	return new_snap
+# 	return new_snap
+def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
+    command = ['zfs', 'snapshot']
+    if is_recursive:
+        command.append('-r')
+    timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+    new_snap = f'{filesystem}@{(custom_name+"-") if custom_name else ""}{task_name}-{timestamp}'
+    command.append(new_snap)
+
+    try:
+        subprocess.run(command, check=True, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        msg = (e.stderr or e.stdout or "").lower()
+        if "dataset already exists" in msg:
+            print(f"Snapshot already exists ({new_snap}) — likely a queued duplicate start; exiting successfully.")
+            sys.exit(0)  # don’t trigger Restart=on-failure
+        raise
+
+    print(f"new snapshot created: {new_snap}")
+    return new_snap
 
 
 def prune_snapshots_by_retention(
@@ -39,6 +58,10 @@ def prune_snapshots_by_retention(
 			return
 	else:
 		snapshots = get_local_snapshots(filesystem)
+
+	if snapshots is None:
+		print(f"{'Remote ' if remote_host else ''}dataset {filesystem} does not exist. Nothing to prune.")
+		return
 
 	now = datetime.datetime.now()
 
@@ -65,16 +88,19 @@ def prune_snapshots_by_retention(
 		# for snapshot in snapshots:
 		# 	print(f"Snapshot: {snapshot.name} - Created at: {snapshot.creation}")
 
+		excluded_suffix = excluded_snapshot_name.split('@', 1)[-1] if excluded_snapshot_name else None
+
 		for snapshot in snapshots:
-			print(f"Excluded snap: {excluded_snapshot_name}")
-   
-			# Exclude the newest snapshot we just made
-			if task_name in snapshot.name and snapshot.name != excluded_snapshot_name:
+			# Only prune snapshots created by this task, excluding the one we just made
+			if task_name in snapshot.name:
+				snap_suffix = snapshot.name.split('@', 1)[-1] if '@' in snapshot.name else snapshot.name
+				if excluded_suffix and snap_suffix == excluded_suffix:
+					continue  # skip the newest one
 				creation_time = snapshot.creation
 				age_milliseconds = (now - creation_time).total_seconds() * 1000
 				if age_milliseconds > retention_milliseconds:
 					snapshots_to_delete.append(snapshot)
-
+     
 		for snapshot in snapshots_to_delete:
 			# Build the delete command
 			if remote_host:
@@ -100,72 +126,79 @@ def prune_snapshots_by_retention(
 			print("No snapshots to prune.")
 
 
-
 def get_local_snapshots(filesystem):
-	command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+    # cmd = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+    cmd = ['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if p.returncode == 0:
+        snaps = []
+        for line in (p.stdout or "").splitlines():
+            parts = line.split(maxsplit=2)
+            if len(parts) >= 3:
+                try:
+                    # created = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
+                    created = datetime.datetime.fromtimestamp(int(parts[2]))
+                except ValueError:
+                    continue
+                snaps.append(Snapshot(parts[0], parts[1], created))
+        return snaps
+    # Non-zero: detect “does not exist” and return None, else raise
+    err = (p.stderr or p.stdout or "").lower()
+    if "dataset does not exist" in err or "cannot open" in err:
+        return None
+    raise subprocess.CalledProcessError(p.returncode, cmd, output=p.stdout, stderr=p.stderr)
+
+
+def get_remote_snapshots(user, host, port, filesystem, transferMethod):
+	"""
+	Returns:
+	  - A list of Snapshot objects if the remote dataset exists.
+	  - An empty list [] if the dataset exists but has no snapshots.
+	  - None if the dataset does not exist at all.
+	"""
+	ssh_cmd = ['ssh']
+	
+	# print('transfermethod:', transferMethod)
+
+	# If using Netcat, always force SSH to use port 22 for snapshot retrieval
+	if transferMethod == 'netcat':
+		port = '22'  # Override the port for SSH, but do NOT modify Netcat’s actual port
+		
+	  # If using SSH for transfer, use the specified port only if it's not 22
+	if transferMethod == 'ssh' and str(port) != '22':
+		ssh_cmd.extend(['-p', str(port)])
+
+	ssh_cmd.append(f"{user}@{host}")
+	# ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
+	ssh_cmd.extend(['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
+
 	try:
-		output = subprocess.check_output(command)
+		output = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT)
 		snapshots = []
 		for line in output.decode().splitlines():
-			parts = line.split(maxsplit=2)  # name, guid, creation
+			parts = line.split(maxsplit=2)
 			if len(parts) >= 3:
 				snapshot_name = parts[0]
 				snapshot_guid = parts[1]
-				snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
+				try:
+					# snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
+					snapshot_creation = datetime.datetime.fromtimestamp(int(parts[2]))
+				except ValueError:
+					continue  # Skip if parsing fails
 				snapshots.append(Snapshot(snapshot_name, snapshot_guid, snapshot_creation))
 		return snapshots
+
 	except subprocess.CalledProcessError as e:
-		print(f"ERROR: Failed to fetch local snapshots for {filesystem}: {e}")
-		return []
+		err_output = e.output.decode(errors='replace').lower()
+		if "dataset does not exist" in err_output or "cannot open" in err_output:
+			return None  # Dataset does not exist
+		else:
+			print(f"ERROR: Failed to fetch remote snapshots for {filesystem}: {e}\nOutput:\n{err_output}")
+			sys.exit(1)
 
-def get_remote_snapshots(user, host, port, filesystem, transferMethod):
-    """
-    Returns:
-      - A list of Snapshot objects if the remote dataset exists.
-      - An empty list [] if the dataset exists but has no snapshots.
-      - None if the dataset does not exist at all.
-    """
-    ssh_cmd = ['ssh']
-    
-    # print('transfermethod:', transferMethod)
-
-    # If using Netcat, always force SSH to use port 22 for snapshot retrieval
-    if transferMethod == 'netcat':
-        port = '22'  # Override the port for SSH, but do NOT modify Netcat’s actual port
-        
-      # If using SSH for transfer, use the specified port only if it's not 22
-    if transferMethod == 'ssh' and str(port) != '22':
-        ssh_cmd.extend(['-p', str(port)])
-
-    ssh_cmd.append(f"{user}@{host}")
-    ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
-
-    try:
-        output = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT)
-        snapshots = []
-        for line in output.decode().splitlines():
-            parts = line.split(maxsplit=2)
-            if len(parts) >= 3:
-                snapshot_name = parts[0]
-                snapshot_guid = parts[1]
-                try:
-                    snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
-                except ValueError:
-                    continue  # Skip if parsing fails
-                snapshots.append(Snapshot(snapshot_name, snapshot_guid, snapshot_creation))
-        return snapshots
-
-    except subprocess.CalledProcessError as e:
-        err_output = e.output.decode(errors='replace').lower()
-        if "dataset does not exist" in err_output or "cannot open" in err_output:
-            return None  # Dataset does not exist
-        else:
-            print(f"ERROR: Failed to fetch remote snapshots for {filesystem}: {e}\nOutput:\n{err_output}")
-            sys.exit(1)
-
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        sys.exit(1)
+	except Exception as e:
+		print(f"An unexpected error occurred: {e}")
+		sys.exit(1)
 
 
 def get_most_recent_snapshot(snapshots):
@@ -188,17 +221,20 @@ def send_snapshot(
 	mBufferSize=1, 
 	mBufferUnit="G", 
 	forceOverwrite=False,
-	transferMethod=""
+	transferMethod="",
+ 	recursive=False, 
 ):
 	try:
 		# Build the zfs send command
 		send_cmd = ['zfs', 'send']
+		if recursive:
+			send_cmd.append('-R')
 		if compressed:
 			send_cmd.append('-Lce')
 		if raw:
 			send_cmd.append('-w')
 		if sendName2 != "":
-			send_cmd.extend(['-i', sendName2])
+			send_cmd.extend(['-I' if recursive else '-i', sendName2])
 		send_cmd.append(sendName)
 
 		if sendName2 != "":
@@ -352,14 +388,14 @@ def send_snapshot(
 
 				# Verify dataset on receiver
 				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				snapshot_process = subprocess.run(snapshot_check_cmd, capture_output=True, text=True)
+				snapshot_process = subprocess.run(snapshot_check_cmd, universal_newlines=True, stdout=subprocess.PIPE)
 
 				if snapshot_process.returncode != 0:
 					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")
 					sys.exit(1)
 
 				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout.strip()}")
-    
+	
 			except subprocess.TimeoutExpired:
 				print("[Receiver Side] Receiver timed out.")
 				ssh_process_listener.terminate()
@@ -379,81 +415,128 @@ def send_snapshot(
 		print(f"ERROR: Send error: {e}")
 		sys.exit(1)
 
+def join_zfs_path(pool: str, dataset: str) -> str:
+	pool = (pool or "").strip()
+	ds = (dataset or "").strip()
+	if not pool:         # remote-only path or user passed full name in dataset
+		return ds
+	if not ds:
+		return pool
+	# If dataset already includes the pool prefix, keep it
+	if ds == pool or ds.startswith(pool + "/"):
+		return ds
+	# If dataset looks like a full path but with the same pool, keep it
+	first = ds.split("/", 1)[0]
+	if first == pool:
+		return ds
+	return f"{pool}/{ds}"
+
 
 def main():
 	try:
+		# ---------- helpers ----------
+		def as_bool(v, default=False):
+			if v is None:
+				return default
+			return str(v).strip().lower() in ('1', 'true', 'yes', 'on')
+
+		# ---------- params ----------
 		sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
-		isRecursiveSnap = os.environ.get('zfsRepConfig_sendOptions_recursive_flag', False)
+
+		isRecursiveSnap = as_bool(os.environ.get('zfsRepConfig_sendOptions_recursive_flag'))
 		customName = os.environ.get('zfsRepConfig_sendOptions_customName', '')
-		isRaw = os.environ.get('zfsRepConfig_sendOptions_raw_flag', False)
-		isCompressed = os.environ.get('zfsRepConfig_sendOptions_compressed_flag', False)
+
+		isRaw = as_bool(os.environ.get('zfsRepConfig_sendOptions_raw_flag'))
+		isCompressed = as_bool(os.environ.get('zfsRepConfig_sendOptions_compressed_flag'))
+
 		destinationRoot = os.environ.get('zfsRepConfig_destDataset_pool', '')
 		destinationPath = os.environ.get('zfsRepConfig_destDataset_dataset', '')
+		receivingFilesystem = join_zfs_path(destinationRoot, destinationPath)
+
 		remoteUser = os.environ.get('zfsRepConfig_destDataset_user', 'root')
 		remoteHost = os.environ.get('zfsRepConfig_destDataset_host', '')
-		remotePort = os.environ.get('zfsRepConfig_destDataset_port', 22)
-		mBufferSize = os.environ.get('zfsRepConfig_sendOptions_mbufferSize', 1)
+		remotePort = os.environ.get('zfsRepConfig_destDataset_port', '22')  # keep as string for ssh -p comparisons
+
+		mBufferSize = os.environ.get('zfsRepConfig_sendOptions_mbufferSize', '1')
 		mBufferUnit = os.environ.get('zfsRepConfig_sendOptions_mbufferUnit', 'G')
+
 		sourceRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionTime', 0)
 		sourceRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionUnit', '')
+
 		destinationRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionTime', 0)
 		destinationRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionUnit', '')
+
 		transferMethod = os.environ.get('zfsRepConfig_sendOptions_transferMethod', '')
+		allowOverwrite = as_bool(os.environ.get('zfsRepConfig_sendOptions_allowOverwrite'), default=False)
+		useExistingDest = as_bool(os.environ.get('zfsRepConfig_sendOptions_useExistingDest'), default=False)
 
 		taskName = os.environ.get('taskName', '')
 
+		# ---------- initial state ----------
 		forceOverwrite = False
-		receivingFilesystem = f"{destinationPath}"  # or f"{destinationRoot}/{destinationPath}" if needed
-
-		# Get source snapshots
-		sourceSnapshots = get_local_snapshots(sourceFilesystem)
-		sourceSnapshots.sort(key=lambda x: x.creation, reverse=True)
+		# receivingFilesystem = f"{destinationPath}"  # or f"{destinationRoot}/{destinationPath}" if you prefer
 		incrementalSnapName = ""
 
-		# Depending on remote or local, get destination snapshots
-		if remoteHost and remoteUser:
-			destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem, transferMethod)
-		else:
-			destinationSnapshots = get_local_snapshots(receivingFilesystem)
-		# print("Fetched source snapshots:", len(sourceSnapshots))
-		# for snap in sourceSnapshots:
-		# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
+		# ---------- fetch snapshots ----------
+		sourceSnapshots = get_local_snapshots(sourceFilesystem) or []
+		sourceSnapshots.sort(key=lambda x: x.creation)
 
-		# print("Fetched destination snapshots:", len(destinationSnapshots))
-		# for snap in destinationSnapshots:
-		# 	print(f"Name: {snap.name}, GUID: {snap.guid}, Creation: {snap.creation}")
-
-		# If destinationSnapshots is None, that means dataset does not exist on remote
-		if destinationSnapshots is None:
-			print(f"Remote dataset {receivingFilesystem} does not exist. Creating it with full send.")
-			forceOverwrite = False
-
-		# If no snapshots exist (i.e., an empty list), but the dataset does exist, we might need force
-		elif not destinationSnapshots:
-			forceOverwrite = True
-			print("No snapshots found on the destination (but dataset exists). Forcefully overwriting dataset.")
-
-		else:
-			# We have some snapshots on the destination. Check for common snapshots by GUID.
-			source_guids = {snap.guid: snap.name for snap in sourceSnapshots}
-			common_snapshots = [snap for snap in destinationSnapshots if snap.guid in source_guids]
-
-			if not common_snapshots:
-				print("No common snapshots found on the destination. (Full send may require force overwrite.)")
-				# Decide whether to force-overwrite or abort:
-				# Here we do NOT set forceOverwrite automatically; adjust to your needs:
-				forceOverwrite = True  # or False if you want to fail instead
+		if useExistingDest:
+			if remoteHost and remoteUser:
+				destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem, transferMethod)
 			else:
-				# We do have common snapshots; find the most recent one on destination
-				common_snapshots.sort(key=lambda x: x.creation, reverse=True)
-				mostRecentCommonSnap = common_snapshots[0]
+				destinationSnapshots = get_local_snapshots(receivingFilesystem)
+		else:
+			destinationSnapshots = None  # treat as “missing” → full send, no -F
+
+		# destinationSnapshots is:
+		#   None        -> dataset missing
+		#   []          -> dataset exists, no snapshots
+		#   [ZfsSnap...] -> has snapshots
+		if destinationSnapshots is None:
+			print(f"Destination {receivingFilesystem} does not exist. Will create it via full send (no -F).")
+			forceOverwrite = False
+		elif not destinationSnapshots:
+			print(f"Destination {receivingFilesystem} exists but has no snapshots. Full send (no -F).")
+			forceOverwrite = False
+		else:
+			source_guids = {s.guid: s.name for s in sourceSnapshots}
+			common = [d for d in destinationSnapshots if d.guid in source_guids]
+			if not common:
+				print("No common snapshots found on the destination.")
+				if allowOverwrite:
+					print("ALLOW OVERWRITE is enabled: proceeding with full send and -F (will roll back dest).")
+					forceOverwrite = True
+				else:
+					print("Refusing to overwrite destination without a common base. Enable allowOverwrite or choose/create an empty destination.")
+					sys.exit(2)
+			else:
+				common.sort(key=lambda x: x.creation, reverse=True)
+				mostRecentCommonSnap = common[0]
 				incrementalSnapName = source_guids[mostRecentCommonSnap.guid]
 				print(f"Most recent common snapshot: {incrementalSnapName}")
 
-		# Create a new local snapshot on the source
+
+				# ----- STEP 4: detect destination-ahead/divergence -----
+				# If destination has snapshots newer than the common base that the source does not have,
+				# then the destination is ahead/diverged.
+				src_guids = {s.guid for s in sourceSnapshots}
+				base_creation = mostRecentCommonSnap.creation
+				destAhead = any((d.creation > base_creation) and (d.guid not in src_guids)
+								for d in destinationSnapshots)
+
+				if destAhead and not allowOverwrite:
+					print("Destination has newer snapshots than the common base. Enable Allow Overwrite (-F) or choose a different destination.")
+					sys.exit(2)
+				elif destAhead and allowOverwrite:
+					print("Destination is ahead; Allow Overwrite enabled: will roll back with -F.")
+					forceOverwrite = True
+				# else: we have a valid base and no divergence: normal incremental is fine.
+
+		# ---------- create a fresh source snapshot to send ----------
 		newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, taskName, customName)
-		# print(f"\n-----------PARAMETER CHECK------------\nsourceFS:{sourceFilesystem}\nnewSnap:{newSnap}\nreceivingFilesystem:{receivingFilesystem}\nincrementalSnapName:{incrementalSnapName}\nisCompressed:{isCompressed}\nisRaw:{isRaw}\nremoteHost:{remoteHost}\nremotePort:{remotePort}\nremoteUser:{remoteUser}\nmBufferSize:{mBufferSize}\nmBufferUnit:{mBufferUnit}\nforceOverwrite:{forceOverwrite}\n------------------END-----------------\n")
-		# Perform the send (full or incremental)
+
+		# ---------- send (full or incremental) ----------
 		send_snapshot(
 			newSnap,
 			receivingFilesystem,
@@ -466,10 +549,11 @@ def main():
 			str(mBufferSize),
 			mBufferUnit,
 			forceOverwrite,
-			transferMethod
+			transferMethod,
+			recursive=isRecursiveSnap, 
 		)
 
-		# Prune snapshots on source
+		# ---------- prune ----------
 		prune_snapshots_by_retention(
 			sourceFilesystem,
 			taskName,
@@ -478,7 +562,6 @@ def main():
 			newSnap
 		)
 
-		# Prune snapshots on destination
 		prune_snapshots_by_retention(
 			receivingFilesystem,
 			taskName,
@@ -488,13 +571,14 @@ def main():
 			remoteUser,
 			remoteHost,
 			remotePort,
-   			transferMethod
+			transferMethod
 		)
 
+	except SystemExit:
+		raise
 	except Exception as e:
 		print(f"Exception: {e}")
 		sys.exit(1)
-
 
 if __name__ == "__main__":
 	main()
