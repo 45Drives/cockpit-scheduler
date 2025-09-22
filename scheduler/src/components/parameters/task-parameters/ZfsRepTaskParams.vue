@@ -26,21 +26,73 @@
 
         <!-- Where to store copies -->
         <SimpleFormCard title="Where should the copies live?" description="Choose the destination pool and folder.">
-            <label class="block text-sm mt-1 text-default">Destination Pool</label>
-            <select v-model="destPool" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
+            <div class="flex flex-row justify-between items-center">
+                <label class="block text-sm mt-1 text-default">Destination Pool</label>
+                <!-- NEW: Existing Dataset toggle (matches advanced section) -->
+                <label class="flex items-center gap-2 text-xs">
+                    <span class="text-default">Existing Dataset</span>
+                    <input type="checkbox" v-model="useExistingDest" class="h-4 w-4 rounded" />
+                </label>
+            </div>
+
+            <select v-model="destPool" :class="[
+                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]">
                 <option value="">Select a Pool</option>
                 <option v-if="!loadingDestPools" v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
                 <option v-if="loadingDestPools">Loading...</option>
             </select>
 
-            <label class="block text-sm mt-3 text-default">Destination Folder (Dataset)</label>
-            <select v-model="destDataset" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
-                <option value="">Select a Dataset</option>
-                <option v-if="!loadingDestDatasets" v-for="ds in destDatasets" :key="ds" :value="ds">{{ ds }}</option>
-                <option v-if="loadingDestDatasets">Loading...</option>
-            </select>
+            <div class="mt-3">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="block text-sm text-default">Destination Folder (Dataset)</label>
+                    <!-- Error icon parity with advanced -->
+                    <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag"
+                        class="mt-1 w-5 h-5 text-danger" />
+                </div>
+
+                <!-- EXISTING DATASET: SELECT -->
+                <div v-if="useExistingDest">
+                    <select v-model="destDataset" :class="[
+                        'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                        destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]" :disabled="!destPool">
+                        <option value="">{{ destPool ? 'Select a Dataset' : 'Select a Pool first' }}</option>
+                        <option v-if="!loadingDestDatasets" v-for="ds in destDatasets" :key="ds" :value="ds">{{ ds }}
+                        </option>
+                        <option v-if="loadingDestDatasets">Loading...</option>
+                    </select>
+
+                    <!-- Overwrite toggle (zfs receive -F) -->
+                    <div name="migration-overwrite" class="mt-2 border-t border-default pt-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-sm leading-6 text-default">
+                                Allow overwrite if no common base or destination is ahead
+                            </label>
+                            <input type="checkbox" v-model="allowOverwrite" class="h-4 w-4 rounded" />
+                        </div>
+                        <p class="mt-1 text-xs text-default/70">
+                            If destination has diverged from the source, enabling this permits rollback with
+                            <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- NEW DATASET: TEXT INPUT + Create flag (local only) -->
+                <div v-else>
+                    <div class="flex flex-row justify-between items-center w-full flex-grow">
+                        <input type="text" v-model="destDataset" :class="[
+                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                            customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]" placeholder="Specify new dataset path to create on first run" />
+                        <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
+                            <label class="block text-xs text-default">Create</label>
+                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                        </div>
+                    </div>
+                </div>
+            </div>
         </SimpleFormCard>
 
         <!-- Copy to another server (optional) -->
@@ -54,7 +106,7 @@
             <div class="grid grid-cols-3 gap-2">
                 <div>
                     <label class="block text-sm mt-3 text-default">Server address</label>
-                    <input type="text" v-model="destHost" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                    <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target.value)" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                         destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                         placeholder="e.g. backup.example.com or 10.0.0.5" />
 
@@ -92,8 +144,6 @@
         <SimpleFormCard title="How long should we keep copies?"
             description="Choose for each side. Turn on “Forever” to keep everything.">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-1">
-
-                <!-- Source retention -->
                 <SimpleFormCard dense title="On this server (source)">
                     <div class="flex items-center justify-between">
                         <span class="sr-only">Forever toggle</span>
@@ -121,7 +171,6 @@
                     </template>
                 </SimpleFormCard>
 
-                <!-- Destination retention -->
                 <SimpleFormCard dense title="On the destination">
                     <div class="flex items-center justify-between">
                         <span class="sr-only">Forever toggle</span>
@@ -151,7 +200,6 @@
                         </p>
                     </template>
                 </SimpleFormCard>
-
             </div>
         </SimpleFormCard>
     </div>
@@ -252,9 +300,9 @@
                 class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
                 <div class="flex flex-row justify-between items-center">
                     <label class="-mt-1 block text-base leading-6 text-default">Target Location</label>
-                    <div class="mt-1 flex flex-col items-center text-center">
-                        <label class="block text-xs text-default">Custom</label>
-                        <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded" />
+                    <div class="mt-1 flex items-center gap-4">
+                        <label class="block text-xs text-default">Existing Dataset</label>
+                        <input type="checkbox" v-model="useExistingDest" class="h-4 w-4 rounded" />
                     </div>
                 </div>
                 <div name="destination-pool">
@@ -263,22 +311,14 @@
                         <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
                             class="mt-1 w-5 h-5 text-danger" />
                     </div>
-                    <div v-if="useCustomTarget">
-                        <input type="text" v-model="destPool" :class="[
-                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
-                        customDestPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" placeholder="Specify Target Pool" />
-                    </div>
-                    <div v-else>
-                        <select v-model="destPool" :class="[
+                    <select v-model="destPool" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                            <option value="">Select a Pool</option>
-                            <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                            <option v-if="loadingDestPools">Loading...</option>
-                        </select>
-                    </div>
+                        <option value="">Select a Pool</option>
+                        <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                        <option v-if="loadingDestPools">Loading...</option>
+                    </select>
                 </div>
                 <div name="destination-dataset">
                     <div class="flex flex-row justify-between items-center">
@@ -286,31 +326,37 @@
                         <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag"
                             class="mt-1 w-5 h-5 text-danger" />
                     </div>
-                    <div v-if="useCustomTarget">
+
+                    <!-- EXISTING DATASET: use a SELECT -->
+                    <div v-if="useExistingDest">
+                        <select v-model="destDataset" :class="[
+                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
+                        destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]" :disabled="!destPool">
+                            <option value="">{{ destPool ? 'Select a Dataset' : 'Select a Pool first' }}</option>
+                            <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :key="dataset"
+                                :value="dataset">
+                                {{ dataset }}
+                            </option>
+                            <option v-if="loadingDestDatasets">Loading...</option>
+                        </select>
+                    </div>
+
+                    <!-- NEW DATASET: use a TEXT INPUT (Create flag enabled locally) -->
+                    <div v-else>
                         <div class="flex flex-row justify-between items-center w-full flex-grow">
                             <input type="text" v-model="destDataset" :class="[
                             'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                             customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]" placeholder="Specify Target Dataset" />
+                        ]" placeholder="Specify new dataset path to create on first run" />
                             <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
                                 <label class="block text-xs text-default">Create</label>
                                 <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
                             </div>
                         </div>
                     </div>
-                    <div v-else>
-                        <select v-model="destDataset" :class="[
-                        'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
-                        destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]">
-                            <option value="">Select a Dataset</option>
-                            <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{
-                                dataset
-                                }}</option>
-                            <option v-if="loadingDestDatasets">Loading...</option>
-                        </select>
-                    </div>
                 </div>
+
                 <div name="destination-snapshot-retention" class="">
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
@@ -331,6 +377,18 @@
                             </option>
                         </select>
                     </div>
+                </div>
+                <div v-if="useExistingDest" name="migration-overwrite" class="mt-2 border-t border-default pt-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-sm leading-6 text-default">
+                            Allow overwrite if no common base or destination is ahead
+                        </label>
+                        <input type="checkbox" v-model="allowOverwrite" class="h-4 w-4 rounded" />
+                    </div>
+                    <p class="mt-1 text-xs text-default/70">
+                        If destination has diverged from the source, enabling this permits rollback with
+                        <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
+                    </p>
                 </div>
             </div>
 
@@ -484,7 +542,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat, testOrSetupSSH } from '../../../composables/utility';
+import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat, mostRecentCommonSnapshot, listSnapshots, ZfsSnap, destAheadOfCommon } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 
@@ -524,9 +582,7 @@ const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
 
-const destUserPass = ref('');   // add this for SIMPLE if you want auto setup
-
-const sshReady = ref(false);
+const allowOverwrite = ref(false);
 
 const sendRaw = ref(false);
 const sendCompressed = ref(false);
@@ -543,45 +599,15 @@ const destRetentionTime = ref(0);
 const destRetentionUnit = ref('');
 const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
 
-// Simple-mode helpers (optional QoL)
-const srcKeepForever = computed({
-    get: () => Number(srcRetentionTime || 0) === 0,
-    set: (v: boolean) => { if (v) srcRetentionTime.value = 0; else if (srcRetentionTime.value === 0) srcRetentionTime.value = 30 }
-})
-const destKeepForever = computed({
-    get: () => Number(destRetentionTime || 0) === 0,
-    set: (v: boolean) => { if (v) destRetentionTime.value = 0; else if (destRetentionTime.value === 0) destRetentionTime.value = 30 }
-})
-
-
-async function handleTestSSH() {
-    testingSSH.value = true;
-    try {
-        const res = await testOrSetupSSH({
-            host: destHost.value,
-            user: destUser.value || 'root',
-            port: destPort.value || 22,
-            passwordRef: destUserPass,
-            onEvent: ({ type, title, message }) => {
-                pushNotification(new Notification(title, message, type, type === 'info' ? 8000 : 6000));
-            }
-        });
-        sshReady.value = res.success;
-    } finally {
-        testingSSH.value = false;
-    }
-}
-
-const useCustomTarget = ref(false);
+const useCustomTarget = ref(true);
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
 const customSrcDatasetErrorTag = ref(false);
 const customDestPoolErrorTag = ref(false);
 const customDestDatasetErrorTag = ref(false);
 
-const makeNewDestDataset = ref(false);
-
-const showPassword = ref(false);
+const makeNewDestDataset = ref(true);
+const useExistingDest = ref(false);
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
@@ -592,12 +618,30 @@ const netCatTestResult = ref(false);
 const transferMethod = ref('ssh')
 const netCatPortError = ref(false);
 
-
 const errorList = inject<Ref<string[]>>('errors')!;
 
-const togglePassword = () => {
-    showPassword.value = !showPassword.value;
-};
+watch(useExistingDest, async (on) => {
+    makeNewDestDataset.value = !on;        // new dataset => Create
+    if (on) {
+        // ensure dataset list is fresh
+        if (destPool.value) {
+            if (destHost.value) await getRemoteDestinationDatasets();
+            else await getLocalDestinationDatasets();
+        }
+        // run preflight checks (common snap / divergence)
+        void checkDestDatasetContents();
+    } else {
+        allowOverwrite.value = false;
+        destDatasetErrorTag.value = false;
+    }
+});
+
+watch([useExistingDest, destDatasets], () => {
+    if (useExistingDest.value && destDataset.value && !doesItExist(destDataset.value, destDatasets.value)) {
+        destDataset.value = '';
+    }
+});
+
 
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
@@ -657,6 +701,8 @@ async function initializeData() {
         if(transferMethod.value == 'local' || transferMethod.value == ''){
             transferMethod.value = 'ssh'
         }
+        const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
+        allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
 
         // Check for source retention
         const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
@@ -693,7 +739,8 @@ async function initializeData() {
             srcRetentionUnit: srcRetentionUnit.value,
             destRetentionTime: destRetentionTime.value,
             destRetentionUnit: destRetentionUnit.value,
-            transferMethod: transferMethod.value
+            transferMethod: transferMethod.value,
+            allowOverwrite: allowOverwrite.value,
         }));
 
         loading.value = false;
@@ -725,7 +772,8 @@ function hasChanges() {
         srcRetentionTime: srcRetentionTime.value,
         srcRetentionUnit: srcRetentionUnit.value,
         destRetentionTime: destRetentionTime.value,
-        destRetentionUnit: destRetentionUnit.value
+        destRetentionUnit: destRetentionUnit.value,
+        allowOverwrite: allowOverwrite.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -937,54 +985,48 @@ function validateSource() {
 }
 
 function validateDestination() {
-    if (!hasDestDatasetChanged()) {
-        console.log("Destination has not changed, skipping checks.");
-        return;
-    }
-    if (useCustomTarget.value) {
-        if (!isValidPoolName(destPool.value)) {
-            errorList.value.push("Destination pool is invalid.");
-            customDestPoolErrorTag.value = true;
-        }
-        if (!isValidDatasetName(destDataset.value)) {
-            errorList.value.push("Destination dataset is invalid.");
-            customDestDatasetErrorTag.value = true;
-        }
-        if (!doesItExist(destPool.value, destPools.value)) {
-            errorList.value.push("Destination pool does not exist.");
-            customDestPoolErrorTag.value = true;
-        }
-        if (!makeNewDestDataset.value && !destHost.value) {
-            if (!doesItExist(destDataset.value, destDatasets.value)) {
-                errorList.value.push("Destination dataset does not exist.");
-                customDestDatasetErrorTag.value = true;
-            }
-        } 
+    if (!hasDestDatasetChanged()) return;
 
-    } else {
-        if (destPool.value === '') {
-            errorList.value.push("Destination pool is needed.");
-            destPoolErrorTag.value = true;
-        } else {
-            if (!doesItExist(destPool.value, destPools.value)) {
-                errorList.value.push("Destination pool does not exist.");
-                customDestPoolErrorTag.value = true;
-            }
-        }
+    // Common checks
+    if (destPool.value === '') {
+        errorList.value.push("Destination pool is needed.");
+        destPoolErrorTag.value = true;
+    } else if (!doesItExist(destPool.value, destPools.value)) {
+        errorList.value.push("Destination pool does not exist.");
+        customDestPoolErrorTag.value = true;
+    }
+
+    // EXISTING DATASET: must pick one that exists in the list
+    if (useExistingDest.value) {
         if (destDataset.value === '') {
             errorList.value.push("Destination dataset is needed.");
             destDatasetErrorTag.value = true;
-        } else {
-            if (!doesItExist(destDataset.value, destDatasets.value)) {
-                errorList.value.push("Destination dataset does not exist.");
-                customDestDatasetErrorTag.value = true;
-            }
+            return;
         }
+        if (!doesItExist(destDataset.value, destDatasets.value)) {
+            errorList.value.push("Selected destination dataset does not exist in this pool.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+        // Snapshot/common-base checks happen in checkDestDatasetContents()
+        return;
+    }
+
+    // NEW DATASET: validate name + make sure it doesn't already exist
+    if (!isValidDatasetName(destDataset.value)) {
+        errorList.value.push("Destination dataset name is invalid.");
+        customDestDatasetErrorTag.value = true;
+        return;
+    }
+    if (doesItExist(destDataset.value, destDatasets.value)) {
+        errorList.value.push("That dataset already exists. Choose 'Existing Dataset' or use a new path.");
+        customDestDatasetErrorTag.value = true;
+        return;
     }
 }
 
 
-async function checkDestDatasetContents() {
+/* async function checkDestDatasetContents() {
     if (!hasDestDatasetChanged()) {
       //  console.log("Destination has not changed, skipping checks.");
         return;
@@ -1055,7 +1097,127 @@ async function checkDestDatasetContents() {
         console.error("Error while checking dataset contents:", error);
         errorList.value.push("An unexpected error occurred while validating dataset contents.");
     }
+} */
+/* 
+async function checkDestDatasetContents() {
+    if (!hasDestDatasetChanged()) return;
+
+    try {
+        // If user asked to create a new dataset explicitly, no need to block here
+        if (makeNewDestDataset.value) {
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        // Gather snapshots on source and destination
+        const srcSnaps = await listSnapshots(
+            sourceDataset.value
+        );
+
+        let dstSnaps: ZfsSnap[] = [];
+        if (destHost.value) {
+            const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
+            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
+        } else {
+            dstSnaps = await listSnapshots(destDataset.value);
+        }
+
+        // If destination has no snapshots and is empty → allow
+        if (!dstSnaps.length) {
+            const empty = destHost.value
+                ? await isDatasetEmpty(destDataset.value, destUser.value, destHost.value,
+                    transferMethod.value === "netcat" ? "22" : String(destPort.value))
+                : await isDatasetEmpty(destDataset.value);
+
+            if (empty) {
+                destDatasetErrorTag.value = false;
+                return;
+            }
+        }
+
+        // Destination has snapshots: check for common base
+        const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
+
+        if (common) {
+            // Migration path: OK (incremental base exists)
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        // No common base
+        if (allowOverwrite.value) {
+            // We will proceed with -F; allow selection
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        // Block and nudge the user
+        errorList.value.push(
+            "Destination has snapshots that do not match the source. Either enable 'Allow overwrite if no common snapshot' or choose/create an empty destination."
+        );
+        destDatasetErrorTag.value = true;
+
+    } catch (error) {
+        console.error("Error while checking dataset contents:", error);
+        errorList.value.push("An unexpected error occurred while validating destination dataset.");
+        destDatasetErrorTag.value = true;
+    }
+} */
+
+async function checkDestDatasetContents() {
+    // Only matters when using existing
+    if (!useExistingDest.value) return;
+    if (!hasDestDatasetChanged()) return;
+
+    try {
+        const srcSnaps = await listSnapshots(sourceDataset.value);
+        let dstSnaps: ZfsSnap[] = [];
+
+        if (destHost.value) {
+            const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
+            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
+        } else {
+            dstSnaps = await listSnapshots(destDataset.value);
+        }
+
+        // Empty destination is always fine
+        if (!dstSnaps.length) {
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
+
+        if (!common) {
+            // No common base
+            if (allowOverwrite.value) {
+                destDatasetErrorTag.value = false; // proceed with -F
+                return;
+            }
+            errorList.value.push("No common snapshot found. Enable 'Allow overwrite' or choose an empty/new destination.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+
+        // Has common, but is dest ahead?
+        const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
+        if (diverged && !allowOverwrite.value) {
+            errorList.value.push("Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+
+        // Good to go
+        destDatasetErrorTag.value = false;
+
+    } catch (err) {
+        console.error("checkDestDatasetContents:", err);
+        errorList.value.push("Failed to verify destination snapshots.");
+        destDatasetErrorTag.value = true;
+    }
 }
+
+
 function isValidPoolName(poolName) {
     if (poolName === '') {
         return false;
@@ -1124,8 +1286,7 @@ async function validateParams() {
     validateHost();
     validateDestination();
     validatePort();
-    await checkDestDatasetContents();
-    
+    if (useExistingDest.value) await checkDestDatasetContents();
     validateCustomName();
 
     if (errorList.value.length == 0) {
@@ -1153,6 +1314,8 @@ function setParams() {
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
             .addChild(new StringParameter('Transfer Method', 'transferMethod', transferMethod.value))
+            .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
+            .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
 
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')

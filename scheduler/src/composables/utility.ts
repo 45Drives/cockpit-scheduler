@@ -573,6 +573,65 @@ export async function doSnapshotsExist(
 	return null;
   }
 }
+export type ZfsSnap = {
+	name: string;      // tank/fs@stamp
+	guid: string;
+	creation: number;  // epoch seconds
+};
+
+// Local or remote snapshot listing
+export async function listSnapshots(
+	dataset: string,
+	user?: string,
+	host?: string,
+	port?: string
+): Promise<ZfsSnap[]> {
+	const base = ["zfs", "list", "-H", "-o", "name,guid,creation", "-t", "snapshot", "-r", dataset];
+	const cmd: string[] = user && host
+		? (port && port !== "22" ? ["ssh", "-p", port, `${user}@${host}`, ...base] : ["ssh", `${user}@${host}`, ...base])
+		: base;
+
+	const { useSpawn, errorString } = legacy; // you already import legacy elsewhere
+
+	try {
+		const st = useSpawn(cmd, { superuser: "try" });
+		const out = (await st.promise()).stdout!;
+		const snaps: ZfsSnap[] = out
+			.trim()
+			.split("\n")
+			.filter(Boolean)
+			.map(line => {
+				const [name, guid, cstr] = line.split(/\s+/, 3);
+				// creation is like: "Fri Sep 13 14:08 2024" on many distros
+				const creation = Date.parse(cstr) ? Math.floor(Date.parse(cstr) / 1000) : Math.floor(new Date(cstr).getTime() / 1000);
+				return { name, guid, creation: creation || 0 };
+			});
+		// Sort oldest -> newest
+		snaps.sort((a, b) => a.creation - b.creation);
+		return snaps;
+	} catch (e) {
+		console.error("listSnapshots error:", e);
+		return [];
+	}
+}
+
+// Find most-recent common by GUID
+export function mostRecentCommonSnapshot(src: ZfsSnap[], dst: ZfsSnap[]): ZfsSnap | null {
+	const srcByGuid = new Map(src.map(s => [s.guid, s]));
+	let best: ZfsSnap | null = null;
+	for (const d of dst) {
+		const s = srcByGuid.get(d.guid);
+		if (s && (!best || s.creation > best.creation)) best = s;
+	}
+	return best;
+}
+
+// Is destination ahead of the common base?
+export function destAheadOfCommon(src: ZfsSnap[], dst: ZfsSnap[], common: ZfsSnap): boolean {
+	const srcGuids = new Set(src.map(s => s.guid));
+	// any dest snapshot after common.creation that source does NOT have?
+	return dst.some(d => d.creation > common.creation && !srcGuids.has(d.guid));
+}
 
 
 export async function ensurePasswordlessSSH(
@@ -592,7 +651,7 @@ export async function ensurePasswordlessSSH(
 	);
 
 	try {
-		// ✅ resolves on exit 0
+		// resolves on exit 0
 		const res: any = await state.promise(); // often has { stdout, stderr }, but no .code
 		const stdout = (res?.stdout ?? '').toString();
 		const parsed = safeParseJsonLoose(stdout);
@@ -603,7 +662,7 @@ export async function ensurePasswordlessSSH(
 			raw: stdout
 		};
 	} catch (err: any) {
-		// ❌ rejects on non-zero exit; error carries details
+		// rejects on non-zero exit; error carries details
 		const stdout = (err?.stdout ?? '').toString();
 		const stderr = (err?.stderr ?? '').toString();
 		const parsed = safeParseJsonLoose(stdout || stderr);

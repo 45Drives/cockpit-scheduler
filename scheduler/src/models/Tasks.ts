@@ -75,7 +75,8 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
                 .addChild(new StringParameter('Custom Name', 'customName', ''))
                 .addChild(new StringParameter('Transfer Method', 'transferMethod', ''))
-
+                .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', false))
+                .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', false)) 
             )
             .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
                 .addChild(new SnapshotRetentionParameter('Source', 'source', 0, 'minutes'))

@@ -264,7 +264,7 @@ async function saveTask() {
     }
   //  console.log('sanitizedName:', sanitizedName);
 
-    console.log("template: ", template, " parameters ", parameters)
+    // console.log("template: ", template, " parameters ", parameters)
     // const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
     // const notes = notesTask.value ? notesTask.value : '';  // Ensure notes is always a string
     // if (isStandaloneTask.value) {
