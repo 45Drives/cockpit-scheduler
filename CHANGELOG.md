@@ -1,3 +1,3 @@
-## task scheduler 1.3.9-1
+## task scheduler 1.3.9-2
 
-* Updates simplified UI to better mesh with Setup Wizard webview
+* Testing package for new replication snapshot handling

@@ -1,3 +1,9 @@
+cockpit-scheduler (1.3.9-2bookworm) bookworm; urgency=medium
+
+  * Testing package for new replication snapshot handling
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 22 Sep 2025 09:42:05 -0300
+
 cockpit-scheduler (1.3.9-1bookworm) bookworm; urgency=medium
 
   * Updates simplified UI to better mesh with Setup Wizard webview
