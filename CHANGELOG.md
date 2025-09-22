@@ -1,3 +1,3 @@
-## task scheduler 1.3.9-2
+## task scheduler 1.3.9-3
 
-* Testing package for new replication snapshot handling
+* Updates test package build - functions were lost during merge
