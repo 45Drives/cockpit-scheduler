@@ -3,7 +3,7 @@ import './assets/scheduler.css';
 import "./style.css";
 import App from './App.vue';
 import '@45drives/houston-common-css/src/index.css';
-import '../../houston-common/houston-common-ui/dist/style.css';
+import '@45drives/houston-common-ui/style.css';
 import { createPinia } from 'pinia';
 import { router } from './router';
 import { applyThemeFromAliasStyle } from "./composables/theme.js";
