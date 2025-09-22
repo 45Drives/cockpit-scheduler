@@ -5,9 +5,14 @@ import os
 def run_task_now(unit_name):
     try:
         # Reload systemd to recognize new or changed units
-        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+        # subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+        
         # Start the service 
-        subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}.service'], check=True)
+        # subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}.service'], check=True)
+        
+        # Start the service (do not queue a second run if one is already starting)
+        subprocess.run(['sudo', 'systemctl', 'start', '--job-mode=fail', f'{unit_name}.service'], check=True)
+
     except subprocess.CalledProcessError as e:
         print(f"Failed to run task: {e}")
         sys.exit(1)

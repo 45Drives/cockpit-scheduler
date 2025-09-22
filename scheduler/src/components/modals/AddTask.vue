@@ -252,15 +252,15 @@ async function saveTask() {
     }
   //  console.log('sanitizedName:', sanitizedName);
 
-    console.log("template: ", template, " parameters ", parameters)
+    // console.log("template: ", template, " parameters ", parameters)
     // const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
     const notes = notesTask.value ? notesTask.value : '';  // Ensure notes is always a string
     if (isStandaloneTask.value) {
         const schedule = new TaskSchedule(false, []);
         const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes || '');
       //  console.log('task (no schedule):', task);
-        console.log("Saving task with notes:", JSON.stringify(notes));
-        console.log("Task instance:", JSON.stringify(task));
+        // console.log("Saving task with notes:", JSON.stringify(notes));
+        // console.log("Task instance:", JSON.stringify(task));
 
         await myScheduler.registerTaskInstance(task);
         pushNotification(new Notification('Task Save Successful', `Task has been saved.`, 'success', 6000));
@@ -271,8 +271,8 @@ async function saveTask() {
         const schedule = new TaskSchedule(true, []);
         const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes);
       //  console.log('task (for scheduling):', task);
-        console.log("Saving task with notes:", JSON.stringify(notes));
-        console.log("Task instance:", JSON.stringify(task));
+        // console.log("Saving task with notes:", JSON.stringify(notes));
+        // console.log("Task instance:", JSON.stringify(task));
 
         newTask.value = task;
     }

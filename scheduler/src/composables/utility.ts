@@ -573,107 +573,62 @@ export async function doSnapshotsExist(
 	return null;
   }
 }
+export type ZfsSnap = {
+	name: string;      // tank/fs@stamp
+	guid: string;
+	creation: number;  // epoch seconds
+};
 
+// Local or remote snapshot listing
+export async function listSnapshots(
+	dataset: string,
+	user?: string,
+	host?: string,
+	port?: string
+): Promise<ZfsSnap[]> {
+	const base = ["zfs", "list", "-H", "-o", "name,guid,creation", "-t", "snapshot", "-r", dataset];
+	const cmd: string[] = user && host
+		? (port && port !== "22" ? ["ssh", "-p", port, `${user}@${host}`, ...base] : ["ssh", `${user}@${host}`, ...base])
+		: base;
 
-export async function ensurePasswordlessSSH(
-	host: string,
-	user: string = 'root',
-	port: number | string = 22,
-	password?: string,
-	quiet: boolean = true
-): Promise<{ success: boolean; message: string; data?: any; raw?: string; status?: number }> {
-	const args = ['--host', host, '--user', user, '--port', String(port), '--key-type', 'auto'];
-	if (password) args.push('--password', password);
-	if (quiet) args.push('--quiet');
-
-	const state = useSpawn(
-		['/usr/bin/env', 'python3', '-c', ensure_ssh_script, ...args],
-		{ superuser: 'try' }
-	);
+	const { useSpawn, errorString } = legacy; // you already import legacy elsewhere
 
 	try {
-		// ✅ resolves on exit 0
-		const res: any = await state.promise(); // often has { stdout, stderr }, but no .code
-		const stdout = (res?.stdout ?? '').toString();
-		const parsed = safeParseJsonLoose(stdout);
-		return {
-			success: true,
-			message: (parsed?.message || stdout || 'OK'),
-			data: parsed || undefined,
-			raw: stdout
-		};
-	} catch (err: any) {
-		// ❌ rejects on non-zero exit; error carries details
-		const stdout = (err?.stdout ?? '').toString();
-		const stderr = (err?.stderr ?? '').toString();
-		const parsed = safeParseJsonLoose(stdout || stderr);
-		return {
-			success: false,
-			message: (parsed?.message || stderr || stdout || 'Unknown error'),
-			data: parsed || undefined,
-			raw: stdout || stderr,
-			status: err?.status
-		};
+		const st = useSpawn(cmd, { superuser: "try" });
+		const out = (await st.promise()).stdout!;
+		const snaps: ZfsSnap[] = out
+			.trim()
+			.split("\n")
+			.filter(Boolean)
+			.map(line => {
+				const [name, guid, cstr] = line.split(/\s+/, 3);
+				// creation is like: "Fri Sep 13 14:08 2024" on many distros
+				const creation = Date.parse(cstr) ? Math.floor(Date.parse(cstr) / 1000) : Math.floor(new Date(cstr).getTime() / 1000);
+				return { name, guid, creation: creation || 0 };
+			});
+		// Sort oldest -> newest
+		snaps.sort((a, b) => a.creation - b.creation);
+		return snaps;
+	} catch (e) {
+		console.error("listSnapshots error:", e);
+		return [];
 	}
 }
 
-export type SshOutcome = 'ok-local' | 'ok-already' | 'ok-configured' | 'failed' | 'error';
-
-export interface TestOrSetupSSHResult {
-	success: boolean;
-	outcome: SshOutcome;
-	message: string;
-	details?: any;
+// Find most-recent common by GUID
+export function mostRecentCommonSnapshot(src: ZfsSnap[], dst: ZfsSnap[]): ZfsSnap | null {
+	const srcByGuid = new Map(src.map(s => [s.guid, s]));
+	let best: ZfsSnap | null = null;
+	for (const d of dst) {
+		const s = srcByGuid.get(d.guid);
+		if (s && (!best || s.creation > best.creation)) best = s;
+	}
+	return best;
 }
 
-export async function testOrSetupSSH(opts: {
-	host: string;
-	user?: string;
-	port?: number | string;
-	passwordRef?: Ref<string>;   // cleared if provided
-	onEvent?: (e: { type: 'info' | 'success' | 'error'; title: string; message: string }) => void; // optional hook
-}): Promise<TestOrSetupSSHResult> {
-	const host = (opts.host || '').trim();
-	const user = (opts.user || 'root').trim();
-	const port = opts.port ?? 22;
-
-	if (!host) {
-		opts.onEvent?.({ type: 'success', title: 'Local Transfer', message: 'No remote host specified. SSH not required.' });
-		return { success: true, outcome: 'ok-local', message: 'Local transfer (no host)' };
-	}
-
-	try {
-		const pre = await testSSH(`${user}@${host}`);
-		if (pre) {
-			opts.onEvent?.({ type: 'success', title: 'Connection Successful!', message: 'Passwordless SSH connection established.' });
-			return { success: true, outcome: 'ok-already', message: 'Passwordless already works' };
-		}
-	} catch {
-		// ignore; proceed to setup attempt
-	}
-
-	opts.onEvent?.({
-		type: 'info',
-		title: 'Setting up SSH…',
-		message: `Passwordless SSH not detected for ${user}@${host}. Generating/installing a key…`
-	});
-
-	try {
-		const password = opts.passwordRef?.value;
-		const res = await ensurePasswordlessSSH(host, user, port, password, /*quiet*/ true);
-		if (opts.passwordRef) opts.passwordRef.value = ''; // always scrub
-
-		if (res.success) {
-			opts.onEvent?.({ type: 'success', title: 'SSH Ready', message: 'Passwordless SSH is configured.' });
-			return { success: true, outcome: 'ok-configured', message: res.message || 'Configured', details: res.data };
-		} else {
-			opts.onEvent?.({ type: 'error', title: 'SSH Setup Failed', message: res.message?.toString().slice(0, 800) || 'Unknown error' });
-			return { success: false, outcome: 'failed', message: res.message || 'Failed', details: res.data };
-		}
-	} catch (err: any) {
-		if (opts.passwordRef) opts.passwordRef.value = '';
-		const msg = (err?.message || errorString(err) || 'Unknown error').toString().slice(0, 800);
-		opts.onEvent?.({ type: 'error', title: 'SSH Setup Error', message: msg });
-		return { success: false, outcome: 'error', message: msg };
-	}
+// Is destination ahead of the common base?
+export function destAheadOfCommon(src: ZfsSnap[], dst: ZfsSnap[], common: ZfsSnap): boolean {
+	const srcGuids = new Set(src.map(s => s.guid));
+	// any dest snapshot after common.creation that source does NOT have?
+	return dst.some(d => d.creation > common.creation && !srcGuids.has(d.guid));
 }

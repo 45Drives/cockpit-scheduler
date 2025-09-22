@@ -161,7 +161,12 @@ def create_task(template_name, script_path, param_env_path):
     exec_start_command = generate_exec_start(template_name, parameters, script_path)
     service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
-    service_template_content = service_template_content.replace("{ExecStart}", exec_start_command)
+    # service_template_content = service_template_content.replace("{ExecStart}", exec_start_command)
+    locked_exec = (
+        "/bin/sh -c 'exec 9>/run/%n.lock && flock -n 9 || "
+        "{ echo \"Already running, skipping.\"; exit 0; }; exec " + exec_start_command + "'"
+    )
+    service_template_content = service_template_content.replace("{ExecStart}", locked_exec)
     
     generate_concrete_file(service_template_content, output_path_service)
     logging.debug("Standalone concrete service file generated successfully.")

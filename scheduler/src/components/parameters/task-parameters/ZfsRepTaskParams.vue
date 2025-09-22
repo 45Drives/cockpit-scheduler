@@ -247,162 +247,184 @@
                 </div>
             </div>
 
-            <!-- BOTTOM LEFT -->
-            <div name="destination-data"
-                class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="-mt-1 block text-base leading-6 text-default">Target Location</label>
-                    <div class="mt-1 flex flex-col items-center text-center">
-                        <label class="block text-xs text-default">Custom</label>
-                        <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded" />
-                    </div>
+        <!-- BOTTOM LEFT -->
+        <div name="destination-data"
+            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
+            <div class="flex flex-row justify-between items-center">
+                <label class="-mt-1 block text-base leading-6 text-default">Target Location</label>
+                <!-- <div class="mt-1 flex flex-col items-center text-center">
+                    <label class="block text-xs text-default">Custom</label>
+                    <input type="checkbox" v-model="useCustomTarget" class="h-4 w-4 rounded" />
+                </div> -->
+                <div class="mt-1 flex items-center gap-4">
+                    <label class="block text-xs text-default">Existing Dataset</label>
+                    <input type="checkbox" v-model="useExistingDest" class="h-4 w-4 rounded" />
                 </div>
-                <div name="destination-pool">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
-                        <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
-                            class="mt-1 w-5 h-5 text-danger" />
-                    </div>
-                    <div v-if="useCustomTarget">
-                        <input type="text" v-model="destPool" :class="[
+            </div>
+            <div name="destination-pool">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                    <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
+                        class="mt-1 w-5 h-5 text-danger" />
+                </div>
+                <!-- <div v-if="useCustomTarget">
+                    <input type="text" v-model="destPool" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customDestPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]" placeholder="Specify Target Pool" />
-                    </div>
-                    <div v-else>
-                        <select v-model="destPool" :class="[
+                </div>
+                <div v-else> -->
+                <select v-model="destPool" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                            <option value="">Select a Pool</option>
-                            <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
-                            <option v-if="loadingDestPools">Loading...</option>
-                        </select>
-                    </div>
+                    <option value="">Select a Pool</option>
+                    <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                    <option v-if="loadingDestPools">Loading...</option>
+                </select>
+                <!-- </div> -->
+            </div>
+            <div name="destination-dataset">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
+                    <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag"
+                        class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <div name="destination-dataset">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
-                        <ExclamationCircleIcon v-if="destDatasetErrorTag || customDestDatasetErrorTag"
-                            class="mt-1 w-5 h-5 text-danger" />
-                    </div>
-                    <div v-if="useCustomTarget">
-                        <div class="flex flex-row justify-between items-center w-full flex-grow">
-                            <input type="text" v-model="destDataset" :class="[
-                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
-                            customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]" placeholder="Specify Target Dataset" />
-                            <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
-                                <label class="block text-xs text-default">Create</label>
-                                <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
-                            </div>
-                        </div>
-                    </div>
-                    <div v-else>
-                        <select v-model="destDataset" :class="[
+
+                <!-- EXISTING DATASET: use a SELECT -->
+                <div v-if="useExistingDest">
+                    <select v-model="destDataset" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]">
-                            <option value="">Select a Dataset</option>
-                            <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :value="dataset">{{
-                                dataset
-                                }}</option>
-                            <option v-if="loadingDestDatasets">Loading...</option>
-                        </select>
-                    </div>
+                    ]" :disabled="!destPool">
+                        <option value="">{{ destPool ? 'Select a Dataset' : 'Select a Pool first' }}</option>
+                        <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :key="dataset"
+                            :value="dataset">
+                            {{ dataset }}
+                        </option>
+                        <option v-if="loadingDestDatasets">Loading...</option>
+                    </select>
                 </div>
-                <div name="destination-snapshot-retention" class="">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                            Destination Retention Policy
-                            <InfoTile class="ml-1"
-                                :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
-                        </label>
-                    </div>
-                    <div class="flex flex-row gap-2 w-full items-center justify-between">
-                        <input type="number" min="0" v-model="destRetentionTime"
-                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            placeholder="" />
-                        <select v-model="destRetentionUnit"
-                            class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                            <option value="">Select an Interval</option>
-                            <option v-for="option in retentionUnitOptions" :key="option" :value="option">
-                                {{ option }}
-                            </option>
-                        </select>
+
+                <!-- NEW DATASET: use a TEXT INPUT (Create flag enabled locally) -->
+                <div v-else>
+                    <div class="flex flex-row justify-between items-center w-full flex-grow">
+                        <input type="text" v-model="destDataset" :class="[
+                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                            customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                        ]" placeholder="Specify new dataset path to create on first run" />
+                        <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
+                            <label class="block text-xs text-default">Create</label>
+                            <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- TOP RIGHT -->
-            <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
-                <div class="grid grid-cols-2">
-                    <label class="mt-1 col-span-1 block text-base leading-6 text-default">Select Transfer Method</label>
-                    <select v-model="transferMethod"
-                        class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"
-                        id="method">
-                        <option value="ssh">SSH</option>
-                        <option value="netcat">Netcat</option>
+            <div name="destination-snapshot-retention" class="">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
+                        Destination Retention Policy
+                        <InfoTile class="ml-1"
+                            :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
+                    </label>
+                </div>
+                <div class="flex flex-row gap-2 w-full items-center justify-between">
+                    <input type="number" min="0" v-model="destRetentionTime"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="" />
+                    <select v-model="destRetentionUnit"
+                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
+                        <option value="">Select an Interval</option>
+                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
+                            {{ option }}
+                        </option>
                     </select>
+                </div>
+            </div>
+            <div v-if="useExistingDest" name="migration-overwrite" class="mt-2 border-t border-default pt-2">
+                <div class="flex items-center justify-between">
+                    <label class="block text-sm leading-6 text-default">
+                        Allow overwrite if no common base or destination is ahead
+                    </label>
+                    <input type="checkbox" v-model="allowOverwrite" class="h-4 w-4 rounded" />
+                </div>
+                <p class="mt-1 text-xs text-default/70">
+                    If destination has diverged from the source, enabling this permits rollback with
+                    <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
+                </p>
+            </div>
+        </div>
 
+        <!-- TOP RIGHT -->
+        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
+            <div class="grid grid-cols-2">
+                <label class="mt-1 col-span-1 block text-base leading-6 text-default">Select Transfer Method</label>
+                <select v-model="transferMethod"
+                    class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"
+                    id="method">
+                    <option value="ssh">SSH</option>
+                    <option value="netcat">Netcat</option>
+                </select>
+
+            </div>
+            <div class="grid grid-cols-2 mt-2">
+                <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
+                <div class="col-span-1 items-end text-end justify-end">
+                    <button disabled v-if="testingNetcat || testingSSH "
+                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                        <svg aria-hidden="true" role="status"
+                            class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default" viewBox="0 0 100 101"
+                            fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+                                fill="currentColor" />
+                            <path
+                                d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+                                fill="text-success" />
+                        </svg>
+                        Testing...
+                    </button>
+                    <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
+                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                    <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
+                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
                 </div>
-                <div class="grid grid-cols-2 mt-2">
-                    <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
-                    <div class="col-span-1 items-end text-end justify-end">
-                        <button disabled v-if="testingNetcat || testingSSH "
-                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
-                            <svg aria-hidden="true" role="status"
-                                class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
-                                viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
-                                    fill="currentColor" />
-                                <path
-                                    d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
-                                    fill="text-success" />
-                            </svg>
-                            Testing...
-                        </button>
-                        <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
-                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
-                        <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
-                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
-                    </div>
+            </div>
+            <div name="destination-host" class="mt-1">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="block text-sm leading-6 text-default">Host</label>
+                    <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <div name="destination-host" class="mt-1">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="block text-sm leading-6 text-default">Host</label>
-                        <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
-                    </div>
-                    <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
+                <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
                     'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                     destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" placeholder="Leave blank for local replication." />
+            </div>
+            <div name="destination-user" class="mt-1">
+                <label class="block text-sm leading-6 text-default">User</label>
+                <input v-if="destHost === ''" disabled type="text" v-model="destUser"
+                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                    placeholder="'root' is default" />
+                <input v-else type="text" v-model="destUser"
+                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                    placeholder="'root' is default" />
+            </div>
+            <div name="destination-port" class="mt-1">
+                <div class="flex flex-row justify-between items-center"><label
+                        class="block text-sm leading-6 text-default">Port</label>
+                    <ExclamationCircleIcon v-if="netCatPortError" class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <div name="destination-user" class="mt-1">
-                    <label class="block text-sm leading-6 text-default">User</label>
-                    <input v-if="destHost === ''" disabled type="text" v-model="destUser"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="'root' is default" />
-                    <input v-else type="text" v-model="destUser"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="'root' is default" />
-                </div>
-                <div name="destination-port" class="mt-1">
-                    <div class="flex flex-row justify-between items-center"><label
-                            class="block text-sm leading-6 text-default">Port</label>
-                        <ExclamationCircleIcon v-if="netCatPortError" class="mt-1 w-5 h-5 text-danger" />
-                    </div>
-                    <input v-if="destHost === ''" disabled type="number"
-                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6"
-                        v-model="destPort" min="0" max="65535" placeholder="22 is default" />
-                    <input v-else type="number" v-model="destPort" :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
+                <input v-if="destHost === ''" disabled type="number"
+                    class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6"
+                    v-model="destPort" min="0" max="65535" placeholder="22 is default" />
+                <input v-else type="number" v-model="destPort" :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
                     ]" max="65535"
-                        :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
-                        @input="validatePort" />
-                </div>
+                    :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default' "
+                    @input="validatePort" />
             </div>
+        </div>
 
             <!-- BOTTOM RIGHT -->
             <div name="send-options"
@@ -484,7 +506,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat, testOrSetupSSH } from '../../../composables/utility';
+import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat, mostRecentCommonSnapshot, listSnapshots, ZfsSnap, destAheadOfCommon } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 
@@ -524,9 +546,7 @@ const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
 
-const destUserPass = ref('');   // add this for SIMPLE if you want auto setup
-
-const sshReady = ref(false);
+const allowOverwrite = ref(false);
 
 const sendRaw = ref(false);
 const sendCompressed = ref(false);
@@ -543,45 +563,15 @@ const destRetentionTime = ref(0);
 const destRetentionUnit = ref('');
 const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
 
-// Simple-mode helpers (optional QoL)
-const srcKeepForever = computed({
-    get: () => Number(srcRetentionTime || 0) === 0,
-    set: (v: boolean) => { if (v) srcRetentionTime.value = 0; else if (srcRetentionTime.value === 0) srcRetentionTime.value = 30 }
-})
-const destKeepForever = computed({
-    get: () => Number(destRetentionTime || 0) === 0,
-    set: (v: boolean) => { if (v) destRetentionTime.value = 0; else if (destRetentionTime.value === 0) destRetentionTime.value = 30 }
-})
-
-
-async function handleTestSSH() {
-    testingSSH.value = true;
-    try {
-        const res = await testOrSetupSSH({
-            host: destHost.value,
-            user: destUser.value || 'root',
-            port: destPort.value || 22,
-            passwordRef: destUserPass,
-            onEvent: ({ type, title, message }) => {
-                pushNotification(new Notification(title, message, type, type === 'info' ? 8000 : 6000));
-            }
-        });
-        sshReady.value = res.success;
-    } finally {
-        testingSSH.value = false;
-    }
-}
-
-const useCustomTarget = ref(false);
+const useCustomTarget = ref(true);
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
 const customSrcDatasetErrorTag = ref(false);
 const customDestPoolErrorTag = ref(false);
 const customDestDatasetErrorTag = ref(false);
 
-const makeNewDestDataset = ref(false);
-
-const showPassword = ref(false);
+const makeNewDestDataset = ref(true);
+const useExistingDest = ref(false);
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
@@ -592,12 +582,30 @@ const netCatTestResult = ref(false);
 const transferMethod = ref('ssh')
 const netCatPortError = ref(false);
 
-
 const errorList = inject<Ref<string[]>>('errors')!;
 
-const togglePassword = () => {
-    showPassword.value = !showPassword.value;
-};
+watch(useExistingDest, async (on) => {
+    makeNewDestDataset.value = !on;        // new dataset => Create
+    if (on) {
+        // ensure dataset list is fresh
+        if (destPool.value) {
+            if (destHost.value) await getRemoteDestinationDatasets();
+            else await getLocalDestinationDatasets();
+        }
+        // run preflight checks (common snap / divergence)
+        void checkDestDatasetContents();
+    } else {
+        allowOverwrite.value = false;
+        destDatasetErrorTag.value = false;
+    }
+});
+
+watch([useExistingDest, destDatasets], () => {
+    if (useExistingDest.value && destDataset.value && !doesItExist(destDataset.value, destDatasets.value)) {
+        destDataset.value = '';
+    }
+});
+
 
 async function initializeData() {
     // if props.task, then edit mode active (retrieve data)
@@ -657,6 +665,8 @@ async function initializeData() {
         if(transferMethod.value == 'local' || transferMethod.value == ''){
             transferMethod.value = 'ssh'
         }
+        const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
+        allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
 
         // Check for source retention
         const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
@@ -693,7 +703,8 @@ async function initializeData() {
             srcRetentionUnit: srcRetentionUnit.value,
             destRetentionTime: destRetentionTime.value,
             destRetentionUnit: destRetentionUnit.value,
-            transferMethod: transferMethod.value
+            transferMethod: transferMethod.value,
+            allowOverwrite: allowOverwrite.value,
         }));
 
         loading.value = false;
@@ -725,7 +736,8 @@ function hasChanges() {
         srcRetentionTime: srcRetentionTime.value,
         srcRetentionUnit: srcRetentionUnit.value,
         destRetentionTime: destRetentionTime.value,
-        destRetentionUnit: destRetentionUnit.value
+        destRetentionUnit: destRetentionUnit.value,
+        allowOverwrite: allowOverwrite.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -937,54 +949,48 @@ function validateSource() {
 }
 
 function validateDestination() {
-    if (!hasDestDatasetChanged()) {
-        console.log("Destination has not changed, skipping checks.");
-        return;
-    }
-    if (useCustomTarget.value) {
-        if (!isValidPoolName(destPool.value)) {
-            errorList.value.push("Destination pool is invalid.");
-            customDestPoolErrorTag.value = true;
-        }
-        if (!isValidDatasetName(destDataset.value)) {
-            errorList.value.push("Destination dataset is invalid.");
-            customDestDatasetErrorTag.value = true;
-        }
-        if (!doesItExist(destPool.value, destPools.value)) {
-            errorList.value.push("Destination pool does not exist.");
-            customDestPoolErrorTag.value = true;
-        }
-        if (!makeNewDestDataset.value && !destHost.value) {
-            if (!doesItExist(destDataset.value, destDatasets.value)) {
-                errorList.value.push("Destination dataset does not exist.");
-                customDestDatasetErrorTag.value = true;
-            }
-        } 
+    if (!hasDestDatasetChanged()) return;
 
-    } else {
-        if (destPool.value === '') {
-            errorList.value.push("Destination pool is needed.");
-            destPoolErrorTag.value = true;
-        } else {
-            if (!doesItExist(destPool.value, destPools.value)) {
-                errorList.value.push("Destination pool does not exist.");
-                customDestPoolErrorTag.value = true;
-            }
-        }
+    // Common checks
+    if (destPool.value === '') {
+        errorList.value.push("Destination pool is needed.");
+        destPoolErrorTag.value = true;
+    } else if (!doesItExist(destPool.value, destPools.value)) {
+        errorList.value.push("Destination pool does not exist.");
+        customDestPoolErrorTag.value = true;
+    }
+
+    // EXISTING DATASET: must pick one that exists in the list
+    if (useExistingDest.value) {
         if (destDataset.value === '') {
             errorList.value.push("Destination dataset is needed.");
             destDatasetErrorTag.value = true;
-        } else {
-            if (!doesItExist(destDataset.value, destDatasets.value)) {
-                errorList.value.push("Destination dataset does not exist.");
-                customDestDatasetErrorTag.value = true;
-            }
+            return;
         }
+        if (!doesItExist(destDataset.value, destDatasets.value)) {
+            errorList.value.push("Selected destination dataset does not exist in this pool.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+        // Snapshot/common-base checks happen in checkDestDatasetContents()
+        return;
+    }
+
+    // NEW DATASET: validate name + make sure it doesn't already exist
+    if (!isValidDatasetName(destDataset.value)) {
+        errorList.value.push("Destination dataset name is invalid.");
+        customDestDatasetErrorTag.value = true;
+        return;
+    }
+    if (doesItExist(destDataset.value, destDatasets.value)) {
+        errorList.value.push("That dataset already exists. Choose 'Existing Dataset' or use a new path.");
+        customDestDatasetErrorTag.value = true;
+        return;
     }
 }
 
 
-async function checkDestDatasetContents() {
+/* async function checkDestDatasetContents() {
     if (!hasDestDatasetChanged()) {
       //  console.log("Destination has not changed, skipping checks.");
         return;
@@ -1055,7 +1061,127 @@ async function checkDestDatasetContents() {
         console.error("Error while checking dataset contents:", error);
         errorList.value.push("An unexpected error occurred while validating dataset contents.");
     }
+} */
+/* 
+async function checkDestDatasetContents() {
+    if (!hasDestDatasetChanged()) return;
+
+    try {
+        // If user asked to create a new dataset explicitly, no need to block here
+        if (makeNewDestDataset.value) {
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        // Gather snapshots on source and destination
+        const srcSnaps = await listSnapshots(
+            sourceDataset.value
+        );
+
+        let dstSnaps: ZfsSnap[] = [];
+        if (destHost.value) {
+            const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
+            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
+        } else {
+            dstSnaps = await listSnapshots(destDataset.value);
+        }
+
+        // If destination has no snapshots and is empty → allow
+        if (!dstSnaps.length) {
+            const empty = destHost.value
+                ? await isDatasetEmpty(destDataset.value, destUser.value, destHost.value,
+                    transferMethod.value === "netcat" ? "22" : String(destPort.value))
+                : await isDatasetEmpty(destDataset.value);
+
+            if (empty) {
+                destDatasetErrorTag.value = false;
+                return;
+            }
+        }
+
+        // Destination has snapshots: check for common base
+        const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
+
+        if (common) {
+            // Migration path: OK (incremental base exists)
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        // No common base
+        if (allowOverwrite.value) {
+            // We will proceed with -F; allow selection
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        // Block and nudge the user
+        errorList.value.push(
+            "Destination has snapshots that do not match the source. Either enable 'Allow overwrite if no common snapshot' or choose/create an empty destination."
+        );
+        destDatasetErrorTag.value = true;
+
+    } catch (error) {
+        console.error("Error while checking dataset contents:", error);
+        errorList.value.push("An unexpected error occurred while validating destination dataset.");
+        destDatasetErrorTag.value = true;
+    }
+} */
+
+async function checkDestDatasetContents() {
+    // Only matters when using existing
+    if (!useExistingDest.value) return;
+    if (!hasDestDatasetChanged()) return;
+
+    try {
+        const srcSnaps = await listSnapshots(sourceDataset.value);
+        let dstSnaps: ZfsSnap[] = [];
+
+        if (destHost.value) {
+            const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
+            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
+        } else {
+            dstSnaps = await listSnapshots(destDataset.value);
+        }
+
+        // Empty destination is always fine
+        if (!dstSnaps.length) {
+            destDatasetErrorTag.value = false;
+            return;
+        }
+
+        const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
+
+        if (!common) {
+            // No common base
+            if (allowOverwrite.value) {
+                destDatasetErrorTag.value = false; // proceed with -F
+                return;
+            }
+            errorList.value.push("No common snapshot found. Enable 'Allow overwrite' or choose an empty/new destination.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+
+        // Has common, but is dest ahead?
+        const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
+        if (diverged && !allowOverwrite.value) {
+            errorList.value.push("Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+
+        // Good to go
+        destDatasetErrorTag.value = false;
+
+    } catch (err) {
+        console.error("checkDestDatasetContents:", err);
+        errorList.value.push("Failed to verify destination snapshots.");
+        destDatasetErrorTag.value = true;
+    }
 }
+
+
 function isValidPoolName(poolName) {
     if (poolName === '') {
         return false;
@@ -1124,8 +1250,7 @@ async function validateParams() {
     validateHost();
     validateDestination();
     validatePort();
-    await checkDestDatasetContents();
-    
+    if (useExistingDest.value) await checkDestDatasetContents();
     validateCustomName();
 
     if (errorList.value.length == 0) {
@@ -1153,6 +1278,8 @@ function setParams() {
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
             .addChild(new StringParameter('Transfer Method', 'transferMethod', transferMethod.value))
+            .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
+            .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
 
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
