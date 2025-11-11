@@ -408,14 +408,23 @@ export class Scheduler implements SchedulerType {
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
             const output = result.stdout!;
-
             return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
-        } catch (error) {
-            console.error(`Error checking timer status:`, error);
+        } catch (e: any) {
+            const out = (e && (e.stdout || e.stderr || e.message)) || '';
+            // These happen when the timer/service was removed or not loaded on DBus yet.
+            const expected =
+                /Unit .* could not be found|Unknown interface 'org\.freedesktop\.systemd1\.Service'|org\.freedesktop\.DBus\.Error\.UnknownInterface/i;
+
+            if (expected.test(out)) {
+                // No spam — treat as “not found/disabled”
+                return 'Unit inactive or not found.';
+            }
+
+            // Unexpected problem: warn once, but don’t spam each poll
+            console.warn('Timer status check failed:', out || e);
             return 'Error checking timer status';
         }
     }
-
 
     async getServiceStatus(taskInstance: TaskInstanceType) {
         const taskLog = new TaskExecutionLog([]);
@@ -428,16 +437,19 @@ export class Scheduler implements SchedulerType {
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
             const output = result.stdout!;
-
-            // Return the parsed status based on stdout
             return this.parseTaskStatus(output, fullTaskName, taskLog, taskInstance);
-        } catch (error: any) {
-            // Only log real errors, not status-related cases
-            // console.error(`Error checking service status:`, error);
-            return this.parseTaskStatus(error.stdout || '', fullTaskName, taskLog, taskInstance); // Use error.stdout if available
+        } catch (e: any) {
+            const out = (e && (e.stdout || e.stderr || e.message)) || '';
+            const expected =
+                /Unit .* could not be found|Unknown interface 'org\.freedesktop\.systemd1\.Service'|org\.freedesktop\.DBus\.Error\.UnknownInterface/i;
+
+            if (expected.test(out)) {
+                return 'Unit inactive or not found.';
+            }
+            console.warn('Service status check failed:', out || e);
+            return 'Error';
         }
     }
-
 
 
     async parseTaskStatus(output: string, fullTaskName: string, taskLog: TaskExecutionLog, taskInstance: TaskInstanceType) {
@@ -544,6 +556,26 @@ export class Scheduler implements SchedulerType {
             taskInstance.schedule.enabled = false;
           //  console.log('taskInstance after disable:', taskInstance);
 
+            const serviceName = `${fullTaskName}.service`;
+
+            try {
+                // Stop the service as well (it may be bouncing with Restart=)
+                let stopSvc = ['sudo', 'systemctl', 'stop', serviceName];
+                let st = useSpawn(stopSvc, { superuser: 'try' });
+                await st.promise();
+
+                // Ensure it's not enabled on boot
+                let disableSvc = ['sudo', 'systemctl', 'disable', serviceName];
+                st = useSpawn(disableSvc, { superuser: 'try' });
+                await st.promise();
+
+                // Clear any failed state so status looks clean
+                let resetFailed = ['sudo', 'systemctl', 'reset-failed', serviceName];
+                st = useSpawn(resetFailed, { superuser: 'try' });
+                await st.promise();
+            } catch (e) {
+                console.warn(`Stopping/cleaning ${serviceName} returned:`, errorString(e));
+            }
 
             await this.updateSchedule(taskInstance);
 
@@ -590,6 +622,50 @@ export class Scheduler implements SchedulerType {
             await state.promise();
         }
     }
+
+    async deleteSchedule(taskInstance: TaskInstanceType) {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        const timerUnit = `${fullTaskName}.timer`;
+        const jsonPath = `/etc/systemd/system/${fullTaskName}.json`;
+        const timerPath = `/etc/systemd/system/${timerUnit}`;
+
+        try {
+            // Be tolerant: try to stop/disable even if not enabled
+            let state = useSpawn(['sudo', 'systemctl', 'stop', timerUnit], { superuser: 'try' });
+            await state.promise().catch(() => { /* ignore */ });
+
+            state = useSpawn(['sudo', 'systemctl', 'disable', timerUnit], { superuser: 'try' });
+            await state.promise().catch(() => { /* ignore */ });
+
+            // Remove timer + schedule json (leave .service/.env/.txt intact so "Run Now" still works)
+            state = useSpawn(['sudo', 'rm', '-f', timerPath], { superuser: 'try' });
+            await state.promise();
+
+            state = useSpawn(['sudo', 'rm', '-f', jsonPath], { superuser: 'try' });
+            await state.promise();
+
+            // Clean up state and reload systemd
+            state = useSpawn(['sudo', 'systemctl', 'reset-failed'], { superuser: 'try' });
+            await state.promise().catch(() => { /* ignore */ });
+
+            state = useSpawn(['sudo', 'systemctl', 'daemon-reload'], { superuser: 'try' });
+            await state.promise();
+
+            // Reflect in-memory state so UI updates immediately
+            taskInstance.schedule.enabled = false;
+            taskInstance.schedule.intervals = [];
+
+            console.log(`Schedule removed for ${fullTaskName}`);
+            return true;
+        } catch (e) {
+            console.error(errorString(e));
+            return false;
+        }
+    }
+
 
     parseIntervalIntoString(interval) {
         const elements: string[] = [];

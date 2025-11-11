@@ -246,22 +246,28 @@ const runNowNo: ConfirmationCallback = async () => {
 
 const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
-    // Push a notification that the task has started
     pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
-    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-    updateShowRunNowPrompt(false); // Close the modal
-    // Start the task and close the modal immediately
-    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
-        // Push a success notification when task finishes
-        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
-    }).catch((error) => {
-        // Push a failure notification if the task fails
-        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
-    });
 
-    updateShowRunNowPrompt(false); // Close the modal
-    running.value = false;
+    // find the row instance for this task
+    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
+    const row = taskTableRow.value[taskIndex];
+
+    // nudge the row to temporarily read service state even if timer is disabled
+    row?.markManualRun(60_000); // e.g. 60s window
+
+    // immediately update once so UI flips to "Active (Running)" quickly if the service starts
+    await updateStatusAndTime(selectedTask.value!, taskIndex);
+
+    updateShowRunNowPrompt(false);
+
+    try {
+        await myScheduler.runTaskNow(selectedTask.value!);
+        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
+    } catch (error) {
+        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
+    } finally {
+        running.value = false;
+    }
 };
 
 

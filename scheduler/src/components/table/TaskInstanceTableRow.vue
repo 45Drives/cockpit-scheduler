@@ -5,16 +5,10 @@
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
 			{{ taskInstance.name }}
 		</td>
-		<td v-if="taskInstance.schedule.enabled" :title="taskStatus"
+		<td :title="taskInstance.schedule.enabled ? displayedStatus : 'Disabled'"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass(taskStatus)">
-				{{ taskStatus || 'N/A' }}
-			</span>
-		</td>
-		<td v-if="!taskInstance.schedule.enabled" :title="'Disabled'"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass(taskStatus)">
-				{{ taskStatus || 'N/A' }}
+			<span :class="displayedStatusClass">
+				{{ displayedStatus }}
 			</span>
 		</td>
 		<td :title="latestTaskExecution" class="truncate font-medium border-r border-default text-left ml-4 col-span-2">
@@ -28,7 +22,8 @@
 				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
 				:checked="taskInstance.schedule.enabled" @click.prevent="toggleTaskSchedule"
 				class="ml-2 h-4 w-4 rounded" />
-			<input v-else disabled type="checkbox" :title="'No Schedule Found, Manage Schedule + add intervals to Enable'"
+			<input v-else disabled type="checkbox"
+				:title="'No Schedule Found, Manage Schedule + add intervals to Enable'"
 				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
 		</td>
 		<td class="truncate text-base font-medium text-default border-default m-1 col-span-1">
@@ -86,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, defineExpose } from 'vue';
+import { ref, onMounted, onUnmounted, watch, defineExpose, computed } from 'vue';
 import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon,PencilSquareIcon } from '@heroicons/vue/24/outline';
 import { injectWithCheck } from '../../composables/utility'
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
@@ -105,6 +100,10 @@ const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 
 const latestTaskExecution = ref<string>('');
 const taskStatus = ref<string>('');
+const manualRunUntil = ref<number>(0);
+function markManualRun(windowMs = 60_000) {
+	manualRunUntil.value = Date.now() + windowMs;
+}
 
 const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes']);
 
@@ -249,6 +248,21 @@ async function toggleTaskSchedule(event) {
 	}
 }
 
+const displayedStatus = computed(() => {
+	if (!taskInstance.value?.schedule?.enabled) return 'Disabled';
+	return taskStatus.value || 'N/A';
+});
+
+const displayedStatusClass = computed(() => {
+	const s = (displayedStatus.value || '').toLowerCase();
+	if (s.includes('active') || s.includes('starting') || s.includes('completed')) return 'text-success';
+	if (s.includes('inactive') || s.includes('disabled') || s.includes('not scheduled')) return 'text-warning';
+	if (s.includes('failed') || s.includes('error')) return 'text-danger';
+	if (s.includes('no schedule found') || s.includes('not scheduled')) return 'text-muted';
+	return '';
+});
+
+
 /* Getting Task Status + Last Run Time */
 onMounted(async () => {
 	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
@@ -295,25 +309,33 @@ watch(taskInstance, async (newTask, oldTask) => {
 	}
 });
 
-
 async function updateTaskStatus(task, timerEnabled) {
 	try {
-		let status;
-		if (timerEnabled) {
-			status = await myScheduler.getTimerStatus(task);
-		} else {
-			status = await myScheduler.getServiceStatus(task);
+		if (!timerEnabled) {
+			taskStatus.value = 'Disabled';
+			// Optional: if you want to stop polling entirely when disabled:
+			if (intervalId) { clearInterval(intervalId); intervalId = undefined; }
+			return;
 		}
+
+		const status = await myScheduler.getTimerStatus(task);
+
+		// If the backend told us the unit is gone, stop polling gently
+		if (status === 'Unit inactive or not found.') {
+			taskStatus.value = 'Disabled';
+			if (intervalId) { clearInterval(intervalId); intervalId = undefined; }
+			return;
+		}
+
 		taskStatus.value = status.toString();
 	} catch (error) {
+		// Unexpected error — stop polling this row so we don’t spam
 		console.error(`Failed to get status for ${task.name}:`, error);
 		taskStatus.value = 'Error';
-		if (intervalId) {
-			clearInterval(intervalId);
-			intervalId = undefined;
-		}
+		if (intervalId) { clearInterval(intervalId); intervalId = undefined; }
 	}
 }
+
 
 async function fetchLatestLog(task) {
 	try {
@@ -336,29 +358,9 @@ async function fetchLatestLog(task) {
 	}
 }
 
-
-// change color of status text
-function taskStatusClass(status) {
-	if (status) {
-		const statusLower = status.toLowerCase(); // Normalize casing
-		if (statusLower.includes('active') || statusLower.includes('starting') || statusLower.includes('completed')) {
-			return 'text-success';
-		} else if (statusLower.includes('inactive') || statusLower.includes('disabled')) {
-			return 'text-warning';
-		} else if (statusLower.includes('failed')) {
-			return 'text-danger';
-		} else if (statusLower.includes('no schedule found') || statusLower.includes('not scheduled')) {
-			return 'text-muted';
-		}
-	}
-	return '';
-}
-
-
-
-
 defineExpose({
 	updateTaskStatus,
 	fetchLatestLog,
+	markManualRun
 });
 </script>

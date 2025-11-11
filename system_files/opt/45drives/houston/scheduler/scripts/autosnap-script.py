@@ -1,110 +1,189 @@
+#!/usr/bin/env python3
 import subprocess
 import sys
-import datetime
+import datetime as dt
 import os
-# import time
+import re
+from typing import List, Optional, Tuple
+
+TASK_PROP = "com.45drives:task"
+LEGACY_NAME_RE = re.compile(r'@(?:[^@]+-)?(?P<task>[^@]+)-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$')
+ENABLE_LEGACY_FALLBACK = True
 
 class Snapshot:
-	def __init__(self, name, guid, creation):
-		self.name = name
-		self.guid = guid
-		self.creation = creation
-	 
-def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
-	command = [ 'zfs', 'snapshot' ]
-	if is_recursive:
-		command.append('-r')
-	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
-  
-	if custom_name:
-		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
-	else:
-		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
-  
-	command.append(new_snap)
-	subprocess.run(command)
-	print(f"new snapshot created: {new_snap}")
+    def __init__(self, name: str, guid: str, creation_epoch: int, task_tag: Optional[str]):
+        self.name = name
+        self.guid = guid
+        self.creation_epoch = creation_epoch
+        self.task_tag = task_tag
 
-	return new_snap
+def run(cmd: List[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
-def get_local_snapshots(filesystem):
-    command = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
+def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_name: Optional[str]) -> str:
+    if not filesystem:
+        print("ERROR: filesystem is empty", file=sys.stderr)
+        sys.exit(1)
+
+    ts = dt.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    snapname = f"{filesystem}@{(custom_name + '-' if custom_name else '')}{task_name}-{ts}"
+
+    cmd = ["zfs", "snapshot"]
+    if is_recursive:
+        cmd.append("-r")
+    cmd.append(snapname)
+
     try:
-        output = subprocess.check_output(command)
-        snapshots = []
-        for line in output.decode().splitlines():
-            # print(f'print line: {line}')
-            parts = line.split(maxsplit=2)  # Split into exactly 3 parts: name, guid, and creation
-            if len(parts) == 3:
-                snapshot_name = parts[0]
-                snapshot_guid = parts[1]
-                # snapshot_creation = parts[2]  # Keep the full creation field
-                snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
-                snapshot = Snapshot(snapshot_name, snapshot_guid, snapshot_creation)
-                snapshots.append(snapshot)
-                # print(f'snapshot: {snapshot_name}: {snapshot_creation}')
-        return snapshots
+        res = run(cmd)
+        print(f"Created snapshot: {snapname}")
     except subprocess.CalledProcessError as e:
-        print(f"Failed to fetch local snapshots: {e}")
-        return []
+        print(f"ERROR: zfs snapshot failed: {e.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
 
+    # Tag snapshot with our task property so we can safely identify it later
+    try:
+        run(["zfs", "set", f"{TASK_PROP}={task_name}", snapname])
+    except subprocess.CalledProcessError as e:
+        # Non-fatal, but warn so pruning by tag may skip this one
+        print(f"WARNING: failed to tag snapshot {snapname}: {e.stderr.strip()}", file=sys.stderr)
 
-def prune_snapshots_by_retention(filesystem, task_name, retention_time, retention_unit, excluded_snapshot_name):
-	snapshots = get_local_snapshots(filesystem)
-	now = datetime.datetime.now()
+    return snapname
 
-	unit_multipliers = {
-		"minutes": 60 * 1000,
-		"hours": 60 * 60 * 1000,
-		"days": 24 * 60 * 60 * 1000,
-		"weeks": 7 * 24 * 60 * 60 * 1000,
-		"months": 30 * 24 * 60 * 60 * 1000,
-		"years": 365 * 24 * 60 * 60 * 1000
-	}
+def get_local_snapshots(filesystem: str) -> List[Snapshot]:
+    """
+    Use epoch for creation to avoid locale parsing.
+    We also fetch our user property to filter reliably.
+    """
+    snaps: List[Snapshot] = []
+    # names + GUIDs
+    try:
+        # -p makes numeric properties plain; list doesn't make creation epoch, so get via zfs get
+        names = run(["zfs", "list", "-H", "-t", "snapshot", "-r", "-o", "name,guid", filesystem]).stdout.splitlines()
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: zfs list failed: {e.stderr.strip()}", file=sys.stderr)
+        return snaps
 
-	multiplier = unit_multipliers.get(retention_unit, 0)
- 
-	retention_milliseconds = int(retention_time) * multiplier
-	if retention_milliseconds == 0:
-		print("Retention period is not valid. No pruning will be performed.")
-	else:
-		snapshots_to_delete = []
-		for snapshot in snapshots:
-			print(f'excluded snap: {excluded_snapshot_name}')
-			# Exclude current snapshot and focus on snapshots belonging to task
-			if task_name in snapshot.name and snapshot.name != excluded_snapshot_name:
-				# print(f'creation: {snapshot.creation}')
-				creation_time = snapshot.creation
-				age_milliseconds = (now - creation_time).total_seconds() * 1000
-				if age_milliseconds > retention_milliseconds:
-					snapshots_to_delete.append(snapshot)
+    if not names:
+        return snaps
 
-		for snapshot in snapshots_to_delete:
-			delete_command = ['zfs', 'destroy', snapshot.name]
-			try:
-				subprocess.run(delete_command, check=True)
-				print(f"Deleted snapshot: {snapshot.name}")
-			except subprocess.CalledProcessError as e:
-				print(f"Failed to delete snapshot {snapshot.name}: {e}")
-				sys.exit(1)
+    # Build name->guid
+    pairs: List[Tuple[str, str]] = []
+    for line in names:
+        parts = line.split("\t")
+        if len(parts) == 2:
+            pairs.append((parts[0], parts[1]))
 
-		if snapshots_to_delete:
-			print(f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_time} {retention_unit}).")
-		else:
-			print("No snapshots to prune.")
+    # Batch get creation as epoch (-p) and our tag property
+    # Note: zfs get can accept multiple properties
+    props_out = run(["zfs", "get", "-H", "-p", "-r", "-o", "name,property,value", "creation", filesystem]).stdout.splitlines()
+    tag_out  = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem]).stdout.splitlines()
+
+    creation_map = {}
+    for line in props_out:
+        try:
+            name, prop, value = line.split("\t")
+            if prop == "creation":
+                # value is epoch seconds with -p
+                creation_map[name] = int(value)
+        except ValueError:
+            continue
+
+    tag_map = {}
+    for line in tag_out:
+        try:
+            name, prop, value = line.split("\t")
+            if prop == TASK_PROP and value != "-":
+                tag_map[name] = value
+        except ValueError:
+            continue
+
+    for name, guid in pairs:
+        ce = creation_map.get(name)
+        if ce is None:
+            # fall back if missing
+            ce = int(dt.datetime.now().timestamp())
+        snaps.append(Snapshot(name, guid, ce, tag_map.get(name)))
+
+    return snaps
+
+def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time: int, retention_unit: str, exclude_snap: str) -> None:
+    if retention_time <= 0 or not retention_unit:
+        print("Retention not configured; skipping prune.")
+        return
+
+    unit_seconds = {
+        "minutes": 60,
+        "hours":   60 * 60,
+        "days":    24 * 60 * 60,
+        "weeks":   7 * 24 * 60 * 60,
+        # simple approximations; switch to relativedelta if you need calendar-accurate months/years
+        "months":  30 * 24 * 60 * 60,
+        "years":   365 * 24 * 60 * 60,
+    }.get(retention_unit)
+
+    if not unit_seconds:
+        print(f"WARNING: Unknown retention unit '{retention_unit}'; skipping prune.")
+        return
+
+    cutoff = int(dt.datetime.now().timestamp()) - (retention_time * unit_seconds)
+    snaps = get_local_snapshots(filesystem)
+
+    candidates = []
+    for s in snaps:
+        # Only prune snapshots we created (by tag), exclude the one we just created
+        if s.name == exclude_snap:
+            continue
+
+        belongs = (s.task_tag == task_name)
+
+        # If not tagged (older deployments) fall back to legacy name match:
+        if not belongs and ENABLE_LEGACY_FALLBACK:
+            m = LEGACY_NAME_RE.search(s.name)
+            if m and m.group('task') == task_name:
+                belongs = True
+
+        if not belongs:
+            continue
+        
+        if s.creation_epoch <= cutoff:
+            candidates.append(s)
+		
+    if not candidates:
+        print("No snapshots to prune.")
+        return
+
+    # Delete oldest first (optional)
+    candidates.sort(key=lambda s: s.creation_epoch)
+
+    pruned = 0
+    for s in candidates:
+        try:
+            run(["zfs", "destroy", s.name])
+            pruned += 1
+            print(f"Deleted snapshot: {s.name}")
+        except subprocess.CalledProcessError as e:
+            print(f"ERROR: failed to delete {s.name}: {e.stderr.strip()}", file=sys.stderr)
+            # continue rather than exit; you can flip this if you prefer to fail the unit
+            continue
+
+    print(f"Pruned {pruned} snapshot(s) older than {retention_time} {retention_unit}.")
 
 def main():
-	filesystem = os.environ.get('autoSnapConfig_filesystem_dataset', '')
-	isRecursiveSnap = os.environ.get('autoSnapConfig_recursive_flag', 'false').strip().lower() == 'true'
-	customName = os.environ.get('autoSnapConfig_customName', '')
-	retentionTime = os.environ.get('autoSnapConfig_snapshotRetention_retentionTime', 0)
-	retentionUnit = os.environ.get('autoSnapConfig_snapshotRetention_retentionUnit', '')
-	taskName = os.environ.get('taskName', '')
+    filesystem = os.environ.get("autoSnapConfig_filesystem_dataset", "").strip()
+    is_recursive = os.environ.get("autoSnapConfig_recursive_flag", "false").strip().lower() == "true"
+    custom_name = os.environ.get("autoSnapConfig_customName", "").strip() or None
+    task_name = os.environ.get("taskName", "").strip()
 
-	createdSnapName = create_snapshot(filesystem, isRecursiveSnap, taskName, customName)
+    # Parse retention safely
+    rt_raw = os.environ.get("autoSnapConfig_snapshotRetention_retentionTime", "0").strip()
+    ru = os.environ.get("autoSnapConfig_snapshotRetention_retentionUnit", "").strip()
+    try:
+        rt = int(rt_raw)
+    except ValueError:
+        rt = 0
 
-	if retentionTime is not 0 and retentionTime is not '0' and retentionUnit is not '':
-		prune_snapshots_by_retention(filesystem, taskName, retentionTime, retentionUnit, createdSnapName)
+    created = create_snapshot(filesystem, is_recursive, task_name, custom_name)
+    prune_snapshots_by_retention(filesystem, task_name, rt, ru, created)
 
 if __name__ == "__main__":
-	main()
+    main()
