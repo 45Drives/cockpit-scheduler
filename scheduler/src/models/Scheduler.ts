@@ -446,6 +446,16 @@ export class Scheduler implements SchedulerType {
             if (expected.test(out)) {
                 return 'Unit inactive or not found.';
             }
+
+            // systemctl often prints a valid status even when exit code != 0
+            if (e && e.stdout) {
+                try {
+                    return this.parseTaskStatus(e.stdout, fullTaskName, taskLog, taskInstance);
+                } catch {
+                    // fall through to generic error
+                }
+            }
+
             console.warn('Service status check failed:', out || e);
             return 'Error';
         }

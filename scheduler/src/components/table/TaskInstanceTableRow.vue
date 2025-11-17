@@ -5,18 +5,20 @@
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
 			{{ taskInstance.name }}
 		</td>
-		<td :title="taskInstance.schedule.enabled ? displayedStatus : 'Disabled'"
+		<td :title="displayedStatus"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="displayedStatusClass">
+			<span v-if="!statusLoaded">Loading…</span>
+			<span v-else :class="displayedStatusClass">
 				{{ displayedStatus }}
 			</span>
 		</td>
+
 		<td :title="latestTaskExecution" class="truncate font-medium border-r border-default text-left ml-4 col-span-2">
-			<span>
+			<span v-if="!logLoaded">Loading…</span>
+			<span v-else>
 				{{ latestTaskExecution }}
 			</span>
 		</td>
-
 		<td class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
 			<input v-if="taskInstance.schedule.intervals.length > 0"
 				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
@@ -100,9 +102,14 @@ const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
 
 const latestTaskExecution = ref<string>('');
 const taskStatus = ref<string>('');
+
+const statusLoaded = ref(false);
+const logLoaded = ref(false);
+
 const manualRunUntil = ref<number>(0);
 function markManualRun(windowMs = 60_000) {
 	manualRunUntil.value = Date.now() + windowMs;
+	taskStatus.value = 'Running now...';
 }
 
 const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes']);
@@ -173,7 +180,7 @@ const enableYes = async () => {
 		intervalId = undefined;
 	}
 	await myScheduler.enableSchedule(taskInstance.value);
-	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
+	await updateTaskStatus(taskInstance.value);
 	updateShowEnablePrompt(false);
 	enabling.value = false;
 };
@@ -213,7 +220,7 @@ const disableYes = async () => {
 		intervalId = undefined;
 	}
 	await myScheduler.disableSchedule(taskInstance.value);
-	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
+	await updateTaskStatus(taskInstance.value);
 	updateShowDisablePrompt(false);
 	disabling.value = false;
 };
@@ -249,13 +256,27 @@ async function toggleTaskSchedule(event) {
 }
 
 const displayedStatus = computed(() => {
-	if (!taskInstance.value?.schedule?.enabled) return 'Disabled';
-	return taskStatus.value || 'N/A';
+	if (!statusLoaded.value) return '';
+
+	const enabled = taskInstance.value?.schedule?.enabled ?? false;
+	const status = taskStatus.value || '';
+
+	// Manual-only task that completed successfully
+	if (!enabled && status.toLowerCase() === 'completed') {
+		return 'Completed (manual)';
+	}
+
+	if (enabled) {
+		return status || 'Not scheduled';
+	}
+
+	return status || 'Disabled';
 });
+
 
 const displayedStatusClass = computed(() => {
 	const s = (displayedStatus.value || '').toLowerCase();
-	if (s.includes('active') || s.includes('starting') || s.includes('completed')) return 'text-success';
+	if (s.includes('active') || s.includes('starting') || s.includes('completed') || s.includes('running')) return 'text-success';
 	if (s.includes('inactive') || s.includes('disabled') || s.includes('not scheduled')) return 'text-warning';
 	if (s.includes('failed') || s.includes('error')) return 'text-danger';
 	if (s.includes('no schedule found') || s.includes('not scheduled')) return 'text-muted';
@@ -265,12 +286,12 @@ const displayedStatusClass = computed(() => {
 
 /* Getting Task Status + Last Run Time */
 onMounted(async () => {
-	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
+	await updateTaskStatus(taskInstance.value);
 	await fetchLatestLog(taskInstance.value);
 
 	intervalId = setInterval(async () => {
 		try {
-			await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
+			await updateTaskStatus(taskInstance.value);
 			await fetchLatestLog(taskInstance.value);
 		} catch (error) {
 			console.error('Polling failed:', error);
@@ -296,7 +317,7 @@ watch(taskInstance, async (newTask, oldTask) => {
 		return;
 	}
 	try {
-		await updateTaskStatus(newTask, newTask.schedule.enabled);
+		await updateTaskStatus(newTask);
 		await fetchLatestLog(newTask);
 	} catch (error: any) {
 		console.error(`Error updating task status:`, error);
@@ -309,39 +330,53 @@ watch(taskInstance, async (newTask, oldTask) => {
 	}
 });
 
-async function updateTaskStatus(task, timerEnabled) {
+async function updateTaskStatus(task) {
+	const timerEnabled = task?.schedule?.enabled ?? false;
+
 	try {
-		if (!timerEnabled) {
-			taskStatus.value = 'Disabled';
-			// Optional: if you want to stop polling entirely when disabled:
-			if (intervalId) { clearInterval(intervalId); intervalId = undefined; }
-			return;
+		const now = Date.now();
+		const manualWindowActive = now < manualRunUntil.value;
+
+		// Always ask systemd what the unit is doing
+		let status: string | boolean;
+		if (timerEnabled) {
+			status = await myScheduler.getTimerStatus(task);
+		} else {
+			status = await myScheduler.getServiceStatus(task);
 		}
 
-		const status = await myScheduler.getTimerStatus(task);
-
-		// If the backend told us the unit is gone, stop polling gently
+		// Normalise the “unit not found” case
 		if (status === 'Unit inactive or not found.') {
-			taskStatus.value = 'Disabled';
-			if (intervalId) { clearInterval(intervalId); intervalId = undefined; }
-			return;
+			taskStatus.value = timerEnabled ? 'Inactive (Disabled)' : 'Disabled';
+		} else {
+			let statusText = status.toString();
+
+			// For manual runs (no timer), show a nicer hint while in the manual window
+			if (!timerEnabled && manualWindowActive) {
+				// Only override if it looks like we’re actually starting/running
+				const lower = statusText.toLowerCase();
+				if (lower.includes('active (running)') ||
+					lower.includes('activating') ||
+					lower.includes('starting')) {
+					statusText = 'Running now...';
+				}
+			}
+
+			taskStatus.value = statusText;
 		}
 
-		taskStatus.value = status.toString();
+		statusLoaded.value = true;
 	} catch (error) {
-		// Unexpected error — stop polling this row so we don’t spam
 		console.error(`Failed to get status for ${task.name}:`, error);
 		taskStatus.value = 'Error';
-		if (intervalId) { clearInterval(intervalId); intervalId = undefined; }
+		statusLoaded.value = true;
 	}
 }
-
 
 async function fetchLatestLog(task) {
 	try {
 		const latestLog = await myTaskLog.getLatestEntryFor(task);
 		if (latestLog) {
-			// Update the latestTaskExecution to reflect the start time or output
 			if (latestLog.startDate) {
 				latestTaskExecution.value = latestLog.startDate;
 			} else {
@@ -355,6 +390,9 @@ async function fetchLatestLog(task) {
 		if (intervalId) {
 			clearInterval(intervalId);
 		}
+		latestTaskExecution.value = "Task hasn't run yet.";
+	} finally {
+		logLoaded.value = true;
 	}
 }
 

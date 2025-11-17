@@ -9,19 +9,6 @@ class Snapshot:
 		self.name = name
 		self.guid = guid
 		self.creation = creation
-	 
-# def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
-# 	command = [ 'zfs', 'snapshot' ]
-# 	if is_recursive:
-# 		command.append('-r')
-# 	timestamp = datetime.datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
-# 	if custom_name:
-# 		new_snap = (f'{filesystem}@{custom_name}-{task_name}-{timestamp}')
-# 	else:
-# 		new_snap = (f'{filesystem}@{task_name}-{timestamp}')
-# 	command.append(new_snap)
-# 	subprocess.run(command, check=True)
-# 	print(f"new snapshot created: {new_snap}")
 
 # 	return new_snap
 def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
@@ -46,85 +33,92 @@ def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
 
 
 def prune_snapshots_by_retention(
-	filesystem, task_name, retention_time, retention_unit, 
-	excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22, transferMethod='ssh'
+    filesystem, task_name, retention_time, retention_unit,
+    excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22, transferMethod='ssh'
 ):
-	# Determine whether to fetch snapshots locally or remotely
-	if remote_host :
-		snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem, transferMethod)
-		# If None is returned, that means the dataset doesn't exist at all; no pruning needed
-		if snapshots is None:
-			print(f"Remote dataset {filesystem} does not exist. Nothing to prune.")
-			return
-	else:
-		snapshots = get_local_snapshots(filesystem)
+    # Determine whether to fetch snapshots locally or remotely
+    if remote_host:
+        snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem, transferMethod)
+        # If None is returned, that means the dataset doesn't exist at all; no pruning needed
+        if snapshots is None:
+            print(f"Remote dataset {filesystem} does not exist. Nothing to prune.")
+            return
+    else:
+        snapshots = get_local_snapshots(filesystem)
 
-	if snapshots is None:
-		print(f"{'Remote ' if remote_host else ''}dataset {filesystem} does not exist. Nothing to prune.")
-		return
+    if snapshots is None:
+        print(f"{'Remote ' if remote_host else ''}dataset {filesystem} does not exist. Nothing to prune.")
+        return
 
-	now = datetime.datetime.now()
+    now = datetime.datetime.now()
 
-	# Define unit multipliers for retention calculation
-	unit_multipliers = {
-	  	"minutes": 60 * 1000,
-		"hours": 60 * 60 * 1000,
-		"days": 24 * 60 * 60 * 1000,
-		"weeks": 7 * 24 * 60 * 60 * 1000,
-		"months": 30 * 24 * 60 * 60 * 1000,
-		"years": 365 * 24 * 60 * 60 * 1000
-	}
+    # Define unit multipliers for retention calculation
+    unit_multipliers = {
+        "minutes": 60 * 1000,
+        "hours":   60 * 60 * 1000,
+        "days":    24 * 60 * 60 * 1000,
+        "weeks":   7 * 24 * 60 * 60 * 1000,
+        "months":  30 * 24 * 60 * 60 * 1000,
+        "years":   365 * 24 * 60 * 60 * 1000,
+    }
 
-	multiplier = unit_multipliers.get(retention_unit, 0)
- 
-	retention_milliseconds = int(retention_time) * multiplier
-	# print(f'retention time: {retention_time}, retention unit: {retention_unit}')
-	if retention_milliseconds == 0:
-		print("Retention period is not valid. No pruning will be performed.")
-	else:
-		snapshots_to_delete = []
-  
-		# print(f"Total snapshots found: {len(snapshots)}")
-		# for snapshot in snapshots:
-		# 	print(f"Snapshot: {snapshot.name} - Created at: {snapshot.creation}")
+    # Normalize retention_time to an int, with 0 as fallback
+    try:
+        retention_val = int(retention_time)
+    except (TypeError, ValueError):
+        retention_val = 0
 
-		excluded_suffix = excluded_snapshot_name.split('@', 1)[-1] if excluded_snapshot_name else None
+    # Case 1: retention explicitly disabled -> no pruning, no error
+    if (retention_val == 0) and (not retention_unit):
+        print("Retention not configured. No pruning will be performed.")
+        return
 
-		for snapshot in snapshots:
-			# Only prune snapshots created by this task, excluding the one we just made
-			if task_name in snapshot.name:
-				snap_suffix = snapshot.name.split('@', 1)[-1] if '@' in snapshot.name else snapshot.name
-				if excluded_suffix and snap_suffix == excluded_suffix:
-					continue  # skip the newest one
-				creation_time = snapshot.creation
-				age_milliseconds = (now - creation_time).total_seconds() * 1000
-				if age_milliseconds > retention_milliseconds:
-					snapshots_to_delete.append(snapshot)
-     
-		for snapshot in snapshots_to_delete:
-			# Build the delete command
-			if remote_host:
-				ssh_cmd = ['ssh']
-				if transferMethod == 'ssh' and str(remote_port) != '22':
-					ssh_cmd.extend(['-p', str(remote_port)])
+    # Case 2: bad unit or non-positive value -> invalid config
+    if retention_val <= 0 or retention_unit not in unit_multipliers:
+        print(f"Retention period is not valid (time={retention_time}, unit='{retention_unit}'). No pruning will be performed.")
+        return
 
-				ssh_cmd.append(f"{remote_user}@{remote_host}")
-				delete_command = ssh_cmd + ["zfs", "destroy", snapshot.name]
-			else:
-				delete_command = ['zfs', 'destroy', snapshot.name]
+    multiplier = unit_multipliers[retention_unit]
+    retention_milliseconds = retention_val * multiplier
 
-			try:
-				subprocess.run(delete_command, check=True)
-				print(f"Deleted snapshot: {snapshot.name}")
-			except subprocess.CalledProcessError as e:
-				print(f"Failed to delete snapshot {snapshot.name}: {e}")
-				sys.exit(1)
+    snapshots_to_delete = []
 
-		if snapshots_to_delete:
-			print(f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_time} {retention_unit}).")
-		else:
-			print("No snapshots to prune.")
+    excluded_suffix = excluded_snapshot_name.split('@', 1)[-1] if excluded_snapshot_name else None
 
+    for snapshot in snapshots:
+        # Only prune snapshots created by this task, excluding the one we just made
+        if task_name in snapshot.name:
+            snap_suffix = snapshot.name.split('@', 1)[-1] if '@' in snapshot.name else snapshot.name
+            if excluded_suffix and snap_suffix == excluded_suffix:
+                continue  # skip the newest one
+            creation_time = snapshot.creation
+            age_milliseconds = (now - creation_time).total_seconds() * 1000
+            if age_milliseconds > retention_milliseconds:
+                snapshots_to_delete.append(snapshot)
+
+    for snapshot in snapshots_to_delete:
+        # Build the delete command
+        if remote_host:
+            ssh_cmd = ['ssh']
+            if transferMethod == 'ssh' and str(remote_port) != '22':
+                ssh_cmd.extend(['-p', str(remote_port)])
+
+            ssh_cmd.append(f"{remote_user}@{remote_host}")
+            delete_command = ssh_cmd + ["zfs", "destroy", snapshot.name]
+        else:
+            delete_command = ['zfs', 'destroy', snapshot.name]
+
+        try:
+            subprocess.run(delete_command, check=True)
+            print(f"Deleted snapshot: {snapshot.name}")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to delete snapshot {snapshot.name}: {e}")
+            sys.exit(1)
+
+    if snapshots_to_delete:
+        print(f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_val} {retention_unit}).")
+    else:
+        print("No snapshots to prune.")
 
 def get_local_snapshots(filesystem):
     # cmd = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
@@ -481,13 +475,12 @@ def main():
 		sourceSnapshots = get_local_snapshots(sourceFilesystem) or []
 		sourceSnapshots.sort(key=lambda x: x.creation)
 
-		if useExistingDest:
-			if remoteHost and remoteUser:
-				destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, remotePort, receivingFilesystem, transferMethod)
-			else:
-				destinationSnapshots = get_local_snapshots(receivingFilesystem)
+		if remoteHost and remoteUser:
+			destinationSnapshots = get_remote_snapshots(
+				remoteUser, remoteHost, remotePort, receivingFilesystem, transferMethod
+			)
 		else:
-			destinationSnapshots = None  # treat as “missing” → full send, no -F
+			destinationSnapshots = get_local_snapshots(receivingFilesystem)
 
 		# destinationSnapshots is:
 		#   None        -> dataset missing
@@ -496,19 +489,37 @@ def main():
 		if destinationSnapshots is None:
 			print(f"Destination {receivingFilesystem} does not exist. Will create it via full send (no -F).")
 			forceOverwrite = False
+
 		elif not destinationSnapshots:
-			print(f"Destination {receivingFilesystem} exists but has no snapshots. Full send (no -F).")
-			forceOverwrite = False
+			print(f"Destination {receivingFilesystem} exists but has no snapshots.")
+			if useExistingDest and allowOverwrite:
+				print("Using existing destination with overwrite: full send with -F into existing dataset.")
+				forceOverwrite = True
+			elif useExistingDest:
+				print(
+					"Destination dataset already exists and has no snapshots.\n"
+					"ZFS requires -F for a full send into an existing dataset.\n"
+					"Enable Allow Overwrite to permit rollback, or point to a new/empty destination."
+				)
+				sys.exit(2)
+			else:
+				print("Treating destination as new dataset path under the pool. Full send (no -F).")
+				forceOverwrite = False
+
 		else:
 			source_guids = {s.guid: s.name for s in sourceSnapshots}
 			common = [d for d in destinationSnapshots if d.guid in source_guids]
+
 			if not common:
 				print("No common snapshots found on the destination.")
 				if allowOverwrite:
 					print("ALLOW OVERWRITE is enabled: proceeding with full send and -F (will roll back dest).")
 					forceOverwrite = True
 				else:
-					print("Refusing to overwrite destination without a common base. Enable allowOverwrite or choose/create an empty destination.")
+					print(
+						"Refusing to overwrite destination without a common base. "
+						"Enable allowOverwrite or choose/create an empty destination."
+					)
 					sys.exit(2)
 			else:
 				common.sort(key=lambda x: x.creation, reverse=True)
@@ -516,22 +527,25 @@ def main():
 				incrementalSnapName = source_guids[mostRecentCommonSnap.guid]
 				print(f"Most recent common snapshot: {incrementalSnapName}")
 
-
-				# ----- STEP 4: detect destination-ahead/divergence -----
-				# If destination has snapshots newer than the common base that the source does not have,
-				# then the destination is ahead/diverged.
+				# detect destination-ahead/divergence
 				src_guids = {s.guid for s in sourceSnapshots}
 				base_creation = mostRecentCommonSnap.creation
-				destAhead = any((d.creation > base_creation) and (d.guid not in src_guids)
-								for d in destinationSnapshots)
+				destAhead = any(
+					(d.creation > base_creation) and (d.guid not in src_guids)
+					for d in destinationSnapshots
+				)
 
 				if destAhead and not allowOverwrite:
-					print("Destination has newer snapshots than the common base. Enable Allow Overwrite (-F) or choose a different destination.")
+					print(
+						"Destination has newer snapshots than the common base. "
+						"Enable Allow Overwrite (-F) or choose a different destination."
+					)
 					sys.exit(2)
 				elif destAhead and allowOverwrite:
 					print("Destination is ahead; Allow Overwrite enabled: will roll back with -F.")
 					forceOverwrite = True
-				# else: we have a valid base and no divergence: normal incremental is fine.
+				# else: normal incremental is fine
+
 
 		# ---------- create a fresh source snapshot to send ----------
 		newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, taskName, customName)

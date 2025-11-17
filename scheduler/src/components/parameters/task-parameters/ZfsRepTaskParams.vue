@@ -519,6 +519,8 @@ async function initializeData() {
             destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
         }
+        const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
+        useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
 
         initialParameters.value = JSON.parse(JSON.stringify({
             sourcePool: sourcePool.value,
@@ -543,6 +545,7 @@ async function initializeData() {
             destRetentionUnit: destRetentionUnit.value,
             transferMethod: transferMethod.value,
             allowOverwrite: allowOverwrite.value,
+            useExistingDest: useExistingDest.value,
         }));
 
         loading.value = false;
@@ -576,6 +579,7 @@ function hasChanges() {
         destRetentionTime: destRetentionTime.value,
         destRetentionUnit: destRetentionUnit.value,
         allowOverwrite: allowOverwrite.value,
+        useExistingDest: useExistingDest.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);

@@ -9,6 +9,8 @@ Restart=on-failure
 RestartSec=30sec
 StartLimitBurst=2
 StartLimitInterval=80s
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
