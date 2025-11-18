@@ -439,7 +439,7 @@ function normalizeField(raw: string, kind: 'min' | 'hour' | 'day' | 'month' | 'y
     v = v.replace(/^\*\/(\d+)$/g, '0/$1');
 
     // 2) Normalize hyphen ranges "a-b" -> "a..b" (systemd uses '..')
-    if (/^\d+\s*-\s*\d+$/.test(v)) v = v.replace('-', '..');
+    v = v.replace('-', '..');
 
     // 3) Trim spaces around comma lists
     if (v.includes(',')) v = v.split(',').map(s => s.trim()).join(',');
@@ -504,81 +504,6 @@ function validateSystemdField(value: string, kind: 'min' | 'hour' | 'day' | 'mon
 
     return false;
 }
-
-// function serializeToOnCalendar(interval: TaskScheduleIntervalType, dow: string[]): string[] {
-//     const minute = normalizeField(interval.minute?.value ?? '', 'min');
-//     const hour = normalizeField(interval.hour?.value ?? '', 'hour');
-//     const day = normalizeField(interval.day?.value ?? '', 'day');
-//     const month = normalizeField(interval.month?.value ?? '', 'month');
-//     const year = normalizeField(interval.year?.value ?? '', 'year');
-
-//     const time = `${hour}:${minute}:0`;
-//     const date = `${year}-${month}-${day}`;
-//     const dowPrefix = dow && dow.length ? `${dow.join(',')} ` : '';
-
-//     return [`${dowPrefix}${date} ${time}`];
-// }
-
-// function isOnCalendarExpression(value, type) {
-//     // Check for empty value
-//     if (value.trim() === '') {
-//         return false;
-//     }
-
-//     // Function to validate the format with steps (e.g., "*/2")
-//     const validateStepFormat = (stepValue) => {
-//         const stepNumber = Number(stepValue);
-//         return !isNaN(stepNumber) && stepNumber > 0;
-//     };
-
-//     // Check for asterisk, steps like "*/3", or named day steps like "Mon/2"
-//     if (value === '*') {
-//         return true;
-//     } else if (value.includes('/') && type !== 'year' && type !== 'month') {
-//         const parts = value.split('/');
-//         if (parts.length === 2) {
-//             return validateStepFormat(parts[1]);
-//         }
-//         return false;
-//     }
-
-//     // Check for lists like "1,2,3"
-//     if (value.includes(',')) {
-//         const listValues = value.split(',').map(v => v.trim());
-//         return listValues.every(val => isOnCalendarExpression(val, type)); // Recursive call to handle each value in list
-//     }
-
-//     // Check for ranges like "1-5" or "1..5"
-//     const rangeDelimiter = value.includes('..') ? '..' : '-';
-//     if (value.includes(rangeDelimiter)) {
-//         const rangeParts = value.split(rangeDelimiter).map(v => v.trim());
-//         if (rangeParts.length !== 2 || rangeParts.some(rp => isNaN(Number(rp)))) {
-//             return false;
-//         }
-//         const range = rangeParts.map(Number);
-//         // Adjust these ranges based on the type
-//         let [min, max] = [0, 59]; // Defaults for minutes
-//         if (type === 'hour') [min, max] = [0, 23];
-//         else if (type === 'day') [min, max] = [1, 31];
-//         else if (type === 'month') [min, max] = [1, 12];
-//         else if (type === 'year') [min, max] = [1970, 9999];
-//         return range[0] >= min && range[0] <= max && range[1] >= min && range[1] <= max && range[0] < range[1];
-//     }
-
-//     // Check for single numbers or named days (for dayOfWeek)
-//     if (type !== 'dayOfWeek') {
-//         const number = Number(value);
-//         if (!isNaN(number)) {
-//             // Adjust these ranges based on the type
-//             let [min, max] = [0, 59]; // Defaults for minutes
-//             if (type === 'hour') [min, max] = [0, 23];
-//             else if (type === 'day') [min, max] = [1, 31];
-//             else if (type === 'month') [min, max] = [1, 12];
-//             return number >= min && number <= max;
-//         }
-//     }
-//     return false;
-// }
 
 
 const deletingSchedule = ref(false);
