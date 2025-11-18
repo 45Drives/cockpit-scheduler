@@ -13,6 +13,8 @@ import remove_task_script from "../scripts/remove-task-files.py?raw";
 import run_task_script from "../scripts/run-task-now.py?raw";
 //@ts-ignore
 import get_disks_script from "../scripts/get-disk-data.py?raw";
+//@ts-ignore
+import stop_task_script from "../scripts/stop-task-now.py?raw";
 
 import { inject, InjectionKey, ref } from "vue";
 
@@ -286,6 +288,10 @@ export async function removeTask(taskName) {
 
 export async function runTask(taskName) {
   return executePythonScript(run_task_script, [taskName]);
+}
+
+export async function stopTask(taskName) {
+	return executePythonScript(stop_task_script, [taskName]);
 }
 
 //change the first letter of a word to upper case

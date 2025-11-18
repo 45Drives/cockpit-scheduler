@@ -73,10 +73,12 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div v-for="(taskInstance, index) in filteredAndSortedTasks" :key="taskInstance.name">
+                                    <div v-for="(taskInstance, index) in filteredAndSortedTasks"
+                                        :key="taskInstance.name">
                                         <TaskInstanceTableRow :task="taskInstance"
                                             :isExpanded="expandedTaskName === taskInstance.name"
                                             @runTask="(task) => runTaskBtn(taskInstance, index)"
+                                            @stopTask="(task) => stopTaskBtn(taskInstance, index)"
                                             @editTask="(task) => editTaskBtn(task)"
                                             @manageSchedule="(task) => manageScheduleBtn(task)"
                                             @removeTask="(task) => removeTaskBtn(task)"
@@ -115,6 +117,13 @@
             :message="'Do you wish to run this task now?'" :confirmYes="runNowYes" :confirmNo="runNowNo"
             :operating="running" :operation="'starting'" />
     </div>
+
+    <div v-if="showStopNowPrompt">
+        <component :is="stopNowDialog" @close="updateShowStopNowPrompt" :showFlag="showStopNowPrompt" :title="'Stop Task'"
+            :message="'Do you wish to stop this task now?'" :confirmYes="stopNowYes" :confirmNo="stopNowNo"
+            :operating="stopping" :operation="'stopping'" />
+    </div>
+
 
     <div v-if="showRemoveTaskPrompt">
         <component :is="removeTaskDialog" @close="updateShowRemoveTaskPrompt" :showFlag="showRemoveTaskPrompt"
@@ -292,6 +301,66 @@ const runNowYes: ConfirmationCallback = async () => {
         );
     } finally {
         running.value = false;
+    }
+};
+
+
+/* Stop Task Now */
+const showStopNowPrompt = ref(false);
+const stopNowDialog = ref();
+const stopping = ref(false);
+
+function stopTaskBtn(task, rowIndex: number) {
+    selectedTask.value = task;
+    selectedRowIndex.value = rowIndex;
+    showStopNowDialog();
+}
+async function showStopNowDialog() {
+    await loadConfirmationDialog(stopNowDialog);
+    showStopNowPrompt.value = true;
+}
+
+
+const updateShowStopNowPrompt = (newVal) => {
+    showStopNowPrompt.value = newVal;
+}
+
+const stopNowNo: ConfirmationCallback = async () => {
+    updateShowStopNowPrompt(false);
+}
+
+
+const stopNowYes: ConfirmationCallback = async () => {
+    if (selectedTask.value == null || selectedRowIndex.value == null) {
+        // No selected row; just bail out quietly
+        updateShowStopNowPrompt(false);
+        return;
+    }
+
+    stopping.value = true;
+    const task = selectedTask.value;
+    const rowIndex = selectedRowIndex.value;
+
+    pushNotification(
+        new Notification('Task Stopping', `Task ${task.name} is stopping.`, 'info', 8000)
+    );
+
+    // Kick an immediate status/log refresh so the UI flips quickly
+    await updateStatusAndTime(task, rowIndex);
+
+    updateShowStopNowPrompt(false);
+
+    try {
+        await myScheduler.stopTaskNow(task);
+        pushNotification(
+            new Notification('Task Stopped', `Task ${task.name} has successfully been stopped.`, 'success', 8000)
+        );
+    } catch (error) {
+        pushNotification(
+            new Notification('Task Stop Failed', `Task ${task.name} failed to stop.`, 'error', 8000)
+        );
+    } finally {
+        stopping.value = false;
     }
 };
 

@@ -40,15 +40,19 @@
 			</div>
 
 			<div class="button-group-row justify-center col-span-5 mt-2">
-				<button @click="runTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
+				<button @click="runTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-success">
 					Run Now
 					<PlayIcon class="h-5 ml-2 mt-0.5" />
+				</button>
+				<button @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+					Stop Now
+					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
 				<button @click="editTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					Edit Task
 					<PencilIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="manageScheduleBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+				<button @click="manageScheduleBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
 					Manage Schedule
 					<CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
 				</button>
@@ -84,7 +88,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, defineExpose, computed } from 'vue';
-import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon,PencilSquareIcon } from '@heroicons/vue/24/outline';
+import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon, PencilSquareIcon, StopIcon } from '@heroicons/vue/24/outline';
 import { injectWithCheck } from '../../composables/utility'
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
@@ -112,10 +116,14 @@ function markManualRun(windowMs = 60_000) {
 	taskStatus.value = 'Running now...';
 }
 
-const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes']);
+const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes', 'stopTask']);
 
 async function runTaskBtn() {
 	emit('runTask', props.task);
+}
+
+async function stopTaskBtn() {
+	emit('stopTask', props.task);
 }
 
 function manageScheduleBtn() {
@@ -139,6 +147,7 @@ function editTaskBtn() {
 function viewLogsBtn() {
 	emit('viewLogs', props.task);
 }
+
 function viewNotesBtn(){
 	emit('viewNotes',props.task);
 }

@@ -2,7 +2,7 @@ import { ref } from 'vue';
 import { legacy } from '@45drives/houston-common-lib';
 import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate, CustomTaskTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
-import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName } from '../composables/utility';
+import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName, stopTask } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 
 // @ts-ignore
@@ -394,6 +394,18 @@ export class Scheduler implements SchedulerType {
         console.log(`Running ${fullTaskName}...`);
         await runTask(fullTaskName);
         console.log(`Task ${fullTaskName} completed.`);
+        // return TaskExecutionResult;
+    }
+
+    async stopTaskNow(taskInstance: TaskInstanceType) {
+        //stop service file now
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        console.log(`Stopping ${fullTaskName}...`);
+        await stopTask(fullTaskName);
+        console.log(`Task ${fullTaskName} stopped.`);
         // return TaskExecutionResult;
     }
 
