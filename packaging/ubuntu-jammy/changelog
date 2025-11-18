@@ -1,3 +1,9 @@
+cockpit-scheduler (1.3.9-4jammy) jammy; urgency=medium
+
+  * Testing bugfixes and feature additions
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 18 Nov 2025 12:18:22 -0400
+
 cockpit-scheduler (1.3.9-3jammy) jammy; urgency=medium
 
   * Updates test package build - functions were lost during merge

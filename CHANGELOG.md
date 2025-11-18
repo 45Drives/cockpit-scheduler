@@ -1,3 +1,3 @@
-## task scheduler 1.3.9-3
+## task scheduler 1.3.9-4
 
-* Updates test package build - functions were lost during merge
+* Testing bugfixes and feature additions
