@@ -626,3 +626,17 @@ export function destAheadOfCommon(src: ZfsSnap[], dst: ZfsSnap[], common: ZfsSna
 	// any dest snapshot after common.creation that source does NOT have?
 	return dst.some(d => d.creation > common.creation && !srcGuids.has(d.guid));
 }
+
+export function validateLocalPath(path: string): boolean {
+	// Local paths: allow spaces, (), and '
+	const localPathRegex =
+		/^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-().']+(?:\\|\/)?)*$/;
+	return localPathRegex.test(path);
+}
+
+export function validateRemotePath(path: string): boolean {
+	// remoteName:bucket/path – allow spaces, (), and '
+	const rcloneRegex =
+		/^[\w\-.]+:[\\/]*(?:[\w\s\-().']+[\\/]?)*$/;
+	return rcloneRegex.test(path);
+}
