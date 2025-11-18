@@ -6,6 +6,7 @@ import configparser
 from datetime import datetime, timedelta, timezone
 import requests
 import shlex 
+from sdnotify import SystemdNotifier
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
 SERVER_URL = 'https://cloud-sync.45d.io'
@@ -58,69 +59,26 @@ def get_remote_details(config, remote_name):
         print(f"ERROR: Invalid JSON token for remote '{remote_name}': {token}")
         raise ValueError(f"Invalid JSON token for remote '{remote_name}': {token}") from e
 
-
-def normalize_to_utc(expiry):
-    """
-    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
-    """
-    if '+' in expiry:
-        dt_part, offset_part = expiry.split('+')
-        sign = 1
-    elif '-' in expiry and not expiry.endswith('Z'):
-        dt_part, offset_part = expiry.split('-')
-        sign = -1
-    else:
-        # Already in UTC
-        return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
-
-    # Parse the main datetime part
-    dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
-
-    # Parse the offset into hours and minutes
-    offset_hours, offset_minutes = map(int, offset_part.split(':'))
-    offset = timedelta(hours=offset_hours, minutes=offset_minutes)
-
-    # Adjust the datetime to UTC
-    dt_utc = dt - sign * offset
-
-    # Return as timezone-aware datetime
-    return dt_utc.replace(tzinfo=timezone.utc)
-
-def normalize_to_utc(expiry):
-    """
-    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
-    """
+def normalize_to_utc(expiry: str) -> datetime:
     if not isinstance(expiry, str):
         raise ValueError(f"Expiry must be a string, got {type(expiry)}: {expiry}")
 
+    s = expiry.strip()
+    # Handle trailing Z
+    if s.endswith('Z'):
+        s = s[:-1] + '+00:00'
+
     try:
-        # Check for offset and split accordingly
-        if '+' in expiry:
-            dt_part, offset_part = expiry.split('+', maxsplit=1)
-            sign = 1
-        elif '-' in expiry and not expiry.endswith('Z'):
-            dt_part, offset_part = expiry.rsplit('-', maxsplit=1)
-            sign = -1
-        else:
-            # Handle UTC format without offset
-            return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+        dt = datetime.fromisoformat(s)
+    except ValueError as e:
+        raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601: {e}")
 
-        # Truncate fractional seconds to six digits if present
-        if '.' in dt_part:
-            base, frac = dt_part.split('.')
-            dt_part = f"{base}.{frac[:6]}"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
 
-        # Parse datetime and offset
-        dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
-        offset_hours, offset_minutes = map(int, offset_part.split(':'))
-        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
-
-        # Adjust datetime to UTC
-        return (dt - sign * offset).replace(tzinfo=timezone.utc)
-
-    except Exception as e:
-        raise ValueError(f"Failed to normalize expiry '{expiry}' to UTC: {e}")
-
+    return dt
 
 def is_token_expired(token_data):
     """
@@ -239,6 +197,8 @@ def build_rclone_command(options):
         command.append(f'--max-transfer={options["max_transfer_size"]}{options["max_transfer_size_unit"]}')
     if options['cutoff_mode']:
         command.append(f'--cutoff-mode={options["cutoff_mode"].upper()}')
+    if options.get('transfers', 0) > 0:
+        command.append(f'--transfers={options["transfers"]}')
         
     extra = options.get('custom_args') or ''
     if extra.strip():

@@ -551,7 +551,7 @@ import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption } from '../../../models/Parameters';
 import { CloudSyncRemote, getProviderLogo, getButtonStyles, CloudSyncProvider, CloudAuthParameter, cloudSyncProviders } from '../../../models/CloudSync';
-import { injectWithCheck, checkLocalPathExists } from '../../../composables/utility';
+import { injectWithCheck, checkLocalPathExists, validateRemotePath, validateLocalPath } from '../../../composables/utility';
 import { rcloneRemotesInjectionKey, remoteManagerInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
 
 interface CloudSyncParamsProps {
@@ -946,7 +946,7 @@ async function loadManageRemotesComponent() {
 }
 
 
-async function validateLocalPath() {
+async function validateLocalTransferPath() {
     // Clear the local path error before validation
     errorTags.value.localPath = false;
 
@@ -978,7 +978,7 @@ async function validateLocalPath() {
     return true;
 }
 
-function validateDestinationPath() {
+function validateDestinationTransferPath() {
     if (!targetPath.value) {
         errorList.value.push("Target path is required.");
         errorTags.value.targetPath = true;
@@ -999,19 +999,23 @@ function validateDestinationPath() {
     }
 }
 
-function validatePath(path, isRemote?) {
-    //no spaces allowed
-    // const pathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\-.]+(?:\\|\/)?)*$/;
-
-    if (isRemote) {
-        const rcloneRegex = /^[\w\-.]+:[\\/]*(?:[\w\s\-.]+[\\/])*[\w\s\-.]*$/;
-        return rcloneRegex.test(path);
-    } else {
-        // Allow flexible, valid paths with spaces
-        const localPathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-.]+(?:\\|\/)?)*$/;
-        return localPathRegex.test(path);
-    }
+function validatePath(path: string, isRemote?: boolean) {
+    return isRemote ? validateRemotePath(path) : validateLocalPath(path);
 }
+
+// function validatePath(path, isRemote?) {
+//     //no spaces allowed
+//     // const pathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\-.]+(?:\\|\/)?)*$/;
+
+//     if (isRemote) {
+//         const rcloneRegex = /^[\w\-.]+:[\\/]*(?:[\w\s\-.]+[\\/])*[\w\s\-.]*$/;
+//         return rcloneRegex.test(path);
+//     } else {
+//         // Allow flexible, valid paths with spaces
+//         const localPathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-.]+(?:\\|\/)?)*$/;
+//         return localPathRegex.test(path);
+//     }
+// }
 
 
 async function validateAllValues() {
@@ -1132,8 +1136,8 @@ async function validateParams() {
     // clearErrorTags();
     await validateSelectedRemote();
     await validateAllValues();
-    await validateLocalPath();
-    validateDestinationPath();
+    await validateLocalTransferPath();
+    validateDestinationTransferPath();
 
     if (errorList.value.length == 0 && Object.values(errorTags.value).every(tag => tag === false)) {
         setParams();

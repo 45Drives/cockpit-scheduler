@@ -26,7 +26,8 @@
             "smartmontools",
             "mbuffer",
             "rclone (>= 1.59)",
-            "netcat"
+            "netcat",
+            "python3-sdnotify"
         ],
         "rocky_common": [
             "cockpit",
@@ -36,7 +37,8 @@
             "smartmontools",
             "mbuffer",
             "rclone >= 1.59",
-            "netcat"
+            "netcat",
+            "python3-systemd"
         ]
     },
     "builds": [

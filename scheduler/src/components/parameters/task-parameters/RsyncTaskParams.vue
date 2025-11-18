@@ -15,7 +15,6 @@
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">
                         Source
-                        <!-- <InfoTile class="ml-1" title="Use a trailing slash (/) if you wish to transfer just the source directory's contents. Leave trailing slash out if you wish to transfer the entire directory." /> -->
                         <InfoTile class="ml-1"
                             title="Source directory must always have a trailing slash (If none is provided it will be added automatically.)" />
                     </label>
@@ -99,7 +98,9 @@
                         Testing...
                     </button>
                     <button v-else @click="confirmTest(destHost, destUser)"
-                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
+                        class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                        Test SSH
+                    </button>
                 </div>
             </div>
             <div name="destination-host" class="mt-1">
@@ -146,7 +147,7 @@
                             <InfoTile class="ml-1"
                                 title="Archive mode. Equivalent to Recursive + Preserve the following: Times, Symbolic Links, Permissions, Groups, Owner, Devices/Specials (cli flags: -rlptgoD)" />
                         </label>
-                        <input type="checkbox" v-model="isArchive" class=" h-4 w-4 rounded"
+                        <input type="checkbox" v-model="isArchive" class="h-4 w-4 rounded"
                             :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
                     </div>
                     <div name="options-recursive" class="flex flex-row justify-between items-center mt-1 col-span-1">
@@ -154,9 +155,7 @@
                             Recursive
                             <InfoTile class="ml-1" title="Recurse into directories." />
                         </label>
-                        <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
-                        <input v-else type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"/> -->
-                        <input type="checkbox" v-model="isRecursive" class=" h-4 w-4 rounded"
+                        <input type="checkbox" v-model="isRecursive" class="h-4 w-4 rounded"
                             :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
                     </div>
                     <div name="options-compressed" class="flex flex-row justify-between items-center mt-1 col-span-1">
@@ -164,7 +163,7 @@
                             Compressed
                             <InfoTile class="ml-1" title="Compress file data during the transfer." />
                         </label>
-                        <input type="checkbox" v-model="isCompressed" class=" h-4 w-4 rounded" />
+                        <input type="checkbox" v-model="isCompressed" class="h-4 w-4 rounded" />
                     </div>
                     <div name="options-preserve-times"
                         class="flex flex-row justify-between items-center mt-1 col-span-1">
@@ -172,9 +171,7 @@
                             Preserve Times
                             <InfoTile class="ml-1" title="Preserve modification times." />
                         </label>
-                        <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
-                        <input v-else type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded"/> -->
-                        <input type="checkbox" v-model="preserveTimes" class=" h-4 w-4 rounded" />
+                        <input type="checkbox" v-model="preserveTimes" class="h-4 w-4 rounded" />
                     </div>
                     <div name="options-delete" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
@@ -182,14 +179,14 @@
                             <InfoTile class="ml-1"
                                 title="Deletes files in target path that do not exist in source. (REQUIRES Archive or Recursive)" />
                         </label>
-                        <input type="checkbox" v-model="deleteFiles" class=" h-4 w-4 rounded" />
+                        <input type="checkbox" v-model="deleteFiles" class="h-4 w-4 rounded" />
                     </div>
                     <div name="options-quiet" class="flex flex-row justify-between items-center mt-1 col-span-1">
                         <label class="block text-sm leading-6 text-default mt-0.5">
                             Quiet
                             <InfoTile class="ml-1" title="Suppress non-error messages." />
                         </label>
-                        <input type="checkbox" v-model="isQuiet" class=" h-4 w-4 rounded" />
+                        <input type="checkbox" v-model="isQuiet" class="h-4 w-4 rounded" />
                     </div>
                 </div>
 
@@ -254,14 +251,14 @@
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             Preserve Hard Links
                                         </label>
-                                        <input type="checkbox" v-model="preserveHardLinks" class=" h-4 w-4 rounded" />
+                                        <input type="checkbox" v-model="preserveHardLinks" class="h-4 w-4 rounded" />
                                     </div>
                                     <div name="options-preserve-extended-attributes"
                                         class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             Preserve Extended Attrs.
                                         </label>
-                                        <input type="checkbox" v-model="preserveXattr" class=" h-4 w-4 rounded" />
+                                        <input type="checkbox" v-model="preserveXattr" class="h-4 w-4 rounded" />
                                     </div>
                                     <div name="options-limit-bw" class="col-span-2">
                                         <label class="mt-1 block text-sm leading-6 text-default">
@@ -280,9 +277,7 @@
                                         <label class="block text-sm leading-6 text-default mt-0.5">
                                             Preserve Permissions
                                         </label>
-                                        <!-- <input v-if="isArchive" disabled :checked="true" type="checkbox" class=" h-4 w-4 rounded"/>
-                                        <input v-else type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded"/> -->
-                                        <input type="checkbox" v-model="preservePerms" class=" h-4 w-4 rounded" />
+                                        <input type="checkbox" v-model="preservePerms" class="h-4 w-4 rounded" />
                                     </div>
 
                                     <div name="options-parallel"
@@ -292,19 +287,8 @@
                                             <InfoTile class="ml-1"
                                                 title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
                                         </label>
-                                        <input type="checkbox" v-model="isParallel" class=" h-4 w-4 rounded" />
-
-                                        <!-- <label class="block text-sm leading-6 text-muted mt-0.5">
-                                            Use Parallel Threads
-                                            <InfoTile class="ml-1" title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
-                                        </label>
-                                        <input type="checkbox" disabled v-model="isParallel" class=" h-4 w-4 rounded bg-accent"/> -->
+                                        <input type="checkbox" v-model="isParallel" class="h-4 w-4 rounded" />
                                     </div>
-                                    <!-- <div class="col-span-1 col-start-2 mt-1 ml-3">
-                                        <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
-                                            ** COMING SOON **
-                                        </label>
-                                    </div> -->
                                     <div name="options-parallel-threads" class="col-span-1 col-start-1">
                                         <label class="mt-1 block text-sm leading-6 text-default">
                                             # of Threads
@@ -317,17 +301,7 @@
                                         <input v-else disabled type="number" v-model="parallelThreads"
                                             class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                             placeholder="" />
-                                        <!-- <label class="mt-1 block text-sm leading-6 text-muted">
-                                            # of Threads
-                                            <InfoTile class="ml-1" title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
-                                        </label>
-                                        <input disabled type="number" v-model="parallelThreads" class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder=""/> -->
                                     </div>
-                                    <!-- <div class="col-span-1 col-start-2 mt-1 ml-3">
-                                        <label class="block text-sm font-medium leading-6 text-muted mt-0.5">
-                                            ** COMING SOON **
-                                        </label>
-                                    </div> -->
                                 </div>
                             </div>
                         </DisclosurePanel>
@@ -339,14 +313,21 @@
 </template>
 
 <script setup lang="ts">
-
 import { ref, Ref, onMounted, inject } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
-import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption, LocationParameter } from '../../../models/Parameters';
-import { testSSH } from '../../../composables/utility';
+import {
+    ParameterNode,
+    IntParameter,
+    StringParameter,
+    BoolParameter,
+    SelectionParameter,
+    SelectionOption,
+    LocationParameter
+} from '../../../models/Parameters';
+import { testSSH, validateLocalPath } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface RsyncTaskParamsProps {
@@ -368,7 +349,7 @@ const destHost = ref('');
 const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
-const directionSwitched = ref(false)
+const directionSwitched = ref(false);
 
 const isArchive = ref(true);
 const isRecursive = ref(false);
@@ -398,24 +379,22 @@ const sshTestResult = ref(false);
 const errorList = inject<Ref<string[]>>('errors')!;
 
 async function initializeData() {
-    // if props.task, then edit mode active (retrieve data)
     if (props.task) {
         loading.value = true;
         const params = props.task.parameters.children;
 
         sourcePath.value = params.find(p => p.key === 'local_path')!.value;
+
         const targetInfoParams = params.find(p => p.key === 'target_info')!.children;
         destPath.value = targetInfoParams.find(p => p.key === 'path')!.value;
         destHost.value = targetInfoParams.find(p => p.key === 'host')!.value;
         destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
         destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
         destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
+
         const transferDirection = params.find(p => p.key === 'direction')!.value;
-        if (transferDirection == 'pull') {
-            directionSwitched.value = true;
-        } else {
-            directionSwitched.value = false;
-        }
+        directionSwitched.value = transferDirection === 'pull';
+
         const rsyncOptions = params.find(p => p.key === 'rsyncOptions')!.children;
         isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
         isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
@@ -426,10 +405,14 @@ async function initializeData() {
         preserveHardLinks.value = rsyncOptions.find(p => p.key === 'hardLinks_flag')!.value;
         preservePerms.value = rsyncOptions.find(p => p.key === 'permissions_flag')!.value;
         preserveXattr.value = rsyncOptions.find(p => p.key === 'xattr_flag')!.value;
-        limitBandwidthKbps.value = (parseInt(rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value) == 0 ? 0 : rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value);
+
+        const bw = rsyncOptions.find(p => p.key === 'bandwidth_limit_kbps')!.value;
+        limitBandwidthKbps.value = parseInt(bw) === 0 ? 0 : bw;
+
         includePattern.value = rsyncOptions.find(p => p.key === 'include_pattern')!.value.replace(/^'|'$/g, '');
         excludePattern.value = rsyncOptions.find(p => p.key === 'exclude_pattern')!.value.replace(/^'|'$/g, '');
         extraUserParams.value = rsyncOptions.find(p => p.key === 'custom_args')!.value.replace(/^'|'$/g, '');
+
         isParallel.value = rsyncOptions.find(p => p.key === 'parallel_flag')!.value;
         parallelThreads.value = rsyncOptions.find(p => p.key === 'parallel_threads')!.value;
 
@@ -491,16 +474,15 @@ function hasChanges() {
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
-
 function validateHost() {
+    destHostErrorTag.value = false;
+
     if (destHost.value !== "") {
-        // Check overall length constraints
         if (destHost.value.length < 1 || destHost.value.length > 253) {
             errorList.value.push("Hostname must be between 1 and 253 characters in length.");
             destHostErrorTag.value = true;
         }
 
-        // Regular expression to validate the hostname structure and characters
         const hostRegex = /^(?!-)(?:(?:[a-zA-Z0-9]-*)*[a-zA-Z0-9]\.?)+$/;
         if (!hostRegex.test(destHost.value)) {
             errorList.value.push("Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.");
@@ -509,24 +491,17 @@ function validateHost() {
     }
 }
 
-function validatePath(path) {
-    // Regular expression to validate a UNIX-like file path
-    const pathRegex = /^(\/[^/ ]*)+\/?$/;
-    return pathRegex.test(path);
+function validatePath(path: string): boolean {
+    return validateLocalPath(path);
 }
 
 function validateSourcePath() {
     if (validatePath(sourcePath.value)) {
         if (!sourcePath.value.endsWith('/')) {
-            // sourcePathErrorTag.value = true;
-            // errorList.value.push("Source path has no trailing slash (/), entire directory will be transferred if not added.");
-            // pushNotification(new Notification('Source Path Warning', `Source path has no trailing slash (/), entire directory will be transferred if not added.`, 'warning', 8000));
             sourcePath.value += '/';
         }
-      //  console.log("Valid source path.");
         return true;
     } else {
-        console.log("Invalid source path.");
         errorList.value.push("Source path is invalid.");
         sourcePathErrorTag.value = true;
         return false;
@@ -535,14 +510,11 @@ function validateSourcePath() {
 
 function validateDestinationPath() {
     if (validatePath(destPath.value)) {
-        // Ensure the destination path has a trailing slash
         if (!destPath.value.endsWith('/')) {
             destPath.value += '/';
         }
-      //  console.log("Valid destination path: " + destPath.value);
         return destPath.value;
     } else {
-        console.log("Invalid destination path.");
         errorList.value.push("Target path is invalid.");
         destPathErrorTag.value = true;
         return false;
@@ -550,19 +522,20 @@ function validateDestinationPath() {
 }
 
 function validateDependantParams() {
-    if (deleteFiles.value && !isArchive.value || deleteFiles.value && !isRecursive) {
-        errorList.value.push("Delete Files requires either Archive or Recursive to be selected.")
+    if (deleteFiles.value && !(isArchive.value || isRecursive.value)) {
+        errorList.value.push("Delete Files requires either Archive or Recursive to be selected.");
         isDeleteErrorTag.value = true;
         return false;
-    } else {
-        return true;
     }
+    isDeleteErrorTag.value = false;
+    return true;
 }
 
-function sanitizeNumber(number) {
-    if (isNaN(number) || number < 0) {
-        number = 0;
+function sanitizeNumber(value: number): number {
+    if (isNaN(value) || value < 0) {
+        return 0;
     }
+    return value;
 }
 
 function clearErrorTags() {
@@ -574,15 +547,24 @@ function clearErrorTags() {
 }
 
 async function validateParams() {
+    // parent may call clearErrorTags() before this; leave it commented here
     // clearErrorTags();
+
     validateSourcePath();
     validateHost();
     validateDestinationPath();
     validateDependantParams();
-    // validateNumber('Bandwidth limit', limitBandwidthKbps.value);
-    sanitizeNumber(limitBandwidthKbps.value);
 
-    if (errorList.value.length == 0 && sourcePathErrorTag.value == false && destPathErrorTag.value == false) {
+    limitBandwidthKbps.value = sanitizeNumber(limitBandwidthKbps.value);
+
+    const noErrors =
+        errorList.value.length === 0 &&
+        sourcePathErrorTag.value === false &&
+        destPathErrorTag.value === false &&
+        destHostErrorTag.value === false &&
+        isDeleteErrorTag.value === false;
+
+    if (noErrors) {
         setParams();
     }
 }
@@ -591,50 +573,71 @@ function setParams() {
     const directionPUSH = new SelectionOption('push', 'Push');
     const directionPULL = new SelectionOption('pull', 'Pull');
 
-    const transferDirection = ref();
-    // PUSH = false, PULL = true
-    if (directionSwitched.value) {
-        transferDirection.value = directionPULL;
-    } else {
-        transferDirection.value = directionPUSH;
-    }
+    const transferDirection = ref<SelectionOption>();
+    transferDirection.value = directionSwitched.value ? directionPULL : directionPUSH;
 
     const newParams = new ParameterNode("Rsync Task Config", "rsyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', sourcePath.value))
-        .addChild(new LocationParameter('Target Information', 'target_info', destHost.value, destPort.value, destUser.value, destRoot.value, destPath.value))
+        .addChild(
+            new LocationParameter(
+                'Target Information',
+                'target_info',
+                destHost.value,
+                destPort.value,
+                destUser.value,
+                destRoot.value,
+                destPath.value
+            )
+        )
         .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value.value))
-        .addChild(new ParameterNode('Rsync Options', 'rsyncOptions')
-            .addChild(new BoolParameter('Archive', 'archive_flag', isArchive.value))
-            .addChild(new BoolParameter('Recursive', 'recursive_flag', isRecursive.value))
-            .addChild(new BoolParameter('Compressed', 'compressed_flag', isCompressed.value))
-            .addChild(new BoolParameter('Delete', 'delete_flag', deleteFiles.value))
-            .addChild(new BoolParameter('Quiet', 'quiet_flag', isQuiet.value))
-            .addChild(new BoolParameter('Preserve Times', 'times_flag', preserveTimes.value))
-            .addChild(new BoolParameter('Preserve Hard Links', 'hardLinks_flag', preserveHardLinks.value))
-            .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', preservePerms.value))
-            .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', preserveXattr.value))
-            .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', limitBandwidthKbps.value))
-            .addChild(new StringParameter('Include', 'include_pattern', `'${includePattern.value}'`))
-            .addChild(new StringParameter('Exclude', 'exclude_pattern', `'${excludePattern.value}'`))
-            .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', isParallel.value))
-            .addChild(new IntParameter('Threads', 'parallel_threads', parallelThreads.value))
-            .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', `'${extraUserParams.value}'`))
+        .addChild(
+            new ParameterNode('Rsync Options', 'rsyncOptions')
+                .addChild(new BoolParameter('Archive', 'archive_flag', isArchive.value))
+                .addChild(new BoolParameter('Recursive', 'recursive_flag', isRecursive.value))
+                .addChild(new BoolParameter('Compressed', 'compressed_flag', isCompressed.value))
+                .addChild(new BoolParameter('Delete', 'delete_flag', deleteFiles.value))
+                .addChild(new BoolParameter('Quiet', 'quiet_flag', isQuiet.value))
+                .addChild(new BoolParameter('Preserve Times', 'times_flag', preserveTimes.value))
+                .addChild(new BoolParameter('Preserve Hard Links', 'hardLinks_flag', preserveHardLinks.value))
+                .addChild(new BoolParameter('Preserve Permissions', 'permissions_flag', preservePerms.value))
+                .addChild(new BoolParameter('Preserve Extended Attributes', 'xattr_flag', preserveXattr.value))
+                .addChild(new IntParameter('Limit Bandwidth', 'bandwidth_limit_kbps', limitBandwidthKbps.value))
+                .addChild(new StringParameter('Include', 'include_pattern', `'${includePattern.value}'`))
+                .addChild(new StringParameter('Exclude', 'exclude_pattern', `'${excludePattern.value}'`))
+                .addChild(new BoolParameter('Parallel Transfer', 'parallel_flag', isParallel.value))
+                .addChild(new IntParameter('Threads', 'parallel_threads', parallelThreads.value))
+                .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', `'${extraUserParams.value}'`))
         );
 
     parameters.value = newParams;
-  //  console.log('newParams:', newParams);
 }
 
-async function confirmTest(destHost, destUser) {
+async function confirmTest(destHostVal: string, destUserVal: string) {
     testingSSH.value = true;
 
-    const sshTarget = destUser + '@' + destHost;
+    const sshTarget = destUserVal + '@' + destHostVal;
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for remote transfers.`, 'success', 8000));
+        pushNotification(
+            new Notification(
+                'Connection Successful!',
+                'Passwordless SSH connection established. This host can be used for remote transfers.',
+                'success',
+                8000
+            )
+        );
     } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000));
+        pushNotification(
+            new Notification(
+                'Connection Failed',
+                `Could not resolve hostname "${destHostVal}": 
+Name or service not known.
+Make sure passwordless SSH connection has been configured for target system.`,
+                'error',
+                8000
+            )
+        );
     }
     testingSSH.value = false;
 }
