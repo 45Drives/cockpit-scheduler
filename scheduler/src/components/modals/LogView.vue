@@ -85,7 +85,8 @@
                             </li>
                             <li v-if="viewMoreLogs && !loadingMoreLogs"
                                 class="m-1 block text-sm leading-6 text-default bold italic text-center bg-default">
-                                Previous Logs</li>
+                                All Logs
+                            </li>
                             <li v-if="viewMoreLogs && !loadingMoreLogs"
                                 v-for="line, idx in allLogsForThisTask.split('\n')" :key="idx"
                                 class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
@@ -186,11 +187,13 @@ async function refreshLogs() {
 
             // If viewing all logs, also refresh previous logs
             if (viewMoreLogs.value) {
-                const logs = await myTaskLog.getEntriesFor(taskInstance.value, thisLogEntry.value?.startDate);
+                // Show ALL logs for this unit (all runs)
+                const logs = await myTaskLog.getEntriesFor(taskInstance.value);
                 if (logs) {
-                    allLogsForThisTask.value = logs + '\n' + thisLogEntry.value!.output; // Ensure latest is appended
+                    allLogsForThisTask.value = logs;
                 }
             }
+
         } catch (error) {
             console.error("Failed to refresh logs:", error);
         } finally {
@@ -226,9 +229,9 @@ const fetchAllLogs = async () => {
 
     loadingMoreLogs.value = true;
     try {
-        const logs = await myTaskLog.getEntriesFor(taskInstance.value, thisLogEntry.value?.startDate);
+        const logs = await myTaskLog.getEntriesFor(taskInstance.value);
         if (logs) {
-            allLogsForThisTask.value += '\n' + logs; // Append logs instead of replacing
+            allLogsForThisTask.value = logs;
         }
     } catch (error) {
         console.error("Failed to fetch logs:", error);

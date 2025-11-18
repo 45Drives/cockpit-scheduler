@@ -5,6 +5,7 @@ import json
 import configparser
 from datetime import datetime, timedelta, timezone
 import requests
+import shlex 
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
 SERVER_URL = 'https://cloud-sync.45d.io'
@@ -238,6 +239,16 @@ def build_rclone_command(options):
         command.append(f'--max-transfer={options["max_transfer_size"]}{options["max_transfer_size_unit"]}')
     if options['cutoff_mode']:
         command.append(f'--cutoff-mode={options["cutoff_mode"].upper()}')
+        
+    extra = options.get('custom_args') or ''
+    if extra.strip():
+        parts = []
+        for chunk in extra.split(','):      # 1) split on commas (if there are none, you just get the whole string)
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            parts.extend(shlex.split(chunk))  # 2) within each chunk, split on spaces (respecting quotes)
+        command.extend(parts)
 
     return command
 

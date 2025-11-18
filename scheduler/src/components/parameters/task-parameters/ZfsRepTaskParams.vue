@@ -346,7 +346,7 @@ import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, isDatasetEmpty, doSnapshotsExist, testNetcat, mostRecentCommonSnapshot, listSnapshots, ZfsSnap, destAheadOfCommon } from '../../../composables/utility';
+import { getPoolData, getDatasetData, testSSH, testNetcat, mostRecentCommonSnapshot, listSnapshots, ZfsSnap, destAheadOfCommon } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -519,6 +519,8 @@ async function initializeData() {
             destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
         }
+        const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
+        useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
 
         initialParameters.value = JSON.parse(JSON.stringify({
             sourcePool: sourcePool.value,
@@ -543,6 +545,7 @@ async function initializeData() {
             destRetentionUnit: destRetentionUnit.value,
             transferMethod: transferMethod.value,
             allowOverwrite: allowOverwrite.value,
+            useExistingDest: useExistingDest.value,
         }));
 
         loading.value = false;
@@ -576,13 +579,17 @@ function hasChanges() {
         destRetentionTime: destRetentionTime.value,
         destRetentionUnit: destRetentionUnit.value,
         allowOverwrite: allowOverwrite.value,
+        useExistingDest: useExistingDest.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
-
 function hasDestDatasetChanged() {
+    // For new tasks, treat any non-empty destDataset as "changed"
+    if (!('destDataset' in initialParameters.value)) {
+        return !!destDataset.value;
+    }
     return destDataset.value !== initialParameters.value.destDataset;
 }
 
@@ -787,7 +794,7 @@ function validateSource() {
 }
 
 function validateDestination() {
-    if (!hasDestDatasetChanged()) return;
+    // if (!hasDestDatasetChanged()) return;
 
     // Common checks
     if (destPool.value === '') {
@@ -827,149 +834,10 @@ function validateDestination() {
     }
 }
 
-
-/* async function checkDestDatasetContents() {
-    if (!hasDestDatasetChanged()) {
-      //  console.log("Destination has not changed, skipping checks.");
-        return;
-    }
-
-    try {
-        // Check if custom target and new dataset creation are flagged
-        if (!useCustomTarget.value && !makeNewDestDataset.value) {
-            // Perform checks if the dataset exists
-
-            let hasSnapshots;
-            let isEmpty;
-
-            if (destHost.value !== '') {
-                if (transferMethod.value == "netcat"){
-                    hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, "22");
-                    isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, "22");
-
-                } else {
-                    hasSnapshots = await doSnapshotsExist(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
-                    isEmpty = await isDatasetEmpty(destDataset.value, destUser.value, destHost.value, destPort.value.toString());
-                }
-            } else {
-                hasSnapshots = await doSnapshotsExist(destDataset.value);
-                isEmpty = await isDatasetEmpty(destDataset.value);
-            }
-
-            if (hasSnapshots) {
-                errorList.value.push("Destination dataset has snapshots already, please create a new one.");
-                destDatasetErrorTag.value = true;
-                useCustomTarget.value = true;
-                makeNewDestDataset.value = true;
-            } else if (!isEmpty) {
-                errorList.value.push("Destination dataset is not empty, please create a new one.");
-                destDatasetErrorTag.value = true;
-                useCustomTarget.value = true;
-                makeNewDestDataset.value = true;
-            } else {
-                // Dataset is valid, no errors
-                destDatasetErrorTag.value = false;
-            }
-        } else {
-            // Check if the destination dataset exists
-            const datasetExists = doesItExist(destDataset.value, destDatasets.value);
-
-            if (!datasetExists) {
-                // Dataset does not exist, can proceed with creation
-                //  console.log("Destination dataset does not exist, proceeding with creation.");
-                destDatasetErrorTag.value = false;
-            } else {
-                // Dataset exists, perform additional validation
-                const hasSnapshots = await doSnapshotsExist(destDataset.value);
-                const isEmpty = await isDatasetEmpty(destDataset.value);
-
-                if (hasSnapshots) {
-                    errorList.value.push("Destination dataset has snapshots already, please create a new one.");
-                    destDatasetErrorTag.value = true;
-                } else if (!isEmpty) {
-                    errorList.value.push("Destination dataset is not empty, please create a new one.");
-                    destDatasetErrorTag.value = true;
-                } else {
-                    // Dataset is valid
-                    destDatasetErrorTag.value = false;
-                }
-            }
-        }
-    } catch (error) {
-        console.error("Error while checking dataset contents:", error);
-        errorList.value.push("An unexpected error occurred while validating dataset contents.");
-    }
-} */
-/* 
-async function checkDestDatasetContents() {
-    if (!hasDestDatasetChanged()) return;
-
-    try {
-        // If user asked to create a new dataset explicitly, no need to block here
-        if (makeNewDestDataset.value) {
-            destDatasetErrorTag.value = false;
-            return;
-        }
-
-        // Gather snapshots on source and destination
-        const srcSnaps = await listSnapshots(
-            sourceDataset.value
-        );
-
-        let dstSnaps: ZfsSnap[] = [];
-        if (destHost.value) {
-            const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
-            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
-        } else {
-            dstSnaps = await listSnapshots(destDataset.value);
-        }
-
-        // If destination has no snapshots and is empty → allow
-        if (!dstSnaps.length) {
-            const empty = destHost.value
-                ? await isDatasetEmpty(destDataset.value, destUser.value, destHost.value,
-                    transferMethod.value === "netcat" ? "22" : String(destPort.value))
-                : await isDatasetEmpty(destDataset.value);
-
-            if (empty) {
-                destDatasetErrorTag.value = false;
-                return;
-            }
-        }
-
-        // Destination has snapshots: check for common base
-        const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
-
-        if (common) {
-            // Migration path: OK (incremental base exists)
-            destDatasetErrorTag.value = false;
-            return;
-        }
-
-        // No common base
-        if (allowOverwrite.value) {
-            // We will proceed with -F; allow selection
-            destDatasetErrorTag.value = false;
-            return;
-        }
-
-        // Block and nudge the user
-        errorList.value.push(
-            "Destination has snapshots that do not match the source. Either enable 'Allow overwrite if no common snapshot' or choose/create an empty destination."
-        );
-        destDatasetErrorTag.value = true;
-
-    } catch (error) {
-        console.error("Error while checking dataset contents:", error);
-        errorList.value.push("An unexpected error occurred while validating destination dataset.");
-        destDatasetErrorTag.value = true;
-    }
-} */
-
 async function checkDestDatasetContents() {
     // Only matters when using existing
     if (!useExistingDest.value) return;
-    if (!hasDestDatasetChanged()) return;
+    // if (!hasDestDatasetChanged()) return;
 
     try {
         const srcSnaps = await listSnapshots(sourceDataset.value);
@@ -1121,9 +989,6 @@ function setParams() {
 
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
-            // .addChild(new IntParameter('Source', 'source', snapsToKeepSrc.value))
-            // .addChild(new IntParameter('Destination', 'destination', snapsToKeepDest.value)
-            // )
             .addChild(new SnapshotRetentionParameter('Source','source',srcRetentionTime.value,srcRetentionUnit.value))
             .addChild(new SnapshotRetentionParameter('Destination', 'destination', destRetentionTime.value, destRetentionUnit.value))
 

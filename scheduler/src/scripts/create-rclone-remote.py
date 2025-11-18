@@ -2,10 +2,24 @@
 import argparse
 import configparser
 import json
+from pathlib import Path
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
 
 def save_remote_to_conf(remote):
+    config_path = Path(RCLONE_CONF_PATH)
+
+    # Ensure parent directory exists
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create the file if it does not exist
+    if not config_path.exists():
+        # Touch the file (empty file is fine; configparser will overwrite later)
+        config_path.touch()
+        print(f'Rclone conf file created at {config_path}')
+    else:
+        print(f'Rclone conf file exists at {config_path}')
+        
     config = configparser.ConfigParser()
     config.read(RCLONE_CONF_PATH)
 

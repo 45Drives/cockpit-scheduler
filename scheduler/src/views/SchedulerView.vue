@@ -73,10 +73,10 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div v-for="taskInstance in filteredAndSortedTasks" :key="taskInstance.name">
+                                    <div v-for="(taskInstance, index) in filteredAndSortedTasks" :key="taskInstance.name">
                                         <TaskInstanceTableRow :task="taskInstance"
                                             :isExpanded="expandedTaskName === taskInstance.name"
-                                            @runTask="(task) => runTaskBtn(task)"
+                                            @runTask="(task) => runTaskBtn(taskInstance, index)"
                                             @editTask="(task) => editTaskBtn(task)"
                                             @manageSchedule="(task) => manageScheduleBtn(task)"
                                             @removeTask="(task) => removeTaskBtn(task)"
@@ -134,7 +134,7 @@
 
 <script setup lang="ts">
 import "@45drives/houston-common-css/src/index.css";
-import { computed, ref, provide } from 'vue';
+import { computed, ref, provide, nextTick } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
@@ -147,10 +147,11 @@ const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances 
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 const selectedTask = ref<TaskInstanceType>();
+const selectedRowIndex = ref<number | null>(null);
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
 
-async function updateStatusAndTime(task: TaskInstanceType, index: number) {
-    const target = taskTableRow.value[index];
+async function updateStatusAndTime(task: TaskInstanceType, rowIndex: number) {
+    const target = taskTableRow.value[rowIndex];
     await target.updateTaskStatus(task);
     await target.fetchLatestLog(task);
 }
@@ -160,6 +161,16 @@ async function refreshBtn() {
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
+
+    await nextTick();
+
+    taskInstances.value.forEach((task, index) => {
+        const row = taskTableRow.value[index];
+        if (row) {
+            row.updateTaskStatus(task);
+            row.fetchLatestLog(task);
+        }
+    });
 }
 
 const expandedTaskName = ref(null);
@@ -225,8 +236,9 @@ const showRunNowPrompt = ref(false);
 const runNowDialog = ref();
 const running = ref(false);
 
-function runTaskBtn(task) {
+function runTaskBtn(task, rowIndex: number) {
     selectedTask.value = task;
+    selectedRowIndex.value = rowIndex;
     showRunNowDialog();
 }
 async function showRunNowDialog() {
@@ -245,23 +257,42 @@ const runNowNo: ConfirmationCallback = async () => {
 
 
 const runNowYes: ConfirmationCallback = async () => {
-    running.value = true;
-    // Push a notification that the task has started
-    pushNotification(new Notification('Task Started', `Task ${selectedTask.value!.name} has started running.`, 'info', 8000));
-    const taskIndex = taskInstances.value.indexOf(selectedTask.value as TaskInstance);
-    await updateStatusAndTime(selectedTask.value!, taskIndex);
-    updateShowRunNowPrompt(false); // Close the modal
-    // Start the task and close the modal immediately
-    await myScheduler.runTaskNow(selectedTask.value!).then(() => {
-        // Push a success notification when task finishes
-        pushNotification(new Notification('Task Successful', `Task ${selectedTask.value!.name} has successfully completed.`, 'success', 8000));
-    }).catch((error) => {
-        // Push a failure notification if the task fails
-        pushNotification(new Notification('Task Failed', `Task ${selectedTask.value!.name} failed to complete.`, 'error', 8000));
-    });
+    if (selectedTask.value == null || selectedRowIndex.value == null) {
+        // No selected row; just bail out quietly
+        updateShowRunNowPrompt(false);
+        return;
+    }
 
-    updateShowRunNowPrompt(false); // Close the modal
-    running.value = false;
+    running.value = true;
+    const task = selectedTask.value;
+    const rowIndex = selectedRowIndex.value;
+
+    pushNotification(
+        new Notification('Task Started', `Task ${task.name} has started running.`, 'info', 8000)
+    );
+
+    const row = taskTableRow.value[rowIndex];
+
+    // Tell the row to treat the next 60 seconds as a "manual run" window
+    row?.markManualRun(60_000);
+
+    // Kick an immediate status/log refresh so the UI flips quickly
+    await updateStatusAndTime(task, rowIndex);
+
+    updateShowRunNowPrompt(false);
+
+    try {
+        await myScheduler.runTaskNow(task);
+        pushNotification(
+            new Notification('Task Successful', `Task ${task.name} has successfully completed.`, 'success', 8000)
+        );
+    } catch (error) {
+        pushNotification(
+            new Notification('Task Failed', `Task ${task.name} failed to complete.`, 'error', 8000)
+        );
+    } finally {
+        running.value = false;
+    }
 };
 
 
