@@ -10,34 +10,41 @@ export class TaskExecutionLog {
         this.entries = entries;
     }
 
-    async getEntriesFor(taskInstance, untilTime) {
+    /**
+     * Get logs for a task.
+     * - If untilTime is falsy: return ALL logs for this unit.
+     * - If untilTime is truthy: return logs up to that time (used if you
+     *   ever want "logs up to X" elsewhere).
+     */
+    async getEntriesFor(taskInstance, untilTime?: string) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const taskName = taskInstance.name;
 
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
-        const serviceUnit = `${fullTaskName}.service`;   // <-- add this
+        const serviceUnit = `${fullTaskName}.service`;
 
         try {
+            // Show ALL logs for this unit by default
             if (!untilTime) {
-                // Show the last 200 lines for this unit by default
                 const logCommand = [
                     'journalctl',
                     '-u', serviceUnit,
                     '--no-pager',
-                    '--all',
-                    '-n', '200'
+                    '--all'
                 ];
                 const logState = useSpawn(logCommand, { superuser: 'try' });
                 const logResult = await logState.promise();
                 return (logResult.stdout || '').trim();
             }
 
+            // Optional: logs up to a specific time if desired
             const command = [
                 'journalctl',
-                '-u', serviceUnit,             // <-- use .service explicitly
+                '-u', serviceUnit,
                 '--until', untilTime,
-                '--no-pager', '--all'
+                '--no-pager',
+                '--all'
             ];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
@@ -49,6 +56,12 @@ export class TaskExecutionLog {
         }
     }
 
+    /**
+     * Get the execution result for the most recent run:
+     * - exit code
+     * - start/finish timestamps (pretty-printed)
+     * - FULL log for that run (from Starting to Stopped/Failed).
+     */
     async getLatestEntryFor(taskInstance) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
@@ -57,16 +70,13 @@ export class TaskExecutionLog {
         const serviceUnit = `${fullTaskName}.service`;
 
         let exitCode = 0;
-        let rawStart = '';
         let rawExit = '';
-        let timestamp = '';
         let rawOutput = '';
 
         function prettyTimestamp(ts: string): string {
             if (!ts) return ts;
 
             const d = new Date(ts);
-            // If the JS engine can't parse it, fall back to the original text
             if (isNaN(d.getTime())) return ts;
 
             const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -99,41 +109,15 @@ export class TaskExecutionLog {
             const ss = byType.second || '';
             const tz = byType.timeZoneName || '';
 
-            // e.g. "Mon 2025-11-17 11:45:31 AST"
             return `${wd} ${y}-${m}-${dd} ${hh}:${mm}:${ss}${tz ? ' ' + tz : ''}`;
         }
 
-        // 1) Grab latest log line (for timestamp + raw output)
-        try {
-            const logCommand = [
-                'journalctl',
-                '-u', serviceUnit,
-                '-n', '1',
-                '--no-pager',
-                '--output', 'short-iso'
-            ];
-            const logState = useSpawn(logCommand, { superuser: 'try' });
-            const logResult = await logState.promise();
-            rawOutput = logResult.stdout || '';
-
-            const firstLine = rawOutput.split('\n').find(l => l.trim());
-            if (firstLine) {
-                const spaceIdx = firstLine.indexOf(' ');
-                if (spaceIdx > 0) {
-                    // e.g. "2025-11-17T10:49:34-0500"
-                    timestamp = firstLine.slice(0, spaceIdx);
-                }
-            }
-        } catch (e) {
-            console.warn('Failed to read journal for', serviceUnit, errorString(e));
-        }
-
-        // 2) Ask systemd for ExecMain* timestamps
+        // 1) Ask systemd for exit code + exit timestamp
         try {
             const execCommand = [
                 'systemctl', 'show',
                 serviceUnit,
-                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp'
+                '-p', 'ExecMainStatus,ExecMainExitTimestamp'
             ];
             const execState = useSpawn(execCommand, { superuser: 'try' });
             const execResult = await execState.promise();
@@ -150,43 +134,99 @@ export class TaskExecutionLog {
 
             const rawStatus = properties['ExecMainStatus'] || '0';
             exitCode = parseInt(rawStatus, 10);
-
-            rawStart = properties['ExecMainStartTimestamp'] || '';
             rawExit = properties['ExecMainExitTimestamp'] || '';
         } catch (e) {
             console.warn('Failed to read ExecMainStatus for', serviceUnit, errorString(e));
         }
 
-        // Prefer systemd’s ExecMain*; if they’re empty (manual-only case),
-        // fall back to the ISO timestamp, but pretty-print it.
-        const startTime = prettyTimestamp(rawStart || timestamp || '');
-        const finishTime = prettyTimestamp(rawExit || timestamp || '');
+        // 2) Fetch the tail of the journal and slice out the last run
+        let startIso = '';
+        let endIso = '';
 
-        const cleanedOutput = (rawOutput || '')
-            .split('\n')
-            .filter(line => !line.startsWith('-- Logs begin at'))
-            .join('\n');
+        try {
+            // Grab a reasonable tail for this unit; enough to include several runs
+            const logCommand = [
+                'journalctl',
+                '-u', serviceUnit,
+                '-n', '500',
+                '--no-pager',
+                '--output', 'short-iso'
+            ];
+            const logState = useSpawn(logCommand, { superuser: 'try' });
+            const logResult = await logState.promise();
+            const allOutput = logResult.stdout || '';
 
-        return new TaskExecutionResult(exitCode, cleanedOutput, startTime, finishTime);
+            const allLines = allOutput
+                .split('\n')
+                .filter(line => line.trim() && !line.startsWith('-- Logs begin at'));
+
+            if (allLines.length === 0) {
+                // No logs at all
+                return new TaskExecutionResult(
+                    exitCode,
+                    '',
+                    '',
+                    prettyTimestamp(rawExit || '')
+                );
+            }
+
+            // Find the last "Starting/Started Service for <taskName>" line
+            const startMarkers = [
+                'Starting Service for ',
+                'Started Service for '
+            ];
+
+            let startIndex = 0; // fall back to the beginning if we don't find a marker
+            for (let i = allLines.length - 1; i >= 0; i--) {
+                const line = allLines[i];
+                if (
+                    startMarkers.some(m => line.includes(m)) &&
+                    line.includes(taskName)
+                ) {
+                    startIndex = i;
+                    break;
+                }
+            }
+
+            const lastRunLines = allLines.slice(startIndex);
+
+            // Extract ISO-ish timestamps (journalctl short-iso: first token before space)
+            const firstLine = lastRunLines[0];
+            const lastLine = lastRunLines[lastRunLines.length - 1];
+
+            const extractIso = (line: string) => {
+                const spaceIdx = line.indexOf(' ');
+                return spaceIdx > 0 ? line.slice(0, spaceIdx) : '';
+            };
+
+            startIso = extractIso(firstLine);
+            endIso = extractIso(lastLine);
+
+            rawOutput = lastRunLines.join('\n');
+        } catch (e) {
+            console.warn('Failed to read/slice journal for', serviceUnit, errorString(e));
+        }
+
+        const startTime = prettyTimestamp(startIso);
+        const finishTime = prettyTimestamp(rawExit || endIso || startIso);
+
+        return new TaskExecutionResult(exitCode, rawOutput, startTime, finishTime);
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
         const taskLog = new TaskExecutionLog([]);
 
-        // Get the latest entry for the task
         const latestEntry = await taskLog.getLatestEntryFor(taskInstance);
 
         if (!latestEntry || !latestEntry.finishDate) {
-            return false;  // No previous run or no finish date
+            return false;
         }
 
         const finishDate = new Date(latestEntry.finishDate).getTime();
         const currentTime = Date.now();
 
-        // Define a threshold for "recently completed" (e.g., 10 minutes in milliseconds)
-        const threshold = 10 * 60 * 1000;
+        const threshold = 10 * 60 * 1000; // 10 minutes
 
-        // Check if the task finished within the threshold
         return (currentTime - finishDate) <= threshold;
     }
 
