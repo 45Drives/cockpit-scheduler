@@ -1,3 +1,10 @@
+cockpit-scheduler (1.3.9-6jammy) jammy; urgency=medium
+
+  * Setting release to stable since testing package building seems to be broken/cannot
+    fix update-repos build step's errors
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 19 Nov 2025 07:26:40 -0400
+
 cockpit-scheduler (1.3.9-5jammy) jammy; urgency=medium
 
   * Incrementing build to try again (update-repositories step failing due to conflicts)
