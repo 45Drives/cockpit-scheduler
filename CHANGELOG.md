@@ -1,3 +1,3 @@
-## task scheduler 1.3.9-4
+## task scheduler 1.3.9-5
 
-* Testing bugfixes and feature additions
+* Incrementing build to try again (update-repositories step failing due to conflicts)

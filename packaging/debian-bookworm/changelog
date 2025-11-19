@@ -1,3 +1,9 @@
+cockpit-scheduler (1.3.9-5bookworm) bookworm; urgency=medium
+
+  * Incrementing build to try again (update-repositories step failing due to conflicts)
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 19 Nov 2025 04:56:37 -0400
+
 cockpit-scheduler (1.3.9-4bookworm) bookworm; urgency=medium
 
   * Testing bugfixes and feature additions
