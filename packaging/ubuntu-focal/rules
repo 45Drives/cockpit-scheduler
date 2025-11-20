@@ -16,6 +16,27 @@
 %:
 	dh $@
 
+override_dh_auto_install:
+	dh_auto_install
+
+	# Load secrets from .env if present
+	if [ -f .env ]; then \
+		set -a; \
+		. .env; \
+		set +a; \
+	fi; \
+	PKG_DIR=debian/$(DEB_SOURCE); \
+	TEMPLATE="$$PKG_DIR/etc/45drives/houston/cloud-sync-client-creds-template.json"; \
+	OUTPUT="$$PKG_DIR/etc/45drives/houston/cloud-sync-client-creds.json"; \
+	mkdir -p "$$(dirname $$OUTPUT)"; \
+	sed \
+	  -e "s|YOUR_GOOGLE_CLIENT_ID|$${GOOGLE_CLIENT_ID}|g" \
+	  -e "s|YOUR_GOOGLE_CLIENT_SECRET|$${GOOGLE_CLIENT_SECRET}|g" \
+	  -e "s|YOUR_DROPBOX_CLIENT_ID|$${DROPBOX_CLIENT_ID}|g" \
+	  -e "s|YOUR_DROPBOX_CLIENT_SECRET|$${DROPBOX_CLIENT_SECRET}|g" \
+	  "$$TEMPLATE" > "$$OUTPUT"; \
+	chmod 600 "$$OUTPUT"; \
+	rm -f "$$TEMPLATE"
 
 # dh_make generated override targets
 # This is example for Cmake (See https://bugs.debian.org/641051 )

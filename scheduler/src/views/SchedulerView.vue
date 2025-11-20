@@ -119,11 +119,10 @@
     </div>
 
     <div v-if="showStopNowPrompt">
-        <component :is="stopNowDialog" @close="updateShowStopNowPrompt" :showFlag="showStopNowPrompt" :title="'Stop Task'"
-            :message="'Do you wish to stop this task now?'" :confirmYes="stopNowYes" :confirmNo="stopNowNo"
-            :operating="stopping" :operation="'stopping'" />
+        <component :is="stopNowDialog" @close="updateShowStopNowPrompt" :showFlag="showStopNowPrompt"
+            :title="'Stop Task'" :message="'Do you wish to stop this task now?'" :confirmYes="stopNowYes"
+            :confirmNo="stopNowNo" :operating="stopping" :operation="'stopping'" />
     </div>
-
 
     <div v-if="showRemoveTaskPrompt">
         <component :is="removeTaskDialog" @close="updateShowRemoveTaskPrompt" :showFlag="showRemoveTaskPrompt"

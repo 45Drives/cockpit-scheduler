@@ -18,10 +18,19 @@ def parse_env_file(parameter_env_file_path):
     logging.debug(f'Parsing env file: {parameter_env_file_path}')
     parameters = {}
     with open(parameter_env_file_path, "r") as f:
-        for line in f:
-            key, value = line.strip().split('=')
+        for raw in f:
+            line = raw.strip()
+            # skip empty lines and comments
+            if not line or line.startswith('#'):
+                continue
+
+            if '=' not in line:
+                logging.warning(f"Skipping malformed env line (no '='): {line!r}")
+                continue
+
+            key, value = line.split('=', 1)  # <-- only split once
             parameters[key] = value
-        
+
     logging.debug('Env file parsed successfully')
     return parameters
 

@@ -34,11 +34,24 @@
 				Details</button>
 			<button v-else @click="toggleTaskDetails()" class="btn btn-secondary">View Details</button>
 		</td>
+		<td class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
+			<div v-if="progress !== null">
+				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded">
+					<div class="h-2 bg-green-600 rounded" :style="{ width: Math.min(progress, 100) + '%' }">
+					</div>
+				</div>
+				<div class="text-xs mt-1">
+					{{ Math.round(progress) }}%
+				</div>
+			</div>
+			<div v-else class="text-xs text-muted">
+				–
+			</div>
+		</td>
 		<td v-if="isExpanded" class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
 				<TaskInstanceDetails :task="taskInstance" />
 			</div>
-
 			<div class="button-group-row justify-center col-span-5 mt-2">
 				<button @click="runTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-success">
 					Run Now
@@ -114,6 +127,16 @@ const manualRunUntil = ref<number>(0);
 function markManualRun(windowMs = 60_000) {
 	manualRunUntil.value = Date.now() + windowMs;
 	taskStatus.value = 'Running now...';
+}
+
+const progress = ref<number | null>(null);
+async function updateProgress(task) {
+	try {
+		const p = await myScheduler.getTaskProgress(task);
+		progress.value = p;
+	} catch (e) {
+		console.error('Failed to get progress:', e);
+	}
 }
 
 const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes', 'stopTask']);
@@ -297,11 +320,13 @@ const displayedStatusClass = computed(() => {
 onMounted(async () => {
 	await updateTaskStatus(taskInstance.value);
 	await fetchLatestLog(taskInstance.value);
+	await updateProgress(taskInstance.value);
 
 	intervalId = setInterval(async () => {
 		try {
 			await updateTaskStatus(taskInstance.value);
 			await fetchLatestLog(taskInstance.value);
+			await updateProgress(taskInstance.value);
 		} catch (error) {
 			console.error('Polling failed:', error);
 			clearInterval(intervalId);
@@ -408,6 +433,7 @@ async function fetchLatestLog(task) {
 defineExpose({
 	updateTaskStatus,
 	fetchLatestLog,
-	markManualRun
+	markManualRun,
+	updateProgress
 });
 </script>

@@ -5,7 +5,19 @@ import json
 from pathlib import Path
 
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
+CLIENT_CREDS_PATH = '/etc/45drives/houston/cloud-sync-client-creds.json'
 
+def load_client_creds():
+    path = Path(CLIENT_CREDS_PATH)
+    if not path.exists():
+        return {}
+    try:
+        with path.open('r') as f:
+            return json.load(f)
+    except Exception:
+        # Fail soft: if creds file is broken, just act as if no defaults
+        return {}
+    
 def save_remote_to_conf(remote):
     config_path = Path(RCLONE_CONF_PATH)
 

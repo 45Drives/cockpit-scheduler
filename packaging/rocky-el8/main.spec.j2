@@ -35,7 +35,7 @@ TEMPLATE="%{buildroot}/etc/45drives/houston/cloud-sync-client-creds-template.jso
 OUTPUT="%{buildroot}/etc/45drives/houston/cloud-sync-client-creds.json"
 
 # Generate the real creds JSON
-mkdir -p "$(dirname "$OUTPUT")"
+mkdir -p "$(dirname $OUTPUT)"
 sed \
   -e "s|YOUR_GOOGLE_CLIENT_ID|${GOOGLE_CLIENT_ID}|g" \
   -e "s|YOUR_GOOGLE_CLIENT_SECRET|${GOOGLE_CLIENT_SECRET}|g" \
@@ -52,7 +52,9 @@ rm -f "$TEMPLATE"
 %files
 /usr/share/cockpit/scheduler/*
 /opt/45drives/houston/scheduler/*
-/etc/45drives/houston/scheduler/*
+%dir /etc/45drives
+%dir /etc/45drives/houston
+%config(noreplace) /etc/45drives/houston/cloud-sync-client-creds.json
 
 %changelog
 * Wed Mar 19 2025 Jordan Keough <jkeough@45drives.com> 1.3.4-1
