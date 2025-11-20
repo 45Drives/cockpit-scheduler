@@ -1,3 +1,3 @@
-## task scheduler 1.3.4-1
+## task scheduler 1.3.6-1
 
-* Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting latest rclone version on our repos
+* Fixes syntax issue in autosnap-script.py so it works on Python 3.8+

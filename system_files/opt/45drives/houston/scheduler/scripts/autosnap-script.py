@@ -2,6 +2,7 @@
 import subprocess
 import sys
 import datetime as dt
+import json
 import os
 import re
 from typing import List, Optional, Tuple
@@ -16,6 +17,17 @@ class Snapshot:
         self.guid = guid
         self.creation_epoch = creation_epoch
         self.task_tag = task_tag
+
+def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
+    try:
+        dbus_script = "/opt/45drives/houston/houston-notify"
+        subprocess.run([
+            "python3",
+            dbus_script,
+            json.dumps(payload)
+        ], stdout=open(debug_log, "a"), stderr=subprocess.STDOUT)
+    except Exception as e:
+        print(f"⚠️ Failed to send D-Bus notification: {e}")
 
 def run(cmd: List[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)

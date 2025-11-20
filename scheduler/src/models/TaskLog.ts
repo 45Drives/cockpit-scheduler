@@ -1,5 +1,6 @@
 import { legacy } from '@45drives/houston-common-lib';
 import { formatTemplateName } from '../composables/utility';
+import { daemon } from '../utils/daemonClient';
 
 const { useSpawn, errorString } = legacy;
 
@@ -8,6 +9,20 @@ export class TaskExecutionLog {
 
     constructor(entries: TaskExecutionResult[]) {
         this.entries = entries;
+    }
+
+    async fullUnitNameForLogs(ti: TaskInstanceType): Promise<string> {
+        const templateName = formatTemplateName(ti.template.name);
+        const base = `houston_scheduler_${templateName}_${ti.name}`;
+        // Prefer explicit scope if you set it when loading tasks:
+        const scope = (ti as any).scope as ('user' | 'system' | undefined);
+
+        if (scope === 'user') {
+            const cockpitUser = await (window as any).cockpit.user();
+            const uid: number = cockpitUser?.id;
+            return `${base}_u${uid}`;
+        }
+        return base; // legacy/system
     }
 
     /**
@@ -56,161 +71,79 @@ export class TaskExecutionLog {
         }
     }
 
-    /**
-     * Get the execution result for the most recent run:
-     * - exit code
-     * - start/finish timestamps (pretty-printed)
-     * - FULL log for that run (from Starting to Stopped/Failed).
-     */
-    async getLatestEntryFor(taskInstance) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const taskName = taskInstance.name;
-        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
-        const serviceUnit = `${fullTaskName}.service`;
+    async getLatestEntryFor(taskInstance: TaskInstanceType) {
+        try {
+            const unit = await this.fullUnitNameForLogs(taskInstance);
+            const isUserScope = (taskInstance as any).scope === 'user';
 
-        let exitCode = 0;
-        let rawExit = '';
-        let rawOutput = '';
+            // --- DAEMON path (user units): avoid journalctl; parse show()
+            if (isUserScope) {
+                const templateName = formatTemplateName(taskInstance.template.name);
+                const st: any = await daemon.getStatus(templateName, taskInstance.name);
+                const show = String(st?.service || '');
 
-        function prettyTimestamp(ts: string): string {
-            if (!ts) return ts;
-
-            const d = new Date(ts);
-            if (isNaN(d.getTime())) return ts;
-
-            const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-            const fmt = new Intl.DateTimeFormat(undefined, {
-                weekday: 'short',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZone: zone,
-                timeZoneName: 'short',
-            });
-
-            const parts = fmt.formatToParts(d);
-            const byType: Record<string, string> = {};
-            for (const p of parts) {
-                byType[p.type] = (byType[p.type] || '') + p.value;
+                // Pull a few properties we asked the daemon to include
+                const props = new Map(
+                    (show || '').split(/\r?\n/).map((line) => {
+                        const i = line.indexOf('=');
+                        return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : [line, ''];
+                    })
+                );
+                const rawResult = (props.get('Result') || '').toString().toLowerCase();
+                // Map success → 0, anything else → 1 (no ExecMainStatus available here)
+                const exitCode = (rawResult === 'success') ? 0 : 1;
+                const startTime = props.get('ActiveEnterTimestamp') || '';
+                const finishTime = '';
+                const output = '';
+                return new TaskExecutionResult(exitCode, output, startTime, finishTime);
             }
 
-            const wd = (byType.weekday || '').replace(',', '');
-            const y = byType.year || '';
-            const m = byType.month || '';
-            const dd = byType.day || '';
-            const hh = byType.hour || '';
-            const mm = byType.minute || '';
-            const ss = byType.second || '';
-            const tz = byType.timeZoneName || '';
-
-            return `${wd} ${y}-${m}-${dd} ${hh}:${mm}:${ss}${tz ? ' ' + tz : ''}`;
-        }
-
-        // 1) Ask systemd for exit code + exit timestamp
-        try {
-            const execCommand = [
-                'systemctl', 'show',
-                serviceUnit,
-                '-p', 'ExecMainStatus,ExecMainExitTimestamp'
-            ];
-            const execState = useSpawn(execCommand, { superuser: 'try' });
-            const execResult = await execState.promise();
-
-            const properties = Object.fromEntries(
-                (execResult.stdout || '')
+            // --- LEGACY path (system units)
+            const showCmd = ['systemctl', 'show', `${unit}.service`,
+                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp',
+                '--no-pager'];
+            const showState = useSpawn(showCmd, { superuser: 'try' });
+            const showRes: any = await showState.promise();
+            const kv = Object.fromEntries(
+                (showRes.stdout || '')
                     .split('\n')
-                    .filter(line => line.includes('='))
-                    .map(line => {
-                        const idx = line.indexOf('=');
-                        return [line.slice(0, idx), line.slice(idx + 1)];
-                    })
+                    .filter((l: string) => l.includes('='))
+                    .map((l: string) => l.split('=', 2))
             );
 
-            const rawStatus = properties['ExecMainStatus'] || '0';
-            exitCode = parseInt(rawStatus, 10);
-            rawExit = properties['ExecMainExitTimestamp'] || '';
-        } catch (e) {
-            console.warn('Failed to read ExecMainStatus for', serviceUnit, errorString(e));
-        }
+            const rawStatus = kv['ExecMainStatus'];
+            const exitCode = Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0;
 
-        // 2) Fetch the tail of the journal and slice out the last run
-        let startIso = '';
-        let endIso = '';
+            const startTime = kv['ExecMainStartTimestamp'] || '';
+            const finishTime = kv['ExecMainExitTimestamp'] || '';
 
-        try {
-            // Grab a reasonable tail for this unit; enough to include several runs
-            const logCommand = [
-                'journalctl',
-                '-u', serviceUnit,
-                '-n', '500',
-                '--no-pager',
-                '--output', 'short-iso'
-            ];
-            const logState = useSpawn(logCommand, { superuser: 'try' });
-            const logResult = await logState.promise();
-            const allOutput = logResult.stdout || '';
-
-            const allLines = allOutput
-                .split('\n')
-                .filter(line => line.trim() && !line.startsWith('-- Logs begin at'));
-
-            if (allLines.length === 0) {
-                // No logs at all
-                return new TaskExecutionResult(
-                    exitCode,
-                    '',
-                    '',
-                    prettyTimestamp(rawExit || '')
-                );
-            }
-
-            // Find the last "Starting/Started Service for <taskName>" line
-            const startMarkers = [
-                'Starting Service for ',
-                'Started Service for '
-            ];
-
-            let startIndex = 0; // fall back to the beginning if we don't find a marker
-            for (let i = allLines.length - 1; i >= 0; i--) {
-                const line = allLines[i];
-                if (
-                    startMarkers.some(m => line.includes(m)) &&
-                    line.includes(taskName)
-                ) {
-                    startIndex = i;
-                    break;
+            let output = '';
+            if (startTime) {
+                const logCmd = [
+                    'journalctl', '-q', '--output=cat',
+                    '-u', `${unit}.service`,
+                    '--since', startTime,
+                    '--no-pager', '--all'
+                ];
+                try {
+                    const logState = useSpawn(logCmd, { superuser: 'try' });
+                    const logRes: any = await logState.promise();
+                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                } catch (e) {
+                    // Don’t spam; lack of journal perms is normal on some setups
+                    const msg = errorString(e);
+                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
+                        console.warn('journalctl failed:', msg);
+                    }
                 }
             }
 
-            const lastRunLines = allLines.slice(startIndex);
-
-            // Extract ISO-ish timestamps (journalctl short-iso: first token before space)
-            const firstLine = lastRunLines[0];
-            const lastLine = lastRunLines[lastRunLines.length - 1];
-
-            const extractIso = (line: string) => {
-                const spaceIdx = line.indexOf(' ');
-                return spaceIdx > 0 ? line.slice(0, spaceIdx) : '';
-            };
-
-            startIso = extractIso(firstLine);
-            endIso = extractIso(lastLine);
-
-            rawOutput = lastRunLines.join('\n');
+            return new TaskExecutionResult(exitCode, output, startTime, finishTime);
         } catch (e) {
-            console.warn('Failed to read/slice journal for', serviceUnit, errorString(e));
+            // Only warn on truly unexpected failures
+            console.warn('getLatestEntryFor failed:', errorString(e));
+            return false;
         }
-
-        const startTime = prettyTimestamp(startIso);
-        const finishTime = prettyTimestamp(rawExit || endIso || startIso);
-
-        return new TaskExecutionResult(exitCode, rawOutput, startTime, finishTime);
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {

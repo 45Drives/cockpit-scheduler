@@ -49,7 +49,13 @@ def build_rsync_command(options):
             remote_command = f"ssh -p {options['targetPort']}"
             command.append(f"-e {remote_command}")
         else:
-            command.append("-e 'ssh'")
+            command.append("-e ssh")
+
+    # Auto-create remote path for push
+    if options['targetHost'] and options['direction'] == 'push':
+        remote_parent = os.path.dirname(options['targetPath'].rstrip('/'))
+        rsync_path_cmd = f"mkdir -p '{remote_parent}' && rsync"
+        command.append(f"--rsync-path={rsync_path_cmd}")
     
     return command
 

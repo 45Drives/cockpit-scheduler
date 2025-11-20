@@ -10,6 +10,7 @@ EnvironmentFile={env_path}
 ExecStart={ExecStart}
 Restart=on-failure
 RestartSec=30sec
+TimeoutStartSec=0
 
 [Install]
 WantedBy=multi-user.target

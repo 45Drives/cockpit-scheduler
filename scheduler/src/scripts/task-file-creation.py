@@ -70,8 +70,14 @@ def interval_to_on_calendar(interval):
     parts = []
     
     if 'dayOfWeek' in interval and interval['dayOfWeek']:
-        day_of_week = ','.join(interval['dayOfWeek'])
-        parts.append(day_of_week)
+        DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+        normalized = []
+        for v in interval['dayOfWeek']:
+            if isinstance(v, int):
+                normalized.append(DOW_NAMES[max(0, min(6, v))])
+            else:
+                normalized.append(str(v)[:3].title())
+        parts.append(','.join(normalized))
     
     year_part = interval.get('year', {}).get('value', '*')
     month_part = interval.get('month', {}).get('value', '*')

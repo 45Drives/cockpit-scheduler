@@ -1,77 +1,82 @@
 #!/usr/bin/env python3
-import argparse
-import configparser
-import json
-from pathlib import Path
+import os, pwd, argparse, configparser, json
+import sys
+from typing import Any
 
-RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
-CLIENT_CREDS_PATH = '/etc/45drives/houston/cloud-sync-client-creds.json'
+def _expand_user_config(user_arg: str | None, config_arg: str | None) -> tuple[str, int | None, int | None]:
+    # Decide rclone.conf path, and return (path, uid, gid) for optional chown
+    if config_arg:
+        return (config_arg, None, None)
+    if user_arg:
+        p = pwd.getpwnam(user_arg)
+        home = p.pw_dir
+        xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+        return (os.path.join(xdg, "rclone", "rclone.conf"), p.pw_uid, p.pw_gid)
+    # Default: current euid's home / XDG
+    home = os.path.expanduser("~")
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    return (os.path.join(xdg, "rclone", "rclone.conf"), None, None)
 
-def load_client_creds():
-    path = Path(CLIENT_CREDS_PATH)
-    if not path.exists():
-        return {}
+def _ensure_parent(conf_path: str, uid: int | None, gid: int | None):
+    d = os.path.dirname(conf_path)
+    os.makedirs(d, mode=0o700, exist_ok=True)
     try:
-        with path.open('r') as f:
-            return json.load(f)
-    except Exception:
-        # Fail soft: if creds file is broken, just act as if no defaults
-        return {}
-    
-def save_remote_to_conf(remote):
-    config_path = Path(RCLONE_CONF_PATH)
+        if uid is not None and os.geteuid() == 0:
+            os.chown(d, uid, gid)
+    except PermissionError:
+        pass  # best-effort
 
-    # Ensure parent directory exists
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+def _write_config_atomic(conf_path: str, cfg: configparser.ConfigParser, uid: int | None, gid: int | None):
+    _ensure_parent(conf_path, uid, gid)
+    tmp = conf_path + ".tmp"
+    with open(tmp, "w") as f:
+        cfg.write(f)
+    os.chmod(tmp, 0o600)
+    try:
+        if uid is not None and os.geteuid() == 0:
+            os.chown(tmp, uid, gid)
+    except PermissionError:
+        pass
+    os.replace(tmp, conf_path)
 
-    # Create the file if it does not exist
-    if not config_path.exists():
-        # Touch the file (empty file is fine; configparser will overwrite later)
-        config_path.touch()
-        print(f'Rclone conf file created at {config_path}')
-    else:
-        print(f'Rclone conf file exists at {config_path}')
-        
-    config = configparser.ConfigParser()
-    config.read(RCLONE_CONF_PATH)
+def save_remote_to_conf(remote: dict[str, Any], conf_path: str, uid, gid):
+    cfg = configparser.ConfigParser()
+    cfg.read(conf_path)
 
     name = remote["name"]
     remote_type = remote["type"]
     auth_params = remote["authParams"]
 
-    if config.has_section(name):
+    if cfg.has_section(name):
         raise ValueError(f"Remote '{name}' already exists")
 
-    # Add new remote section
-    config.add_section(name)
-    config.set(name, 'type', remote_type)
+    cfg.add_section(name)
+    cfg.set(name, "type", remote_type)
+    for k, v in auth_params.items():
+        if isinstance(v, dict):
+            v = v.get("value", v)
+        if isinstance(v, (dict, list)):
+            v = json.dumps(v)
+        if v not in (None, "", []):
+            cfg.set(name, k, str(v))
 
-    for key, value in auth_params.items():
-        if isinstance(value, dict):
-            # Convert dictionary to JSON string
-            value = json.dumps(value)
-        if value:  # Skip empty values
-            config.set(name, key, str(value))
-
-    # Write changes to the config file in write mode to avoid duplication
-    with open(RCLONE_CONF_PATH, 'w') as configfile:
-        config.write(configfile)
-
-    print(f"Remote '{name}' successfully created and saved to {RCLONE_CONF_PATH}")
-
+    _write_config_atomic(conf_path, cfg, uid, gid)
+    print(f"Remote '{name}' saved to {conf_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Save a CloudSyncRemote to rclone.conf")
-    parser.add_argument('--data', type=str, required=True, help="JSON string of CloudSyncRemote data")
+    p = argparse.ArgumentParser(description="Save a CloudSyncRemote to rclone.conf")
+    p.add_argument("--data", required=True, help="JSON string of CloudSyncRemote data")
+    p.add_argument("--user", help="Target username for ~user/.config/rclone/rclone.conf")
+    p.add_argument("--config", help="Explicit rclone.conf path (overrides --user)")
+    args = p.parse_args()
 
-    args = parser.parse_args()
-    try:
-        remote_data = json.loads(args.data)  # Parse JSON string to dictionary
-        save_remote_to_conf(remote_data)
-    except ValueError as e:
-        print(e)
-    except json.JSONDecodeError:
-        print("Invalid JSON format for --data argument")
+    conf_path, uid, gid = _expand_user_config(args.user, args.config)
+    remote = json.loads(args.data)
+    save_remote_to_conf(remote, conf_path, uid, gid)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(str(e))
+        sys.exit(1)

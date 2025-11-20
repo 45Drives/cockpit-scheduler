@@ -1,5 +1,14 @@
 <template>
-	<HoustonAppContainer moduleName="Task Scheduler" :appVersion="appVersion">
+	<!-- <SimplifiedView v-if="isSimple" /> -->
+	<router-view v-if="isSimple" v-slot="{ Component, route }">
+		<keep-alive include="SimpleTaskForm">
+			<component :is="Component" :key="(route.query.session as string) || (route.name as string)" />
+		</keep-alive>
+	</router-view>
+
+	<NotificationView v-if="isSimple" />
+
+	<HoustonAppContainer v-else moduleName="Task Scheduler" :appVersion="appVersion">
 		<CenteredCardColumn>
 			<CardContainer>
 				<SchedulerView />
@@ -9,19 +18,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide, onMounted } from 'vue';
+import { ref, provide, onMounted, onUnmounted } from 'vue';
 import SchedulerView from './views/SchedulerView.vue';
-import { ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate, CloudSyncTaskTemplate} from './models/Tasks';
+import {
+	ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate,
+	RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate, CloudSyncTaskTemplate
+} from './models/Tasks';
 import { Scheduler } from './models/Scheduler';
 import { TaskExecutionLog, TaskExecutionResult } from './models/TaskLog';
-import { HoustonAppContainer, CardContainer, CenteredCardColumn } from '@45drives/houston-common-ui'
-import { loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey, taskTemplatesInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from './keys/injection-keys';
+import { HoustonAppContainer, CardContainer, CenteredCardColumn, NotificationView } from '@45drives/houston-common-ui'
+import {
+	loadingInjectionKey, schedulerInjectionKey, logInjectionKey, taskInstancesInjectionKey,
+	taskTemplatesInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey
+} from './keys/injection-keys';
 import { RemoteManager } from './models/RemoteManager';
 import { CloudSyncRemote } from './models/CloudSync';
+import { router } from './router';
+import { currentUserIsPrivileged } from './composables/utility';
 
 const appVersion = __APP_VERSION__;
 
-// Instantiate task templates -> These must corrolate with Template files located in /system_files/opt/45drives/houston/scheduler/templates
+const isSimple = ref(false)
+const updateFlag = () => {
+	const qs = new URLSearchParams(window.location.search);
+	const simpleQ = qs.get('simple') === '1';
+	const simpleHash = location.hash.startsWith('#/simple') || location.hash === '#simple'; // support both
+	isSimple.value = simpleQ || simpleHash;
+
+	if (simpleQ && !location.hash.startsWith('#/simple')) {
+		router.replace('/simple');
+	}
+};
+
+onUnmounted(() => {
+	window.removeEventListener('popstate', updateFlag)
+	window.removeEventListener('hashchange', updateFlag)
+})
+
+// Build the full set
 function initializeTaskTemplates(): TaskTemplate[] {
 	const zfsRepTaskTemplate = new ZFSReplicationTaskTemplate();
 	const autoSnapTaskTemplate = new AutomatedSnapshotTaskTemplate();
@@ -30,7 +64,7 @@ function initializeTaskTemplates(): TaskTemplate[] {
 	const smartTestTemplate = new SmartTestTemplate();
 	const cloudSyncTaskTemplate = new CloudSyncTaskTemplate();
 	const customTaskTemplate = new CustomTaskTemplate();
-	
+
 	return [
 		zfsRepTaskTemplate,
 		autoSnapTaskTemplate,
@@ -40,6 +74,12 @@ function initializeTaskTemplates(): TaskTemplate[] {
 		cloudSyncTaskTemplate,
 		customTaskTemplate
 	]
+}
+
+// Restrict set for non-privileged users
+function filterTemplatesForPrivilege(templates: TaskTemplate[], isAdmin: boolean): TaskTemplate[] {
+	if (isAdmin) return templates;
+	return templates.filter(t => (t instanceof RsyncTaskTemplate) || (t instanceof CloudSyncTaskTemplate));
 }
 
 const taskTemplates = initializeTaskTemplates();
@@ -54,11 +94,23 @@ const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
 
 onMounted(async () => {
+	updateFlag()
+	window.addEventListener('popstate', updateFlag)
+	window.addEventListener('hashchange', updateFlag)
+
 	loading.value = true;
-	initializeTaskTemplates();
+
+	// Decide privilege and restrict templates BEFORE init/load
+	const isAdmin = await currentUserIsPrivileged();
+	const filtered = filterTemplatesForPrivilege([...taskTemplates], isAdmin);
+	taskTemplates.splice(0, taskTemplates.length, ...filtered); // mutate in-place so Scheduler sees it
+
+	await myScheduler.init();
 	await myScheduler.loadTaskInstances();
 	await myRemoteManager.getRemotes();
 	loading.value = false;
+	
+	console.log('Scheduler backend:', (myScheduler as any).backend, 'isAdmin:', isAdmin);
 });
 
 provide(loadingInjectionKey, loading);

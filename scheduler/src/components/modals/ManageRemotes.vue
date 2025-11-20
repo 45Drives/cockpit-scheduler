@@ -346,11 +346,11 @@ watch(loadedEditableRemoteProvider, (newlySelectedProvider) => {
 
 function resetProviderParams(newSelection) {
     if (newSelection !== selectedRemote.value!.provider) {
-        pushNotification(new Notification('Provider Changed', `Cloud provider has been changed, parameters have been reset.`, 'warning', 8000));
+        pushNotification(new Notification('Provider Changed', `Cloud provider has been changed, parameters have been reset.`, 'warning', 6000));
         loadedEditableRemoteParams.value = JSON.parse(JSON.stringify(newSelection!.providerParams));
     } 
     // else if (newSelection === selectedRemote.value!.provider) {
-    //     pushNotification(new Notification('Provider Changed', `Cloud provider parameters set back to previous configuration.`, 'info', 8000));
+    //     pushNotification(new Notification('Provider Changed', `Cloud provider parameters set back to previous configuration.`, 'info', 6000));
     //     loadedEditableRemoteParams.value = JSON.parse(JSON.stringify(selectedRemote.value!.authParams));
     // }
 }
@@ -466,12 +466,12 @@ watch([loadedEditableRemoteName, loadedEditableRemoteProvider, loadedEditableRem
 
 async function saveEditedRemoteBtn() {
     if (!hasChanges) {
-        pushNotification(new Notification('No Changes Detected', `No fields have been changed, save not completed.`, 'info', 8000));
+        pushNotification(new Notification('No Changes Detected', `No fields have been changed, save not completed.`, 'info', 6000));
     } else {
         saving.value = true;
         // console.log("Final token being sent to the backend:", loadedEditableRemoteParams.value.parameters.token.value);
         await myRemoteManager.editRemote(selectedRemote.value!.name, loadedEditableRemoteName.value!, loadedEditableRemoteProvider.value!.type, loadedEditableRemoteParams.value!);
-        pushNotification(new Notification('Remote Updated', `Remote changes have been saved successfully.`, 'success', 8000));
+        pushNotification(new Notification('Remote Updated', `Remote changes have been saved successfully.`, 'success', 6000));
         saving.value = false;
         editMode.value = false;
         loadRemotes();
@@ -497,7 +497,7 @@ const deleteRemoteYes: ConfirmationCallback = async () => {
     await myRemoteManager.deleteRemote(remoteName);
     loading.value = true;
     await myRemoteManager.getRemotes();
-    pushNotification(new Notification('Remote Deleted', `Remote ${remoteName} has been deleted successfully.`, 'success', 8000));
+    pushNotification(new Notification('Remote Deleted', `Remote ${remoteName} has been deleted successfully.`, 'success', 6000));
     loading.value = false;
     // clearValues();
     editMode.value = false;
@@ -637,7 +637,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     oAuthenticated.value = true;
                     loadedEditableRemoteParams.value.parameters.token.value = JSON.stringify(fullToken);
 
-                    pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 8000));
+                    pushNotification(new Notification('Authentication Successful', `Token updated successfully`, 'success', 6000));
 
                     // Remove the event listener after it has been handled
                     window.removeEventListener('message', handleAuthMessage);
@@ -647,7 +647,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
             } catch (error: any) {
                 console.error('Error during authentication:', error);
                 oAuthenticated.value = false;
-                pushNotification(new Notification('Authentication Failed', `${error.message}`, 'error', 8000));
+                pushNotification(new Notification('Authentication Failed', `${error.message}`, 'error', 6000));
             }
         };
 
@@ -655,7 +655,7 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
         window.addEventListener('message', handleAuthMessage);
     } catch (error: any) {
         console.error('Error initializing OAuth:', error);
-        pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 8000));
+        pushNotification(new Notification('Authentication Error', `${error.message}`, 'error', 6000));
     }
 }
 

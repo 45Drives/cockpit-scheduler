@@ -14,11 +14,23 @@ import run_task_script from "../scripts/run-task-now.py?raw";
 //@ts-ignore
 import get_disks_script from "../scripts/get-disk-data.py?raw";
 //@ts-ignore
+import ensure_ssh_script from "../scripts/ensure_passwordless_ssh.py?raw";
+//@ts-ignore
 import stop_task_script from "../scripts/stop-task-now.py?raw";
 
-import { inject, InjectionKey, ref } from "vue";
+import { inject, InjectionKey, ref, type Ref } from "vue";
 
 const { useSpawn, errorString } = legacy;
+
+function safeParseJsonLoose(s: string) {
+	try { return JSON.parse(s); } catch {
+		const start = s.indexOf('{'); const end = s.lastIndexOf('}');
+		if (start !== -1 && end !== -1 && end > start) {
+			try { return JSON.parse(s.slice(start, end + 1)); } catch { }
+		}
+		return null;
+	}
+}
 
 export function injectWithCheck<T>(
   key: InjectionKey<T>,
@@ -626,6 +638,117 @@ export function destAheadOfCommon(src: ZfsSnap[], dst: ZfsSnap[], common: ZfsSna
 	// any dest snapshot after common.creation that source does NOT have?
 	return dst.some(d => d.creation > common.creation && !srcGuids.has(d.guid));
 }
+
+
+export async function ensurePasswordlessSSH(
+	host: string,
+	user: string = 'root',
+	port: number | string = 22,
+	password?: string,
+	quiet: boolean = true
+): Promise<{ success: boolean; message: string; data?: any; raw?: string; status?: number }> {
+	const args = ['--host', host, '--user', user, '--port', String(port), '--key-type', 'auto'];
+	if (password) args.push('--password', password);
+	if (quiet) args.push('--quiet');
+
+	const state = useSpawn(
+		['/usr/bin/env', 'python3', '-c', ensure_ssh_script, ...args],
+		{ superuser: 'try' }
+	);
+
+	try {
+		// resolves on exit 0
+		const res: any = await state.promise(); // often has { stdout, stderr }, but no .code
+		const stdout = (res?.stdout ?? '').toString();
+		const parsed = safeParseJsonLoose(stdout);
+		return {
+			success: true,
+			message: (parsed?.message || stdout || 'OK'),
+			data: parsed || undefined,
+			raw: stdout
+		};
+	} catch (err: any) {
+		// rejects on non-zero exit; error carries details
+		const stdout = (err?.stdout ?? '').toString();
+		const stderr = (err?.stderr ?? '').toString();
+		const parsed = safeParseJsonLoose(stdout || stderr);
+		return {
+			success: false,
+			message: (parsed?.message || stderr || stdout || 'Unknown error'),
+			data: parsed || undefined,
+			raw: stdout || stderr,
+			status: err?.status
+		};
+	}
+}
+
+export type SshOutcome = 'ok-local' | 'ok-already' | 'ok-configured' | 'failed' | 'error';
+
+export interface TestOrSetupSSHResult {
+	success: boolean;
+	outcome: SshOutcome;
+	message: string;
+	details?: any;
+}
+
+export async function testOrSetupSSH(opts: {
+	host: string;
+	user?: string;
+	port?: number | string;
+	passwordRef?: Ref<string>;   // cleared if provided
+	onEvent?: (e: { type: 'info' | 'success' | 'error'; title: string; message: string }) => void; // optional hook
+}): Promise<TestOrSetupSSHResult> {
+	const host = (opts.host || '').trim();
+	const user = (opts.user || 'root').trim();
+	const port = opts.port ?? 22;
+
+	if (!host) {
+		opts.onEvent?.({ type: 'success', title: 'Local Transfer', message: 'No remote host specified. SSH not required.' });
+		return { success: true, outcome: 'ok-local', message: 'Local transfer (no host)' };
+	}
+
+	try {
+		const pre = await testSSH(`${user}@${host}`);
+		if (pre) {
+			opts.onEvent?.({ type: 'success', title: 'Connection Successful!', message: 'Passwordless SSH connection established.' });
+			return { success: true, outcome: 'ok-already', message: 'Passwordless already works' };
+		}
+	} catch {
+		// ignore; proceed to setup attempt
+	}
+
+	opts.onEvent?.({
+		type: 'info',
+		title: 'Setting up SSH…',
+		message: `Passwordless SSH not detected for ${user}@${host}. Generating/installing a key…`
+	});
+
+	try {
+		const password = opts.passwordRef?.value;
+		const res = await ensurePasswordlessSSH(host, user, port, password, /*quiet*/ true);
+		if (opts.passwordRef) opts.passwordRef.value = ''; // always scrub
+
+		if (res.success) {
+			opts.onEvent?.({ type: 'success', title: 'SSH Ready', message: 'Passwordless SSH is configured.' });
+			return { success: true, outcome: 'ok-configured', message: res.message || 'Configured', details: res.data };
+		} else {
+			opts.onEvent?.({ type: 'error', title: 'SSH Setup Failed', message: res.message?.toString().slice(0, 800) || 'Unknown error' });
+			return { success: false, outcome: 'failed', message: res.message || 'Failed', details: res.data };
+		}
+	} catch (err: any) {
+		if (opts.passwordRef) opts.passwordRef.value = '';
+		const msg = (err?.message || errorString(err) || 'Unknown error').toString().slice(0, 800);
+		opts.onEvent?.({ type: 'error', title: 'SSH Setup Error', message: msg });
+		return { success: false, outcome: 'error', message: msg };
+	}
+}
+
+export async function currentUserIsPrivileged(): Promise<boolean> {
+	const u = await (window as any).cockpit.user();
+	const groups: string[] = u?.groups || [];
+	return (u?.id === 0) || groups.includes('wheel') || groups.includes('sudo');
+}
+
 
 export function validateLocalPath(path: string): boolean {
 	// Local paths: allow spaces, (), and '

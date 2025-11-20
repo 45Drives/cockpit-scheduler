@@ -3,12 +3,24 @@ import sys
 import datetime
 import os
 import time
+import json
 
 class Snapshot:
 	def __init__(self, name, guid, creation):
 		self.name = name
 		self.guid = guid
 		self.creation = creation
+def send_houston_notification(payload):
+    try:
+        dbus_script = "/opt/45drives/houston/houston-notify"
+        debug_log = "/tmp/zfs_replication_debug.log"
+        subprocess.run([
+            "python3",
+            dbus_script,
+            json.dumps(payload)
+        ], stdout=open(debug_log, "a"), stderr=subprocess.STDOUT)
+    except Exception as notify_error:
+        print(f"Failed to send D-Bus notification: {notify_error}")
 
 # 	return new_snap
 def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
@@ -150,19 +162,20 @@ def get_remote_snapshots(user, host, port, filesystem, transferMethod):
 	  - An empty list [] if the dataset exists but has no snapshots.
 	  - None if the dataset does not exist at all.
 	"""
-	ssh_cmd = ['ssh']
+	# ssh_cmd = ['ssh']
+	ssh_cmd = ssh_base_args(user, host, port)
 	
 	# print('transfermethod:', transferMethod)
 
-	# If using Netcat, always force SSH to use port 22 for snapshot retrieval
-	if transferMethod == 'netcat':
-		port = '22'  # Override the port for SSH, but do NOT modify Netcat’s actual port
+	# # If using Netcat, always force SSH to use port 22 for snapshot retrieval
+	# if transferMethod == 'netcat':
+	# 	port = '22'  # Override the port for SSH, but do NOT modify Netcat’s actual port
 		
-	  # If using SSH for transfer, use the specified port only if it's not 22
-	if transferMethod == 'ssh' and str(port) != '22':
-		ssh_cmd.extend(['-p', str(port)])
+	#   # If using SSH for transfer, use the specified port only if it's not 22
+	# if transferMethod == 'ssh' and str(port) != '22':
+	# 	ssh_cmd.extend(['-p', str(port)])
 
-	ssh_cmd.append(f"{user}@{host}")
+	# ssh_cmd.append(f"{user}@{host}")
 	# ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 	ssh_cmd.extend(['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 
@@ -202,6 +215,25 @@ def get_most_recent_snapshot(snapshots):
 	else:
 		return None
 
+def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw):
+    args = ['zfs', 'send']
+    if recursive:
+        args.append('-R')
+    if compressed:
+        args.append('-Lce')
+    if raw:
+        args.append('-w')
+    if sendName2:
+        args.extend(['-I' if recursive else '-i', sendName2])
+    args.append(sendName)
+    return args
+
+def ssh_base_args(user, host, port):
+    args = ['ssh']
+    if str(port) != '22':
+        args.extend(['-p', str(port)])
+    args.append(f'{user}@{host}')
+    return args
 
 def send_snapshot(
 	sendName, 
@@ -220,16 +252,22 @@ def send_snapshot(
 ):
 	try:
 		# Build the zfs send command
-		send_cmd = ['zfs', 'send']
-		if recursive:
-			send_cmd.append('-R')
-		if compressed:
-			send_cmd.append('-Lce')
-		if raw:
-			send_cmd.append('-w')
-		if sendName2 != "":
-			send_cmd.extend(['-I' if recursive else '-i', sendName2])
-		send_cmd.append(sendName)
+		# send_cmd = ['zfs', 'send']
+		# if recursive:
+		# 	send_cmd.append('-R')
+		# if compressed:
+		# 	send_cmd.append('-Lce')
+		# if raw:
+		# 	send_cmd.append('-w')
+		# if sendName2 != "":
+		# 	send_cmd.extend(['-I' if recursive else '-i', sendName2])
+		# send_cmd.append(sendName)
+  
+		send_cmd = build_zfs_send_args( sendName, sendName2,
+			recursive=recursive,
+			compressed=compressed,
+			raw=raw
+   		)
 
 		if sendName2 != "":
 			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
@@ -313,9 +351,9 @@ def send_snapshot(
 				print("Sending via netcat...")
 				
 				# Correct listener command
-				listen_cmd = f'nc -l {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
-				# listen_cmd = f"nohup sh -c 'nc -l {recvPort} | zfs receive {'-F ' + recvName if forceOverwrite else recvName}' > /dev/null 2>&1 &"
-				ssh_cmd_listener = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
+				listen_cmd = f"nc -l {recvPort} | zfs recv {'-F ' + recvName if forceOverwrite else recvName}"
+				ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, recvPort)  # control-plane port
+				ssh_cmd_listener.append(listen_cmd)
 				print(f"[Receiver Side] Listener command: {' '.join(ssh_cmd_listener)}")
 
 				ssh_process_listener = subprocess.Popen(
@@ -328,25 +366,27 @@ def send_snapshot(
 				# Wait briefly to ensure listener readiness
 				time.sleep(5)
 
-				# Prepare sender-side mbuffer command
-				# m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
-				m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
-
-				print(f"[Sender Side] mbuffer command: {' '.join(m_buff_cmd)}")
-
-				send_cmd_list = ['zfs', 'send']
-				if compressed:
-					send_cmd_list.append('-Lce')
-				if raw:
-					send_cmd_list.append('-w')
-				if sendName2 != "":
-					send_cmd_list.extend(['-i', sendName2])
-				send_cmd_list.append(sendName)
+				# send_cmd_list = ['zfs', 'send']
+				# if compressed:
+				# 	send_cmd_list.append('-Lce')
+				# if raw:
+				# 	send_cmd_list.append('-w')
+				# if sendName2 != "":
+				# 	send_cmd_list.extend(['-i', sendName2])
+				# send_cmd_list.append(sendName)
+    
+				send_cmd_list = build_zfs_send_args(
+					sendName, sendName2,
+					recursive=recursive,
+					compressed=compressed,
+					raw=raw,
+				)
 
 				print(f"[Sender Side] ZFS send command: {' '.join(send_cmd_list)}")
 
 				# Combine send -> mbuffer -> netcat pipeline
-				nc_command = f"{' '.join(send_cmd_list)} | {' '.join(m_buff_cmd)} | nc {recvHost} {recvPort}"
+				# nc_command = f"{' '.join(send_cmd_list)} | {' '.join(m_buff_cmd)} | nc {recvHost} {recvPort}"
+				nc_command = f"{' '.join(send_cmd_list)} | mbuffer -s 256k -m {mBufferSize}{mBufferUnit} | nc {recvHost} {recvPort}"
 				print(f"[Sender Side] Netcat command: {nc_command}")
 
 				nc_process = subprocess.Popen(
@@ -588,11 +628,32 @@ def main():
 			transferMethod
 		)
 
-	except SystemExit:
-		raise
 	except Exception as e:
+		newSnap = locals().get("newSnap", "unknown")
+		sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
+		receivingFilesystem = os.environ.get('zfsRepConfig_destDataset_dataset', '')
+
+		email_error_message = (
+			f"ZFS replication failed while sending snapshot {newSnap} "
+			f"from {sourceFilesystem} to {receivingFilesystem}"
+			f"Error: {str(e)}"
+		)
+		ui_error_message = str(e)
+
+		send_houston_notification({
+			"timestamp": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+			"event": "zfs_replication_failed",
+			"subject": "ZFS Replication Failed",
+			"email_message": email_error_message,
+			"fileSystem": sourceFilesystem,
+			"snapShot": newSnap,
+			"replicationDestination": receivingFilesystem,
+			"severity": "warning",
+			"errors": ui_error_message
+		})
 		print(f"Exception: {e}")
 		sys.exit(1)
+
 
 if __name__ == "__main__":
 	main()
