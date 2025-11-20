@@ -121,10 +121,11 @@ export class Scheduler implements SchedulerType {
 
     parseEnvKeyValues(envKeyValues: string[], templateName: string) {
         let envObject = envKeyValues.reduce((acc, curr) => {
-            const [key, value] = curr.split('=');
+            const [key, ...rest] = curr.split('=');
+            const value = rest.join('=');
             acc[key] = value;
             return acc;
-        }, {});
+        }, {} as Record<string, string|number>);
 
       //  console.log('templateName:', templateName);
 
@@ -393,6 +394,19 @@ export class Scheduler implements SchedulerType {
 
         console.log(`Running ${fullTaskName}...`);
         await runTask(fullTaskName);
+
+        // Poll systemd until task sends READY=1 and exits cleanly
+        while (true) {
+            const status = await this.getServiceStatus(taskInstance);
+
+            if (status === 'Completed' ||
+                status === 'Inactive (Disabled)' ||
+                status === 'Failed') {
+                break;
+            }
+
+            await new Promise(r => setTimeout(r, 1000));
+        }
         console.log(`Task ${fullTaskName} completed.`);
         // return TaskExecutionResult;
     }
@@ -521,6 +535,29 @@ export class Scheduler implements SchedulerType {
         } catch (error) {
             console.error(`Error parsing status for ${fullTaskName}:`, error);
             return false;
+        }
+    }
+
+    async getTaskProgress(taskInstance: TaskInstanceType): Promise<number | null> {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+
+        try {
+            const command = ['systemctl', 'show', `${fullTaskName}.service`, '--property=StatusText', '--value'];
+            const state = useSpawn(command, { superuser: 'try' });
+            const result = await state.promise();
+            const txt = (result.stdout || '').trim();
+
+            // Expect something like "Transferring… 37% complete"
+            const match = txt.match(/(\d+)%/);
+            if (match) {
+                return parseInt(match[1], 10);
+            }
+            return null;
+        } catch (e: any) {
+            console.warn('getTaskProgress failed:', errorString(e));
+            return null;
         }
     }
 

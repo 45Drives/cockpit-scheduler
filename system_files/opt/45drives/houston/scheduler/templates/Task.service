@@ -1,7 +1,7 @@
 [Unit]
 Description=Service for {task_name}
 StartLimitBurst=2
-StartLimitInterval=80s
+StartLimitIntervalSec=80
 
 [Service]
 Type=notify

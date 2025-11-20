@@ -5,9 +5,13 @@ import json
 import configparser
 from datetime import datetime, timedelta, timezone
 import requests
-import shlex 
-from sdnotify import SystemdNotifier
+import shlex
+import re
+from notify import get_notifier
 
+notifier = get_notifier()
+
+PROGRESS_RE = re.compile(r'(\d+)%')
 RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
 SERVER_URL = 'https://cloud-sync.45d.io'
 
@@ -200,16 +204,19 @@ def build_rclone_command(options):
     if options.get('transfers', 0) > 0:
         command.append(f'--transfers={options["transfers"]}')
         
+    if '--stats-one-line' not in command:
+        command.extend(['--stats-one-line', '--stats=1s'])
+        
     extra = options.get('custom_args') or ''
     if extra.strip():
         parts = []
-        for chunk in extra.split(','):      # 1) split on commas (if there are none, you just get the whole string)
+        for chunk in extra.split(','):
             chunk = chunk.strip()
             if not chunk:
                 continue
-            parts.extend(shlex.split(chunk))  # 2) within each chunk, split on spaces (respecting quotes)
+            parts.extend(shlex.split(chunk))
         command.extend(parts)
-
+        
     return command
 
 def construct_paths(localPath, direction, targetPath):
@@ -218,26 +225,76 @@ def construct_paths(localPath, direction, targetPath):
     """
     return (localPath, targetPath) if direction == 'push' else (targetPath, localPath)
 
+# def execute_command(command, src, dest):
+#     """
+#     Execute the constructed rclone command.
+#     """
+#     command.extend([src, dest])
+#     print(f"Executing command: {' '.join(command)}")
+
+#     process = subprocess.Popen(
+#         command,
+#         universal_newlines=True,
+#         stdout=subprocess.PIPE,
+#         stderr=subprocess.PIPE
+#     )
+#     stdout, stderr = process.communicate()
+
+#     if process.returncode != 0:
+#         print(f"Error: {stderr}")
+#         sys.exit(1)
+#     else:
+#         print(stdout)
 def execute_command(command, src, dest):
     """
-    Execute the constructed rclone command.
+    Execute the constructed rclone command with streaming output and
+    send progress updates to systemd via sd_notify.
     """
     command.extend([src, dest])
     print(f"Executing command: {' '.join(command)}")
+
+    # Let systemd know we’ve started the real work
+    notifier.notify("STATUS=Starting transfer…")
 
     process = subprocess.Popen(
         command,
         universal_newlines=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.STDOUT,
+        bufsize=1
     )
-    stdout, stderr = process.communicate()
 
-    if process.returncode != 0:
-        print(f"Error: {stderr}")
-        sys.exit(1)
-    else:
-        print(stdout)
+    last_percent = None
+
+    try:
+        assert process.stdout is not None
+        for line in process.stdout:
+            # keep logs
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+            # simple percent parse: first "<digits>%"
+            m = PROGRESS_RE.search(line)
+            if m:
+                pct = int(m.group(1))
+                if pct != last_percent:
+                    last_percent = pct
+                    notifier.notify(f"STATUS=Transferring… {pct}% complete")
+
+        process.wait()
+    finally:
+        if process.returncode == 0:
+            notifier.notify("STATUS=Finishing up…")
+            notifier.notify("READY=1")
+        else:
+            notifier.notify("STATUS=Transfer failed")
+        # let systemctl see the exit code
+        if process.returncode != 0:
+            print(f"Error: rclone exited with code {process.returncode}")
+            sys.exit(process.returncode)
+        else:
+            print("Rclone task execution completed.")
+
 
 def execute_rclone(options):
     """
@@ -305,12 +362,18 @@ def main():
     """
     Main execution entry point.
     """
+    notifier.notify("STATUS=Running task…")
+
     print("Starting rclone script...")
     # print('env:', os.environ)
     options = parse_arguments()
     # print(f"Options: {options}")
     execute_rclone(options)
+    notifier.notify("STATUS=Finishing up…")
     print("Rclone task execution completed.")
+    
+    # notifier.notify("READY=1")
 
 if __name__ == '__main__':
+    notifier.notify("STATUS=Starting task…")
     main()
