@@ -37,8 +37,8 @@ export function useLiveTaskStatus(
 
             if (lower.includes('failed')) return `Failed at ${ts}`;
             if (lower.includes('completed')) return `Completed at ${ts}`;
-            if (lower.includes('inactive') || lower.includes('disabled')) return `Last run at ${ts}`;
-            return `Last run at ${ts}`;
+            if (lower.includes('inactive') || lower.includes('disabled')) return `Last Run at ${ts}`;
+            return `Last Run at ${ts}`;
         };
 
         try {
@@ -75,7 +75,7 @@ export function useLiveTaskStatus(
                             if (Number.isFinite(parsed)) ms = parsed;
                         }
                         if (ms) {
-                            label = buildLastRunLabel(statusText, ms) || `Last run at ${fmtMs(ms)}`;
+                            label = buildLastRunLabel(statusText, ms) || `Last Run at ${fmtMs(ms)}`;
                         }
                     }
                 } catch {
@@ -127,8 +127,8 @@ export function useLiveTaskStatus(
                     const label = (() => {
                         if (lower.includes('failed')) return `Failed at ${fmtMs(ms)}`;
                         if (lower.includes('completed')) return `Completed at ${fmtMs(ms)}`;
-                        if (lower.includes('inactive') || lower.includes('disabled')) return `Last run at ${fmtMs(ms)}`;
-                        return `Last run at ${fmtMs(ms)}`;
+                        if (lower.includes('inactive') || lower.includes('disabled')) return `Last Run at ${fmtMs(ms)}`;
+                        return `Last Run at ${fmtMs(ms)}`;
                     })();
                     lastRunMap.value[id] = label;
                     return;

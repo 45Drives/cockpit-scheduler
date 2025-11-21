@@ -99,9 +99,11 @@ export class TaskExecutionLog {
             }
 
             // --- LEGACY path (system units)
-            const showCmd = ['systemctl', 'show', `${unit}.service`,
-                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp',
-                '--no-pager'];
+            const showCmd = [
+                'systemctl', 'show', `${unit}.service`,
+                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp',
+                '--no-pager',
+            ];
             const showState = useSpawn(showCmd, { superuser: 'try' });
             const showRes: any = await showState.promise();
             const kv = Object.fromEntries(
@@ -114,8 +116,17 @@ export class TaskExecutionLog {
             const rawStatus = kv['ExecMainStatus'];
             const exitCode = Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0;
 
-            const startTime = kv['ExecMainStartTimestamp'] || '';
-            const finishTime = kv['ExecMainExitTimestamp'] || '';
+            // For oneshot services ExecMain* timestamps are often empty.
+            // Fall back to Active/Inactive timestamps instead.
+            const startTime =
+                kv['ExecMainStartTimestamp'] ||
+                kv['ActiveEnterTimestamp'] ||
+                '';
+
+            const finishTime =
+                kv['ExecMainExitTimestamp'] ||
+                kv['InactiveEnterTimestamp'] ||
+                '';
 
             let output = '';
             if (startTime) {
@@ -123,14 +134,13 @@ export class TaskExecutionLog {
                     'journalctl', '-q', '--output=cat',
                     '-u', `${unit}.service`,
                     '--since', startTime,
-                    '--no-pager', '--all'
+                    '--no-pager', '--all',
                 ];
                 try {
                     const logState = useSpawn(logCmd, { superuser: 'try' });
                     const logRes: any = await logState.promise();
                     output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
                 } catch (e) {
-                    // Don’t spam; lack of journal perms is normal on some setups
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {
                         console.warn('journalctl failed:', msg);
@@ -148,16 +158,24 @@ export class TaskExecutionLog {
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
         const taskLog = new TaskExecutionLog([]);
-
         const latestEntry = await taskLog.getLatestEntryFor(taskInstance);
 
-        if (!latestEntry || !latestEntry.finishDate) {
+        if (!latestEntry) {
             return false;
         }
 
-        const finishDate = new Date(latestEntry.finishDate).getTime();
-        const currentTime = Date.now();
+        // Prefer finishDate, but fall back to startDate if finish isn't populated
+        const tsSource = latestEntry.finishDate || latestEntry.startDate;
+        if (!tsSource) {
+            return false;
+        }
 
+        const finishDate = new Date(tsSource).getTime();
+        if (!Number.isFinite(finishDate)) {
+            return false;
+        }
+
+        const currentTime = Date.now();
         const threshold = 10 * 60 * 1000; // 10 minutes
 
         return (currentTime - finishDate) <= threshold;

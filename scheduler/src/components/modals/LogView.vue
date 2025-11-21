@@ -75,7 +75,7 @@
                         </div>
                     </div>
 
-                    <div v-if="!loadingLogs" class="bg-plugin-header p-4 rounded-lg">
+                    <div v-if="!loadingLogs" class="bg-plugin-header p-4 rounded-lg mt-1">
                         <ul v-if="thisLogEntry !== undefined" ref="logContainer" role="list"
                             class="divide-y divide-default h-96 overflow-y-scroll">
                             <li v-if="!viewMoreLogs && !loadingMoreLogs"
@@ -106,7 +106,7 @@
                             </li>
                         </ul>
                     </div>
-                    <div v-else class="bg-plugin-header p-4 rounded-lg">
+                    <div v-else class="bg-plugin-header p-4 rounded-lg mt-1">
                         <div class="flex items-center justify-center">
                             <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
                                 :fillColor="'fill-gray-500'" />

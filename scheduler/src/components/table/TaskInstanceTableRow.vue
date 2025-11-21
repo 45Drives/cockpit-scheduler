@@ -50,7 +50,7 @@
 		</td>
 
 		<!-- Progress bar (full width row) -->
-		<td v-if="progress !== null" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
+		<td v-if="progress !== null && isRunning" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
 			<div >
 				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded">
 					<div class="h-2 rounded" :class="progressBarClass"

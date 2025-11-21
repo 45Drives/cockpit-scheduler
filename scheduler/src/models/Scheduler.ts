@@ -110,7 +110,7 @@ export class Scheduler implements SchedulerType {
         }
     }
 
-    /**
+ /*
   * Unified, view-friendly status + timestamps
   * - statusText: what you already show (“Active (Pending)”, etc.)
   * - lastRunMs: Date.now()-compatible ms (picked from timer/service)
@@ -169,22 +169,36 @@ export class Scheduler implements SchedulerType {
             }
         }
 
-        // Legacy/direct path: query both units then compute once
+        // Legacy/direct path: query timer (optional) and service (required)
         try {
-            const [tRes, sRes] = await Promise.all([
-                legacy.useSpawn(
-                    ['systemctl', 'show', `${unit}.timer`, '--no-pager',
-                        '--property', 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit'],
+            // Timer is optional for manual-only tasks
+            try {
+                const tRes = await legacy.useSpawn(
+                    [
+                        'systemctl', 'show', `${unit}.timer`, '--no-pager',
+                        '--property', 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit',
+                    ],
                     { superuser: 'try' }
-                ).promise(),
-                legacy.useSpawn(
-                    ['systemctl', 'show', `${unit}.service`, '--no-pager',
-                        '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ExecMainStartTimestampUSec,MergedUnit'],
-                    { superuser: 'try' }
-                ).promise(),
-            ]);
+                ).promise();
+                timerOut = String(tRes?.stdout || '');
+            } catch (e: any) {
+                const stdout = e?.stdout ?? '';
+                const stderr = e?.stderr ?? '';
+                if (!/not found/i.test(stdout) && !/not found/i.test(stderr)) {
+                    console.warn(`getDisplayMeta(timer ${unit}):`, errorString(e));
+                }
+                // leave timerOut = '' and continue
+            }
 
-            timerOut = String(tRes?.stdout || '');
+            // Service is required
+            const sRes = await legacy.useSpawn(
+                [
+                    'systemctl', 'show', `${unit}.service`, '--no-pager',
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ExecMainStartTimestampUSec,MergedUnit',
+                ],
+                { superuser: 'try' }
+            ).promise();
+
             serviceOut = String(sRes?.stdout || '');
 
             const t = this.parseShow(timerOut);
@@ -202,7 +216,8 @@ export class Scheduler implements SchedulerType {
                 lastRunMs: this.usToMs(Number(lastRunUs)),
                 nextRunMs: this.usToMs(nextRunUs),
             };
-        } catch {
+        } catch (e) {
+            console.warn(`getDisplayMeta(service ${unit}) failed:`, errorString(e));
             return { unit, statusText: '—', lastRunMs: 0 };
         }
     }
@@ -981,10 +996,6 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
-        // Reload the system daemon
-        let command = ['sudo', 'systemctl', 'daemon-reload'];
-        let state = useSpawn(command, { superuser: 'try' });
-        await state.promise();
     }
 
     async unregisterTaskInstance(taskInstance: TaskInstanceType) {
@@ -1306,14 +1317,9 @@ export class Scheduler implements SchedulerType {
 
         const timerName = `${fullTaskName}.timer`;
         try {
-            // Reload the system daemon
-            let command = ['sudo', 'systemctl', 'daemon-reload'];
-            let state = useSpawn(command, { superuser: 'try' });
-            await state.promise();
-
             // Start and Enable the timer
-            command = ['sudo', 'systemctl', 'enable', timerName];
-            state = useSpawn(command, { superuser: 'try' });
+            let command = ['sudo', 'systemctl', 'enable', timerName];
+            let state = useSpawn(command, { superuser: 'try' });
             await state.promise();
 
             console.log(`${timerName} has been enabled and started`);
@@ -1340,11 +1346,6 @@ export class Scheduler implements SchedulerType {
 
         const timerName = `${fullTaskName}.timer`;
         try {
-            // Reload systemd daemon
-            let reloadCommand = ['sudo', 'systemctl', 'daemon-reload'];
-            let reloadState = useSpawn(reloadCommand, { superuser: 'try' });
-            await reloadState.promise();
-
             // Stop and Disable the timer
             let stopCommand = ['sudo', 'systemctl', 'stop', timerName];
             let stopState = useSpawn(stopCommand, { superuser: 'try' });
@@ -1435,18 +1436,18 @@ export class Scheduler implements SchedulerType {
             file.close();
         });
 
-        if (taskInstance.schedule.enabled) {
-            await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
+        // if (taskInstance.schedule.enabled) {
+        await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
 
-            // Reload the system daemon
-            let command = ['sudo', 'systemctl', 'daemon-reload'];
-            let state = useSpawn(command, { superuser: 'try' });
-            await state.promise();
+        // Reload the system daemon
+        let command = ['sudo', 'systemctl', 'daemon-reload'];
+        let state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
 
-            command = ['sudo', 'systemctl', 'restart', fullTaskName + '.timer'];
-            state = useSpawn(command, { superuser: 'try' });
-            await state.promise();
-        }
+        command = ['sudo', 'systemctl', 'restart', fullTaskName + '.timer'];
+        state = useSpawn(command, { superuser: 'try' });
+        await state.promise();
+        // }
     }
 
     async deleteSchedule(taskInstance: TaskInstanceType) {
