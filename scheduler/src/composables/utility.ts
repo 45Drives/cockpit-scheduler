@@ -6,17 +6,17 @@ import test_ssh_script from "../scripts/test-ssh.py?raw";
 // @ts-ignore
 import test_netcat_script from '../scripts/test-netcat.py?raw'
 //@ts-ignore
-import task_file_creation_script from "../scripts/task-file-creation.py?raw";
+import task_file_creation_script from "../scripts/legacy-task-file-creation.py?raw";
 //@ts-ignore
-import remove_task_script from "../scripts/remove-task-files.py?raw";
+import remove_task_script from "../scripts/legacy-remove-task-files.py?raw";
 //@ts-ignore
-import run_task_script from "../scripts/run-task-now.py?raw";
+import run_task_script from "../scripts/legacy-run-task-now.py?raw";
 //@ts-ignore
 import get_disks_script from "../scripts/get-disk-data.py?raw";
 //@ts-ignore
 import ensure_ssh_script from "../scripts/ensure_passwordless_ssh.py?raw";
 //@ts-ignore
-import stop_task_script from "../scripts/stop-task-now.py?raw";
+import stop_task_script from "../scripts/legacy-stop-task-now.py?raw";
 
 import { inject, InjectionKey, ref, type Ref } from "vue";
 

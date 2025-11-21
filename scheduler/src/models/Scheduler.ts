@@ -67,7 +67,7 @@ export class Scheduler implements SchedulerType {
             || this.normalizeTemplateKey(ti.template.name);
     }
 
-    // NEW: single source of truth for unit names
+    // single source of truth for unit names
     private async unitNameFor(ti: TaskInstanceType): Promise<string> {
         const key = this.templateKey(ti);
         const scope = (ti as any).scope as ('user' | 'system' | undefined);
@@ -92,7 +92,6 @@ export class Scheduler implements SchedulerType {
         return us && Number.isFinite(us) ? Math.floor(us / 1000) : 0;
     }
 
-    // Put this helper in your Scheduler class
     private parseListTasks(raw: any): any[] {
         try {
             if (Array.isArray(raw)) {
@@ -112,11 +111,11 @@ export class Scheduler implements SchedulerType {
     }
 
     /**
-     * Unified, view-friendly status + timestamps
-     * - statusText: what you already show (“Active (Pending)”, etc.)
-     * - lastRunMs: Date.now()-compatible ms (picked from timer/service)
-     * - nextRunMs: optional ms for “Next run” (handy later)
-     */
+  * Unified, view-friendly status + timestamps
+  * - statusText: what you already show (“Active (Pending)”, etc.)
+  * - lastRunMs: Date.now()-compatible ms (picked from timer/service)
+  * - nextRunMs: optional ms for “Next run” (handy later)
+  */
     async getDisplayMeta(ti: TaskInstanceType): Promise<{
         unit: string;
         statusText: string;
@@ -125,12 +124,23 @@ export class Scheduler implements SchedulerType {
     }> {
         await this.ensureBackend();
 
-        // We’ll reuse your existing calls but also parse the numeric bits
         const log = new TaskExecutionLog([]);
         const tplKey = this.templateKey(ti, this.normalizeTemplateKey(ti.template.name));
         const unit = await this.unitNameFor(ti);
 
         let timerOut = '', serviceOut = '';
+        const preferTimer = !!ti?.schedule?.enabled;
+
+        // Helper: choose which blob to feed into parseTaskStatus
+        const pickStatusSource = (t: ReturnType<Scheduler['parseShow']>, s: ReturnType<Scheduler['parseShow']>) => {
+            // If the service is clearly running or failed, always show that
+            if (s.active === 'active' && s.sub === 'running') return serviceOut;
+            if (s.active === 'failed' || s.sub === 'failed') return serviceOut;
+
+            // Otherwise, default: timer for scheduled tasks, service for unscheduled
+            return preferTimer ? timerOut : serviceOut;
+        };
+
         if (this.isDaemon()) {
             try {
                 const st: any = await daemon.getStatus(tplKey, ti.name);
@@ -138,13 +148,12 @@ export class Scheduler implements SchedulerType {
                 const u = String(st?.unit || unit);
                 timerOut = String(st?.timer || '');
                 serviceOut = String(st?.service || '');
-                const preferTimer = !!ti?.schedule?.enabled;
 
-                const statusText = await this.parseTaskStatus(preferTimer ? timerOut : serviceOut, u, log, ti);
-
-                // numeric parse
                 const t = this.parseShow(timerOut);
                 const s = this.parseShow(serviceOut);
+
+                const source = pickStatusSource(t, s);
+                const statusText = await this.parseTaskStatus(source, u, log, ti);
 
                 const lastRunUs = t.lastTriggerUSec || s.serviceStartUSec || 0;
                 const nextRunUs = t.nextElapseUSec || 0;
@@ -178,11 +187,11 @@ export class Scheduler implements SchedulerType {
             timerOut = String(tRes?.stdout || '');
             serviceOut = String(sRes?.stdout || '');
 
-            const preferTimer = !!ti?.schedule?.enabled;
-            const statusText = await this.parseTaskStatus(preferTimer ? timerOut : serviceOut, unit, log, ti);
-
             const t = this.parseShow(timerOut);
             const s = this.parseShow(serviceOut);
+
+            const source = pickStatusSource(t, s);
+            const statusText = await this.parseTaskStatus(source, unit, log, ti);
 
             const lastRunUs = t.lastTriggerUSec || s.serviceStartUSec || 0;
             const nextRunUs = t.nextElapseUSec || 0;
@@ -633,14 +642,15 @@ export class Scheduler implements SchedulerType {
                     envObject['rsyncConfig_target_info_port'] = '';
                     envObject['rsyncConfig_target_info_user'] = '';
                 }
+                formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_log_file_path');
                 formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_bandwidth_limit_kbps');
                 formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_include_pattern');
                 formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_exclude_pattern');
                 formatEnvOption(envObject, 'rsyncConfig_rsyncOptions_custom_args');
                 break;
 
-
             case 'CloudSyncTask':
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_log_file_path');
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_bandwidth_limit_kbps');
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_include_pattern');
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_exclude_pattern');
@@ -673,6 +683,8 @@ export class Scheduler implements SchedulerType {
                 return 'rsync-script';
             case 'SmartTest':
                 return 'smart-test-script';
+            case 'ScrubTask':
+                return 'scrub-script';  
             case 'CloudSyncTask':
                 return 'cloudsync-script';
             default:
@@ -719,7 +731,7 @@ export class Scheduler implements SchedulerType {
         if (templateName === 'CloudSyncTask') {
             // legacy writes system units that run as root
             envObject['RCLONE_CONFIG'] = '/root/.config/rclone/rclone.conf';
-            // also provide the explicit hint your script can read
+
             envObject['cloudSyncConfig_rclone_config_path'] = '/root/.config/rclone/rclone.conf';
         }
         // Remove empty values from envObject
@@ -811,8 +823,6 @@ export class Scheduler implements SchedulerType {
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
         envObject['taskName'] = taskInstance.name;
 
-        // const scriptFileName = this.getScriptFromTemplateName(templateName);
-        // const scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
         let scriptPath: string;
         if (templateName === 'CustomTask') {
             const pathParam = taskInstance.parameters?.children?.find((c: any) => c.key === 'path');
@@ -822,17 +832,23 @@ export class Scheduler implements SchedulerType {
             scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
         }
 
-        const scope = await this.desiredScopeFor(taskInstance); // see §3
-        const oldName = opts?.oldName ?? taskInstance.name;     // <— NEW
-        await daemon.updateTask(
-              templateName,
-              oldName,                // tell daemon the *old* logical name
-              envObject,
-              scriptPath,
-              taskInstance.schedule,
-              taskInstance.notes ?? '',
-              scope
+        // === DAEMON path ===
+        if (this.backend === 'daemon') {
+            const scope = await this.desiredScopeFor(taskInstance);
+            const oldName = opts?.oldName ?? taskInstance.name;
+
+            await daemon.updateTask(
+                templateName,
+                oldName,
+                envObject,
+                scriptPath,
+                taskInstance.schedule,
+                taskInstance.notes ?? '',
+                scope
             );
+
+            return;
+        }
 
         // === LEGACY path  ===
         if (templateName === 'CloudSyncTask') {
@@ -992,17 +1008,43 @@ export class Scheduler implements SchedulerType {
         console.log(`${fullTaskName} removed`);
     }
     
-    async runTaskNow(taskInstance: TaskInstanceType) {
+    async runTaskNow(taskInstance: TaskInstanceType): Promise<string> {
         await this.ensureBackend();
-        //execute service file now
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
+        // Helper: poll until the service is no longer running
+        const waitForFinalStatus = async (): Promise<string> => {
+            let finalStatus = 'Unknown';
+
+            while (true) {
+                const status = await this.getServiceStatus(taskInstance);
+                if (status) {
+                    finalStatus = status;
+                }
+
+                if (
+                    status === 'Completed' ||
+                    status === 'Inactive (Disabled)' || // covers manual stop
+                    status === 'Failed'
+                ) {
+                    break;
+                }
+
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            return finalStatus;
+        };
+
         if (this.backend === 'daemon') {
             await daemon.runNow(templateName, taskInstance.name);
-            return;
+            const finalStatus = await waitForFinalStatus();
+            console.log(
+                `Task ${templateName}_${taskInstance.name} finished with status: ${finalStatus}`
+            );
+            return finalStatus;
         }
-
 
         // === LEGACY path  ===
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
@@ -1010,32 +1052,28 @@ export class Scheduler implements SchedulerType {
         console.log(`Running ${fullTaskName}...`);
         await runTask(fullTaskName);
 
-        // Poll systemd until task sends READY=1 and exits cleanly
-        while (true) {
-            const status = await this.getServiceStatus(taskInstance);
-
-            if (status === 'Completed' ||
-                status === 'Inactive (Disabled)' ||
-                status === 'Failed') {
-                break;
-            }
-
-            await new Promise(r => setTimeout(r, 1000));
-        }
-        console.log(`Task ${fullTaskName} completed.`);
-        // return TaskExecutionResult;
+        const finalStatus = await waitForFinalStatus();
+        console.log(`Task ${fullTaskName} completed with status: ${finalStatus}`);
+        return finalStatus;
     }
 
     async stopTaskNow(taskInstance: TaskInstanceType) {
-        //stop service file now
+        await this.ensureBackend();
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
+
+        // === DAEMON path ===
+        if (this.backend === 'daemon') {
+            await daemon.stopTask(templateName, taskInstance.name);
+            return;
+        }
+
+        // === LEGACY path ===
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         console.log(`Stopping ${fullTaskName}...`);
         await stopTask(fullTaskName);
         console.log(`Task ${fullTaskName} stopped.`);
-        // return TaskExecutionResult;
     }
 
     async getTimerStatus(ti: TaskInstanceType): Promise<string | false> {
@@ -1200,7 +1238,6 @@ export class Scheduler implements SchedulerType {
                     const noJournal = /No journal files were opened|You are currently not seeing messages/.test(output);
                     if (succeededRegex.test(output)) return 'Completed';
 
-                    // 🔽 Add this guard so a failed journal probe never becomes a UI error
                     let recentlyCompleted = false;
                     try {
                         if (!noJournal) {
@@ -1221,27 +1258,38 @@ export class Scheduler implements SchedulerType {
     }
 
     async getTaskProgress(taskInstance: TaskInstanceType): Promise<number | null> {
+        await this.ensureBackend();
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
+
+        // === DAEMON path ===
+        if (this.backend === 'daemon') {
+            try {
+                const st: any = await daemon.getStatus(templateName, taskInstance.name);
+                const txt = String(st?.service || '');
+
+                const match = txt.match(/(\d+)%/);
+                return match ? parseInt(match[1], 10) : null;
+            } catch {
+                return null;
+            }
+        }
+
+        // === LEGACY path ===
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const fullTaskName = houstonSchedulerPrefix + templateName + '_' + taskInstance.name;
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         try {
             const command = ['systemctl', 'show', `${fullTaskName}.service`, '--property=StatusText', '--value'];
             const state = useSpawn(command, { superuser: 'try' });
             const result = await state.promise();
             const txt = (result.stdout || '').trim();
-
-            // Expect something like "Transferring… 37% complete"
             const match = txt.match(/(\d+)%/);
-            if (match) {
-                return parseInt(match[1], 10);
-            }
-            return null;
-        } catch (e: any) {
-            console.warn('getTaskProgress failed:', errorString(e));
+            return match ? parseInt(match[1], 10) : null;
+        } catch {
             return null;
         }
     }
+
 
 
     async enableSchedule(taskInstance) {
@@ -1402,8 +1450,17 @@ export class Scheduler implements SchedulerType {
     }
 
     async deleteSchedule(taskInstance: TaskInstanceType) {
+        await this.ensureBackend();
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
+
+        // === DAEMON path ===
+        if (this.backend === 'daemon') {
+            await daemon.clearSchedule(templateName, taskInstance.name);
+            taskInstance.schedule.enabled = false;
+            taskInstance.schedule.intervals = [];
+            return true;
+        }
         const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         const timerUnit = `${fullTaskName}.timer`;

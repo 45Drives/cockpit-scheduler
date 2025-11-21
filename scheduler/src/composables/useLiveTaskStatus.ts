@@ -7,24 +7,6 @@ function taskId(t: AnyTask) {
     return t?.id ?? t?.uuid ?? t?.name;
 }
 
-function formatDateLike(v: any) {
-    if (!v) return '—';
-    const d = new Date(v);
-    if (Number.isFinite(v) && typeof v === 'number' && v.toString().length === 10) {
-        const d2 = new Date(v * 1000);
-        return isNaN(d2.getTime()) ? String(v) : d2.toLocaleString();
-    }
-    return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
-}
-
-// helper that ignores empty strings
-function pickNonEmpty<T>(...vals: T[]) {
-    for (const v of vals) {
-        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
-    }
-    return undefined;
-}
-
 export function useLiveTaskStatus(
     tasksRef: { value: AnyTask[] | undefined | null },
     scheduler: any,
@@ -47,12 +29,68 @@ export function useLiveTaskStatus(
             return new Date(ms).toLocaleString();
         };
 
+        // helper to turn (statusText, ms) into a nice "Last Run" string
+        const buildLastRunLabel = (statusText: string, ms: number): string => {
+            if (!ms) return "";
+            const lower = statusText.toLowerCase();
+            const ts = fmtMs(ms);
+
+            if (lower.includes('failed')) return `Failed at ${ts}`;
+            if (lower.includes('completed')) return `Completed at ${ts}`;
+            if (lower.includes('inactive') || lower.includes('disabled')) return `Last run at ${ts}`;
+            return `Last run at ${ts}`;
+        };
+
         try {
             // ---- Primary path: one call that gives us status + timestamps
             const meta = await scheduler.getDisplayMeta(t);
-            statusMap.value[id] = meta?.statusText ?? 'Inactive (Disabled)';
-            lastRunMap.value[id] = meta?.lastRunMs ? fmtMs(meta.lastRunMs) : (lastRunMap.value[id] ?? "Task hasn't run yet.");
-            return; // success
+            const statusText = meta?.statusText ?? 'Inactive (Disabled)';
+            statusMap.value[id] = statusText;
+            const lower = statusText.toLowerCase();
+
+            // If currently running → show live
+            if (
+                lower.includes('active (running)') ||
+                lower.includes('starting') ||
+                lower.includes('running')
+            ) {
+                lastRunMap.value[id] = 'Running now...';
+                return;
+            }
+
+            // Not running anymore → try to get a timestamp from systemd first
+            let label = buildLastRunLabel(statusText, meta?.lastRunMs || 0);
+
+            // If systemd didn't give us a timestamp, try the task log
+            if (!label && log?.getLatestEntryFor) {
+                try {
+                    const latest = await log.getLatestEntryFor(t);
+                    const raw = latest?.finishDate ?? latest?.startDate;
+                    if (raw) {
+                        let ms = 0;
+                        if (typeof raw === 'number') {
+                            ms = raw.toString().length === 10 ? raw * 1000 : raw;
+                        } else {
+                            const parsed = Date.parse(String(raw));
+                            if (Number.isFinite(parsed)) ms = parsed;
+                        }
+                        if (ms) {
+                            label = buildLastRunLabel(statusText, ms) || `Last run at ${fmtMs(ms)}`;
+                        }
+                    }
+                } catch {
+                    // ignore log errors
+                }
+            }
+
+            // If we still have nothing, but we *were* showing "Running now...", treat this as stopped just now
+            if (!label && lastRunMap.value[id] === 'Running now...') {
+                label = `Stopped at ${fmtMs(Date.now())}`;
+            }
+
+            // Final fallback
+            lastRunMap.value[id] = label || lastRunMap.value[id] || "Task hasn't run yet.";
+            return;
         } catch (e) {
             // continue to fallback below
             console.debug('[useLiveTaskStatus] getDisplayMeta failed; falling back:', e);
@@ -71,24 +109,46 @@ export function useLiveTaskStatus(
         }
 
         try {
+            const statusText = statusMap.value[id] || 'Inactive (Disabled)';
+            const lower = statusText.toLowerCase();
+
             const latest = await (log?.getLatestEntryFor?.(t));
             const raw = latest?.finishDate ?? latest?.startDate;
             if (raw) {
                 let ms = 0;
-                if (typeof raw === 'number') ms = raw.toString().length === 10 ? raw * 1000 : raw;
-                else {
+                if (typeof raw === 'number') {
+                    ms = raw.toString().length === 10 ? raw * 1000 : raw;
+                } else {
                     const parsed = Date.parse(String(raw));
                     if (Number.isFinite(parsed)) ms = parsed;
                 }
-                lastRunMap.value[id] = ms ? fmtMs(ms) : (lastRunMap.value[id] ?? "Task hasn't run yet.");
+
+                if (ms) {
+                    const label = (() => {
+                        if (lower.includes('failed')) return `Failed at ${fmtMs(ms)}`;
+                        if (lower.includes('completed')) return `Completed at ${fmtMs(ms)}`;
+                        if (lower.includes('inactive') || lower.includes('disabled')) return `Last run at ${fmtMs(ms)}`;
+                        return `Last run at ${fmtMs(ms)}`;
+                    })();
+                    lastRunMap.value[id] = label;
+                    return;
+                }
+            }
+
+            // If we got here, no timestamp from log
+            if (lastRunMap.value[id] === 'Running now...') {
+                lastRunMap.value[id] = `Stopped at ${fmtMs(Date.now())}`;
             } else {
                 lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";
             }
         } catch {
-            lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";
+            if (lastRunMap.value[id] === 'Running now...') {
+                lastRunMap.value[id] = `Stopped at ${fmtMs(Date.now())}`;
+            } else {
+                lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";
+            }
         }
     }
-
 
     async function refreshAll() {
         const tasks = tasksRef.value ?? [];

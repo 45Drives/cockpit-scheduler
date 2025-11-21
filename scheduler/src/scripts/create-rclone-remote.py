@@ -1,32 +1,62 @@
 #!/usr/bin/env python3
-import os, pwd, argparse, configparser, json
+import argparse
+import configparser
+import json
 import sys
-from typing import Any
+from typing import Optional, Tuple, Dict, Any
+import os
+import pwd
 
-def _expand_user_config(user_arg: str | None, config_arg: str | None) -> tuple[str, int | None, int | None]:
-    # Decide rclone.conf path, and return (path, uid, gid) for optional chown
+def _expand_user_config(
+    user_arg: Optional[str],
+    config_arg: Optional[str],
+) -> Tuple[str, Optional[int], Optional[int]]:
+    """
+    Decide rclone.conf path, and return (path, uid, gid) for optional chown.
+    If config_arg is given, use that and do not chown.
+    If user_arg is given, use that user's XDG config dir and chown to that user (if run as root).
+    Otherwise, use current euid's home / XDG without chown.
+    """
     if config_arg:
         return (config_arg, None, None)
+
     if user_arg:
         p = pwd.getpwnam(user_arg)
         home = p.pw_dir
         xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
         return (os.path.join(xdg, "rclone", "rclone.conf"), p.pw_uid, p.pw_gid)
+
     # Default: current euid's home / XDG
     home = os.path.expanduser("~")
     xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
     return (os.path.join(xdg, "rclone", "rclone.conf"), None, None)
 
-def _ensure_parent(conf_path: str, uid: int | None, gid: int | None):
+
+def _ensure_parent(conf_path: str, uid: Optional[int], gid: Optional[int]) -> None:
+    """
+    Ensure parent directory exists with restrictive permissions and optionally chown it.
+    """
     d = os.path.dirname(conf_path)
     os.makedirs(d, mode=0o700, exist_ok=True)
     try:
         if uid is not None and os.geteuid() == 0:
-            os.chown(d, uid, gid)
+            # gid may be None; os.chown requires int, so default to uid if gid is None
+            os.chown(d, uid, gid if gid is not None else uid)
     except PermissionError:
-        pass  # best-effort
+        # best-effort; ignore if we can't chown
+        pass
 
-def _write_config_atomic(conf_path: str, cfg: configparser.ConfigParser, uid: int | None, gid: int | None):
+
+def _write_config_atomic(
+    conf_path: str,
+    cfg: configparser.ConfigParser,
+    uid: Optional[int],
+    gid: Optional[int],
+) -> None:
+    """
+    Write config to a temp file then atomically replace the target.
+    Optionally chown the file when running as root.
+    """
     _ensure_parent(conf_path, uid, gid)
     tmp = conf_path + ".tmp"
     with open(tmp, "w") as f:
@@ -34,12 +64,19 @@ def _write_config_atomic(conf_path: str, cfg: configparser.ConfigParser, uid: in
     os.chmod(tmp, 0o600)
     try:
         if uid is not None and os.geteuid() == 0:
-            os.chown(tmp, uid, gid)
+            os.chown(tmp, uid, gid if gid is not None else uid)
     except PermissionError:
+        # best-effort; ignore if we can't chown
         pass
     os.replace(tmp, conf_path)
 
-def save_remote_to_conf(remote: dict[str, Any], conf_path: str, uid, gid):
+
+def save_remote_to_conf(
+    remote: Dict[str, Any],
+    conf_path: str,
+    uid: Optional[int],
+    gid: Optional[int],
+) -> None:
     cfg = configparser.ConfigParser()
     cfg.read(conf_path)
 
@@ -63,16 +100,30 @@ def save_remote_to_conf(remote: dict[str, Any], conf_path: str, uid, gid):
     _write_config_atomic(conf_path, cfg, uid, gid)
     print(f"Remote '{name}' saved to {conf_path}")
 
-def main():
-    p = argparse.ArgumentParser(description="Save a CloudSyncRemote to rclone.conf")
-    p.add_argument("--data", required=True, help="JSON string of CloudSyncRemote data")
-    p.add_argument("--user", help="Target username for ~user/.config/rclone/rclone.conf")
-    p.add_argument("--config", help="Explicit rclone.conf path (overrides --user)")
-    args = p.parse_args()
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Save a CloudSyncRemote to rclone.conf"
+    )
+    parser.add_argument(
+        "--data",
+        required=True,
+        help="JSON string of CloudSyncRemote data",
+    )
+    parser.add_argument(
+        "--user",
+        help="Target username for ~user/.config/rclone/rclone.conf",
+    )
+    parser.add_argument(
+        "--config",
+        help="Explicit rclone.conf path (overrides --user)",
+    )
+    args = parser.parse_args()
 
     conf_path, uid, gid = _expand_user_config(args.user, args.config)
     remote = json.loads(args.data)
     save_remote_to_conf(remote, conf_path, uid, gid)
+
 
 if __name__ == "__main__":
     try:

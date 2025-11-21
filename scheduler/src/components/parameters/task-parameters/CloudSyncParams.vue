@@ -317,7 +317,7 @@
                 <label class="mt-1 block text-base leading-6 text-default">Rclone Options</label>
                 <!-- Basic options -->
                 <div class="grid grid-cols-4 gap-4 mt-2">
-                    <div class="col-span-1 pl-1">
+                    <div class="col-span-1 items-center">
                         <div name="options-parallel-threads" class="col-span-1 mt-1">
                             <label class="mt-1 block text-sm leading-6 text-default">
                                 Number of Transfers
@@ -399,8 +399,22 @@
                                     :title="`Specify a pattern of files to exclude in the transfer.\n(E.g., *.log excludes all log files.)\n- Separate patterns with commas (,).`" />
                             </div>
                         </div>
-
-                        <div name="options-extra-params" class="col-span-2">
+                        <div name="options-log-file-path" class="col-span-1">
+                            <div class="flex flex-row justify-between items-center">
+                                <label class="block text-sm leading-6 text-default">
+                                    Log File Path
+                                    <InfoTile class="ml-1"
+                                        :title="`Optional path to an rclone log file. If set, rclone will write logs to this file using --log-file=PATH.`" />
+                                </label>
+                                <ExclamationCircleIcon v-if="errorTags.logFilePath" class="mt-1 w-5 h-5 text-danger" />
+                            </div>
+                            <input type="text" v-model="logFilePath"
+                                :class="[errorTags.logFilePath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                placeholder="Eg. /var/log/newtask"
+                                :title="`Optional path to an rclone log file. If set, rclone will write logs to this file using --log-file=PATH.`" />
+                        </div>
+                        <div name="options-extra-params" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="block text-sm leading-6 text-default">
                                     Extra Parameters
@@ -777,6 +791,7 @@ const errorTags = ref({
     multiThreadCutoff: false,
     multiThreadStreams: false,
     multiThreadWriteBufferSize: false,
+    logFilePath: false,
 });
 
 const localPath = ref('');
@@ -793,7 +808,7 @@ const numberOfTransfers = ref(4);
 const includePattern = ref('');
 const excludePattern = ref('');
 const customArgs = ref('');
-
+const logFilePath = ref('');
 const limitBandwidthKbps = ref()
 const ignoreSize = ref(false);
 const inplace = ref(false);
@@ -836,16 +851,7 @@ watch(selectedRemote, (newVal) => {
 
 // ---------- User-scoped folder discovery (same as Rsync) ----------
 const ctx = useClientContextStore();
-
-// function parseFromHash(): string {
-//     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
-//     return m ? decodeURIComponent(m[1]) : '';
-// }
-
-// const installId = computed(() => ctx.clientId || parseFromHash() || '');
-
-// when false → hash only; when true → hash, else context
-const allowContextFallback = ref(false); // flip to true only when you want the store
+const allowContextFallback = ref(false);
 
 function parseFromHash(): string {
     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
@@ -857,10 +863,8 @@ const installId = computed(() => {
     return fromHash || (allowContextFallback.value ? (ctx.clientId || '') : '');
 });
 
-// depth=2 like your Rsync version
 const folderList = useUserScopedFolderListByInstall(installId, 2);
 
-// pipe state to console if you like
 watchEffect(() => {
     console.log('[cloud-sync folderList]',
         'loading=', folderList.loading.value,
@@ -922,10 +926,8 @@ function ensureTrailingSlash(which: 'local' | 'target') {
     }
 }
 
-
 async function initializeData() {
     if (props.task) {
-        // enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
          console.log('loading task:', props.task);
         loading.value = true;
 
@@ -945,6 +947,8 @@ async function initializeData() {
         selectedRemote.value = await myRemoteManager.getRemoteByName(remoteName) || undefined;
 
         const rcloneOptions = params.find(p => p.key === 'rcloneOptions')!.children;
+        const logFileParam = rcloneOptions.find(p => p.key === 'log_file_path');
+        logFilePath.value = logFileParam ? logFileParam.value : '';
         checkFirst.value = rcloneOptions.find(p => p.key === 'check_first_flag')!.value;
         checksum.value = rcloneOptions.find(p => p.key === 'checksum_flag')!.value;
         update.value = rcloneOptions.find(p => p.key === 'update_flag')!.value;
@@ -1010,6 +1014,7 @@ async function initializeData() {
             maxTransferSizeUnit: maxTransferSizeUnit.value,
             cutoffMode: cutoffMode.value,
             noTraverse: noTraverse.value,
+            logFilePath: logFilePath.value,
         }));
 
         loading.value = false;
@@ -1046,6 +1051,7 @@ function hasChanges() {
         maxTransferSizeUnit: maxTransferSizeUnit.value,
         cutoffMode: cutoffMode.value,
         noTraverse: noTraverse.value,
+        logFilePath: logFilePath.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -1296,6 +1302,12 @@ async function validateAllValues() {
         errorTags.value.numberOfTransfers = true;
     }
 
+    // Validate logFilePath
+    if (logFilePath.value && typeof logFilePath.value !== 'string') {
+        errorList.value.push("Log File Path must be a string.");
+        errorTags.value.logFilePath = true;
+    }
+
     // Validate includePattern
     if (includePattern.value && typeof includePattern.value !== 'string') {
         errorList.value.push("Include Pattern must be a string.");
@@ -1424,6 +1436,8 @@ function setParams() {
         .addChild(new SelectionParameter('Provider', 'provider', selectedRemote.value!.type))
         .addChild(new StringParameter('Rclone Remote', 'rclone_remote', selectedRemote.value!.name))
         .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
+            .addChild(new StringParameter('Log File Path', 'log_file_path', logFilePath.value))
+
             .addChild(new BoolParameter('Check First', 'check_first_flag', checkFirst.value))
             .addChild(new BoolParameter('Checksum', 'checksum_flag', checksum.value))
             .addChild(new BoolParameter('Update', 'update_flag', update.value))

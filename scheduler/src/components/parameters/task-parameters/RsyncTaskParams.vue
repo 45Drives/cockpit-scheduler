@@ -356,7 +356,20 @@
                                     placeholder="Eg. temp*, *.py" />
                             </div>
                         </div>
-                        <div name="options-extra-params" class="col-span-2">
+                        <div name="options-log-file-path" class="col-span-1">
+                            <div class="flex flex-row justify-between items-center">
+                                <label class="block text-sm leading-6 text-default">
+                                    Log File Path
+                                    <InfoTile class="ml-1"
+                                        :title="`Optional path to an rsync log file. If set, rsync will write logs to this file using --log-file=PATH.`" />
+                                </label>
+
+                            </div>
+                            <input type="text" v-model="logFilePath" class="block text-sm leading-6 text-default"
+                                placeholder="Eg. /var/log/newtask"
+                                :title="`Optional path to an rsync log file. If set, rsync will write logs to this file using --log-file=PATH.`" />
+                        </div>
+                        <div name="options-extra-params" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="block text-sm leading-6 text-default">
                                     Extra Parameters
@@ -513,7 +526,7 @@ const preserveTimes = ref(false);
 const preserveHardLinks = ref(false);
 const preservePerms = ref(false);
 const preserveXattr = ref(false);
-
+const logFilePath = ref('');
 const limitBandwidthKbps = ref(0);
 const includePattern = ref('');
 const excludePattern = ref('');
@@ -589,8 +602,6 @@ console.log('[RsyncTaskParams] client_id =', installId.value)
 const folderList = useUserScopedFolderListByInstall(installId, 2);
 console.log('[RsyncTaskParams] folderList created');
 
-// force one manual run (in case your first run happened before id was ready)
-// folderList.refresh().catch(e => console.error('[RsyncTaskParams] manual refresh error:', e));
 
 // stream state to console
 watchEffect(() => {
@@ -604,7 +615,7 @@ watchEffect(() => {
     );
 });
 
-// derived values for your template
+// derived values for template
 const loadingFolders = folderList.loading
 const discoveryError = folderList.error
 const shareRoot = computed(() => folderList.shareRoot.value)
@@ -669,6 +680,10 @@ async function initializeData() {
         directionSwitched.value = transferDirection === 'pull';
 
         const rsyncOptions = params.find(p => p.key === 'rsyncOptions')!.children;
+        
+        const logFileParam = rsyncOptions.find(p => p.key === 'log_file_path');
+        logFilePath.value = logFileParam ? logFileParam.value : '';
+
         isArchive.value = rsyncOptions.find(p => p.key === 'archive_flag')!.value;
         isRecursive.value = rsyncOptions.find(p => p.key === 'recursive_flag')!.value;
         isCompressed.value = rsyncOptions.find(p => p.key === 'compressed_flag')!.value;
@@ -711,7 +726,8 @@ async function initializeData() {
             excludePattern: excludePattern.value,
             extraUserParams: extraUserParams.value,
             isParallel: isParallel.value,
-            parallelThreads: parallelThreads.value
+            parallelThreads: parallelThreads.value,
+            logFilePath: logFilePath.value
         }));
 
         loading.value = false;
@@ -741,7 +757,8 @@ function hasChanges() {
         excludePattern: excludePattern.value,
         extraUserParams: extraUserParams.value,
         isParallel: isParallel.value,
-        parallelThreads: parallelThreads.value
+        parallelThreads: parallelThreads.value,
+        logFilePath: logFilePath.value
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -865,6 +882,7 @@ function setParams() {
         .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value.value))
         .addChild(
             new ParameterNode('Rsync Options', 'rsyncOptions')
+                .addChild(new StringParameter('Log File Path', 'log_file_path', logFilePath.value))
                 .addChild(new BoolParameter('Archive', 'archive_flag', isArchive.value))
                 .addChild(new BoolParameter('Recursive', 'recursive_flag', isRecursive.value))
                 .addChild(new BoolParameter('Compressed', 'compressed_flag', isCompressed.value))

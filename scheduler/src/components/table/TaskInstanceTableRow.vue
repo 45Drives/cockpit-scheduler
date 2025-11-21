@@ -1,6 +1,6 @@
 <template>
 	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
-		class="grid grid-cols-9 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+		class="grid grid-cols-10 grid-flow-cols w-full text-center items-center rounded-sm p-1">
 		<!-- Name -->
 		<td :title="taskInstance.name"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
@@ -24,7 +24,7 @@
 		</td>
 
 		<!-- Last run -->
-		<td :title="lastRunText" class="truncate font-medium border-r border-default text-left ml-4 col-span-2">
+		<td :title="lastRunText" class="truncate text-sm font-medium border-r border-default text-left ml-4 col-span-2">
 			<span>{{ lastRunText }}</span>
 		</td>
 
@@ -39,7 +39,7 @@
 		</td>
 
 		<!-- Actions -->
-		<td class="truncate text-base font-medium text-default border-default m-1 col-span-1">
+		<td class="text-base font-medium text-default border-default m-1 col-span-2">
 			<button v-if="isExpanded" @click="toggleTaskDetails()"
 				class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">
 				Close Details
@@ -50,32 +50,31 @@
 		</td>
 
 		<!-- Progress bar (full width row) -->
-		<td class="col-span-9 h-full px-2 mx-2 py-1 border-t border-default">
-			<div v-if="progress !== null">
+		<td v-if="progress !== null" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
+			<div >
 				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded">
-					<div class="h-2 bg-green-600 rounded" :style="{ width: Math.min(progress, 100) + '%' }"></div>
+					<div class="h-2 rounded" :class="progressBarClass"
+						:style="{ width: Math.min(progress, 100) + '%' }"></div>
 				</div>
 				<div class="text-xs mt-1">
 					{{ Math.round(progress) }}%
 				</div>
 			</div>
-			<div v-else class="text-xs text-muted">
-				–
-			</div>
 		</td>
 
 		<!-- Expanded details -->
-		<td v-if="isExpanded" class="col-span-9 h-full px-2 mx-2 py-1 border-t border-default">
+		<td v-if="isExpanded" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
 				<TaskInstanceDetails :task="taskInstance" />
 			</div>
 
-			<div class="button-group-row justify-center col-span-5 mt-2">
-				<button @click="runTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-success">
+			<div class="button-group-row justify-center mt-2">
+				<button v-if="!isRunning" @click="runTaskBtn()"
+					class="flex flex-row min-h-fit flex-nowrap btn btn-success">
 					Run Now
 					<PlayIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+				<button v-else @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Stop Now
 					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
@@ -197,6 +196,59 @@ async function updateProgress(task: TaskInstanceType) {
 		console.error('Failed to get progress:', e);
 	}
 }
+
+const progressBarClass = computed(() => {
+	const s = (statusText.value || '').toLowerCase();
+
+	// Failed / errors / explicitly stopped → red
+	if (
+		s.includes('failed') ||
+		s.includes('error') ||
+		s.includes('stopped') ||
+		s.includes('inactive (disabled)')
+	) {
+		return 'bg-red-600';
+	}
+
+	// Timer waiting ("Active (Pending)") should look idle, not running
+	if (s.includes('active (pending)')) {
+		return 'bg-slate-400';
+	}
+
+	// Actively running or just starting → green
+	if (
+		s.includes('completed') ||
+		s.includes('active (running)') ||
+		s.includes('running now') ||
+		s.includes('starting') ||
+		s.includes('activating')
+	) {
+		return 'bg-green-600';
+	}
+
+	// Everything else: neutral
+	return 'bg-slate-400';
+});
+
+
+const isRunning = computed(() => {
+	const s = (statusText.value || '').toLowerCase();
+
+	// Treat only truly running/starting states as "running"
+	if (
+		s.includes('active (running)') ||  // from service status
+		s.includes('running now') ||       // from manual-run override
+		s.includes('starting') ||          // "Starting..." etc.
+		s.includes('activating')           // "activating (start)" path
+	) {
+		return true;
+	}
+
+	// IMPORTANT: we deliberately do NOT treat "active (pending)" as running,
+	// since that's the timer waiting for the next scheduled run.
+	return false;
+});
+
 
 // Emits
 const emit = defineEmits([

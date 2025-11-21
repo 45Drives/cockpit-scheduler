@@ -35,5 +35,9 @@ export const daemon = {
     listClientBackupFolders: () =>
         daemon.call('ListClientBackupFolders', []),
     getStatus: (tpl: string, name: string) =>
-        daemon.call('GetStatus', [tpl, name]) // returns { scope, unit, service, timer }
+        daemon.call('GetStatus', [tpl, name]), // returns { scope, unit, service, timer }
+    stopTask: (tpl: string, name: string) =>
+        daemon.call('StopTask', [tpl, name]),
+    clearSchedule: (tpl: string, name: string) =>
+        daemon.call('ClearSchedule', [tpl, name]),
 };

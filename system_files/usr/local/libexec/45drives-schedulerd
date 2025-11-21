@@ -529,7 +529,7 @@ class Daemon(dbus.service.Object):
     @dbus.service.method(IFACE, in_signature='s', out_signature='s', sender_keyword='sender')
     def ListTasks(self, scope, sender=None):
         self._auth('com.45drives.scheduler.list', sender)
-        user = self._owner_for(template, name, sender) 
+        user = self._username_from_sender(sender)
 
         def _read_kv(path):
             d = {}
@@ -656,10 +656,15 @@ class Daemon(dbus.service.Object):
     @dbus.service.method(IFACE, in_signature='sa{ss}ssss', out_signature='b', sender_keyword='sender')
     def CreateTask(self, template, env, script_path, schedule_json, notes, run_as, sender=None):
         schedule = json.loads(schedule_json) if schedule_json else {}
+
         use_user = (run_as == 'user') or (run_as == 'auto' and template in USER_TEMPLATES)
         action = 'com.45drives.scheduler.modify.user' if use_user else 'com.45drives.scheduler.modify.system'
         self._auth(action, sender)
-        user = self._owner_for(template, name, sender) 
+
+        # Name comes from env; for new user-scope tasks, owner is just the DBus sender
+        name = env.get('taskName') or 'unnamed'
+        user = self._username_from_sender(sender) if use_user else 'root'
+        base_legacy = self._unit_base(template, name)
 
         if template == 'CloudSyncTask':
             if use_user:
@@ -668,17 +673,11 @@ class Daemon(dbus.service.Object):
             else:
                 rclone_conf = '/root/.config/rclone/rclone.conf'
 
-            # add both for clarity; your cloudsync-script picks up either
             env['RCLONE_CONFIG'] = rclone_conf
             env['cloudSyncConfig_rclone_config_path'] = rclone_conf
-            
-        name = env.get('taskName') or 'unnamed'
-        base_legacy = self._unit_base(template, name)
 
         if use_user:
             unit = self._unit_user(template, name, user)
-
-            # NEW: task dir grouped by task name
             task_dir = self._task_dir(user, name)
 
             # write state
@@ -758,6 +757,55 @@ class Daemon(dbus.service.Object):
         _run_quiet(['/usr/bin/env','python3', str(SCRIPTS_DIR / 'run-task-now.py'), unit_sys],
                 timeout=10, check=True)
         return True
+    
+    @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
+    def StopTask(self, template, name, sender=None):
+        """
+        Stop a running task's service (user or system) without removing units or schedule.
+        Mirrors the legacy stopTask() behaviour used by Scheduler.stopTaskNow.
+        """
+        user      = self._owner_for(template, name, sender)
+        unit_user = self._unit_user(template, name, user)
+        unit_sys  = self._unit_base(template, name)
+
+        task_dir = self._find_task_dir(user, name, unit_user)
+        is_user = (task_dir / f'{unit_user}.service').exists() or (task_dir / f'{unit_user}.timer').exists()
+
+        self._auth('com.45drives.scheduler.modify.user' if is_user
+                   else 'com.45drives.scheduler.modify.system',
+                   sender)
+
+        if is_user:
+            # Ensure linked, then stop/reset the user service
+            try:
+                self._link_user_units(user, task_dir, unit_user)
+            except Exception:
+                pass
+
+            try:
+                self._systemctl_user(user, f'systemctl --user stop {unit_user}.service || true')
+            except Exception:
+                pass
+
+            try:
+                self._systemctl_user(user, f'systemctl --user reset-failed {unit_user}.service || true')
+            except Exception:
+                pass
+
+            return True
+
+        # System scope: stop + reset-failed for the service only (keep timer/schedule intact)
+        try:
+            _run_quiet(['systemctl', 'stop', f'{unit_sys}.service'], timeout=10)
+        except Exception:
+            pass
+
+        try:
+            _run_quiet(['systemctl', 'reset-failed', f'{unit_sys}.service'], timeout=6)
+        except Exception:
+            pass
+
+        return True   
 
     @dbus.service.method(IFACE, in_signature='sss', out_signature='b', sender_keyword='sender')
     def EnableSchedule(self, template, name, enabled, sender=None):
@@ -784,6 +832,131 @@ class Daemon(dbus.service.Object):
             else ['systemctl','disable','--now',f'{unit_sys}.timer'])
         _run_quiet(cmd, timeout=10, check=True)
         return True
+
+    @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
+    def ClearSchedule(self, template, name, sender=None):
+        """
+        Remove the schedule for a task (user or system) while keeping the service/env/notes.
+        - Stops/disables/removes the timer unit
+        - Deletes the schedule JSON
+        - Updates registry schedule to {enabled: False, intervals: []} for user tasks
+        """
+        user      = self._owner_for(template, name, sender)
+        unit_user = self._unit_user(template, name, user)
+        unit_sys  = self._unit_base(template, name)
+
+        task_dir = self._find_task_dir(user, name, unit_user)
+        is_user = (task_dir / f'{unit_user}.service').exists() or (task_dir / f'{unit_user}.timer').exists()
+
+        self._auth('com.45drives.scheduler.modify.user' if is_user
+                   else 'com.45drives.scheduler.modify.system',
+                   sender)
+
+        # ---------- USER-SCOPE SCHEDULE CLEAR ----------
+        if is_user:
+            # Best-effort: stop/disable timer
+            try:
+                self._systemctl_user(
+                    user,
+                    f'systemctl --user disable --now --runtime {unit_user}.timer || true'
+                )
+            except Exception:
+                pass
+
+            # Unlink timer unit from runtime + remove slot
+            try:
+                self._systemctl_user(
+                    user,
+                    f'systemctl --user unlink "{task_dir}/{unit_user}.timer" || true'
+                )
+            except Exception:
+                pass
+            try:
+                self._unlink_runtime_slot(user, f'{unit_user}.timer')
+            except Exception:
+                pass
+
+            # Clear failed state + reload
+            try:
+                self._systemctl_user(user, 'systemctl --user reset-failed || true')
+            except Exception:
+                pass
+            try:
+                self._systemctl_user(user, 'systemctl --user daemon-reload || true')
+            except Exception:
+                pass
+
+            # Remove timer unit + schedule JSON; keep .service/.env/.txt for Run Now + notes
+            for p in (
+                task_dir / f'{unit_user}.timer',
+                task_dir / f'{unit_user}.json',
+            ):
+                try:
+                    p.unlink()
+                except FileNotFoundError:
+                    pass
+                except Exception:
+                    pass
+
+            # Update registry schedule to cleared state
+            regp = self._registry_path(user)
+            try:
+                tasks = json.loads(regp.read_text())
+            except Exception:
+                tasks = []
+
+            changed = False
+            for t in tasks:
+                if t.get('template') == template and t.get('name') == name:
+                    t['schedule'] = {'enabled': False, 'intervals': []}
+                    changed = True
+                    break
+
+            if changed:
+                try:
+                    regp.write_text(json.dumps(tasks, indent=2))
+                except Exception:
+                    pass
+
+            return True
+
+        # ---------- SYSTEM/LEGACY SCOPE SCHEDULE CLEAR ----------
+        etc = pathlib.Path('/etc/systemd/system'); ensure(etc)
+        timer_unit = f'{unit_sys}.timer'
+        json_path  = etc / f'{unit_sys}.json'
+        timer_path = etc / timer_unit
+
+        # Stop/disable timer, but leave service/env/txt in place
+        try:
+            _run_quiet(['systemctl', 'stop', timer_unit], timeout=10)
+        except Exception:
+            pass
+        try:
+            _run_quiet(['systemctl', 'disable', timer_unit], timeout=10)
+        except Exception:
+            pass
+
+        # Remove timer + schedule JSON
+        for p in (timer_path, json_path):
+            try:
+                p.unlink()
+            except FileNotFoundError:
+                pass
+            except Exception:
+                pass
+
+        # Clean up state and reload systemd
+        try:
+            _run_quiet(['systemctl', 'reset-failed'], timeout=6)
+        except Exception:
+            pass
+        try:
+            _run_quiet(['systemctl', 'daemon-reload'], timeout=6)
+        except Exception:
+            pass
+
+        return True
+
 
     @dbus.service.method(IFACE, in_signature='ss', out_signature='b', sender_keyword='sender')
     def DeleteTask(self, template, name, sender=None):
@@ -854,7 +1027,7 @@ class Daemon(dbus.service.Object):
         - run_as: 'user' | 'system' | 'auto' (same semantics as CreateTask).
         """
         schedule = json.loads(schedule_json) if schedule_json else {}
-        caller_user = self._owner_for(template, name, sender) 
+        caller_user = self._owner_for(template, old_name, sender)
 
         # CloudSync rclone config parity with CreateTask
         if template == 'CloudSyncTask':

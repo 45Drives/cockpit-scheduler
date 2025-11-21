@@ -247,30 +247,11 @@ def construct_paths(localPath, direction, targetPath):
     """
     return (localPath, targetPath) if direction == 'push' else (targetPath, localPath)
 
-# def execute_command(command, src, dest):
-#     """
-#     Execute the constructed rclone command.
-#     """
-#     command.extend([src, dest])
-#     print(f"Executing command: {' '.join(command)}")
-
-#     process = subprocess.Popen(
-#         command,
-#         universal_newlines=True,
-#         stdout=subprocess.PIPE,
-#         stderr=subprocess.PIPE
-#     )
-#     stdout, stderr = process.communicate()
-
-#     if process.returncode != 0:
-#         print(f"Error: {stderr}")
-#         sys.exit(1)
-#     else:
-#         print(stdout)
-def execute_command(command, src, dest):
+def execute_command(command, src, dest, log_file_path=None):
     """
     Execute the constructed rclone command with streaming output and
-    send progress updates to systemd via sd_notify.
+    send progress updates to systemd via sd_notify. If log_file_path is
+    set, tee the output into that file as well.
     """
     command.extend([src, dest])
     print(f"Executing command: {' '.join(command)}")
@@ -287,11 +268,35 @@ def execute_command(command, src, dest):
     )
 
     last_percent = None
+    log_fh = None
+
+    # Open the user log file if one was requested
+    if log_file_path:
+        try:
+            os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+        except Exception:
+            # If dirname is empty or invalid, just ignore; open() will fail if needed
+            pass
+        try:
+            # line-buffered for immediate writes
+            log_fh = open(log_file_path, 'a', buffering=1)
+        except Exception as e:
+            print(f"WARNING: Failed to open log file {log_file_path}: {e}")
+            log_fh = None
 
     try:
         assert process.stdout is not None
         for line in process.stdout:
-            # keep logs
+            # write to optional log file
+            if log_fh:
+                try:
+                    log_fh.write(line)
+                except Exception as e:
+                    # Don't break the transfer if logging fails
+                    print(f"WARNING: Failed to write to log file {log_file_path}: {e}")
+                    log_fh = None
+
+            # keep logs in journal
             sys.stdout.write(line)
             sys.stdout.flush()
 
@@ -305,12 +310,17 @@ def execute_command(command, src, dest):
 
         process.wait()
     finally:
+        if log_fh:
+            try:
+                log_fh.close()
+            except Exception:
+                pass
+
         if process.returncode == 0:
             notifier.notify("STATUS=Finishing up…")
-            notifier.notify("READY=1")
         else:
             notifier.notify("STATUS=Transfer failed")
-        # let systemctl see the exit code
+
         if process.returncode != 0:
             print(f"Error: rclone exited with code {process.returncode}")
             sys.exit(process.returncode)
@@ -328,17 +338,15 @@ def execute_rclone(options):
         if not remote_name:
             raise ValueError("No remote name specified in options")
 
-        # print("Starting token validation...")
         validate_and_refresh_token(config, remote_name)
-        # print("Finished token validation.")
 
         command = build_rclone_command(options)
         src, dest = construct_paths(options['local_path'], options['direction'], options['target_path'])
-        # print(f"Source: {src}, Destination: {dest}")
-        execute_command(command, src, dest)
+        execute_command(command, src, dest, options.get('log_file_path') or None)
     except Exception as e:
         print(f"Execution error: {e}")
         sys.exit(1)
+
 
 def parse_arguments():
     """
@@ -375,6 +383,7 @@ def parse_arguments():
         'max_transfer_size_unit': os.environ.get('cloudSyncConfig_rcloneOptions_max_transfer_size_unit', 'MiB'),
         'cutoff_mode': os.environ.get('cloudSyncConfig_rcloneOptions_cutoff_mode', 'HARD').lower(),
         'no_traverse_flag': str_to_bool(os.environ.get('cloudSyncConfig_rcloneOptions_no_traverse_flag', 'False')),
+        'log_file_path': os.environ.get('cloudSyncConfig_rcloneOptions_log_file_path', ''),
     }
 
 def str_to_bool(value):
@@ -384,8 +393,9 @@ def main():
     """
     Main execution entry point.
     """
+    notifier.notify("STATUS=Starting task…")
+    notifier.notify("READY=1")
     notifier.notify("STATUS=Running task…")
-
     print("Starting rclone script...")
     # print('env:', os.environ)
     options = parse_arguments()
@@ -394,7 +404,7 @@ def main():
     notifier.notify("STATUS=Finishing up…")
     print("Rclone task execution completed.")
     
-    # notifier.notify("READY=1")
+
 
 if __name__ == '__main__':
     notifier.notify("STATUS=Starting task…")
