@@ -1,3 +1,3 @@
-## task scheduler 1.3.6-1
+## task scheduler 1.4.0-1
 
-* Fixes syntax issue in autosnap-script.py so it works on Python 3.8+
+* Major overhaul - Updates task status + logging, adds progress tracking, fixes rclone token expiry after 1hr for long transfers, among numerous other QoL improvements and bugfixes
