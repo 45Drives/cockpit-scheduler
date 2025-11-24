@@ -94,23 +94,25 @@ const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
 
 onMounted(async () => {
-	updateFlag()
-	window.addEventListener('popstate', updateFlag)
-	window.addEventListener('hashchange', updateFlag)
+	updateFlag();
+	window.addEventListener('popstate', updateFlag);
+	window.addEventListener('hashchange', updateFlag);
 
 	loading.value = true;
 
-	// Decide privilege and restrict templates BEFORE init/load
 	const isAdmin = await currentUserIsPrivileged();
 	const filtered = filterTemplatesForPrivilege([...taskTemplates], isAdmin);
-	taskTemplates.splice(0, taskTemplates.length, ...filtered); // mutate in-place so Scheduler sees it
+	taskTemplates.splice(0, taskTemplates.length, ...filtered);
 
 	await myScheduler.init();
-	await myScheduler.loadTaskInstances();
-	await myRemoteManager.getRemotes();
+
+	// Load tasks + remotes in parallel
+	await Promise.all([
+		myScheduler.loadTaskInstances(),
+		myRemoteManager.getRemotes(),
+	]);
+
 	loading.value = false;
-	
-	console.log('Scheduler backend:', (myScheduler as any).backend, 'isAdmin:', isAdmin);
 });
 
 provide(loadingInjectionKey, loading);

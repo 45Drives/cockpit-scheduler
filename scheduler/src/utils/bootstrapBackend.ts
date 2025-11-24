@@ -12,6 +12,12 @@ export async function chooseBackend(): Promise<BackendChoice> {
         const bus = cockpit.dbus('org.houston.Scheduler', { bus: 'system' });
         await bus.call('/org/houston/Scheduler', 'org.houston.Scheduler1', 'GetCapabilities', []);
 
+        const u = await cockpit.user();
+        const isRoot = (u?.id === 0 || u?.name === 'root');
+        if (isRoot) {
+            return { backend: 'legacy', isRoot: true };
+        }
+
         return { backend: 'daemon', isRoot: false };
     } catch (e) {
         console.warn('daemon probe failed:', e);

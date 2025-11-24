@@ -117,7 +117,7 @@
                             <div class="button-group-row justify-between">
                                 <button @click.stop="oAuthBtn(loadedEditableRemoteProvider! as CloudSyncProvider)"
                                     @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
-                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-white"
+                                    class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-white"
                                     :style="getButtonStyles(isHovered(loadedEditableRemoteParams.name), loadedEditableRemoteProvider! as CloudSyncProvider, undefined)">
                                     <span class="flex-grow text-center mt-0.5">
                                         Authenticate with {{ (loadedEditableRemoteProvider! as CloudSyncProvider).name

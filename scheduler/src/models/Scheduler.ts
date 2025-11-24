@@ -71,6 +71,24 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    private statusCache = new Map<string, { ts: number; st: any }>();
+
+    private async fetchStatus(ti: TaskInstanceType): Promise<any> {
+        const tplKey = this.templateKey(ti, this.normalizeTemplateKey(ti.template.name));
+        const key = `${tplKey}:${ti.name}`;
+        const now = Date.now();
+
+        const hit = this.statusCache.get(key);
+        if (hit && now - hit.ts < 1000) { // 1 second TTL is plenty for UI polling
+            return hit.st;
+        }
+
+        const st = await daemon.getStatus(tplKey, ti.name);
+        this.statusCache.set(key, { ts: now, st });
+        return st;
+    }
+
+
     // === Helpers for daemon branch ===
     private async readTextRoot(path: string): Promise<string> {
         const file = new File(server, path);
@@ -179,7 +197,7 @@ export class Scheduler implements SchedulerType {
 
         if (this.isDaemon()) {
             try {
-                const st: any = await daemon.getStatus(tplKey, ti.name);
+                const st: any = await this.fetchStatus(ti);
                 // daemon returns .unit, .timer, .service
                 const u = String(st?.unit || unit);
                 timerOut = String(st?.timer || '');
@@ -1081,7 +1099,7 @@ export class Scheduler implements SchedulerType {
 
         if (this.isDaemon()) {
             try {
-                const st: any = await daemon.getStatus(tplKey, ti.name);
+                const st: any = await this.fetchStatus(ti);
                 const unit = String(st?.unit || await this.unitNameFor(ti));
                 const output = String(st?.timer || '');
                 return this.parseTaskStatus(output, unit, log, ti);
@@ -1127,7 +1145,7 @@ export class Scheduler implements SchedulerType {
 
         if (this.isDaemon()) {
             try {
-                const st: any = await daemon.getStatus(tplKey, ti.name);
+                const st: any = await this.fetchStatus(ti);
                 const unit = String(st?.unit || await this.unitNameFor(ti));      // <— NEW
                 const output = String(st?.service || '');
                 return this.parseTaskStatus(output, unit, log, ti);

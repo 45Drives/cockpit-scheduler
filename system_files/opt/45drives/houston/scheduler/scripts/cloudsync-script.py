@@ -85,27 +85,50 @@ def get_remote_details(config, remote_name):
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON token for remote '{remote_name}': {token}")
         raise ValueError(f"Invalid JSON token for remote '{remote_name}': {token}") from e
-
+    
 def normalize_to_utc(expiry: str) -> datetime:
     if not isinstance(expiry, str):
         raise ValueError(f"Expiry must be a string, got {type(expiry)}: {expiry}")
 
     s = expiry.strip()
-    # Handle trailing Z
+
+    # Handle trailing Z → convert to +00:00 so fromisoformat understands it
     if s.endswith('Z'):
         s = s[:-1] + '+00:00'
 
+    # First try a straight parse
     try:
         dt = datetime.fromisoformat(s)
-    except ValueError as e:
-        raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601: {e}")
+    except ValueError:
+        # Workaround for timestamps with >6 fractional second digits
+        # e.g. 2025-11-24T15:00:02.831147734-05:00
+        # We trim the fractional part down to microseconds.
+        m = re.match(r'^(.*T\d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}:\d{2})$', s)
+        if not m:
+            # Give the original, more detailed error for unexpected formats
+            raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601: invalid format")
 
+        base, frac, offset = m.groups()
+
+        if frac and len(frac) > 7:  # '.' + at least 7 digits
+            # Keep only 6 digits after the dot: .xxxxxx
+            frac = frac[:7]
+        # If frac is None or short enough, leave it as is
+        s_trimmed = f"{base}{frac or ''}{offset}"
+
+        try:
+            dt = datetime.fromisoformat(s_trimmed)
+        except ValueError as e:
+            raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601 after trimming: {e}")
+
+    # Ensure UTC
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     else:
         dt = dt.astimezone(timezone.utc)
 
     return dt
+
 
 def is_token_expired(token_data):
     """

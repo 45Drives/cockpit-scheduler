@@ -65,6 +65,7 @@ class Daemon(dbus.service.Object):
         self.bus = bus
         self.loop = loop
         self.name_owner = name_owner
+        self._user_manager_ready = set()  # type: Set[str]
 
     # ---- Caller identity + polkit
     def _ids_from_sender(self, sender):
@@ -373,20 +374,43 @@ class Daemon(dbus.service.Object):
             logging.debug("scan error in %s: %s", base, e)
         return sorted(out)
     
-    def _systemctl_user_out(self, user, cmd):
-        """Run systemctl --user CMD and return stdout; ensure user manager exists."""
+    def _ensure_user_manager(self, user: str):
+        if user in self._user_manager_ready:
+            return
         uid, _, _ = self._user_ids(user)
-        # ensure a user manager exists (best effort)
-        try: _run_quiet(['loginctl', 'enable-linger', user], timeout=4)
-        except Exception: pass
-        try: _run_quiet(['systemctl', 'start', f'user@{uid}.service'], timeout=4)
-        except Exception: pass
+        try:
+            _run_quiet(['loginctl', 'enable-linger', user], timeout=4)
+        except Exception:
+            pass
+        try:
+            _run_quiet(['systemctl', 'start', f'user@{uid}.service'], timeout=4)
+        except Exception:
+            pass
+        self._user_manager_ready.add(user)
+
+    def _systemctl_user(self, user, cmd):
+        uid, _, _ = self._user_ids(user)
+        self._ensure_user_manager(user)
 
         env1 = f'XDG_RUNTIME_DIR=/run/user/{uid}'
         env2 = f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus'
-        full = ['runuser','-u',user,'--','env',env1,env2,'bash','-lc', cmd]
-        cp = _run_quiet(full, timeout=12)  # no check=True; we want stdout even on non-zero
-        return cp.stdout if hasattr(cp,'stdout') else ''
+        full = ['runuser', '-u', user, '--', 'env', env1, env2, 'bash', '-lc', cmd]
+        cp = _run_quiet(full, timeout=12)
+
+        if cp.returncode != 0:
+            ...
+            raise RuntimeError(...)
+
+    def _systemctl_user_out(self, user, cmd):
+        uid, _, _ = self._user_ids(user)
+        self._ensure_user_manager(user)
+
+        env1 = f'XDG_RUNTIME_DIR=/run/user/{uid}'
+        env2 = f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus'
+        full = ['runuser', '-u', user, '--', 'env', env1, env2, 'bash', '-lc', cmd]
+        cp = _run_quiet(full, timeout=12)
+        return cp.stdout if hasattr(cp, 'stdout') else ''
+
 
     def _discover_user_units(self, user: str):
         """
