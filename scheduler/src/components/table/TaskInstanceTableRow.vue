@@ -1,6 +1,8 @@
 <template>
+	<!-- <tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
+		class="grid grid-cols-10 grid-flow-cols w-full text-center items-center rounded-sm p-1"> -->
 	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
-		class="grid grid-cols-10 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+		class="grid grid-cols-9 grid-flow-cols w-full text-center items-center rounded-sm p-1">
 		<!-- Name -->
 		<td :title="taskInstance.name"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
@@ -18,10 +20,10 @@
 		</td>
 
 		<!-- Scope -->
-		<td :title="taskInstance.scope"
+		<!-- <td :title="taskInstance.scope"
 			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
 			<span>{{ taskInstance.scope }}</span>
-		</td>
+		</td> -->
 
 		<!-- Last run -->
 		<td :title="lastRunText" class="truncate text-xs font-medium border-r border-default text-left ml-4 col-span-2">
@@ -51,7 +53,7 @@
 
 		<!-- Progress bar (full width row) -->
 		<td v-if="progress !== null && isRunning" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
-			<div >
+			<div>
 				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded">
 					<div class="h-2 rounded" :class="progressBarClass"
 						:style="{ width: Math.min(progress, 100) + '%' }"></div>
