@@ -102,6 +102,18 @@
   --btn-secondary-hover-border: #346527;
 }
 
+.theme-studio {
+  --btn-primary-bg: #6557A5;
+  --btn-primary-border: #6557A5;
+  --btn-primary-hover-bg: #504584;
+  --btn-primary-hover-border: #504584;
+
+  --btn-secondary-bg: #584C91;
+  --btn-secondary-border: #584C91;
+  --btn-secondary-hover-bg: #463C73;
+  --btn-secondary-hover-border: #463C73;
+}
+
 .dark {
   --outline-color: white;
   --row-hover-bg: rgba(255, 255, 255, 0.06);
@@ -245,4 +257,54 @@ tbody tr.row-selected>td {
   border-left: 0;
   transform: translate(0.20rem, -0.05rem) rotate(45deg);
   box-sizing: content-box;
+}
+
+/* =====================
+   Text color overrides that mirror button tokens
+   ===================== */
+
+/* Optional: semantic aliases (helps readability) */
+:root,
+.theme-default,
+.theme-homelab,
+.theme-professional,
+.theme-studio,
+.dark {
+  --text-primary: var(--btn-primary-bg);
+  --text-primary-hover: var(--btn-primary-hover-bg);
+  --text-secondary: var(--btn-secondary-bg);
+  --text-secondary-hover: var(--btn-secondary-hover-bg);
+}
+
+/* Primary text matches primary button color */
+.text-primary {
+  color: var(--text-primary) !important;
+}
+
+/* Secondary text matches secondary button color */
+.text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+/* Hover states for interactive elements using the same hover tokens as buttons */
+.text-primary.interactive:hover,
+a.text-primary:hover,
+button.text-primary:hover,
+.btn.text-primary:hover {
+  color: var(--text-primary-hover) !important;
+}
+
+.text-secondary.interactive:hover,
+a.text-secondary:hover,
+button.text-secondary:hover,
+.btn.text-secondary:hover {
+  color: var(--text-secondary-hover) !important;
+}
+
+a.text-primary:focus-visible,
+button.text-primary:focus-visible,
+a.text-secondary:focus-visible,
+button.text-secondary:focus-visible {
+  outline: 2px solid var(--outline-color);
+  outline-offset: 2px;
 }

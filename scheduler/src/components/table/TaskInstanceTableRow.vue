@@ -24,7 +24,7 @@
 		</td>
 
 		<!-- Last run -->
-		<td :title="lastRunText" class="truncate text-sm font-medium border-r border-default text-left ml-4 col-span-2">
+		<td :title="lastRunText" class="truncate text-xs font-medium border-r border-default text-left ml-4 col-span-2">
 			<span>{{ lastRunText }}</span>
 		</td>
 
@@ -130,7 +130,7 @@ import {
 import { injectWithCheck } from '../../composables/utility';
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
-import { useLiveTaskStatus } from '../../composables/useLiveTaskStatus';
+import { useLiveTaskStatus, taskStatusClass } from '../../composables/useLiveTaskStatus';
 
 interface TaskInstanceTableRowProps {
 	task: TaskInstanceType;
@@ -143,81 +143,134 @@ const taskInstance = ref(props.task);
 const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
 const myTaskLog = injectWithCheck(logInjectionKey, 'log not provided!');
 
-// Live status/last-run (same engine as Simple view)
-const oneTask = computed(() => [taskInstance.value]);
-const live = useLiveTaskStatus(oneTask, myScheduler, myTaskLog, {
+// Keep taskInstance in sync if parent replaces the object
+watch(
+	() => props.task,
+	(newTask) => {
+		taskInstance.value = newTask;
+	},
+	{ deep: true }
+);
+
+const isExpanded = computed(() => props.isExpanded);
+
+// useLiveTaskStatus expects an array ref of tasks
+const tasksRef = ref<TaskInstanceType[] | null | undefined>([taskInstance.value]);
+
+const live = useLiveTaskStatus(tasksRef, myScheduler, myTaskLog, {
 	intervalMs: 1500,
-	formatMs: (ms) => myScheduler.formatLocal(ms),
+	completedWindowMs: 30_000,
 });
 
-// Manual-run tracking window (for nicer status text after "Run Now")
+
+const {
+	start,
+	stop,
+	refreshAll,
+	statusFor,
+	lastRunFor,
+	isCompleted: liveIsCompleted,
+	isRunningNow: liveIsRunning,
+	isFailed: liveIsFailed,
+	isInactive: liveIsInactive,
+} = live;
+
+// Keep tasksRef up to date when this row's task changes
+watch(
+	taskInstance,
+	(t) => {
+		tasksRef.value = t ? [t] : [];
+		refreshAll();
+	},
+	{ deep: true }
+);
+
 const manualRunUntil = ref<number>(0);
 function markManualRun(windowMs = 60_000) {
 	manualRunUntil.value = Date.now() + windowMs;
 }
 
-// Base status from live engine
-const rawStatusText = computed(() => live.statusFor(taskInstance.value) ?? '—');
-
-// Status text with manual-run override for manual-only tasks
+// Text shown in the Status column, with manual wording
 const statusText = computed(() => {
-	const base = rawStatusText.value || '';
+	const baseRaw = statusFor(taskInstance.value);
 	const enabled = taskInstance.value?.schedule?.enabled ?? false;
+	const now = Date.now();
+	const manualWindowActive = !enabled && now < manualRunUntil.value;
 
+	// If no live status yet, provide simple fallbacks
+	const base = baseRaw || (enabled ? 'Checking...' : 'Disabled');
+
+	// Manual-only tasks (no schedule enabled) get special wording
 	if (!enabled) {
-		// Manual-only task
-		const now = Date.now();
-		const manualWindowActive = now < manualRunUntil.value;
+		const running = liveIsRunning(taskInstance.value);
+		const completed = liveIsCompleted(taskInstance.value);
 
+		// While we're in the manual window, be explicit
 		if (manualWindowActive) {
-			const lower = base.toLowerCase();
-			if (
-				lower.includes('active (running)') ||
-				lower.includes('activating') ||
-				lower.includes('starting')
-			) {
-				return 'Running now...';
-			}
+			if (running) return 'Running now (manual)';
+			if (completed) return 'Completed (manual)';
 		}
+
+		// Outside window, still keep "Completed (manual)" instead of plain "Completed"
+		if (completed) return 'Completed (manual)';
 	}
 
 	return base;
 });
 
-const lastRunText = computed(() => live.lastRunFor(taskInstance.value) ?? '—');
+// Text shown in the "Last run" column
+const lastRunText = computed(() => {
+	return lastRunFor(taskInstance.value) ?? "Task hasn't run yet.";
+});
 
-// Progress tracking
+// Boolean flags wrapped for the template
+const isRunning = computed(() => {
+	const enabled = taskInstance.value?.schedule?.enabled ?? false;
+	const now = Date.now();
+	const manualWindowActive = !enabled && now < manualRunUntil.value;
+
+	if (liveIsRunning(taskInstance.value)) return true;
+
+	if (manualWindowActive && !liveIsCompleted(taskInstance.value)) {
+		return true;
+	}
+
+	return false;
+});
+
+const isCompleted = computed(() => liveIsCompleted(taskInstance.value));
+const isFailed = computed(() => liveIsFailed(taskInstance.value));
+const isInactive = computed(() => liveIsInactive(taskInstance.value));
+
+// Progress tracking (separate from status)
 const progress = ref<number | null>(null);
+
 async function updateProgress(task: TaskInstanceType) {
 	try {
 		const p = await myScheduler.getTaskProgress(task);
-		progress.value = p;
+		if (typeof p === 'number' && Number.isFinite(p)) {
+			progress.value = p;
+		} else {
+			progress.value = null;
+		}
 	} catch (e) {
 		console.error('Failed to get progress:', e);
+		progress.value = null;
 	}
 }
 
 const progressBarClass = computed(() => {
 	const s = (statusText.value || '').toLowerCase();
 
-	// Failed / errors / explicitly stopped → red
-	if (
-		s.includes('failed') ||
-		s.includes('error') ||
-		s.includes('stopped') ||
-		s.includes('inactive (disabled)')
-	) {
+	if (s.includes('failed') || s.includes('error')) {
 		return 'bg-red-600';
 	}
 
-	// Timer waiting ("Active (Pending)") should look idle, not running
-	if (s.includes('active (pending)')) {
-		return 'bg-slate-400';
+	if (s.includes('completed')) {
+		return 'bg-green-600';
 	}
 
-	// Actively running or just starting → green
 	if (
-		s.includes('completed') ||
 		s.includes('active (running)') ||
 		s.includes('running now') ||
 		s.includes('starting') ||
@@ -226,29 +279,12 @@ const progressBarClass = computed(() => {
 		return 'bg-green-600';
 	}
 
-	// Everything else: neutral
-	return 'bg-slate-400';
-});
-
-
-const isRunning = computed(() => {
-	const s = (statusText.value || '').toLowerCase();
-
-	// Treat only truly running/starting states as "running"
-	if (
-		s.includes('active (running)') ||  // from service status
-		s.includes('running now') ||       // from manual-run override
-		s.includes('starting') ||          // "Starting..." etc.
-		s.includes('activating')           // "activating (start)" path
-	) {
-		return true;
+	if (s.includes('inactive (disabled)') || s.includes('disabled')) {
+		return 'bg-slate-400';
 	}
 
-	// IMPORTANT: we deliberately do NOT treat "active (pending)" as running,
-	// since that's the timer waiting for the next scheduled run.
-	return false;
+	return 'bg-slate-400';
 });
-
 
 // Emits
 const emit = defineEmits([
@@ -262,12 +298,19 @@ const emit = defineEmits([
 	'stopTask',
 ]);
 
+
 async function runTaskBtn() {
+	// Mark this as a manual run so wording reflects that
+	markManualRun();
 	emit('runTask', taskInstance.value);
+	refreshAll();
+	updateProgress(taskInstance.value);
 }
 
 async function stopTaskBtn() {
 	emit('stopTask', taskInstance.value);
+	refreshAll();
+	updateProgress(taskInstance.value);
 }
 
 function manageScheduleBtn() {
@@ -305,57 +348,35 @@ const showEnablePrompt = ref(false);
 const enableDialog = ref<any>();
 const enabling = ref(false);
 
-async function showEnableDialog() {
-	await loadConfirmationDialog(enableDialog);
-	return new Promise((resolve) => {
-		showEnablePrompt.value = true;
-		const unwatch = watch(showEnablePrompt, (v) => {
-			if (!v) {
-				unwatch();
-				resolve(enableDialog.value === 'yes');
-			}
-		});
-	});
-}
-
-const enableYes = async () => {
-	enabling.value = true;
-	await myScheduler.enableSchedule(taskInstance.value);
-	await live.refreshAll();
-	updateShowEnablePrompt(false);
-	enabling.value = false;
-};
-const enableNo = () => updateShowEnablePrompt(false);
-const updateShowEnablePrompt = (v: boolean) => {
-	showEnablePrompt.value = v;
-};
-
 // Disable Task Dialog Logic
 const showDisablePrompt = ref(false);
 const disableDialog = ref<any>();
 const disabling = ref(false);
 
-async function showDisableDialog() {
-	await loadConfirmationDialog(disableDialog);
-	return new Promise((resolve) => {
-		showDisablePrompt.value = true;
-		const unwatch = watch(showDisablePrompt, (v) => {
-			if (!v) {
-				unwatch();
-				resolve(disableDialog.value === 'yes');
-			}
-		});
-	});
-}
+const enableYes = async () => {
+	enabling.value = true;
+	await myScheduler.enableSchedule(taskInstance.value);
+	await refreshAll();
+	enabling.value = false;
+	showEnablePrompt.value = false;
+};
+const enableNo = () => {
+	showEnablePrompt.value = false;
+};
+const updateShowEnablePrompt = (v: boolean) => {
+	showEnablePrompt.value = v;
+};
 
 const disableYes = async () => {
 	disabling.value = true;
 	await myScheduler.disableSchedule(taskInstance.value);
-	await live.refreshAll();
-	updateShowDisablePrompt(false);
+	await refreshAll();
 	disabling.value = false;
+	showDisablePrompt.value = false;
 };
-const disableNo = () => updateShowDisablePrompt(false);
+const disableNo = () => {
+	showDisablePrompt.value = false;
+};
 const updateShowDisablePrompt = (v: boolean) => {
 	showDisablePrompt.value = v;
 };
@@ -365,28 +386,20 @@ async function toggleTaskSchedule(event: Event) {
 	event.preventDefault();
 
 	if (intendedValue) {
-		const confirmed = await showEnableDialog();
-		if (confirmed) {
-			enableYes().then(() => {
-				taskInstance.value.schedule.enabled = true;
-			});
-		}
+		await loadConfirmationDialog(enableDialog);
+		showEnablePrompt.value = true;
 	} else {
-		const confirmed = await showDisableDialog();
-		if (confirmed) {
-			disableYes().then(() => {
-				taskInstance.value.schedule.enabled = false;
-			});
-		}
+		await loadConfirmationDialog(disableDialog);
+		showDisablePrompt.value = true;
 	}
 }
 
-// Lifecycle: hook into live status engine + progress polling
+// Lifecycle: hook into live status engine + optional progress polling
 let progressIntervalId: number | undefined;
 
 onMounted(async () => {
-	await live.refreshAll();
-	live.start();
+	await refreshAll();
+	start();
 
 	await updateProgress(taskInstance.value);
 	progressIntervalId = window.setInterval(() => {
@@ -395,46 +408,29 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-	live.stop();
+	stop();
 	if (progressIntervalId) {
 		clearInterval(progressIntervalId);
 		progressIntervalId = undefined;
 	}
 });
 
-watch(taskInstance, () => {
-	if (taskInstance.value) {
-		live.refreshAll();
-		updateProgress(taskInstance.value);
-	}
-});
-
-// Helpers
-function taskStatusClass(status?: string) {
-	if (status) {
-		const s = status.toLowerCase();
-		if (s.includes('active') || s.includes('starting') || s.includes('completed') || s.includes('running'))
-			return 'text-success';
-		if (s.includes('inactive') || s.includes('disabled') || s.includes('not scheduled'))
-			return 'text-warning';
-		if (s.includes('failed') || s.includes('error')) return 'text-danger';
-		if (s.includes('no schedule found') || s.includes('not scheduled')) return 'text-muted';
-	}
-	return '';
-}
-
 // Expose for parent components (keeps old API working)
 async function updateTaskStatus() {
-	await live.refreshAll();
+	await refreshAll();
 }
 async function fetchLatestLog() {
-	await live.refreshAll();
+	await refreshAll();
 }
 
 defineExpose({
 	updateTaskStatus,
 	fetchLatestLog,
-	markManualRun,
 	updateProgress,
+	markManualRun,
+	isCompleted,
+	isFailed,
+	isInactive,
+	isRunning,
 });
 </script>

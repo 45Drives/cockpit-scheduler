@@ -1,17 +1,24 @@
 declare const cockpit: any;
-import { probeDaemon } from './daemonClient';
-
 export type Backend = 'daemon' | 'legacy';
 
-export async function chooseBackend(): Promise<{ backend: Backend; isRoot: boolean }> {
-    const u = await cockpit.user(); // { id, name, ... }
-    const isRoot = (u?.id === 0 || u?.name === 'root');
+export interface BackendChoice {
+    backend: Backend;
+    isRoot: boolean;
+}
 
-    // If root, always use legacy regardless of daemon presence
-    if (isRoot) {
-        return { backend: 'legacy', isRoot };
+export async function chooseBackend(): Promise<BackendChoice> {
+    // Always prefer the daemon if it responds
+    try {
+        const bus = cockpit.dbus('org.houston.Scheduler', { bus: 'system' });
+        await bus.call('/org/houston/Scheduler', 'org.houston.Scheduler1', 'GetCapabilities', []);
+
+        return { backend: 'daemon', isRoot: false };
+    } catch (e) {
+        console.warn('daemon probe failed:', e);
     }
 
-    const hasDaemon = await probeDaemon();
-    return { backend: hasDaemon ? 'daemon' : 'legacy', isRoot };
+    // Fallback to legacy ONLY if daemon is unavailable
+    const u = await cockpit.user();
+    const isRoot = (u?.id === 0 || u?.name === 'root');
+    return { backend: 'legacy', isRoot };
 }

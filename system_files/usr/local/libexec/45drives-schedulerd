@@ -684,7 +684,8 @@ class Daemon(dbus.service.Object):
             env_text = '\n'.join([f'{k}={v}' for k, v in env.items() if str(v) not in ('', '0')])
             (task_dir / f'{unit}.env').write_text(env_text)
             (task_dir / f'{unit}.json').write_text(json.dumps(schedule, indent=2))
-            (task_dir / f'{unit}.txt').write_text(notes or '')
+            if notes != '':
+                (task_dir / f'{unit}.txt').write_text(notes or '')
 
             # write unit files *in the same dir* (basename must remain the unit name)
             svc_tpl = (TEMPLATES_DIR / 'Task.service').read_text()

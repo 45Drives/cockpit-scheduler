@@ -1,8 +1,34 @@
-import { legacy } from '@45drives/houston-common-lib';
+import { server, unwrap, Command } from '@45drives/houston-common-lib';
 import { formatTemplateName } from '../composables/utility';
 import { daemon } from '../utils/daemonClient';
 
-const { useSpawn, errorString } = legacy;
+const textDecoder = new TextDecoder('utf-8');
+
+async function runCommand(
+    argv: string[],
+    opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
+): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
+    const proc = await unwrap(
+        server.execute(new Command(argv, opts))
+    );
+
+    const rawStdout: any = proc.stdout;
+    const rawStderr: any = proc.stderr;
+
+    const stdout =
+        rawStdout instanceof Uint8Array
+            ? textDecoder.decode(rawStdout)
+            : String(rawStdout ?? '');
+
+    const stderr =
+        rawStderr instanceof Uint8Array
+            ? textDecoder.decode(rawStderr)
+            : String(rawStderr ?? '');
+
+    return { stdout, stderr, exitStatus: proc.exitStatus };
+}
+
+const errorString = (e: any) => e?.message ?? String(e);
 
 export class TaskExecutionLog {
     entries: TaskExecutionResult[];
@@ -14,7 +40,6 @@ export class TaskExecutionLog {
     async fullUnitNameForLogs(ti: TaskInstanceType): Promise<string> {
         const templateName = formatTemplateName(ti.template.name);
         const base = `houston_scheduler_${templateName}_${ti.name}`;
-        // Prefer explicit scope if you set it when loading tasks:
         const scope = (ti as any).scope as ('user' | 'system' | undefined);
 
         if (scope === 'user') {
@@ -48,9 +73,8 @@ export class TaskExecutionLog {
                     '--no-pager',
                     '--all'
                 ];
-                const logState = useSpawn(logCommand, { superuser: 'try' });
-                const logResult = await logState.promise();
-                return (logResult.stdout || '').trim();
+                const { stdout } = await runCommand(logCommand, { superuser: 'try' });
+                return (stdout || '').trim();
             }
 
             // Optional: logs up to a specific time if desired
@@ -61,9 +85,8 @@ export class TaskExecutionLog {
                 '--no-pager',
                 '--all'
             ];
-            const state = useSpawn(command, { superuser: 'try' });
-            const result = await state.promise();
-            const taskLogData = result.stdout!.trim();
+            const { stdout } = await runCommand(command, { superuser: 'try' });
+            const taskLogData = (stdout || '').trim();
             return taskLogData;
         } catch (error) {
             console.error(errorString(error));
@@ -82,7 +105,6 @@ export class TaskExecutionLog {
                 const st: any = await daemon.getStatus(templateName, taskInstance.name);
                 const show = String(st?.service || '');
 
-                // Pull a few properties we asked the daemon to include
                 const props = new Map(
                     (show || '').split(/\r?\n/).map((line) => {
                         const i = line.indexOf('=');
@@ -90,10 +112,14 @@ export class TaskExecutionLog {
                     })
                 );
                 const rawResult = (props.get('Result') || '').toString().toLowerCase();
-                // Map success → 0, anything else → 1 (no ExecMainStatus available here)
                 const exitCode = (rawResult === 'success') ? 0 : 1;
+
                 const startTime = props.get('ActiveEnterTimestamp') || '';
-                const finishTime = '';
+                const finishTime =
+                    props.get('InactiveEnterTimestamp') ||
+                    props.get('ExecMainExitTimestamp') ||
+                    '';
+
                 const output = '';
                 return new TaskExecutionResult(exitCode, output, startTime, finishTime);
             }
@@ -104,8 +130,7 @@ export class TaskExecutionLog {
                 '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp',
                 '--no-pager',
             ];
-            const showState = useSpawn(showCmd, { superuser: 'try' });
-            const showRes: any = await showState.promise();
+            const showRes = await runCommand(showCmd, { superuser: 'try' });
             const kv = Object.fromEntries(
                 (showRes.stdout || '')
                     .split('\n')
@@ -116,8 +141,6 @@ export class TaskExecutionLog {
             const rawStatus = kv['ExecMainStatus'];
             const exitCode = Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0;
 
-            // For oneshot services ExecMain* timestamps are often empty.
-            // Fall back to Active/Inactive timestamps instead.
             const startTime =
                 kv['ExecMainStartTimestamp'] ||
                 kv['ActiveEnterTimestamp'] ||
@@ -137,8 +160,7 @@ export class TaskExecutionLog {
                     '--no-pager', '--all',
                 ];
                 try {
-                    const logState = useSpawn(logCmd, { superuser: 'try' });
-                    const logRes: any = await logState.promise();
+                    const logRes = await runCommand(logCmd, { superuser: 'try' });
                     output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
                 } catch (e) {
                     const msg = errorString(e);
@@ -150,21 +172,23 @@ export class TaskExecutionLog {
 
             return new TaskExecutionResult(exitCode, output, startTime, finishTime);
         } catch (e) {
-            // Only warn on truly unexpected failures
             console.warn('getLatestEntryFor failed:', errorString(e));
             return false;
         }
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
-        const taskLog = new TaskExecutionLog([]);
-        const latestEntry = await taskLog.getLatestEntryFor(taskInstance);
+        const latestEntry = await this.getLatestEntryFor(taskInstance);
 
         if (!latestEntry) {
             return false;
         }
 
-        // Prefer finishDate, but fall back to startDate if finish isn't populated
+        // Only treat it as "completed" if it exited successfully
+        if (typeof latestEntry.exitCode === 'number' && latestEntry.exitCode !== 0) {
+            return false;
+        }
+
         const tsSource = latestEntry.finishDate || latestEntry.startDate;
         if (!tsSource) {
             return false;

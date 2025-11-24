@@ -1,3 +1,6 @@
+include .env
+export $(shell sed 's/=.*//' .env)
+
 # Automatic Houston Plugin Makefile
 # Copyright (C) 2022 Josh Boudreau <jboudreau@45drives.com>
 # 
@@ -65,7 +68,8 @@ default: $(OUTPUTS)
 
 all: default
 
-.PHONY: default all install clean help install-local install-remote install houston-common bootstrap-yarn
+.PHONY: default all install clean help install-local install-remote install \
+        houston-common bootstrap-yarn remote-postinstall clean-remote
 
 bootstrap-yarn: .yarnrc.yml
 
@@ -105,6 +109,23 @@ endif
 endif
 
 install-remote : SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
+install-remote: remote-postinstall
+
+remote-postinstall:
+	$(SSH) mkdir -p /var/lib/45drives/houston/scheduler
+	$(SSH) mkdir -p /var/lib/45drives/houston/rclone
+
+	$(SSH) \
+	  GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" \
+	  GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
+	  DROPBOX_CLIENT_ID="$(DROPBOX_CLIENT_ID)" \
+	  DROPBOX_CLIENT_SECRET="$(DROPBOX_CLIENT_SECRET)" \
+	  /opt/45drives/houston/scheduler/scripts/generate_creds_json.sh \
+	      /etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json \
+	      /etc/45drives/houston/cloud-sync-client-creds.json
+
+	$(SSH) systemctl daemon-reload || true
+	$(SSH) systemctl enable --now org.45drives.Scheduler.service || true
 
 plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo -e $(call cyantext,Installing $*)
@@ -153,6 +174,30 @@ clean: FORCE
 clean-all: clean FORCE
 	rm .yarnrc.yml .yarn/ -rf
 	find . -name node_modules -type d -exec rm -rf {} \; -prune
+
+# Stop/disable the service if present
+# Remove scheduler binary and systemd/dbus/polkit bits
+# Remove scheduler code/data and creds
+# Remove the cockpit plugin installed with -test suffix for the remote user
+clean-remote: SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
+clean-remote:
+	$(SSH) systemctl disable --now org.45drives.Scheduler.service 2>/dev/null || true
+	$(SSH) systemctl daemon-reload || true
+
+	$(SSH) rm -f /usr/local/libexec/45drives-schedulerd || true
+
+	$(SSH) rm -f /usr/lib/dbus-1/system.d/org.houston.Scheduler.conf || true
+	$(SSH) rm -f /usr/share/polkit-1/actions/com.45drives.scheduler.policy || true
+	$(SSH) rm -f /usr/share/polkit-1/rules.d/60-45drives-scheduler.rules || true
+	$(SSH) rm -f /usr/share/dbus-1/systemd/system/org.45drives.Scheduler.service || true
+	$(SSH) rm -f /usr/share/dbus-1/system-services/org.houston.Scheduler.service || true
+
+	$(SSH) rm -rf /opt/45drives/houston/scheduler || true
+	$(SSH) rm -rf /etc/45drives/houston/scheduler || true
+	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds.json || true
+	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds-template.json || true
+
+	$(SSH) sh -lc 'rm -rf "$$HOME/.local/share/cockpit/scheduler-test" 2>/dev/null || true'
 
 help:
 	@echo 'make usage'

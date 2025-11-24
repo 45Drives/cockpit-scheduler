@@ -10,10 +10,6 @@
                 <CustomLoadingSpinner :width="'w-32'" :height="'h-32'" :baseColor="'text-gray-200'"
                     :fillColor="'fill-gray-500'" />
             </div>
-            <!-- <div v-else-if="existingRemotes.length === 0"
-                class="my-2 py-4 min-w-full min-h-full items-center text-center bg-well">
-                <h2>No Remotes Found</h2>
-            </div> -->
             <div v-else class="text-default">
                 <div id="remotes-list" class="border-2 p-2 border-default rounded-md bg-well">
                     <h2 class="text-base font-medium text-default">Select Remote</h2>
@@ -34,22 +30,6 @@
                                 </div>
                             </button>
                         </li>
-                        <!-- <li v-else>
-                            <button @click.stop="selectRemoteBtn(dummyRemote)"
-                                @mouseenter="handleMouseEnter(dummyRemote.name)"
-                                @mouseleave="handleMouseLeave(dummyRemote.name)"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-white"
-                                :style="getButtonStyles(isHovered(dummyRemote.name), undefined, dummyRemote)"
-                                :title="dummyRemote.name">
-                                <div class="rounded-full bg-white w-5 h-5">
-                                    <img :src="getProviderLogo(undefined, dummyRemote)" alt="provider-logo"
-                                        class="inline-block w-4 h-4" />
-                                </div>
-                                <div class="flex-grow px-2 py-2 text-sm" :class="truncateText">
-                                    {{ dummyRemote.name }}
-                                </div>
-                            </button>
-                        </li> -->
                     </ul>
                 </div>
                 <div v-if="!selectedRemote" class="mt-4 border rounded-md border-default p-2 bg-well">
@@ -99,9 +79,10 @@
                             <input disabled
                                 v-if="parameter.type === 'string' && (loadedEditableRemoteProvider!.type !== 's3' || String(key) !== 'provider')"
                                 type="text" v-model="parameter.value" :id="String(key)"
-                                class="block w-full mt-1 input-textlike"
-                                :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
-
+                                class="block w-full mt-1 input-textlike" :placeholder="parameter.defaultValue
+                                    ? String(parameter.defaultValue)
+                                    : 'Default is empty string'
+                                    " />
                             <input disabled v-else-if="parameter.type === 'bool'" type="checkbox"
                                 v-model="parameter.value" :id="String(key)"
                                 class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />
@@ -177,7 +158,8 @@
                         </div>
                         <div class="col-span-2 w-full mt-2">
                             <div class="block text-base leading-6 text-default border-b-2 mb-2">
-                                <b>Manually Configure Parameters</b> - <i class="text-sm">Blank fields will be left out of
+                                <b>Manually Configure Parameters</b> - <i class="text-sm">Blank fields will be left out
+                                    of
                                     config or set with defaults (if applicable)</i>
                             </div>
                             <div v-for="(parameter, key) in loadedEditableRemoteParams.value.parameters"
@@ -188,9 +170,10 @@
                                 <input
                                     v-if="parameter.type === 'string' && (loadedEditableRemoteProvider!.type !== 's3' || String(key) !== 'provider')"
                                     type="text" v-model="parameter.value" :id="String(key)"
-                                    class="block w-full mt-1 input-textlike"
-                                    :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
-
+                                    class="block w-full mt-1 input-textlike" :placeholder="parameter.defaultValue
+                                        ? String(parameter.defaultValue)
+                                        : 'Default is empty string'
+                                        " />
                                 <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
                                     :id="String(key)"
                                     class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />
@@ -254,8 +237,6 @@
                     <button v-if="!saving" id="add-task-btn" class="btn btn-primary h-fit" @click="saveEditedRemoteBtn">
                         Save Changes
                     </button>
-                    <!-- <button v-if="saving" disabled id="add-task-btn-error" class="btn btn-primary h-fit w-full"
-                        @click="saveEditedRemoteBtn">Save Remote</button> -->
                 </div>
             </div>
         </template>

@@ -61,8 +61,7 @@ rm -f "$TEMPLATE"
 %config(noreplace) /usr/share/polkit-1/actions/com.45drives.scheduler.policy
 %config(noreplace) /usr/share/polkit-1/rules.d/60-45drives-scheduler.rules
 
-# Systemd unit (you currently stage it under /etc)
-# (Do NOT mark as %config to avoid unmanaged divergence)
+# Systemd unit
 /usr/lib/systemd/system/org.45drives.Scheduler.service
 
 # State dirs owned by the package (created if missing)

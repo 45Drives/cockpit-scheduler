@@ -1,7 +1,6 @@
 // useUserScopedFolderListByInstall.ts
 import { ref, watch, type Ref } from 'vue';
-import { legacy } from '@45drives/houston-common-lib';
-const { useSpawn, errorString } = legacy;
+import { server, unwrap, Command } from '@45drives/houston-common-lib'
 
 const DEBUG_TAG = '[useUserScopedFolderListByInstall]';
 const log = (...a: any[]) => console.log(DEBUG_TAG, ...a);
@@ -10,26 +9,49 @@ const err = (...a: any[]) => console.error(DEBUG_TAG, ...a);
 
 const sanitize = (s: string) => s.replace(/["'`\\]/g, '');
 
+const textDecoder = new TextDecoder('utf-8');
+
+async function runCommand(
+  argv: string[],
+  opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
+): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
+  const proc = await unwrap(
+    server.execute(new Command(argv, opts))
+  );
+
+  const rawStdout: any = proc.stdout;
+  const rawStderr: any = proc.stderr;
+
+  const stdout =
+    rawStdout instanceof Uint8Array
+      ? textDecoder.decode(rawStdout)
+      : String(rawStdout ?? '');
+
+  const stderr =
+    rawStderr instanceof Uint8Array
+      ? textDecoder.decode(rawStderr)
+      : String(rawStderr ?? '');
+
+  return { stdout, stderr, exitStatus: proc.exitStatus };
+}
+
 async function runWithLog(label: string, argv: string[]) {
   const started = Date.now();
-  // log(label, 'spawn →', JSON.stringify(argv));
-  const st = useSpawn(argv, { superuser: 'try', err: 'message' });
   try {
-    const res = await st.promise();
+    const res = await runCommand(argv, { superuser: 'try' });
     const dt = Date.now() - started;
     // log(label, 'done in', dt + 'ms', {
-    //   code: (res as any)?.code,
+    //   exitStatus: res.exitStatus,
     //   stdoutLen: (res.stdout || '').length,
     //   stderrLen: (res.stderr || '').length,
     // });
     if (res.stderr) {
-      // Not fatal, but helpful if a command printed warnings
       warn(label, 'stderr:', res.stderr.slice(0, 500));
     }
     return res;
-  } catch (e) {
+  } catch (e: any) {
     const dt = Date.now() - started;
-    err(label, 'FAILED in', dt + 'ms:', errorString(e) || String(e));
+    err(label, 'FAILED in', dt + 'ms:', e?.message ?? String(e));
     throw e;
   }
 }
@@ -69,7 +91,6 @@ async function listShareRoots(): Promise<Array<{ name: string; path: string }>> 
     const [name, path] = l.split('|');
     return { name, path };
   });
-  // log('listShareRoots →', parsed);
   return parsed;
 }
 
@@ -200,7 +221,7 @@ export function useUserScopedFolderListByInstall(installIdRef: Ref<string>, dept
         const m = await readInstallMeta(r.path, installId);
         if (m) {
           chosenRoot = r.path;
-          user = m.smbUser;          // ✅ real smb_user, not install_id
+          user = m.smbUser;          // real smb_user, not install_id
           metaFromInstall = m;
           break;
         }
@@ -237,14 +258,8 @@ export function useUserScopedFolderListByInstall(installIdRef: Ref<string>, dept
       relDirs.value = Array.from(new Set(rel));
       uuids.value = Array.from(new Set(metas.map(m => m.uuid)));
 
-      // // 🔁 Fallback (older client.json without "source"): previous behavior
-      // if (!shareRoot.value || !smbUser.value) {
-      //   uuids.value = []; absDirs.value = []; relDirs.value = [];
-      //   return;
-      // }
-
     } catch (e: any) {
-      error.value = errorString(e) || String(e);
+      error.value = e?.message ?? String(e);
       shareRoot.value = ''; smbUser.value = ''; uuids.value = []; absDirs.value = []; relDirs.value = [];
     } finally {
       loading.value = false;
@@ -255,4 +270,3 @@ export function useUserScopedFolderListByInstall(installIdRef: Ref<string>, dept
 
   return { shareRoot, smbUser, uuids, absDirs, relDirs, loading, error, refresh, underRoot };
 }
-

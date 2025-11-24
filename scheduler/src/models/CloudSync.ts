@@ -22,8 +22,8 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
     "dropbox": new CloudSyncProvider("Dropbox", "dropbox", {
         parameters: {
             token: { value: "", type: 'object', defaultValue: "" },
-            client_id: { value: "", type: 'string', defaultValue: "" },
-            client_secret: { value: "", type: 'string', defaultValue: "" }
+            client_id: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client ID." },
+            client_secret: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client secret." }
         },
         oAuthSupported: true
     }),
@@ -31,8 +31,8 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
         parameters: {
             token: { value: "", type: 'object', defaultValue: "" },
             scope: { value: "drive", type: 'select', allowedValues: ["drive", "drive.readonly", "drive.file", "drive.appfolder", "drive.metadata.readonly"], defaultValue: "drive" },
-            client_id: { value: "", type: 'string', defaultValue: "" },
-            client_secret: { value: "", type: 'string', defaultValue: "" },
+            client_id: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client ID." },
+            client_secret: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client secret." },
             root_folder_id: { value: "", type: 'string', defaultValue: "" },
             service_account_file: { value: "", type: 'string', defaultValue: "" }
         },
@@ -41,8 +41,8 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
     "google cloud storage": new CloudSyncProvider("Google Cloud", "google cloud storage", {
         parameters: {
             token: { value: "", type: 'object', defaultValue: "" },
-            client_id: { value: "", type: 'string', defaultValue: "" },
-            client_secret: { value: "", type: 'string', defaultValue: "" },
+            client_id: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client ID." },
+            client_secret: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client secret." },
             project_number: { value: "", type: 'string', defaultValue: "" },
             service_account_file: { value: "", type: 'string', defaultValue: "" },
             anonymous: { value: false, type: 'bool', defaultValue: false },

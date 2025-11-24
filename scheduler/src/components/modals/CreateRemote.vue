@@ -94,9 +94,10 @@
                             <input
                                 v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
                                 type="text" v-model="providerValues[key]" :id="String(key)"
-                                class="block w-full mt-1 input-textlike"
-                                :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
-
+                                class="block w-full mt-1 input-textlike" :placeholder="parameter.defaultValue
+                                        ? String(parameter.defaultValue)
+                                        : 'Default is empty string'
+                                    " />
                             <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="providerValues[key]"
                                 :id="String(key)"
                                 class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />

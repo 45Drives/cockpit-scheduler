@@ -259,6 +259,9 @@ async function showRunNowDialog() {
 
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
+    if (!newVal) {
+        running.value = false;
+    }
 }
 
 const runNowNo: ConfirmationCallback = async () => {
@@ -359,6 +362,9 @@ async function showStopNowDialog() {
 
 const updateShowStopNowPrompt = (newVal) => {
     showStopNowPrompt.value = newVal;
+    if (!newVal) {
+        stopping.value = false;
+    }
 }
 
 const stopNowNo: ConfirmationCallback = async () => {
@@ -437,6 +443,9 @@ const removeTaskNo: ConfirmationCallback = async () => {
 }
 const updateShowRemoveTaskPrompt = (newVal) => {
     showRemoveTaskPrompt.value = newVal;
+    if (!newVal) {
+        removing.value = false;
+    }
 }
 
 
@@ -476,11 +485,6 @@ const addScheduleHandler = async (task) => {
     scheduleMode.value = 'new';
     await loadScheduleWizardComponent();
     showThisScheduleWizard.value = true;
-}
-
-const showNewScheduleWizard = ref(false);
-function showNewScheduleComponent() {
-    showNewScheduleWizard.value = !showNewScheduleWizard.value;
 }
 
 

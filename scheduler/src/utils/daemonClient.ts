@@ -1,12 +1,7 @@
-import { chooseBackend } from "./bootstrapBackend";
-
 declare const cockpit: any;
 
 export async function probeDaemon(): Promise<boolean> {
     try {
-        const u = await cockpit.user();
-        if (u?.id === 0 || u?.name === 'root') return false;
-
         const bus = cockpit.dbus('org.houston.Scheduler', { bus: 'system' });
         await bus.call('/org/houston/Scheduler', 'org.houston.Scheduler1', 'GetCapabilities', []);
         return true;

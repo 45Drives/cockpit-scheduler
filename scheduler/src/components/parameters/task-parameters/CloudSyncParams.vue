@@ -411,7 +411,7 @@
                             <input type="text" v-model="logFilePath"
                                 :class="[errorTags.logFilePath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. /var/log/newtask"
+                                placeholder="Eg. /var/log/newtask.log"
                                 :title="`Optional path to an rclone log file. If set, rclone will write logs to this file using --log-file=PATH.`" />
                         </div>
                         <div name="options-extra-params" class="col-span-1">

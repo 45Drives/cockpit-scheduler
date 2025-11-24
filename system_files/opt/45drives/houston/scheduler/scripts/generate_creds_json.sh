@@ -4,13 +4,6 @@ set -euo pipefail
 TEMPLATE="$1"
 OUTPUT="$2"
 
-# Load env file (.env must be exported or included manually)
-if [ -f ".env" ]; then
-    set -a
-    source .env
-    set +a
-fi
-
 # Replace placeholders
 sed \
   -e "s|YOUR_GOOGLE_CLIENT_ID|${GOOGLE_CLIENT_ID}|g" \

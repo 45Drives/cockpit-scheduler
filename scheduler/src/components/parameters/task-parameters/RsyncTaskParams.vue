@@ -365,8 +365,9 @@
                                 </label>
 
                             </div>
-                            <input type="text" v-model="logFilePath" class="block text-sm leading-6 text-default"
-                                placeholder="Eg. /var/log/newtask"
+                            <input type="text" v-model="logFilePath"
+                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                placeholder="Eg. /var/log/newtask.log"
                                 :title="`Optional path to an rsync log file. If set, rsync will write logs to this file using --log-file=PATH.`" />
                         </div>
                         <div name="options-extra-params" class="col-span-1">
