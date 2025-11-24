@@ -480,22 +480,22 @@ export class Scheduler implements SchedulerType {
                         // Unit from daemon if present; otherwise derive
                         const unit = String(t.unit || await this.unitNameFromParts(templateKey, t.name, 'user'));
                         console.log('[Scheduler -> loadTaskInstances]: unit', unit);
+                       
                         // *** TRUST the daemon’s data; only fall back to disk if missing ***
                         const paramsObj = (t.params ?? t.parameters ?? {});
                         const schedObj = (t.schedule ?? { enabled: false, intervals: [] });
                         const notes = (t.notes ?? '');
 
-                        // If you still want a soft fallback to files, keep this tiny block:
-                        if ((!paramsObj || !Object.keys(paramsObj).length) || !schedObj) {
-                            const basePaths = [
-                                `${Scheduler.STATE_ROOT}/${username}/${t.name}`,
-                                `${Scheduler.STATE_ROOT}/${uid}/${t.name}`,
-                            ];
-                            const envText = await this.readFirst(basePaths.map(b => `${b}/${unit}.env`));
-                            const jsonText = await this.readFirst(basePaths.map(b => `${b}/${unit}.json`));
-                            if (envText) Object.assign(paramsObj, this.parseEnvTextToParams(envText));
-                            if (jsonText) Object.assign(schedObj, JSON.parse(jsonText));
-                        }
+                        // if ((!paramsObj || !Object.keys(paramsObj).length) || !schedObj) {
+                        //     const basePaths = [
+                        //         `${Scheduler.STATE_ROOT}/${username}/${t.name}`,
+                        //         `${Scheduler.STATE_ROOT}/${uid}/${t.name}`,
+                        //     ];
+                        //     const envText = await this.readFirst(basePaths.map(b => `${b}/${unit}.env`));
+                        //     const jsonText = await this.readFirst(basePaths.map(b => `${b}/${unit}.json`));
+                        //     if (envText) Object.assign(paramsObj, this.parseEnvTextToParams(envText));
+                        //     if (jsonText) Object.assign(schedObj, JSON.parse(jsonText));
+                        // }
 
                         const intervals = Array.isArray(schedObj.intervals)
                             ? schedObj.intervals.map((i: any) => new TaskScheduleInterval(i))
@@ -559,47 +559,45 @@ export class Scheduler implements SchedulerType {
                     }
 
                     // 2) From Python (legacy)
-                    try {
-                        const { stdout } = await runCommand(
-                            ['/usr/bin/env', 'python3', '-c', get_tasks_script],
-                            { superuser: 'try' }
-                        );
-                        const pyItems: any[] = safeParseItems(stdout);
+                    // try {
+                    //     const { stdout } = await runCommand(
+                    //         ['/usr/bin/env', 'python3', '-c', get_tasks_script],
+                    //         { superuser: 'try' }
+                    //     );
+                    //     const pyItems: any[] = safeParseItems(stdout);
 
-                        for (const task of pyItems) {
-                            try {
-                                if (!task?.name || !task?.template) continue;
+                    //     for (const task of pyItems) {
+                    //         try {
+                    //             if (!task?.name || !task?.template) continue;
 
-                                const templateKey = this.normalizeTemplateKey(
-                                    typeof task.template === 'string' ? task.template : String(task.template?.name || task.template?.type || '')
-                                );
-                                const k = keyOf(templateKey, task.name);
-                                if (seenSys.has(k)) continue; // prefer daemon version
+                    //             const templateKey = this.normalizeTemplateKey(
+                    //                 typeof task.template === 'string' ? task.template : String(task.template?.name || task.template?.type || '')
+                    //             );
+                    //             const k = keyOf(templateKey, task.name);
+                    //             if (seenSys.has(k)) continue; // prefer daemon version
 
-                                const tpl = this.resolveTemplate(templateKey);
-                                const paramNode = this.createParameterNodeFromSchema(tpl.parameterSchema, task.parameters || {});
-                                const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
-                                const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
+                    //             const tpl = this.resolveTemplate(templateKey);
+                    //             const paramNode = this.createParameterNodeFromSchema(tpl.parameterSchema, task.parameters || {});
+                    //             const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
+                    //             const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
 
-                                const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
-                                (inst as any)._templateKey = templateKey;
-                                this.setScope(inst, 'system');
+                    //             const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
+                    //             (inst as any)._templateKey = templateKey;
+                    //             this.setScope(inst, 'system');
 
-                                this.taskInstances.push(inst);
-                                seenSys.add(k);
-                            } catch (e) {
-                                console.warn('skip bad python system record:', e);
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('python system listing failed:', e);
-                    }
+                    //             this.taskInstances.push(inst);
+                    //             seenSys.add(k);
+                    //         } catch (e) {
+                    //             console.warn('skip bad python system record:', e);
+                    //         }
+                    //     }
+                    // } catch (e) {
+                    //     console.warn('python system listing failed:', e);
+                    // }
                 }
             } catch (e) {
                 console.warn('system task discovery (admin gate) failed:', e);
             }
-
-
             return;
         }
 

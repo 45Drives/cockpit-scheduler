@@ -180,7 +180,7 @@ watch(
 	taskInstance,
 	(t) => {
 		tasksRef.value = t ? [t] : [];
-		refreshAll();
+		// refreshAll();
 	},
 	{ deep: true }
 );
@@ -398,13 +398,14 @@ async function toggleTaskSchedule(event: Event) {
 let progressIntervalId: number | undefined;
 
 onMounted(async () => {
-	await refreshAll();
+	// await refreshAll();
 	start();
 
 	await updateProgress(taskInstance.value);
 	progressIntervalId = window.setInterval(() => {
 		updateProgress(taskInstance.value);
-	}, 1500);
+	// }, 1500);
+	}, 5000);
 });
 
 onUnmounted(() => {
