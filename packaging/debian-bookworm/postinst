@@ -4,7 +4,6 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Create state dirs (idempotent)
 install -d -m 0755 /var/lib/45drives/houston/scheduler
-install -d -m 0755 /var/lib/45drives/houston/rclone
 
 # Reload systemd; enable & start the D-Bus service
 systemctl daemon-reexec || true

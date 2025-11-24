@@ -1,3 +1,5 @@
+{% set enable_daemon = false %}
+
 Name: {{ name }}
 Version: {{ version }}
 Release: {{ build_number }}%{?dist}
@@ -21,9 +23,9 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 make OS_PACKAGE_RELEASE=el9
 
 %install
-make DESTDIR=%{buildroot} install
+make DESTDIR=%{buildroot} WITH_DAEMON={% if enable_daemon %}1{% else %}0{% endif %} install
 
-# Load secrets from .env if present
+# Load secrets from .env if present (in the source tree)
 if [ -f .env ]; then
     set -a
     . .env
@@ -56,6 +58,7 @@ rm -f "$TEMPLATE"
 %dir /etc/45drives/houston
 %config(noreplace) /etc/45drives/houston/cloud-sync-client-creds.json
 
+{% if enable_daemon %}
 # D-Bus scheduler daemon + policy
 %attr(0755, root, root) /usr/local/libexec/45drives-schedulerd
 %config(noreplace) /usr/share/polkit-1/actions/com.45drives.scheduler.policy
@@ -67,16 +70,17 @@ rm -f "$TEMPLATE"
 
 # systemd unit
 /usr/lib/systemd/system/org.45drives.Scheduler.service
+{% endif %}
 
 # State dirs owned by the package (created if missing)
 %dir /var/lib/45drives/houston
 %dir /var/lib/45drives/houston/scheduler
-%dir /var/lib/45drives/houston/rclone
 
 %post
 # Ensure state dirs exist (idempotent)
-mkdir -p /var/lib/45drives/houston/scheduler /var/lib/45drives/houston/rclone || true
+mkdir -p /var/lib/45drives/houston/scheduler || true
 
+{% if enable_daemon %}
 # Reload systemd so the new unit is recognized
 /bin/systemctl daemon-reexec || true
 /bin/systemctl daemon-reload || true
@@ -85,7 +89,9 @@ mkdir -p /var/lib/45drives/houston/scheduler /var/lib/45drives/houston/rclone ||
 if /bin/systemctl cat org.45drives.Scheduler.service &>/dev/null; then
     /bin/systemctl enable --now org.45drives.Scheduler.service || true
 fi
+{% endif %}
 
+{% if enable_daemon %}
 %preun
 if [ $1 -eq 0 ]; then
     # package removal (not upgrade)
@@ -96,6 +102,7 @@ fi
 
 %postun
 /bin/systemctl daemon-reload || true
+{% endif %}
 
 
 %changelog

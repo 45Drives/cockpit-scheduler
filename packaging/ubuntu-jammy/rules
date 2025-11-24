@@ -13,13 +13,18 @@
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
+# Toggle shipping daemon/dbus/polkit/systemd bits
+# 0 = legacy-only, 1 = include daemon bits
+WITH_DAEMON ?= 0
+
 %:
 	dh $@
 
 override_dh_auto_install:
-	dh_auto_install
+	# Run upstream install with daemon toggle
+	dh_auto_install -- WITH_DAEMON=$(WITH_DAEMON)
 
-	# Load secrets from .env if present
+	# Load secrets from .env if present (from repo root)
 	if [ -f .env ]; then \
 		set -a; \
 		. .env; \

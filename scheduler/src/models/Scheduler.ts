@@ -3,7 +3,8 @@ import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, A
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
 import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName, stopTask } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
-import { chooseBackend } from '../utils/bootstrapBackend';
+// commenting out chooseBackend until daemon mode is airtight
+// import { chooseBackend } from '../utils/bootstrapBackend';
 import { daemon } from '../utils/daemonClient';
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';
@@ -54,8 +55,11 @@ export class Scheduler implements SchedulerType {
 
     async init() {
         if (this.backendInitialized) return;
-        const picked = await chooseBackend();
-        this.backend = picked.backend;
+        // const picked = await chooseBackend();
+        // this.backend = picked.backend;
+
+        // Force legacy backend for this build
+        this.backend = 'legacy';
         this.backendInitialized = true;
     }
 
@@ -96,22 +100,23 @@ export class Scheduler implements SchedulerType {
         return content ?? "";
     }
 
-    private parseEnvTextToParams(envText: string): Record<string, string> {
-        const params: Record<string, string> = {};
-        envText.split(/\r?\n/).forEach((line) => {
-            const s = line.trim();
-            if (!s || s.startsWith('#')) return;
-            const idx = s.indexOf('=');
-            if (idx <= 0) return;
-            const k = s.slice(0, idx);
-            const v = s.slice(idx + 1);
-            params[k] = v;
-        });
-        return params;
-    }
+    // private parseEnvTextToParams(envText: string): Record<string, string> {
+    //     const params: Record<string, string> = {};
+    //     envText.split(/\r?\n/).forEach((line) => {
+    //         const s = line.trim();
+    //         if (!s || s.startsWith('#')) return;
+    //         const idx = s.indexOf('=');
+    //         if (idx <= 0) return;
+    //         const k = s.slice(0, idx);
+    //         const v = s.slice(idx + 1);
+    //         params[k] = v;
+    //     });
+    //     return params;
+    // }
 
     private isDaemon(): boolean {
-        return this.backend === 'daemon';
+        // return this.backend === 'daemon';
+        return false;
     }
 
 

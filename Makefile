@@ -1,6 +1,10 @@
 include .env
 export $(shell sed 's/=.*//' .env)
 
+# Toggle shipping daemon/dbus/polkit/systemd bits
+# 0 = legacy-only, 1 = include daemon bits
+WITH_DAEMON ?= 0
+
 # Automatic Houston Plugin Makefile
 # Copyright (C) 2022 Josh Boudreau <jboudreau@45drives.com>
 # 
@@ -113,7 +117,6 @@ install-remote: remote-postinstall
 
 remote-postinstall:
 	$(SSH) mkdir -p /var/lib/45drives/houston/scheduler
-	$(SSH) mkdir -p /var/lib/45drives/houston/rclone
 
 	$(SSH) \
 	  GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" \
@@ -124,8 +127,10 @@ remote-postinstall:
 	      /etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json \
 	      /etc/45drives/houston/cloud-sync-client-creds.json
 
-	$(SSH) systemctl daemon-reload || true
-	$(SSH) systemctl enable --now org.45drives.Scheduler.service || true
+# Daemon enablement intentionally not run here in legacy-only builds
+# If you need it for dev, run: WITH_DAEMON=1 make install-remote and enable in the spec/deb.
+# 	$(SSH) systemctl daemon-reload || true
+# 	$(SSH) systemctl enable --now org.45drives.Scheduler.service || true
 
 plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo -e $(call cyantext,Installing $*)
@@ -181,6 +186,7 @@ clean-all: clean FORCE
 # Remove the cockpit plugin installed with -test suffix for the remote user
 clean-remote: SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
 clean-remote:
+ifeq ($(WITH_DAEMON),1)
 	$(SSH) systemctl disable --now org.45drives.Scheduler.service 2>/dev/null || true
 	$(SSH) systemctl daemon-reload || true
 
@@ -191,6 +197,7 @@ clean-remote:
 	$(SSH) rm -f /usr/share/polkit-1/rules.d/60-45drives-scheduler.rules || true
 	$(SSH) rm -f /usr/share/dbus-1/systemd/system/org.45drives.Scheduler.service || true
 	$(SSH) rm -f /usr/share/dbus-1/system-services/org.houston.Scheduler.service || true
+endif
 
 	$(SSH) rm -rf /opt/45drives/houston/scheduler || true
 	$(SSH) rm -rf /etc/45drives/houston/scheduler || true
