@@ -26,10 +26,7 @@
             "smartmontools",
             "mbuffer",
             "rclone (>= 1.59)",
-            "netcat",
-            "python3-gobject",
-            "python3-dbus",
-            "polkit"
+            "netcat"
         ],
         "rocky_common": [
             "cockpit",
@@ -39,11 +36,7 @@
             "smartmontools",
             "mbuffer",
             "rclone >= 1.59",
-            "netcat",
-            "python3-gi",
-            "python3-dbus",
-            "gir1.2-polkit-1.0",
-            "policykit-1"
+            "netcat"
         ]
     },
     "builds": [
