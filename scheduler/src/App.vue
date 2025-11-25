@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide, onMounted, onUnmounted } from 'vue';
+import { ref, provide, onMounted, onUnmounted, watch } from 'vue';
 import SchedulerView from './views/SchedulerView.vue';
 import {
 	ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskInstance, TaskTemplate,
@@ -39,6 +39,7 @@ import { currentUserIsPrivileged } from './composables/utility';
 const appVersion = __APP_VERSION__;
 
 const isSimple = ref(false)
+
 const updateFlag = () => {
 	const qs = new URLSearchParams(window.location.search);
 	const simpleQ = qs.get('simple') === '1';
@@ -49,11 +50,6 @@ const updateFlag = () => {
 		router.replace('/simple');
 	}
 };
-
-onUnmounted(() => {
-	window.removeEventListener('popstate', updateFlag)
-	window.removeEventListener('hashchange', updateFlag)
-})
 
 // Build the full set
 function initializeTaskTemplates(): TaskTemplate[] {
@@ -93,10 +89,23 @@ const truncateText = ref('overflow-hidden whitespace-nowrap text-ellipsis');
 const entries = ref<TaskExecutionResult[]>([]);
 const myTaskLog = new TaskExecutionLog(entries.value);
 
+const syncSimpleModeClass = () => {
+	const root = document.documentElement;
+	if (isSimple.value) {
+		root.classList.add('simple-mode');
+	} else {
+		root.classList.remove('simple-mode');
+	}
+};
+
 onMounted(async () => {
 	updateFlag();
+	syncSimpleModeClass();
+
 	window.addEventListener('popstate', updateFlag);
 	window.addEventListener('hashchange', updateFlag);
+
+	watch(isSimple, () => syncSimpleModeClass(), { immediate: true });
 
 	loading.value = true;
 
@@ -114,6 +123,11 @@ onMounted(async () => {
 
 	loading.value = false;
 });
+
+onUnmounted(() => {
+	window.removeEventListener('popstate', updateFlag)
+	window.removeEventListener('hashchange', updateFlag)
+})
 
 provide(loadingInjectionKey, loading);
 provide(schedulerInjectionKey, myScheduler);

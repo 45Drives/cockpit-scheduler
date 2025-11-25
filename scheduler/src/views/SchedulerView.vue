@@ -145,14 +145,13 @@
 
 <script setup lang="ts">
 import "@45drives/houston-common-css/src/index.css";
-import { computed, ref, provide, nextTick } from 'vue';
+import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { pushNotification, Notification, CalendarConfig, Modal } from '@45drives/houston-common-ui';
-import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
+import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
-import { TaskInstance } from '../models/Tasks';
 
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
@@ -386,6 +385,11 @@ const stopNowYes: ConfirmationCallback = async () => {
         new Notification('Task Stopping', `Task ${task.name} is stopping.`, 'info', 8000)
     );
 
+    const row = taskTableRow.value[rowIndex];
+
+    // End the manual window immediately so the row flips back to "Run Now"
+    row?.markManualRun(0);   // manualRunUntil = now → manualWindowActive becomes false
+
     await updateStatusAndTime(task, rowIndex);
 
     updateShowStopNowPrompt(false);
@@ -413,6 +417,7 @@ const stopNowYes: ConfirmationCallback = async () => {
         stopping.value = false;
     }
 };
+
 
 
 /* Remove Task */

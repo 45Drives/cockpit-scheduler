@@ -1,57 +1,49 @@
 /* =====================
-   Design tokens
+   Design tokens (simple-mode only)
    ===================== */
-:root {
-  /* Primary (default theme) */
+
+/* Base tokens for simple mode */
+.simple-mode {
   --btn-primary-bg: #D92B2F;
   --btn-primary-border: #D92B2F;
   --btn-primary-hover-bg: #b02428;
   --btn-primary-hover-border: #b02428;
 
-  /* Secondary (default theme) */
   --btn-secondary-bg: #a02226;
   --btn-secondary-border: #a02226;
   --btn-secondary-hover-bg: #821b1f;
   --btn-secondary-hover-border: #821b1f;
 
-  /* Other tokens */
   --checkbox-border: #737373;
   --outline-color: black;
   --wizard-glow-color: rgba(255, 255, 255, 0.7);
 
-  /* Derived: checkboxes follow primary automatically */
   --checkbox-checked-border: var(--btn-primary-border);
   --checkbox-checked-bg: var(--btn-primary-bg);
 
-  /* Row backgrounds */
   --row-hover-bg: rgba(0, 0, 0, 0.03);
-  /* Derive a subtle selected color from the theme primary */
   --row-selected-bg: color-mix(in srgb, var(--btn-primary-bg) 12%, transparent);
 
-
   --btn-success-bg: #22C55E;
-  /* green */
   --btn-success-border: #22C55E;
   --btn-success-hover-bg: #16A34A;
-  /* darker on hover */
   --btn-success-hover-border: #16A34A;
 }
 
-/* === Success button === */
-.btn-success {
+/* Success button only in simple mode */
+.simple-mode .btn-success {
   background-color: var(--btn-success-bg) !important;
   border-color: var(--btn-success-border) !important;
   color: white !important;
 }
 
-.btn-success:hover {
+.simple-mode .btn-success:hover {
   background-color: var(--btn-success-hover-bg) !important;
   border-color: var(--btn-success-hover-border) !important;
 }
 
-/* Extend disabled styles to cover success */
-.btn-success:disabled,
-.btn-success.disabled {
+.simple-mode .btn-success:disabled,
+.simple-mode .btn-success.disabled {
   background-color: #d3d3d3 !important;
   border-color: #d3d3d3 !important;
   color: #6c757d !important;
@@ -59,26 +51,27 @@
   opacity: 0.65;
 }
 
-/* Helpers (to match your bg/border helpers) */
-.bg-success {
+/* Helpers only in simple mode */
+.simple-mode .bg-success {
   background-color: var(--btn-success-bg) !important;
   border-color: var(--btn-success-border) !important;
   color: white !important;
 }
 
-.border-success {
+.simple-mode .border-success {
   border-color: var(--btn-success-border) !important;
 }
 
 /* =====================
-   Theme overrides
-   (only values that differ)
+   Theme overrides (simple-mode only)
    ===================== */
-.theme-default {
-  /* uses :root defaults */
+
+/* default simple-mode theme */
+.simple-mode.theme-default {
+  /* uses .simple-mode defaults */
 }
 
-.theme-homelab {
+.simple-mode.theme-homelab {
   --btn-primary-bg: #2563EB;
   --btn-primary-border: #2563EB;
   --btn-primary-hover-bg: #1E4FCB;
@@ -90,7 +83,7 @@
   --btn-secondary-hover-border: #153fa0;
 }
 
-.theme-professional {
+.simple-mode.theme-professional {
   --btn-primary-bg: #65A443;
   --btn-primary-border: #65A443;
   --btn-primary-hover-bg: #4F8F37;
@@ -102,7 +95,7 @@
   --btn-secondary-hover-border: #346527;
 }
 
-.theme-studio {
+.simple-mode.theme-studio {
   --btn-primary-bg: #6557A5;
   --btn-primary-border: #6557A5;
   --btn-primary-hover-bg: #504584;
@@ -114,41 +107,42 @@
   --btn-secondary-hover-border: #463C73;
 }
 
-.dark {
+.simple-mode.dark {
   --outline-color: white;
   --row-hover-bg: rgba(255, 255, 255, 0.06);
 }
 
 /* =====================
-   Buttons
+   Buttons (simple-mode only)
    ===================== */
-.btn-primary {
+
+.simple-mode .btn-primary {
   background-color: var(--btn-primary-bg) !important;
   border-color: var(--btn-primary-border) !important;
   color: white !important;
 }
 
-.btn-primary:hover {
+.simple-mode .btn-primary:hover {
   background-color: var(--btn-primary-hover-bg) !important;
   border-color: var(--btn-primary-hover-border) !important;
 }
 
-.btn-secondary {
+.simple-mode .btn-secondary {
   background-color: var(--btn-secondary-bg) !important;
   border-color: var(--btn-secondary-border) !important;
   color: white !important;
 }
 
-.btn-secondary:hover {
+.simple-mode .btn-secondary:hover {
   background-color: var(--btn-secondary-hover-bg) !important;
   border-color: var(--btn-secondary-hover-border) !important;
 }
 
-/* Disabled state */
-.btn-secondary:disabled,
-.btn-primary:disabled,
-.btn-secondary.disabled,
-.btn-primary.disabled {
+/* Disabled state in simple mode */
+.simple-mode .btn-secondary:disabled,
+.simple-mode .btn-primary:disabled,
+.simple-mode .btn-secondary.disabled,
+.simple-mode .btn-primary.disabled {
   background-color: #d3d3d3 !important;
   border-color: #d3d3d3 !important;
   color: #6c757d !important;
@@ -157,154 +151,68 @@
 }
 
 /* Helpers */
-.bg-primary {
+.simple-mode .bg-primary {
   background-color: var(--btn-primary-bg) !important;
   border-color: var(--btn-primary-border) !important;
   color: white !important;
 }
 
-.bg-secondary {
+.simple-mode .bg-secondary {
   background-color: var(--btn-secondary-bg) !important;
   border-color: var(--btn-secondary-border) !important;
   color: white !important;
 }
 
-.border-primary {
+.simple-mode .border-primary {
   border-color: var(--btn-primary-border);
 }
 
-.border-secondary {
+.simple-mode .border-secondary {
   border-color: var(--btn-secondary-border);
 }
 
 /* =====================
-   Wizard highlights
-   ===================== */
-.animate-glow {
-  outline: 2px solid var(--outline-color);
-  border-radius: 0.375rem;
-  position: relative;
-  z-index: 1;
-}
-
-.animate-glow:hover {
-  outline-width: 3px;
-}
-
-.wizard-btn {
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  will-change: transform;
-}
-
-.wizard-btn:hover {
-  transform: scale(1.03);
-}
-
-/* =====================
-   Table rows
-   ===================== */
-tbody tr.row-hover:hover {
-  background-color: var(--row-hover-bg);
-}
-
-tbody tr.row-selected {
-  background-color: var(--row-selected-bg);
-  box-shadow: inset 0 0 0 2px var(--btn-primary-border);
-}
-
-tbody tr.row-selected>td {
-  background-color: inherit;
-}
-
-/* =====================
-   Checkbox (theme-matched)
-   ===================== */
-.input-checkbox {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  accent-color: var(--btn-primary-bg);
-  /* fallback if UA draws native */
-  background-color: var(--checkbox-bg, #fff);
-  border: 1px solid var(--checkbox-border);
-  border-radius: 0.25rem;
-  height: 1rem;
-  width: 1rem;
-  outline: none;
-  box-shadow: 0 0 0 2px transparent;
-  cursor: pointer;
-  transition: background-color .2s, border-color .2s;
-}
-
-.input-checkbox:focus-visible {
-  outline: 2px solid var(--outline-color);
-  outline-offset: 2px;
-}
-
-.input-checkbox:checked {
-  border-color: var(--checkbox-checked-border);
-  background-color: var(--checkbox-checked-bg) !important;
-}
-
-.input-checkbox:checked::after {
-  content: "";
-  display: block;
-  width: 0.25rem;
-  height: 0.5rem;
-  border: 2px solid #fff;
-  border-top: 0;
-  border-left: 0;
-  transform: translate(0.20rem, -0.05rem) rotate(45deg);
-  box-sizing: content-box;
-}
-
-/* =====================
-   Text color overrides that mirror button tokens
+   Text color overrides (simple-mode only)
    ===================== */
 
-/* Optional: semantic aliases (helps readability) */
-:root,
-.theme-default,
-.theme-homelab,
-.theme-professional,
-.theme-studio,
-.dark {
+.simple-mode,
+.simple-mode.theme-default,
+.simple-mode.theme-homelab,
+.simple-mode.theme-professional,
+.simple-mode.theme-studio,
+.simple-mode.dark {
   --text-primary: var(--btn-primary-bg);
   --text-primary-hover: var(--btn-primary-hover-bg);
   --text-secondary: var(--btn-secondary-bg);
   --text-secondary-hover: var(--btn-secondary-hover-bg);
 }
 
-/* Primary text matches primary button color */
-.text-primary {
+.simple-mode .text-primary {
   color: var(--text-primary) !important;
 }
 
-/* Secondary text matches secondary button color */
-.text-secondary {
+.simple-mode .text-secondary {
   color: var(--text-secondary) !important;
 }
 
-/* Hover states for interactive elements using the same hover tokens as buttons */
-.text-primary.interactive:hover,
-a.text-primary:hover,
-button.text-primary:hover,
-.btn.text-primary:hover {
+.simple-mode .text-primary.interactive:hover,
+.simple-mode a.text-primary:hover,
+.simple-mode button.text-primary:hover,
+.simple-mode .btn.text-primary:hover {
   color: var(--text-primary-hover) !important;
 }
 
-.text-secondary.interactive:hover,
-a.text-secondary:hover,
-button.text-secondary:hover,
-.btn.text-secondary:hover {
+.simple-mode .text-secondary.interactive:hover,
+.simple-mode a.text-secondary:hover,
+.simple-mode button.text-secondary:hover,
+.simple-mode .btn.text-secondary:hover {
   color: var(--text-secondary-hover) !important;
 }
 
-a.text-primary:focus-visible,
-button.text-primary:focus-visible,
-a.text-secondary:focus-visible,
-button.text-secondary:focus-visible {
+.simple-mode a.text-primary:focus-visible,
+.simple-mode button.text-primary:focus-visible,
+.simple-mode a.text-secondary:focus-visible,
+.simple-mode button.text-secondary:focus-visible {
   outline: 2px solid var(--outline-color);
   outline-offset: 2px;
 }

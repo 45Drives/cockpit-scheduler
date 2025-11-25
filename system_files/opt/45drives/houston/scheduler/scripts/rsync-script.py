@@ -130,7 +130,9 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
     else:
         command.extend([src, dest])
 
-        print(f'Executing command: {" ".join(command)}')
+        
+        print("Executing rsync command:")
+        print("  " + shlex.join(command))
 
         process = subprocess.Popen(
             command,

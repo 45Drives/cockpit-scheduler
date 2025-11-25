@@ -316,13 +316,14 @@ def send_snapshot(
 			stderr=subprocess.PIPE,
 		)
 
+		print("send_cmd:", send_cmd)
 		# If sending locally
 		if transferMethod == "local":
-			notifier.notify(f"STATUS=Sending snapshot {sendName} to {recvName} (local)…")
 			recv_cmd = ['zfs', 'recv']
 			if forceOverwrite:
 				recv_cmd.append('-F')
 			recv_cmd.append(recvName)
+			print("recv_cmd:", recv_cmd)
 
 			print(f"receiving {sendName} in {recvName}")
 			process_recv = subprocess.Popen(
