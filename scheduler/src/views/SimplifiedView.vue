@@ -384,7 +384,7 @@ async function remove(t: any) {
         pushNotification(new Notification('Task Removed', 'Backup task deleted.', 'success', 6000));
         await myScheduler.loadTaskInstances();
     } catch (e: any) {
-        pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 8000));
+        pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 6000));
     } finally {
         loading.value = false;
         fetching.value = false;

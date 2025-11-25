@@ -446,7 +446,7 @@ async function saveAll() {
 
         router.push({ name: 'SimpleTasks' });
     } catch (e: any) {
-        pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 8000));
+        pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 6000));
     } finally { adding.value = false; loading.value = false; }
 }
 

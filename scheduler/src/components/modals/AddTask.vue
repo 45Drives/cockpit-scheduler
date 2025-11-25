@@ -213,7 +213,7 @@ const makeScheduleLater: ConfirmationCallback = async () => {
         updateShowSchedulePrompt(false);
         closeModal();
     } catch (e: any) {
-        pushNotification(new Notification('Task Save Failed', String(e?.message || e), 'error', 8000));
+        pushNotification(new Notification('Task Save Failed', String(e?.message || e), 'error', 6000));
     } finally {
         adding.value = false;
     }
@@ -229,7 +229,7 @@ const makeScheduleNow: ConfirmationCallback = async () => {
         emit('manageSchedule', newTask.value);
         closeModal();
     } catch (e: any) {
-        pushNotification(new Notification('Task Save Failed', String(e?.message || e), 'error', 8000));
+        pushNotification(new Notification('Task Save Failed', String(e?.message || e), 'error', 6000));
     } finally {
         adding.value = false;
     }

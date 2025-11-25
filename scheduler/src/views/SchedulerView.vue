@@ -280,7 +280,7 @@ const runNowYes: ConfirmationCallback = async () => {
     const rowIndex = selectedRowIndex.value;
 
     pushNotification(
-        new Notification('Task Started', `Task ${task.name} has started running.`, 'info', 8000)
+        new Notification('Task Started', `Task ${task.name} has started running.`, 'info', 6000)
     );
 
     const row = taskTableRow.value[rowIndex];
@@ -301,7 +301,7 @@ const runNowYes: ConfirmationCallback = async () => {
                     'Task Failed',
                     `Task ${task.name} failed to complete.`,
                     'error',
-                    8000
+                    6000
                 )
             );
         } else if (
@@ -315,7 +315,7 @@ const runNowYes: ConfirmationCallback = async () => {
                     'Task Stopped',
                     `Task ${task.name} was stopped before completion.`,
                     'error',
-                    8000
+                    6000
                 )
             );
         } else {
@@ -325,7 +325,7 @@ const runNowYes: ConfirmationCallback = async () => {
                     'Task Successful',
                     `Task ${task.name} has successfully completed.`,
                     'success',
-                    8000
+                    6000
                 )
             );
         }
@@ -335,7 +335,7 @@ const runNowYes: ConfirmationCallback = async () => {
                 'Task Failed',
                 `Task ${task.name} failed to complete.`,
                 'error',
-                8000
+                6000
             )
         );
     } finally {
@@ -382,7 +382,7 @@ const stopNowYes: ConfirmationCallback = async () => {
     const rowIndex = selectedRowIndex.value;
 
     pushNotification(
-        new Notification('Task Stopping', `Task ${task.name} is stopping.`, 'info', 8000)
+        new Notification('Task Stopping', `Task ${task.name} is stopping.`, 'info', 6000)
     );
 
     const row = taskTableRow.value[rowIndex];
@@ -401,7 +401,7 @@ const stopNowYes: ConfirmationCallback = async () => {
                 'Task Stopped',
                 `Task ${task.name} has successfully been stopped.`,
                 'success',
-                8000
+                6000
             )
         );
     } catch (error) {
@@ -410,7 +410,7 @@ const stopNowYes: ConfirmationCallback = async () => {
                 'Task Stop Failed',
                 `Task ${task.name} failed to stop.`,
                 'error',
-                8000
+                6000
             )
         );
     } finally {

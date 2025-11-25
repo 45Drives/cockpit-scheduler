@@ -457,13 +457,13 @@ async function initializeData() {
             const sshTarget = destUser.value + '@' + destHost.value;
             isRemoteAccessible.value = await testSSH(sshTarget);
             if (isRemoteAccessible.value) {
-                pushNotification(new Notification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000))
+                pushNotification(new Notification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 6000))
                 await getRemoteDestinationPools();
                 destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
                 await getRemoteDestinationDatasets();
                 destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
             } else {
-                pushNotification(new Notification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 8000));
+                pushNotification(new Notification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 6000));
                 await getLocalDestinationPools();
                 destPool.value = '';
                 await getLocalDestinationDatasets();
@@ -993,9 +993,9 @@ async function confirmSSHTest(destHost, destUser) {
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 8000));
+        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 6000));
     } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 8000));
+        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
     }
     testingSSH.value = false;
 }
@@ -1012,14 +1012,14 @@ async function confirmNetcatTest(destHost2, destPort2) {
             "Connection Successful!",
             `Netcat connection established. This host can be used for remote transfers.`,
             "success",
-            8000
+            6000
         ));
     } else {
         pushNotification(new Notification(
             "Connection Failed",
             `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`,
             "error",
-            8000
+            6000
         ));
     }
     testingNetcat.value = false;

@@ -534,14 +534,14 @@ const confirmDeleteSchedule: ConfirmationCallback = async () => {
                 'Schedule Removed',
                 `The schedule for "${thisTask.value.name}" has been removed.`,
                 'success',
-                8000
+                6000
             ));
         } else {
             pushNotification(new Notification(
                 'Delete Failed',
                 `Failed to remove the schedule for "${thisTask.value.name}". Check logs for details.`,
                 'error',
-                8000
+                6000
             ));
         }
 
@@ -591,7 +591,7 @@ function validateFields(interval) {
     if (!validateSystemdField(interval.year.value, 'year')) { yearErrorTag.value = true; errorList.value.push('Year must be *, a year number, A..B, or list.'); }
 
     if (errorList.value.length > 0) {
-        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 8000));
+        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 6000));
         return false;
     }
     return true;
@@ -698,7 +698,7 @@ const confirmScheduleTask: ConfirmationCallback = async () => {
         try { await myScheduler.loadTaskInstances(); } finally { loading.value = false; }
 
     } catch (e: any) {
-        pushNotification(new Notification('Save Failed', String(e?.message || e), 'error', 8000));
+        pushNotification(new Notification('Save Failed', String(e?.message || e), 'error', 6000));
     } finally {
         savingSchedule.value = false;
     }

@@ -554,7 +554,7 @@ async function handleTestSSH() {
             passwordRef: destUserPass, // will be scrubbed by utility
             onEvent: ({ type, title, message }) => {
                 // notifications stay in the UI layer
-                pushNotification(new Notification(title, message, type, type === 'info' ? 8000 : 6000));
+                pushNotification(new Notification(title, message, type, type === 'info' ? 6000 : 6000));
             }
         });
         sshReady.value = res.success; // optional: track local state
@@ -916,7 +916,7 @@ async function confirmTest(destHostVal: string, destUserVal: string) {
                 'Connection Successful!',
                 'Passwordless SSH connection established. This host can be used for remote transfers.',
                 'success',
-                8000
+                6000
             )
         );
     } else {
@@ -927,7 +927,7 @@ async function confirmTest(destHostVal: string, destUserVal: string) {
 Name or service not known.
 Make sure passwordless SSH connection has been configured for target system.`,
                 'error',
-                8000
+                6000
             )
         );
     }
