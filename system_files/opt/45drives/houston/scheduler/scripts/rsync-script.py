@@ -7,7 +7,44 @@ from notify import get_notifier
 
 notifier = get_notifier()
 PROGRESS_RE = re.compile(r'(\d+)%')
+SCHEDULER_KEY_PATH = "/etc/45drives/houston/scheduler/ssh/rsync_key"
 
+def ensure_scheduler_key(path: str = SCHEDULER_KEY_PATH) -> str:
+    """
+    Ensure a dedicated SSH key exists for the scheduler.
+    Returns the path (even if it already existed).
+    Safe to call multiple times.
+    """
+    key_dir = os.path.dirname(path)
+    if not key_dir:
+        return path
+
+    try:
+        os.makedirs(key_dir, exist_ok=True)
+        os.chmod(key_dir, 0o700)
+    except Exception as e:
+        print(f"WARNING: Failed to prepare scheduler SSH dir {key_dir}: {e}")
+
+    if not os.path.exists(path):
+        # Generate a passwordless key via ssh-keygen if available
+        try:
+            print(f"Creating scheduler SSH key at {path}...")
+            subprocess.run(
+                ["ssh-keygen", "-t", "ed25519", "-f", path, "-N", ""],
+                check=True,
+            )
+        except FileNotFoundError:
+            print("WARNING: ssh-keygen not found; cannot create scheduler SSH key automatically.")
+        except subprocess.CalledProcessError as e:
+            print(f"WARNING: ssh-keygen failed when creating scheduler key: {e}")
+    else:
+        # Ensure private key perms are sane
+        try:
+            os.chmod(path, 0o600)
+        except Exception as e:
+            print(f"WARNING: Failed to chmod scheduler key {path}: {e}")
+
+    return path
 
 def build_rsync_command(options):
     command = ['rsync', '-h', '-i', '-v', '--progress', '--info=progress2']
@@ -56,13 +93,31 @@ def build_rsync_command(options):
         for pattern in exclude_patterns:
             command.append(f'--exclude={pattern.strip()}')
 
-    if options['targetHost']:
-        if options['targetPort'] and int(options['targetPort']) != 22:
-            remote_command = f"ssh -p {options['targetPort']}"
-            command.append(f"-e {remote_command}")
-        else:
-            command.append("-e ssh")
+    # if options['targetHost']:
+    #     if options['targetPort'] and int(options['targetPort']) != 22:
+    #         remote_command = f"ssh -p {options['targetPort']}"
+    #         command.append(f"-e {remote_command}")
+    #     else:
+    #         command.append("-e ssh")
 
+    if options['targetHost']:
+        ssh_parts = [
+            "ssh",
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+        ]
+        
+        identity = options.get('identityFile') or ''
+        if identity:
+            ssh_parts.extend(["-i", identity])
+            
+        if options['targetPort'] and int(options['targetPort']) != 22:
+            ssh_parts.extend(["-p", str(options['targetPort'])])
+
+        remote_command = " ".join(ssh_parts)
+        command.extend(["-e", remote_command])
+    
     # Auto-create remote path for push
     if options['targetHost'] and options['direction'] == 'push':
         remote_parent = os.path.dirname(options['targetPath'].rstrip('/'))
@@ -89,14 +144,59 @@ def construct_paths(localPath, direction, targetPath, targetHost, targetUser):
             dest = localPath
     return src, dest
 
+def check_selinux_rsync_exec_denial() -> bool:
+    """
+    Best-effort check: did SELinux recently deny rsync executing ssh?
+    Returns True if we see an AVC matching rsync -> ssh_exec_t execute denial.
+    """
+    try:
+        out = subprocess.check_output(["getenforce"], text=True).strip()
+        if out not in ("Enforcing", "Permissive"):
+            return False
 
+        cmd = ["ausearch", "-m", "avc", "-c", "rsync", "-ts", "recent"]
+        avc = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+        return "ssh_exec_t" in avc and "{ execute }" in avc
+    except Exception:
+        return False
+
+def ensure_rsync_selinux_boolean():
+    """
+    Best-effort: enable rsync_client boolean on SELinux systems.
+    - No-op on systems without SELinux or without setsebool.
+    - Safe to call multiple times.
+    """
+    try:
+        mode = subprocess.check_output(["getenforce"], text=True).strip()
+    except FileNotFoundError:
+        # SELinux tools not installed (e.g. many Debian/Ubuntu systems)
+        return
+    except Exception:
+        # Any other error → don't break the task, just skip
+        return
+
+    if mode == "Disabled":
+        return
+
+    try:
+        # -P makes it persistent; repeated calls are harmless
+        subprocess.run(
+            ["setsebool", "-P", "rsync_client", "1"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        # setsebool not available
+        return
+    
 def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log_file_path=None):
     """
     Run rsync, stream its output, send progress updates to systemd
     and optionally tee all output into a user-specified log file.
     """
     notifier.notify("STATUS=Starting transfer…")
-
+    
     log_fh = None
     if log_file_path:
         try:
@@ -117,7 +217,8 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
         rsync_command = " ".join(command)
         parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {src} {dest}'
 
-        print(f'Executing command: {parallel_command}')
+        print("Executing parallel rsync shell command:")
+        print(f"  {parallel_command!r}")
 
         process = subprocess.Popen(
             parallel_command,
@@ -130,7 +231,8 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
     else:
         command.extend([src, dest])
 
-        print(f'Executing command: {" ".join(command)}')
+        print("Executing rsync command:")
+        print("  " + shlex.join(command))
 
         process = subprocess.Popen(
             command,
@@ -141,10 +243,13 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
         )
 
     last_percent = None
-
+    output_lines: list[str] = []
+    
     try:
         assert process.stdout is not None
         for line in process.stdout:
+            output_lines.append(line)
+            
             # tee to optional log file
             if log_fh:
                 try:
@@ -176,8 +281,19 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
             notifier.notify("STATUS=Finishing up…")
         else:
             notifier.notify("STATUS=Transfer failed")
+            
+    error_buffer = "".join(output_lines)
 
     if process.returncode != 0:
+        if process.returncode == 14 and "Failed to exec ssh: Permission denied (13)" in error_buffer:
+            if check_selinux_rsync_exec_denial():
+                print(
+                    "ERROR: rsync failed because SELinux is denying ssh execution "
+                    "from the rsync_t domain.\n"
+                    "You can usually fix this by enabling the rsync_client boolean:\n"
+                    "  setsebool -P rsync_client 1\n"
+                    "or by creating an SELinux module based on the audit logs.\n"
+                )
         print(f"Error: rsync exited with code {process.returncode}")
         sys.exit(process.returncode)
     else:
@@ -224,6 +340,11 @@ def str_to_bool(value):
 
 
 def parse_arguments():
+    identity_env = os.environ.get('rsyncConfig_target_info_identity_file', '')
+    # If env not set but default key exists, use it
+    if not identity_env and os.path.exists(SCHEDULER_KEY_PATH):
+        identity_env = SCHEDULER_KEY_PATH
+        
     return {
         'localPath': os.environ.get('rsyncConfig_local_path', ''),
         'direction': os.environ.get('rsyncConfig_direction', 'push'),
@@ -231,6 +352,7 @@ def parse_arguments():
         'targetPort': int(os.environ.get('rsyncConfig_target_info_port', 22)),
         'targetUser': os.environ.get('rsyncConfig_target_info_user', 'root'),
         'targetPath': os.environ.get('rsyncConfig_target_info_path', ''),
+        'identityFile': identity_env,
         'isArchive': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_archive_flag', 'True')),
         'isRecursive': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_recursive_flag', 'False')),
         'isCompressed': str_to_bool(os.environ.get('rsyncConfig_rsyncOptions_compressed_flag', 'False')),
@@ -251,10 +373,12 @@ def parse_arguments():
 
 
 def main():
+    ensure_rsync_selinux_boolean()
     notifier.notify("STATUS=Starting task…")
     notifier.notify("READY=1")
     notifier.notify("STATUS=Running task…")
     print("Starting rsync script...")
+    ensure_scheduler_key()
     options = parse_arguments()
     execute_rsync(options)
     notifier.notify("STATUS=Finishing up…")

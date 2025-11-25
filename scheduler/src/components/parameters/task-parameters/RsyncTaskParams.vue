@@ -219,9 +219,9 @@
                 style="grid-row: 1 / span 1;">
                 <div class="grid grid-cols-2">
                     <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
-                    <div class="col-span-1 items-end text-end justify-end">
-                        <button disabled v-if="testingSSH"
-                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                    <div class="col-span-1 flex flex-row gap-2 items-end justify-end">
+                        <!-- <button disabled v-if="testingSSH"
+                            class="mt-0.5 btn btn-secondary object-right justify-start h-fit">
                             <svg aria-hidden="true" role="status"
                                 class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
                                 viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -235,8 +235,25 @@
                             Testing...
                         </button>
                         <button v-else @click="confirmTest(destHost, destUser)"
-                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
+                            class="mt-0.5 btn btn-secondary object-right justify-start h-fit">
                             Test SSH
+                        </button> -->
+                        <button v-if="!installingSchedulerKey" @click="handleInstallSchedulerKey"
+                            class="mt-0.5 btn btn-secondary h-fit">
+                            Install Scheduler SSH Key
+                        </button>
+                        <button v-else disabled class="mt-0.5 btn btn-secondary h-fit">
+                            <svg aria-hidden="true" role="status"
+                                class="inline w-4 h-4 mr-3 text-gray-200 animate-spin text-default"
+                                viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+                                    fill="currentColor" />
+                                <path
+                                    d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+                                    fill="text-success" />
+                            </svg>
+                            Installing…
                         </button>
                     </div>
                 </div>
@@ -267,6 +284,16 @@
                     <input v-else type="number" v-model="destPort"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
                         max="65535" placeholder="22 is default" />
+                </div>
+                <div name="destination-identity" class="mt-1">
+                    <label class="block text-sm leading-6 text-default">SSH Identity File (optional)</label>
+                    <input type="text" v-model="identityFile"
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="/etc/45drives/houston/scheduler/ssh/rsync_key (default if left blank)" />
+                    <p class="text-[11px] text-muted mt-1">
+                        Leave empty to use the default scheduler key, if configured:
+                        <code>/etc/45drives/houston/scheduler/ssh/rsync_key</code>.
+                    </p>
                 </div>
             </div>
 
@@ -484,7 +511,7 @@ import {
     SelectionOption,
     LocationParameter
 } from '../../../models/Parameters';
-import { testSSH, testOrSetupSSH, validateLocalPath } from '../../../composables/utility';
+import { testSSH, testOrSetupSSH, validateLocalPath, installSchedulerRsyncKey } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
@@ -539,6 +566,7 @@ const extraUserParams = ref('');
 
 const testingSSH = ref(false);
 const sshTestResult = ref(false);
+const identityFile = ref('');
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
@@ -676,6 +704,8 @@ async function initializeData() {
         destUser.value = targetInfoParams.find(p => p.key === 'user')!.value;
         destRoot.value = targetInfoParams.find(p => p.key === 'root')!.value;
         destPort.value = targetInfoParams.find(p => p.key === 'port')!.value;
+        const identityParam = targetInfoParams.find(p => p.key === 'identity_file');
+        identityFile.value = identityParam ? identityParam.value : '';
 
         const transferDirection = params.find(p => p.key === 'direction')!.value;
         directionSwitched.value = transferDirection === 'pull';
@@ -728,7 +758,8 @@ async function initializeData() {
             extraUserParams: extraUserParams.value,
             isParallel: isParallel.value,
             parallelThreads: parallelThreads.value,
-            logFilePath: logFilePath.value
+            logFilePath: logFilePath.value,
+            identityFile: identityFile.value,
         }));
 
         loading.value = false;
@@ -759,11 +790,59 @@ function hasChanges() {
         extraUserParams: extraUserParams.value,
         isParallel: isParallel.value,
         parallelThreads: parallelThreads.value,
-        logFilePath: logFilePath.value
+        logFilePath: logFilePath.value,
+        identityFile: identityFile.value, 
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
+
+const installingSchedulerKey = ref(false);
+
+async function handleInstallSchedulerKey() {
+    if (!destHost.value.trim()) {
+        pushNotification(
+            new Notification(
+                'Missing host',
+                'Enter a remote host before installing the scheduler SSH key.',
+                'error',
+                6000
+            )
+        );
+        return;
+    }
+
+    installingSchedulerKey.value = true;
+    try {
+        const res = await installSchedulerRsyncKey(destUser.value || 'root', destHost.value);
+        if (res.success) {
+            pushNotification(
+                new Notification(
+                    'Scheduler key installed',
+                    'The scheduler-specific SSH key was installed on the remote host. You can now use the default identity path.',
+                    'success',
+                    8000
+                )
+            );
+            // Optionally auto-fill identityFile with the default path
+            if (!identityFile.value) {
+                identityFile.value = "/etc/45drives/houston/scheduler/ssh/rsync_key";
+            }
+        } else {
+            pushNotification(
+                new Notification(
+                    'Failed to install scheduler key',
+                    res.message.slice(0, 800),
+                    'error',
+                    8000
+                )
+            );
+        }
+    } finally {
+        installingSchedulerKey.value = false;
+    }
+}
+
 
 function validateHost() {
     destHostErrorTag.value = false;
@@ -867,19 +946,23 @@ function setParams() {
     const transferDirection = ref<SelectionOption>();
     transferDirection.value = directionSwitched.value ? directionPULL : directionPUSH;
 
+    const targetInfo = new LocationParameter(
+        'Target Information',
+        'target_info',
+        destHost.value,
+        destPort.value,
+        destUser.value,
+        destRoot.value,
+        destPath.value
+    );
+
+    // set identity_file child:
+    const identityChild = targetInfo.getChild('identity_file') as StringParameter;
+    identityChild.value = identityFile.value;
+
     const newParams = new ParameterNode("Rsync Task Config", "rsyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', sourcePath.value))
-        .addChild(
-            new LocationParameter(
-                'Target Information',
-                'target_info',
-                destHost.value,
-                destPort.value,
-                destUser.value,
-                destRoot.value,
-                destPath.value
-            )
-        )
+        .addChild(targetInfo)
         .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value.value))
         .addChild(
             new ParameterNode('Rsync Options', 'rsyncOptions')

@@ -715,3 +715,35 @@ export function validateRemotePath(path: string): boolean {
 		/^[\w\-.]+:[\\/]*(?:[\w\s\-().']+[\\/]?)*$/;
 	return rcloneRegex.test(path);
 }
+
+export async function installSchedulerRsyncKey(
+	user: string,
+	host: string
+): Promise<{ success: boolean; message: string; raw?: string }> {
+	const target = `${(user || 'root').trim()}@${host.trim()}`;
+	if (!host.trim()) {
+		return { success: false, message: "No host specified." };
+	}
+
+	const scriptPath = "/opt/45drives/houston/scheduler/scripts/install_rsync_key.sh";
+
+	try {
+		const { stdout, proc } = await runCommand(
+			["/usr/bin/env", "bash", scriptPath, target],
+			{ superuser: "require" }
+		);
+
+		if (proc.exitStatus === 0) {
+			return { success: true, message: "Scheduler SSH key installed on remote host.", raw: stdout };
+		}
+
+		return {
+			success: false,
+			message: stdout || `Script exited with status ${proc.exitStatus}`,
+			raw: stdout
+		};
+	} catch (err: any) {
+		const msg = err?.message ?? String(err);
+		return { success: false, message: msg, raw: msg };
+	}
+}

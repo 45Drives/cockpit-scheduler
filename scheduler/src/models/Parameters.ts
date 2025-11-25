@@ -209,7 +209,8 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
         user: string = "",
         root: string = "",
         path: string = "",
-        pass: string = ""
+        pass: string = "",
+        identity_file: string = "",
     ) {
         super(label, key);
         this.addChild(new StringParameter("Host", "host", host));
@@ -217,7 +218,8 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
         this.addChild(new StringParameter("User", "user", user));
         this.addChild(new StringParameter("Root", "root", root));
         this.addChild(new StringParameter("Path", "path", path));
-        this.addChild(new StringParameter("Password (optional)", "pass", pass)); // mask in UI if you can
+        this.addChild(new StringParameter("Password (optional)", "pass", pass));
+        this.addChild(new StringParameter("Identity File (optional)", "identity_file", ""));
     }
 
     static fromLocation(label: string, key: string, location: Location): LocationParameter {
