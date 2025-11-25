@@ -484,7 +484,6 @@ function validateSystemdField(value: string, kind: 'min' | 'hour' | 'day' | 'mon
             case 'min': return inRange(start, 0, 59);
             case 'hour': return inRange(start, 0, 23);
             case 'day': return inRange(start, 1, 31);
-            // systemd allows repetition on month/year in many versions; be conservative and forbid it if you prefer:
             case 'month': return inRange(start, 1, 12);
             case 'year': return inRange(start, 1970, 9999);
         }

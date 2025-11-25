@@ -217,7 +217,7 @@ export class LocationParameter extends ParameterNode implements ParameterNodeTyp
         this.addChild(new StringParameter("User", "user", user));
         this.addChild(new StringParameter("Root", "root", root));
         this.addChild(new StringParameter("Path", "path", path));
-        this.addChild(new StringParameter("Password (optional)", "pass", pass)); // mask in UI if you can
+        this.addChild(new StringParameter("Password (optional)", "pass", pass));
     }
 
     static fromLocation(label: string, key: string, location: Location): LocationParameter {

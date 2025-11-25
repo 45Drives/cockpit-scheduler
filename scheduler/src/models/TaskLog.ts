@@ -53,8 +53,7 @@ export class TaskExecutionLog {
     /**
      * Get logs for a task.
      * - If untilTime is falsy: return ALL logs for this unit.
-     * - If untilTime is truthy: return logs up to that time (used if you
-     *   ever want "logs up to X" elsewhere).
+     * - If untilTime is truthy: return logs up to that time
      */
     async getEntriesFor(taskInstance, untilTime?: string) {
         const houstonSchedulerPrefix = 'houston_scheduler_';

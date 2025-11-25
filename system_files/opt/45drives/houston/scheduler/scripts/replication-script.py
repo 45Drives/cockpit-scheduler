@@ -540,7 +540,6 @@ def main():
 
 		# ---------- initial state ----------
 		forceOverwrite = False
-		# receivingFilesystem = f"{destinationPath}"  # or f"{destinationRoot}/{destinationPath}" if you prefer
 		incrementalSnapName = ""
 
 		# ---------- fetch snapshots ----------

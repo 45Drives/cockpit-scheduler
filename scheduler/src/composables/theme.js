@@ -14,7 +14,7 @@ export function applyThemeFromAliasStyle(aliasStyle) {
   ALL_THEMES.forEach(c => root.classList.remove(c));
   root.classList.add(themeClass);
 
-  return themeClass; // handy if you want to react to the chosen theme
+  return themeClass;
 }
 
 export function watchThemeClass(onChange) {

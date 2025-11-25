@@ -110,7 +110,7 @@ class Daemon(dbus.service.Object):
         uid, _, _ = self._user_ids(user)
         return f'houston_scheduler_{template}_{name}_u{uid}'
     
-    # NEW: task dir is keyed by task *name*
+    # task dir is keyed by task *name*
     def _task_dir(self, user: str, task_name: str) -> pathlib.Path:
         p = STATE_ROOT / user / task_name
         ensure(p)

@@ -584,7 +584,7 @@ const ctx = useClientContextStore();
 // const installId = computed(() => ctx.clientId || parseFromHash() || '');
 
 // when false → hash only; when true → hash, else context
-const allowContextFallback = ref(false); // flip to true only when you want the store
+const allowContextFallback = ref(false);
 
 function parseFromHash(): string {
     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);

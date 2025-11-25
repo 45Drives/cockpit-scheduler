@@ -171,9 +171,9 @@ export class Scheduler implements SchedulerType {
 
  /*
   * Unified, view-friendly status + timestamps
-  * - statusText: what you already show (“Active (Pending)”, etc.)
+  * - statusText: (“Active (Pending)”, etc.)
   * - lastRunMs: Date.now()-compatible ms (picked from timer/service)
-  * - nextRunMs: optional ms for “Next run” (handy later)
+  * - nextRunMs: optional ms for “Next run” 
   */
     async getDisplayMeta(ti: TaskInstanceType): Promise<{
         unit: string;
