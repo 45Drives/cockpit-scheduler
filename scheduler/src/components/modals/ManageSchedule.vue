@@ -600,12 +600,7 @@ const selectedInterval = ref<TaskScheduleIntervalType>();
 const selectedIndex = ref<number>();
 function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
     selectedInterval.value = interval;
-    // Object.assign(newInterval, JSON.parse(JSON.stringify(interval)));
     selectedIndex.value = index;
-  //  console.log('selectedInterval (selectionMethod):', selectedInterval.value);
-    // console.log('selected interval for editing:', interval);
-  //  console.log('selectedIndex (selectionMethod):', selectedIndex.value);
-    // clearFields();
     editSelectedInterval(selectedInterval.value);
 }
 
@@ -800,8 +795,6 @@ function forceUpdateCalendar() {
 
 onMounted(() => {
     console.log('mode (onMounted):', props.mode);
-    // clearFields();
-    // clearAllErrors();
     
   //  console.log('task data (onMounted)', props.task);
     if (props.mode == 'new') {

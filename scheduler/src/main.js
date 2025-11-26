@@ -8,11 +8,9 @@ import { createPinia } from 'pinia';
 import { router } from './router';
 import { applyThemeFromAliasStyle } from "./composables/theme.js";
 
-// ⬅️ add this
 import { useClientContextStore } from './stores/clientContext';
 
 async function bootstrapApp() {
-  // theme stuff (unchanged)
   try {
     const serverInfoResult = await server.getServerInfo();
     if (serverInfoResult && typeof serverInfoResult.match === "function") {
@@ -31,20 +29,14 @@ async function bootstrapApp() {
     applyThemeFromAliasStyle(aliasFromHash || aliasFromStorage || undefined);
   }
 
-  // ⬇️ create app/pinia first
   const app = createApp(App);
   const pinia = createPinia();
   app.use(pinia);
 
-  // ⬇️ HYDRATE THE ID *BEFORE* installing the router / mounting
   const clientCtx = useClientContextStore(pinia);
   clientCtx.hydrateFromUrl();
-  // optional: debug
-  // console.log('[clientCtx] hydrated installId =', clientCtx.clientId);
 
-  // ⬇️ keep it sticky across navigations (so pushes don’t drop it)
   router.beforeEach((to, _from, next) => {
-    // ensure store has it (first load already did, but cheap to re-check)
     if (!clientCtx.clientId) clientCtx.hydrateFromUrl();
 
     const id = clientCtx.clientId;

@@ -425,9 +425,6 @@ async function saveAll() {
             const templateChanged = old.template?.name !== built.template?.name;
 
             if (nameChanged || templateChanged) {
-                // full replace to avoid duplicate systemd units
-                // await myScheduler.unregisterTaskInstance(old);
-                // await myScheduler.registerTaskInstance(built);
                 await myScheduler.updateTaskInstance(built, { oldName: originalName.value });
             } else {
                 await (myScheduler as any).updateTaskInstance(built);
@@ -451,7 +448,6 @@ async function saveAll() {
 }
 
 
-// ---- provide for children that read these symbols ----
 provide('new-task', newTask);
 provide('parameters', parameters);
 provide('errors', errorList);

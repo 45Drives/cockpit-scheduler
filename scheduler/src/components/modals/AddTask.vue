@@ -286,7 +286,6 @@ async function addTaskBtn() {
     }
 }
 
-
 provide('new-task', newTask);
 provide('parameters', parameters);
 provide('errors', errorList);

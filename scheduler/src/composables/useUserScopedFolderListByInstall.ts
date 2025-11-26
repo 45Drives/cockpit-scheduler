@@ -39,12 +39,6 @@ async function runWithLog(label: string, argv: string[]) {
   const started = Date.now();
   try {
     const res = await runCommand(argv, { superuser: 'try' });
-    const dt = Date.now() - started;
-    // log(label, 'done in', dt + 'ms', {
-    //   exitStatus: res.exitStatus,
-    //   stdoutLen: (res.stdout || '').length,
-    //   stderrLen: (res.stderr || '').length,
-    // });
     if (res.stderr) {
       warn(label, 'stderr:', res.stderr.slice(0, 500));
     }

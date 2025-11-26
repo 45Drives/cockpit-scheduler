@@ -75,8 +75,6 @@
                 </div>
 
                 <div class="flex lg:justify-end gap-2">
-                    <!-- <button @click.stop="createRemoteBtn()" class="btn btn-primary w-full lg:w-auto">Add
-                        Account</button> -->
                     <button @click.stop="manageRemotesBtn()" class="btn btn-secondary w-full lg:w-auto">
                         Add/Manage Cloud Credentials
                     </button>
@@ -85,29 +83,7 @@
         </SimpleFormCard>
 
         <!-- Direction + behavior -->
-        <!-- <SimpleFormCard title="How should we transfer?" description="Set direction and behavior."> -->
         <SimpleFormCard title="How should we transfer?">
-            <!-- <div class="flex items-center justify-between bg-plugin-header rounded-lg p-2 cursor-pointer select-none"
-                role="button" tabindex="0" @click="directionSwitched = !directionSwitched"
-                @keydown.enter.prevent="directionSwitched = !directionSwitched"
-                @keydown.space.prevent="directionSwitched = !directionSwitched">
-                <span class="text-sm text-default font-medium">
-                    {{ directionSwitched ? 'Download from Cloud → Local' : 'Upload from Local → Cloud' }}
-                </span>
-
-                <Switch v-model="directionSwitched" @click.stop :class="[
-                    directionSwitched ? 'bg-secondary' : 'bg-well',
-                    'relative inline-flex h-6 w-11 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2'
-                ]">
-                    <span class="sr-only">Toggle direction</span>
-                    <span aria-hidden="true" :class="[
-                        directionSwitched ? 'translate-x-5' : 'translate-x-0',
-                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200'
-                    ]" />
-                </Switch>
-            </div> -->
-
-
             <fieldset class="mt-2">
                 <legend class="sr-only">Transfer behavior</legend>
                 <div class="grid gap-2 sm:grid-cols-3">
@@ -752,24 +728,6 @@ const parameters = inject<Ref<any>>('parameters')!;
 
 const initialParameters = ref({});
 
-// Create dummy CloudSyncRemote instance for dev
-// const dummyDropboxProvider: CloudSyncProvider = cloudSyncProviders["dropbox"];
-// const dummyDropboxAuthParams: CloudAuthParameter = {
-//     parameters: {
-//         token: { value: "", type: "object", defaultValue: "" },
-//         client_id: { value: "dropbox-client-id", type: "string", defaultValue: "" },
-//         client_secret: { value: "dropbox-client-secret", type: "string", defaultValue: "" },
-//     },
-//     oAuthSupported: true,
-// };
-// const dummyCloudSyncRemote = new CloudSyncRemote(
-//     "dummyRemote",          // Name of the remote
-//     "dropbox",              // Type of remote, matching the provider type
-//     dummyDropboxAuthParams,      // Authentication parameters for Dropbox
-//     dummyDropboxProvider         // The Dropbox provider instance
-// );
-// const dummyRemote = ref(dummyCloudSyncRemote);
-
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 const errorList = inject<Ref<string[]>>('errors')!;
@@ -830,11 +788,6 @@ const noTraverse = ref(false);
 const isTaskLoading = ref(false);
 
 onMounted(async () => {
-    //for development only
-    // if (existingRemotes.value.length < 1) {
-    //     existingRemotes.value.push(dummyRemote.value);
-    // }
-
     isTaskLoading.value = true; // Start loading the task
     await initializeData();
     isTaskLoading.value = false; // Mark loading as complete
@@ -901,7 +854,7 @@ const opts = computed<Array<{ value: string; label: string }>>(() =>
 
 // choose a sane default when options arrive
 watch(opts, (list) => {
-    if (!props.simple || isEditMode.value) return;           // ⟵ only in Simple mode
+    if (!props.simple || isEditMode.value) return;
     if (!list.length) return;
     if (!localPath.value || !folderList.underRoot(localPath.value)) {
         localPath.value = list[0].value;
@@ -909,7 +862,7 @@ watch(opts, (list) => {
 }, { immediate: true });
 
 watch([() => folderList.absDirs.value, () => folderList.shareRoot.value], ([abs]) => {
-    if (!props.simple || isEditMode.value) return;           // ⟵ only in Simple mode
+    if (!props.simple || isEditMode.value) return;
     const list = abs || [];
     if (!list.length) return;
     if (!localPath.value || !folderList.underRoot(localPath.value)) {
@@ -1018,7 +971,6 @@ async function initializeData() {
         }));
 
         loading.value = false;
-        // enableTargetPathWatcher.value = true; // Re-enable watcher
     }
 }
 
@@ -1112,7 +1064,6 @@ function handleMutuallyExclusiveOptions() {
         update.value = false;
         ignoreExisting.value = false;
         checksum.value = false;
-        // Additional options affecting transfers can be disabled here
     }
 }
 
@@ -1245,7 +1196,6 @@ async function validateLocalTransferPath() {
         return false;
     }
 
-    // If everything is valid
     //  console.log("Valid source path.");
     return true;
 }
@@ -1259,10 +1209,6 @@ function validateDestinationTransferPath() {
 
     if (validatePath(targetPath.value, true)) {
         errorTags.value.targetPath = false;
-        // if (!targetPath.value.endsWith('/')) {
-        //     targetPath.value += '/';
-        // }
-        //  console.log("Valid destination path: " + targetPath.value);
         return true;
     } else {
         errorList.value.push("Target path is invalid.");
@@ -1274,21 +1220,6 @@ function validateDestinationTransferPath() {
 function validatePath(path: string, isRemote?: boolean) {
     return isRemote ? validateRemotePath(path) : validateLocalPath(path);
 }
-
-// function validatePath(path, isRemote?) {
-//     //no spaces allowed
-//     // const pathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\-.]+(?:\\|\/)?)*$/;
-
-//     if (isRemote) {
-//         const rcloneRegex = /^[\w\-.]+:[\\/]*(?:[\w\s\-.]+[\\/])*[\w\s\-.]*$/;
-//         return rcloneRegex.test(path);
-//     } else {
-//         // Allow flexible, valid paths with spaces
-//         const localPathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-.]+(?:\\|\/)?)*$/;
-//         return localPathRegex.test(path);
-//     }
-// }
-
 
 async function validateAllValues() {
 
@@ -1427,7 +1358,6 @@ function setParams() {
     const directionPULL = new SelectionOption('pull', 'Pull');
 
     const transferDirection = directionSwitched.value ? directionPULL : directionPUSH;
-    // const rclonePath = `${selectedRemote.value!.name}:${targetPath.value}`;
     const newParams = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', localPath.value))
         .addChild(new StringParameter('Target Path', 'target_path', targetPath.value))
@@ -1471,8 +1401,6 @@ function setParams() {
 
 onMounted(async () => {
     await initializeData();
-    // console.log("Component mounted");
-    //  console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
 });
 
 defineExpose({

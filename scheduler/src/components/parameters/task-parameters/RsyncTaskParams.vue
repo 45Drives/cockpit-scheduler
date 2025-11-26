@@ -470,7 +470,6 @@
 <script setup lang="ts">
 
 import { ref, Ref, onMounted, inject, watch, computed, watchEffect } from 'vue';
-// import { useRoute } from 'vue-router'
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
@@ -576,14 +575,6 @@ function ensureTrailingSlash(which: 'source' | 'dest') {
 
 const ctx = useClientContextStore();
 
-// function parseFromHash(): string {
-//     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
-//     return m ? decodeURIComponent(m[1]) : '';
-// }
-
-// const installId = computed(() => ctx.clientId || parseFromHash() || '');
-
-// when false → hash only; when true → hash, else context
 const allowContextFallback = ref(false);
 
 function parseFromHash(): string {

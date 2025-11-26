@@ -190,16 +190,10 @@ export class CloudSyncRemote extends ParameterNode implements CloudSyncRemoteTyp
 
 // Functions to fetch logo and color
 export function getProviderLogo(selectedProvider?: CloudSyncProvider, selectedRemote?: CloudSyncRemote): string {
-    // console.log('logo selectedProvider:', selectedProvider)
-    // console.log('logo selectedRemote:', selectedRemote)
-
     // Determine the type and provider, using optional chaining to prevent undefined errors
     const type = selectedProvider ? selectedProvider.type : selectedRemote?.type;
     const provider = selectedProvider?.providerParams?.parameters?.provider?.value
         || selectedRemote?.provider?.providerParams?.parameters?.provider?.value;
-    // console.log('logo type:', type);
-    // console.log('logo provider:', provider);
-    
     // Construct the key for providerLogos and return the appropriate logo
     if (type === "s3" && provider) {
         return providerLogos[`${type}-${provider}`]?.logo || "";

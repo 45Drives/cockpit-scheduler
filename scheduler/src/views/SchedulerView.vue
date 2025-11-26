@@ -171,16 +171,6 @@ async function refreshBtn() {
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
-
-    // await nextTick();
-
-    // taskInstances.value.forEach((task, index) => {
-    //     const row = taskTableRow.value[index];
-    //     if (row) {
-    //         row.updateTaskStatus(task);
-    //         row.fetchLatestLog(task);
-    //     }
-    // });
 }
 
 const expandedTaskName = ref(null);

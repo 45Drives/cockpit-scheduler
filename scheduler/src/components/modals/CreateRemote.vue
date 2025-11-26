@@ -174,10 +174,8 @@ import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
 import { CloudSyncProvider, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
 
-const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
-const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 
 const selectedProvider = ref<CloudSyncProvider>();
 const providerValues = reactive<any>({});

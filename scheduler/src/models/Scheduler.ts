@@ -100,20 +100,6 @@ export class Scheduler implements SchedulerType {
         return content ?? "";
     }
 
-    // private parseEnvTextToParams(envText: string): Record<string, string> {
-    //     const params: Record<string, string> = {};
-    //     envText.split(/\r?\n/).forEach((line) => {
-    //         const s = line.trim();
-    //         if (!s || s.startsWith('#')) return;
-    //         const idx = s.indexOf('=');
-    //         if (idx <= 0) return;
-    //         const k = s.slice(0, idx);
-    //         const v = s.slice(idx + 1);
-    //         params[k] = v;
-    //     });
-    //     return params;
-    // }
-
     private isDaemon(): boolean {
         // return this.backend === 'daemon';
         return false;
@@ -562,43 +548,6 @@ export class Scheduler implements SchedulerType {
                     } catch (e) {
                         console.warn('daemon.listTasks(system) failed:', e);
                     }
-
-                    // 2) From Python (legacy)
-                    // try {
-                    //     const { stdout } = await runCommand(
-                    //         ['/usr/bin/env', 'python3', '-c', get_tasks_script],
-                    //         { superuser: 'try' }
-                    //     );
-                    //     const pyItems: any[] = safeParseItems(stdout);
-
-                    //     for (const task of pyItems) {
-                    //         try {
-                    //             if (!task?.name || !task?.template) continue;
-
-                    //             const templateKey = this.normalizeTemplateKey(
-                    //                 typeof task.template === 'string' ? task.template : String(task.template?.name || task.template?.type || '')
-                    //             );
-                    //             const k = keyOf(templateKey, task.name);
-                    //             if (seenSys.has(k)) continue; // prefer daemon version
-
-                    //             const tpl = this.resolveTemplate(templateKey);
-                    //             const paramNode = this.createParameterNodeFromSchema(tpl.parameterSchema, task.parameters || {});
-                    //             const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
-                    //             const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
-
-                    //             const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
-                    //             (inst as any)._templateKey = templateKey;
-                    //             this.setScope(inst, 'system');
-
-                    //             this.taskInstances.push(inst);
-                    //             seenSys.add(k);
-                    //         } catch (e) {
-                    //             console.warn('skip bad python system record:', e);
-                    //         }
-                    //     }
-                    // } catch (e) {
-                    //     console.warn('python system listing failed:', e);
-                    // }
                 }
             } catch (e) {
                 console.warn('system task discovery (admin gate) failed:', e);
@@ -927,6 +876,7 @@ export class Scheduler implements SchedulerType {
 
     }
 
+    // maybe using this later, not sure.
     // private async renameLegacyTaskFiles(templateName: string, oldName: string, newName: string, wantEnabled: boolean) {
     //     const prefix = 'houston_scheduler_';
     //     const etc = '/etc/systemd/system';

@@ -279,24 +279,6 @@ console.log('EXISTING REMOTES:', existingRemotes)!;
 const privacyPolicyUrl = ref('https://cloud-sync.45d.io/privacy');
 const termsOfServiceUrl = ref('https://cloud-sync.45d.io/tos');
 
-// Create dummy CloudSyncRemote instance for dev
-// const dummyDropboxProvider: CloudSyncProvider = cloudSyncProviders["dropbox"];
-// const dummyDropboxAuthParams: CloudAuthParameter = {
-//     parameters: {
-//         token: { value: "", type: "object", defaultValue: "" },
-//         client_id: { value: "dropbox-client-id", type: "string", defaultValue: "" },
-//         client_secret: { value: "dropbox-client-secret", type: "string", defaultValue: "" },
-//     },
-//     oAuthSupported: true,
-// };
-// const dummyCloudSyncRemote = new CloudSyncRemote(
-//     "dummyRemote",          // Name of the remote
-//     "dropbox",              // Type of remote, matching the provider type
-//     dummyDropboxAuthParams,      // Authentication parameters for Dropbox
-//     dummyDropboxProvider         // The Dropbox provider instance
-// );
-// const dummyRemote = ref(dummyCloudSyncRemote);
-
 onMounted(async () => {
     await loadRemotes();
 });
@@ -330,39 +312,25 @@ function resetProviderParams(newSelection) {
         pushNotification(new Notification('Provider Changed', `Cloud provider has been changed, parameters have been reset.`, 'warning', 6000));
         loadedEditableRemoteParams.value = JSON.parse(JSON.stringify(newSelection!.providerParams));
     } 
-    // else if (newSelection === selectedRemote.value!.provider) {
-    //     pushNotification(new Notification('Provider Changed', `Cloud provider parameters set back to previous configuration.`, 'info', 6000));
-    //     loadedEditableRemoteParams.value = JSON.parse(JSON.stringify(selectedRemote.value!.authParams));
-    // }
 }
 
 function clearValues() {
     loadedEditableRemoteName.value = '';
     loadedEditableRemoteProvider.value = undefined;
     loadedEditableRemoteParams.value = {};
-  //  console.log('clearedRemoteName:', loadedEditableRemoteName.value);
-  //  console.log('clearedRemoteProvider:', loadedEditableRemoteProvider.value);
-  //  console.log('clearedRemoteParams', loadedEditableRemoteParams);
 }
 
 function populateValues(selectedRemote: CloudSyncRemote) {
     clearValues();
-  //  console.log('selectedRemote:', selectedRemote);
     loadedEditableRemoteName.value = selectedRemote.name;
     loadedEditableRemoteProvider.value = selectedRemote.provider;
 
     if (selectedRemote && selectedRemote.authParams) {
-        // Deep copy only the authParams object from selectedRemote to loadedEditableRemoteParams
         loadedEditableRemoteParams.value = JSON.parse(JSON.stringify(selectedRemote.authParams));
     } else {
         console.error("authParams is undefined in selectedRemote");
     }
-
-  //  console.log('loadedEditableRemoteName:', loadedEditableRemoteName.value);
-  //  console.log('loadedEditableRemoteProvider:', loadedEditableRemoteProvider.value);
-  //  console.log('loadedEditableRemoteParams', loadedEditableRemoteParams);
 }
-
 
 const remoteNameErrorTag = ref('');
 const saving = ref(false);

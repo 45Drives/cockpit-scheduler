@@ -8,9 +8,6 @@ export class TaskInstance implements TaskInstanceType {
     parameters: ParameterNode;
     schedule: TaskSchedule;
     notes: string;
-    // status: string;
-    // lastExecutionResult: TaskExecutionResult | null;
-
 
     constructor(name: string, template: TaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) {
         this.name = name;
@@ -18,9 +15,6 @@ export class TaskInstance implements TaskInstanceType {
         this.parameters = parameters;
         this.schedule = schedule;
         this.notes = notes;
-        // this.status = 'Pending';  // Default status
-        // this.lastExecutionResult = null;  // No result initially
-
     }
 }
 
@@ -87,7 +81,6 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ZFSReplicationTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
@@ -106,7 +99,6 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: AutomatedSnapshotTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
@@ -146,7 +138,6 @@ export class RsyncTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: RsyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
@@ -161,7 +152,6 @@ export class ScrubTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ScrubTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
@@ -179,7 +169,6 @@ export class CustomTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CustomTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
@@ -195,7 +184,6 @@ export class SmartTestTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: SmartTestTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
@@ -235,7 +223,6 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new SelectionParameter('Transfer Type', 'type', 'copy', transferModeSelection))
             .addChild(new SelectionParameter('Provider', 'provider', initialProviderKey, providerSelectionOptions))
-            // .addChild(new CloudSyncRemote('',initialProviderKey, initialProvider.providerParams, initialProvider))
             .addChild(new StringParameter('Rclone Remote', 'rclone_remote', ''))
             .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
                 .addChild(new StringParameter('Log File Path', 'log_file_path', ''))
@@ -270,7 +257,6 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
     }
 
     createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CloudSyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        // Return the TaskInstance constructor function
         return TaskInstance;
     }
 }
