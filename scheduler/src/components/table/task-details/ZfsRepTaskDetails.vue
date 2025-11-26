@@ -82,9 +82,6 @@
             <p v-else class="my-2 truncate text-sm" :title="`No Snapshot Retention Policy Configured`">
                 <b>No Snapshot Retention Policy Configured</b>
             </p>
-            <p v-else class="my-2 truncate" :title="`No Snapshot Limit (Keep All)`">
-                No Snapshot Limit Set (Keep All)
-            </p>
         </div>
         <div class="col-span-2 row-span-2">
             <p class="my-2 font-bold">Current Schedules:</p>
