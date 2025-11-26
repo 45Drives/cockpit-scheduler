@@ -28,10 +28,6 @@ if [ -f /etc/45drives-ci/cloud-creds.env ]; then
     set +a
 fi
 
-# Optional debug (remove once you're happy)
-echo "DEBUG: GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}'" >&2
-echo "DEBUG: DROPBOX_CLIENT_ID='${DROPBOX_CLIENT_ID}'" >&2
-
 make DESTDIR=%{buildroot} install
 
 TEMPLATE="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"

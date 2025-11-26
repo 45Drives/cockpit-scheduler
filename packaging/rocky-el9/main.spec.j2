@@ -28,12 +28,6 @@ if [ -f /etc/45drives-ci/cloud-creds.env ]; then
     set +a
 fi
 
-# Optional debug (remove once you're happy)
-echo "DEBUG: GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}'" >&2
-echo "DEBUG: DROPBOX_CLIENT_ID='${DROPBOX_CLIENT_ID}'" >&2
-
-make DESTDIR=%{buildroot} install
-
 TEMPLATE="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"
 OUTPUT="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"
 
@@ -54,7 +48,7 @@ rm -f "$TEMPLATE"
 /opt/45drives/houston/scheduler/*
 %dir /etc/45drives
 %dir /etc/45drives/houston
-%config(noreplace) /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
+/etc/45drives/houston/scheduler/cloud-sync-client-creds.json
 
 %postun
 # $1 == 0 when the package is being erased (not upgraded)
