@@ -28,6 +28,8 @@ if [ -f /etc/45drives-ci/cloud-creds.env ]; then
     set +a
 fi
 
+make DESTDIR=%{buildroot} install
+
 TEMPLATE="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"
 OUTPUT="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"
 
