@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge)
+        # Always remove the creds file on package removal
+        rm -f /etc/45drives/houston/scheduler/cloud-sync-client-creds.json || true
+        ;;
+esac
+
+# Let debhelper add its stuff
+#DEBHELPER#
+
+exit 0

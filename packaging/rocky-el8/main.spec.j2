@@ -46,13 +46,24 @@ sed \
 chmod 600 "$OUTPUT"
 rm -f "$TEMPLATE"
 
-
 %files
 /usr/share/cockpit/scheduler/*
 /opt/45drives/houston/scheduler/*
 %dir /etc/45drives
 %dir /etc/45drives/houston
 %config(noreplace) /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
+
+%postun
+# $1 == 0 when the package is being erased (not upgraded)
+if [ "$1" -eq 0 ]; then
+    # Remove the creds file explicitly
+    rm -f /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
+
+    # Optionally remove empty directory chain
+    rmdir --ignore-fail-on-non-empty /etc/45drives/houston/scheduler 2>/dev/null || :
+    rmdir --ignore-fail-on-non-empty /etc/45drives/houston 2>/dev/null || :
+    rmdir --ignore-fail-on-non-empty /etc/45drives 2>/dev/null || :
+fi
 
 %changelog
 * Fri Nov 21 2025 Jordan Keough <jkeough@45drives.com> 1.4.0-1
