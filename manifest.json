@@ -43,27 +43,27 @@
         {
             "group": "ubuntu",
             "os_name": "ubuntu-focal",
-            "image": "ci.cr.45d.io/ci/simple/ubuntu-focal:1"
+            "image": "ci.cr.45d.io/ci/scheduler/ubuntu-focal-scheduler:1"
         },
         {
             "group": "debian",
             "os_name": "debian-bookworm",
-            "image": "ci.cr.45d.io/ci/simple/ubuntu-jammy:1"
+            "image": "ci.cr.45d.io/ci/scheduler/ubuntu-jammy-scheduler:1"
         },
         {
             "group": "ubuntu",
             "os_name": "ubuntu-jammy",
-            "image": "ci.cr.45d.io/ci/simple/ubuntu-jammy:1"
+            "image": "ci.cr.45d.io/ci/scheduler/ubuntu-jammy-scheduler:1"
         },
         {
             "group": "rocky",
             "os_name": "rocky-el8",
-            "image": "ci.cr.45d.io/ci/simple/rocky-el8:1"
+            "image": "ci.cr.45d.io/ci/scheduler/rocky-el8-scheduler:1"
         },
         {
             "group": "rocky",
             "os_name": "rocky-el9",
-            "image": "ci.cr.45d.io/ci/simple/rocky-el9:1"
+            "image": "ci.cr.45d.io/ci/scheduler/rocky-el9-scheduler:1"
         }
     ],
     "repos": [
