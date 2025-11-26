@@ -25,6 +25,7 @@ node_modules/
 *.njsproj
 *.sln
 *.sw?
+.env
 
 # Generated files
 src/version.js

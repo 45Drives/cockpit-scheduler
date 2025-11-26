@@ -1,0 +1,13 @@
+polkit.addRule(function (action, subject) {
+  if (action.id == "com.45drives.scheduler.list")
+    return polkit.Result.YES;
+
+  if (action.id == "com.45drives.scheduler.modify.user") {
+    if (subject.active) return polkit.Result.YES;          // any logged-in user
+  }
+
+  if (action.id == "com.45drives.scheduler.modify.system") {
+    if (subject.isInGroup("wheel") || subject.isInGroup("sudo"))
+      return polkit.Result.YES;                             // admins only
+  }
+});

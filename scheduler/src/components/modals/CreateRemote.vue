@@ -45,7 +45,7 @@
                         <div class="button-group-row justify-between">
                             <button @click.stop="oAuthBtn(selectedProvider)" @mouseenter="handleMouseEnter"
                                 @mouseleave="handleMouseLeave"
-                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn btn-secondary text-white"
+                                class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-white"
                                 :style="getButtonStyles(isHovered, selectedProvider, undefined)">
                                 <span class="flex-grow text-center mt-0.5">
                                     Authenticate with {{ selectedProvider.name }}
@@ -94,9 +94,10 @@
                             <input
                                 v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
                                 type="text" v-model="providerValues[key]" :id="String(key)"
-                                class="block w-full mt-1 input-textlike"
-                                :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
-
+                                class="block w-full mt-1 input-textlike" :placeholder="parameter.defaultValue
+                                        ? String(parameter.defaultValue)
+                                        : 'Default is empty string'
+                                    " />
                             <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="providerValues[key]"
                                 :id="String(key)"
                                 class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />
@@ -173,10 +174,8 @@ import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
 import { CloudSyncProvider, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
 
-const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
-const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 
 const selectedProvider = ref<CloudSyncProvider>();
 const providerValues = reactive<any>({});

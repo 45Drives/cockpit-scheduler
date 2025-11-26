@@ -112,8 +112,8 @@ def create_task_instances(system_dir, valid_files):
                     # notes = json.dumps(file_dict, indent=4)  # Convert dict to JSON string for readability
                     notes = "" 
 
-            task_instance = TaskInstance(task_name, template, parameters, schedule, notes)
-            task_instances.append(task_instance)
+                task_instance = TaskInstance(task_name, template, parameters, schedule, notes)
+                task_instances.append(task_instance)
 
     return json.dumps([instance.__dict__ for instance in task_instances], indent=4)
 

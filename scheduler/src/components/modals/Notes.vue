@@ -90,10 +90,6 @@ const closeModal = () => {
 const cancelingEditTask = ref(false);
 const showCloseConfirmation = ref(false);
 const closeConfirmationComponent = ref();
-async function loadCloseConfirmationComponent() {
-    const module = await import('../common/ConfirmationDialog.vue');
-    closeConfirmationComponent.value = module.default;    
-}
 
 const closeBtn = async () => {
         closeModal();

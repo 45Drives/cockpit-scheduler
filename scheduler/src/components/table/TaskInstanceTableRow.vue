@@ -1,57 +1,98 @@
 <template>
+	<!-- <tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
+		class="grid grid-cols-10 grid-flow-cols w-full text-center items-center rounded-sm p-1"> -->
 	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
-		class="grid grid-cols-8 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+		class="grid grid-cols-9 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+		<!-- Name -->
 		<td :title="taskInstance.name"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-2 col-span-2">
 			{{ taskInstance.name }}
 		</td>
-		<td v-if="taskInstance.schedule.enabled" :title="taskStatus"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass(taskStatus)">
-				{{ taskStatus || 'N/A' }}
-			</span>
-		</td>
-		<td v-if="!taskInstance.schedule.enabled" :title="'Disabled'"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass(taskStatus)">
-				{{ taskStatus || 'N/A' }}
-			</span>
-		</td>
-		<td :title="latestTaskExecution" class="truncate font-medium border-r border-default text-left ml-4 col-span-2">
-			<span>
-				{{ latestTaskExecution }}
+
+		<!-- Status -->
+		<td :title="taskInstance.schedule.enabled ? statusText : 'Disabled'"
+			class="truncate text-xs font-medium text-default border-r border-default col-span-1">
+			<span :class="taskStatusBadgeClass(statusText)">
+				{{ statusText || 'N/A' }}
 			</span>
 		</td>
 
-		<td class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-			<input v-if="taskInstance.schedule.intervals.length > 0"
-				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
-				:checked="taskInstance.schedule.enabled" @click.prevent="toggleTaskSchedule"
-				class="ml-2 h-4 w-4 rounded" />
-			<input v-else disabled type="checkbox" :title="'No Schedule Found, Manage Schedule + add intervals to Enable'"
-				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
+		<!-- Scope -->
+		<!-- <td :title="taskInstance.scope"
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-2 col-span-1">
+			<span>{{ taskInstance.scope }}</span>
+		</td> -->
+
+		<!-- Last run -->
+		<td :title="lastRunText" class="truncate text-sm font-medium border-r border-default text-left ml-2 col-span-3">
+			<span>{{ lastRunText }}</span>
 		</td>
-		<td class="truncate text-base font-medium text-default border-default m-1 col-span-1">
+
+		<!-- Scheduled toggle -->
+		<td class="truncate text-base font-medium text-default border-r border-default text-left col-span-1">
+			<Switch v-model="scheduleEnabledModel" :disabled="taskInstance.schedule.intervals.length === 0" :title="taskInstance.schedule.intervals.length > 0
+				? `Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`
+				: 'No Schedule Found, Manage Schedule + add intervals to Enable'" :class="[
+				taskInstance.schedule.intervals.length === 0
+					? 'bg-gray-300 dark:bg-gray-400 cursor-not-allowed'
+					: taskInstance.schedule.enabled
+						? 'bg-success'
+						: 'bg-well',
+				'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2 ml-2'
+			]">
+				<span class="sr-only">Toggle schedule</span>
+				<span aria-hidden="true" :class="[
+					taskInstance.schedule.enabled ? 'translate-x-5' : 'translate-x-0',
+					'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out'
+				]" />
+			</Switch>
+		</td>
+
+		<!-- Actions -->
+		<td class="text-base font-medium text-default border-default m-1 col-span-2">
 			<button v-if="isExpanded" @click="toggleTaskDetails()"
-				class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">Close
-				Details</button>
-			<button v-else @click="toggleTaskDetails()" class="btn btn-secondary">View Details</button>
+				class="btn w-full text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">
+				Close Details
+			</button>
+			<button v-else @click="toggleTaskDetails()" class="btn w-full btn-secondary">
+				View Details
+			</button>
 		</td>
-		<td v-if="isExpanded" class="col-span-8 h-full px-2 mx-2 py-1 border-t border-default">
+
+		<!-- Progress bar (full width row) -->
+		<td v-if="progress !== null && isRunning" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
+			<div>
+				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded">
+					<div class="h-2 rounded" :class="progressBarClass"
+						:style="{ width: Math.min(progress, 100) + '%' }"></div>
+				</div>
+				<div class="text-xs mt-1">
+					{{ Math.round(progress) }}%
+				</div>
+			</div>
+		</td>
+
+		<!-- Expanded details -->
+		<td v-if="isExpanded" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
 				<TaskInstanceDetails :task="taskInstance" />
 			</div>
 
-			<div class="button-group-row justify-center col-span-5 mt-2">
-				<button @click="runTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
+			<div class="button-group-row justify-center mt-2">
+				<button v-if="!isRunning" @click="runTaskBtn()"
+					class="flex flex-row min-h-fit flex-nowrap btn btn-success">
 					Run Now
 					<PlayIcon class="h-5 ml-2 mt-0.5" />
+				</button>
+				<button v-else @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+					Stop Now
+					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
 				<button @click="editTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					Edit Task
 					<PencilIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button @click="manageScheduleBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
+				<button @click="manageScheduleBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-primary">
 					Manage Schedule
 					<CalendarDaysIcon class="h-5 ml-2 mt-0.5" />
 				</button>
@@ -71,26 +112,36 @@
 		</td>
 	</tr>
 
+	<!-- Enable/Disable confirmation dialogs -->
 	<div v-if="showEnablePrompt">
 		<component :is="enableDialog" @close="updateShowEnablePrompt" :showFlag="showEnablePrompt"
-			:title="'Enable Schedule'" :message="'Do you wish to enable the schedule for this task?'"
-			:confirmYes="enableYes" :confirmNo="enableNo" :operating="enabling" :operation="'enabling'" />
+			title="Enable Schedule" message="Do you wish to enable the schedule for this task?" :confirmYes="enableYes"
+			:confirmNo="enableNo" :operating="enabling" operation="enabling" />
 	</div>
 
 	<div v-if="showDisablePrompt">
 		<component :is="disableDialog" @close="updateShowDisablePrompt" :showFlag="showDisablePrompt"
-			:title="'Disable Schedule'" :message="'Do you wish to disable the schedule for this task?'"
-			:confirmYes="disableYes" :confirmNo="disableNo" :operating="disabling" :operation="'disabling'" />
+			title="Disable Schedule" message="Do you wish to disable the schedule for this task?"
+			:confirmYes="disableYes" :confirmNo="disableNo" :operating="disabling" operation="disabling" />
 	</div>
-
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, defineExpose } from 'vue';
-import { PlayIcon, PencilIcon, TrashIcon, CalendarDaysIcon, TableCellsIcon,PencilSquareIcon } from '@heroicons/vue/24/outline';
-import { injectWithCheck } from '../../composables/utility'
+import { ref, onMounted, onUnmounted, watch, defineExpose, computed } from 'vue';
+import {
+	PlayIcon,
+	PencilIcon,
+	TrashIcon,
+	CalendarDaysIcon,
+	TableCellsIcon,
+	PencilSquareIcon,
+	StopIcon,
+} from '@heroicons/vue/24/outline';
+import { Switch } from '@headlessui/vue';
+import { injectWithCheck } from '../../composables/utility';
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
+import { useLiveTaskStatus, taskStatusBadgeClass } from '../../composables/useLiveTaskStatus';
 
 interface TaskInstanceTableRowProps {
 	task: TaskInstanceType;
@@ -100,265 +151,306 @@ interface TaskInstanceTableRowProps {
 const props = defineProps<TaskInstanceTableRowProps>();
 const taskInstance = ref(props.task);
 
-const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
+const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
+const myTaskLog = injectWithCheck(logInjectionKey, 'log not provided!');
 
-const latestTaskExecution = ref<string>('');
-const taskStatus = ref<string>('');
+// Keep taskInstance in sync if parent replaces the object
+watch(
+	() => props.task,
+	(newTask) => {
+		taskInstance.value = newTask;
+	},
+	{ deep: true }
+);
 
-const emit = defineEmits(['runTask', 'manageSchedule', 'removeTask', 'editTask', 'viewLogs', 'toggleDetails', 'viewNotes']);
+const isExpanded = computed(() => props.isExpanded);
+
+// useLiveTaskStatus expects an array ref of tasks
+const tasksRef = ref<TaskInstanceType[] | null | undefined>([taskInstance.value]);
+
+const live = useLiveTaskStatus(tasksRef, myScheduler, myTaskLog, {
+	intervalMs: 1500,
+	completedWindowMs: 30_000,
+});
+
+
+const {
+	start,
+	stop,
+	refreshAll,
+	statusFor,
+	lastRunFor,
+	isCompleted: liveIsCompleted,
+	isRunningNow: liveIsRunning,
+	isFailed: liveIsFailed,
+	isInactive: liveIsInactive,
+} = live;
+
+// Keep tasksRef up to date when this row's task changes
+watch(
+	taskInstance,
+	(t) => {
+		tasksRef.value = t ? [t] : [];
+		// refreshAll();
+	},
+	{ deep: true }
+);
+
+const manualRunUntil = ref<number>(0);
+function markManualRun(windowMs = 60_000) {
+	manualRunUntil.value = Date.now() + windowMs;
+}
+
+// Text shown in the Status column, with manual wording
+const statusText = computed(() => {
+	const baseRaw = statusFor(taskInstance.value);
+	const enabled = taskInstance.value?.schedule?.enabled ?? false;
+	const now = Date.now();
+	const manualWindowActive = !enabled && now < manualRunUntil.value;
+
+	// If no live status yet, provide simple fallbacks
+	const base = baseRaw || (enabled ? 'Checking...' : 'Disabled');
+
+	// Manual-only tasks (no schedule enabled) get special wording
+	if (!enabled) {
+		const running = liveIsRunning(taskInstance.value);
+		const completed = liveIsCompleted(taskInstance.value);
+
+		// While we're in the manual window, be explicit
+		if (manualWindowActive) {
+			if (running) return 'Running now (manual)';
+			if (completed) return 'Completed (manual)';
+		}
+
+		// Outside window, still keep "Completed (manual)" instead of plain "Completed"
+		if (completed) return 'Completed (manual)';
+	}
+
+	return base;
+});
+
+// Text shown in the "Last run" column
+const lastRunText = computed(() => {
+	return lastRunFor(taskInstance.value) ?? "Task hasn't run yet.";
+});
+
+// Boolean flags wrapped for the template
+const isRunning = computed(() => {
+	const enabled = taskInstance.value?.schedule?.enabled ?? false;
+	const now = Date.now();
+	const manualWindowActive = !enabled && now < manualRunUntil.value;
+
+	if (liveIsRunning(taskInstance.value)) return true;
+
+	if (manualWindowActive && !liveIsCompleted(taskInstance.value)) {
+		return true;
+	}
+
+	return false;
+});
+
+const isCompleted = computed(() => liveIsCompleted(taskInstance.value));
+const isFailed = computed(() => liveIsFailed(taskInstance.value));
+const isInactive = computed(() => liveIsInactive(taskInstance.value));
+
+// Progress tracking (separate from status)
+const progress = ref<number | null>(null);
+
+async function updateProgress(task: TaskInstanceType) {
+	try {
+		const p = await myScheduler.getTaskProgress(task);
+		if (typeof p === 'number' && Number.isFinite(p)) {
+			progress.value = p;
+		} else {
+			progress.value = null;
+		}
+	} catch (e) {
+		console.error('Failed to get progress:', e);
+		progress.value = null;
+	}
+}
+
+const progressBarClass = computed(() => {
+	const s = (statusText.value || '').toLowerCase();
+
+	if (s.includes('failed') || s.includes('error')) {
+		return 'bg-red-600';
+	}
+
+	if (s.includes('completed')) {
+		return 'bg-green-600';
+	}
+
+	if (
+		s.includes('active (running)') ||
+		s.includes('running now') ||
+		s.includes('starting') ||
+		s.includes('activating')
+	) {
+		return 'bg-green-600';
+	}
+
+	if (s.includes('inactive (disabled)') || s.includes('disabled')) {
+		return 'bg-slate-400';
+	}
+
+	return 'bg-slate-400';
+});
+
+// Emits
+const emit = defineEmits([
+	'runTask',
+	'manageSchedule',
+	'removeTask',
+	'editTask',
+	'viewLogs',
+	'toggleDetails',
+	'viewNotes',
+	'stopTask',
+]);
+
 
 async function runTaskBtn() {
-	emit('runTask', props.task);
+	// Mark this as a manual run so wording reflects that
+	markManualRun();
+	emit('runTask', taskInstance.value);
+	refreshAll();
+	updateProgress(taskInstance.value);
+}
+
+async function stopTaskBtn() {
+	emit('stopTask', taskInstance.value);
+	refreshAll();
+	updateProgress(taskInstance.value);
 }
 
 function manageScheduleBtn() {
-	emit('manageSchedule', props.task);
+	emit('manageSchedule', taskInstance.value);
 }
 
-let intervalId: number | undefined;
-
 function removeTaskBtn() {
-	if (intervalId) {
-		clearInterval(intervalId);
-		intervalId = undefined;
-	}
-	emit('removeTask', props.task);
+	emit('removeTask', taskInstance.value);
 }
 
 function editTaskBtn() {
-	emit('editTask', props.task);
+	emit('editTask', taskInstance.value);
 }
 
 function viewLogsBtn() {
-	emit('viewLogs', props.task);
-}
-function viewNotesBtn(){
-	emit('viewNotes',props.task);
+	emit('viewLogs', taskInstance.value);
 }
 
-/* Toggle task details */
+function viewNotesBtn() {
+	emit('viewNotes', taskInstance.value);
+}
+
 function toggleTaskDetails() {
 	emit('toggleDetails', taskInstance.value.name);
 }
 
-/* Generic loading function for Confirmation Dialogs */
-async function loadConfirmationDialog(dialogRef) {
+// Confirmation dialog loader (shared)
+async function loadConfirmationDialog(dialogRef: any) {
 	const module = await import('../../components/common/ConfirmationDialog.vue');
 	dialogRef.value = module.default;
 }
 
 // Enable Task Dialog Logic
 const showEnablePrompt = ref(false);
-const enableDialog = ref();
+const enableDialog = ref<any>();
 const enabling = ref(false);
-
-async function showEnableDialog() {
-	await loadConfirmationDialog(enableDialog);
-	return new Promise((resolve) => {
-		showEnablePrompt.value = true;
-		const unwatch = watch(showEnablePrompt, (newValue) => {
-			if (!newValue) {
-				unwatch();
-				resolve(enableDialog.value === 'yes');
-			}
-		});
-	});
-}
-
-const enableYes = async () => {
-	enabling.value = true;
-	console.log('enabling schedule for:', taskInstance.value.name);
-	if (intervalId) {
-		clearInterval(intervalId);
-		intervalId = undefined;
-	}
-	await myScheduler.enableSchedule(taskInstance.value);
-	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
-	updateShowEnablePrompt(false);
-	enabling.value = false;
-};
-
-const enableNo = () => {
-	console.log('leaving task schedule as is');
-	updateShowEnablePrompt(false);
-};
-
-const updateShowEnablePrompt = (newVal) => {
-	showEnablePrompt.value = newVal;
-};
 
 // Disable Task Dialog Logic
 const showDisablePrompt = ref(false);
-const disableDialog = ref();
+const disableDialog = ref<any>();
 const disabling = ref(false);
 
-async function showDisableDialog() {
-	await loadConfirmationDialog(disableDialog);
-	return new Promise((resolve) => {
-		showDisablePrompt.value = true;
-		const unwatch = watch(showDisablePrompt, (newValue) => {
-			if (!newValue) {
-				unwatch();
-				resolve(disableDialog.value === 'yes');
-			}
-		});
-	});
-}
+const enableYes = async () => {
+	enabling.value = true;
+	await myScheduler.enableSchedule(taskInstance.value);
+	await refreshAll();
+	enabling.value = false;
+	showEnablePrompt.value = false;
+};
+const enableNo = () => {
+	showEnablePrompt.value = false;
+};
+const updateShowEnablePrompt = (v: boolean) => {
+	showEnablePrompt.value = v;
+};
 
 const disableYes = async () => {
 	disabling.value = true;
-	console.log('disabling schedule for:', taskInstance.value.name);
-	if (intervalId) {
-		clearInterval(intervalId);
-		intervalId = undefined;
-	}
 	await myScheduler.disableSchedule(taskInstance.value);
-	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
-	updateShowDisablePrompt(false);
+	await refreshAll();
 	disabling.value = false;
+	showDisablePrompt.value = false;
 };
-
 const disableNo = () => {
-	console.log('leaving task schedule as is');
-	updateShowDisablePrompt(false);
+	showDisablePrompt.value = false;
+};
+const updateShowDisablePrompt = (v: boolean) => {
+	showDisablePrompt.value = v;
 };
 
-const updateShowDisablePrompt = (newVal) => {
-	showDisablePrompt.value = newVal;
-};
+const scheduleEnabledModel = computed({
+	get: () => taskInstance.value.schedule.enabled,
+	set: (intendedValue: boolean) => {
+		// reuse your existing logic
+		toggleTaskSchedule(intendedValue);
+	},
+});
 
-async function toggleTaskSchedule(event) {
-	const intendedValue = !taskInstance.value.schedule.enabled;
-	event.preventDefault();
+async function toggleTaskSchedule(intendedValue: boolean) {
+	if (taskInstance.value.schedule.intervals.length === 0) return;
 
 	if (intendedValue) {
-		const confirmed = await showEnableDialog();
-		if (confirmed) {
-			enableYes().then(() => {
-				taskInstance.value.schedule.enabled = true;
-			});
-		}
+		await loadConfirmationDialog(enableDialog);
+		showEnablePrompt.value = true;
 	} else {
-		const confirmed = await showDisableDialog();
-		if (confirmed) {
-			disableYes().then(() => {
-				taskInstance.value.schedule.enabled = false;
-			});
-		}
+		await loadConfirmationDialog(disableDialog);
+		showDisablePrompt.value = true;
 	}
 }
 
-/* Getting Task Status + Last Run Time */
+
+// Lifecycle: hook into live status engine + optional progress polling
+let progressIntervalId: number | undefined;
+
 onMounted(async () => {
-	await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
-	await fetchLatestLog(taskInstance.value);
+	// await refreshAll();
+	start();
 
-	intervalId = setInterval(async () => {
-		try {
-			await updateTaskStatus(taskInstance.value, taskInstance.value.schedule.enabled);
-			await fetchLatestLog(taskInstance.value);
-		} catch (error) {
-			console.error('Polling failed:', error);
-			clearInterval(intervalId);
-		}
-	}, 1500);
-
-	onUnmounted(() => {
-		if (intervalId) {
-			clearInterval(intervalId);
-		}
-	});
+	await updateProgress(taskInstance.value);
+	progressIntervalId = window.setInterval(() => {
+		updateProgress(taskInstance.value);
+	// }, 1500);
+	}, 5000);
 });
 
-
-// Ensure updates when taskInstance changes
-watch(taskInstance, async (newTask, oldTask) => {
-	if (!newTask) {
-		if (intervalId) {
-			clearInterval(intervalId);
-			intervalId = undefined;
-		}
-		return;
-	}
-	try {
-		await updateTaskStatus(newTask, newTask.schedule.enabled);
-		await fetchLatestLog(newTask);
-	} catch (error: any) {
-		console.error(`Error updating task status:`, error);
-		if (error.stderr && error.stderr.includes('Unit could not be found')) {
-			if (intervalId) {
-				clearInterval(intervalId);
-				intervalId = undefined;
-			}
-		}
+onUnmounted(() => {
+	stop();
+	if (progressIntervalId) {
+		clearInterval(progressIntervalId);
+		progressIntervalId = undefined;
 	}
 });
 
-
-async function updateTaskStatus(task, timerEnabled) {
-	try {
-		let status;
-		if (timerEnabled) {
-			status = await myScheduler.getTimerStatus(task);
-		} else {
-			status = await myScheduler.getServiceStatus(task);
-		}
-		taskStatus.value = status.toString();
-	} catch (error) {
-		console.error(`Failed to get status for ${task.name}:`, error);
-		taskStatus.value = 'Error';
-		if (intervalId) {
-			clearInterval(intervalId);
-			intervalId = undefined;
-		}
-	}
+// Expose for parent components (keeps old API working)
+async function updateTaskStatus() {
+	await refreshAll();
 }
-
-async function fetchLatestLog(task) {
-	try {
-		const latestLog = await myTaskLog.getLatestEntryFor(task);
-		if (latestLog) {
-			// Update the latestTaskExecution to reflect the start time or output
-			if (latestLog.startDate) {
-				latestTaskExecution.value = latestLog.startDate;
-			} else {
-				latestTaskExecution.value = latestLog.output || "Task hasn't run yet.";
-			}
-		} else {
-			latestTaskExecution.value = "Task hasn't run yet.";
-		}
-	} catch (error) {
-		console.error("Failed to fetch logs:", error);
-		if (intervalId) {
-			clearInterval(intervalId);
-		}
-	}
+async function fetchLatestLog() {
+	await refreshAll();
 }
-
-
-// change color of status text
-function taskStatusClass(status) {
-	if (status) {
-		const statusLower = status.toLowerCase(); // Normalize casing
-		if (statusLower.includes('active') || statusLower.includes('starting') || statusLower.includes('completed')) {
-			return 'text-success';
-		} else if (statusLower.includes('inactive') || statusLower.includes('disabled')) {
-			return 'text-warning';
-		} else if (statusLower.includes('failed')) {
-			return 'text-danger';
-		} else if (statusLower.includes('no schedule found') || statusLower.includes('not scheduled')) {
-			return 'text-muted';
-		}
-	}
-	return '';
-}
-
-
-
 
 defineExpose({
 	updateTaskStatus,
 	fetchLatestLog,
+	updateProgress,
+	markManualRun,
+	isCompleted,
+	isFailed,
+	isInactive,
+	isRunning,
 });
 </script>

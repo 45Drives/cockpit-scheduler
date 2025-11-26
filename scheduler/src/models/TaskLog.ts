@@ -1,7 +1,34 @@
-import { legacy } from '@45drives/houston-common-lib';
+import { server, unwrap, Command } from '@45drives/houston-common-lib';
 import { formatTemplateName } from '../composables/utility';
+import { daemon } from '../utils/daemonClient';
 
-const { useSpawn, errorString } = legacy;
+const textDecoder = new TextDecoder('utf-8');
+
+async function runCommand(
+    argv: string[],
+    opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
+): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
+    const proc = await unwrap(
+        server.execute(new Command(argv, opts))
+    );
+
+    const rawStdout: any = proc.stdout;
+    const rawStderr: any = proc.stderr;
+
+    const stdout =
+        rawStdout instanceof Uint8Array
+            ? textDecoder.decode(rawStdout)
+            : String(rawStdout ?? '');
+
+    const stderr =
+        rawStderr instanceof Uint8Array
+            ? textDecoder.decode(rawStderr)
+            : String(rawStderr ?? '');
+
+    return { stdout, stderr, exitStatus: proc.exitStatus };
+}
+
+const errorString = (e: any) => e?.message ?? String(e);
 
 export class TaskExecutionLog {
     entries: TaskExecutionResult[];
@@ -10,28 +37,55 @@ export class TaskExecutionLog {
         this.entries = entries;
     }
 
-    async getEntriesFor(taskInstance, untilTime) {
+    async fullUnitNameForLogs(ti: TaskInstanceType): Promise<string> {
+        const templateName = formatTemplateName(ti.template.name);
+        const base = `houston_scheduler_${templateName}_${ti.name}`;
+        const scope = (ti as any).scope as ('user' | 'system' | undefined);
+
+        if (scope === 'user') {
+            const cockpitUser = await (window as any).cockpit.user();
+            const uid: number = cockpitUser?.id;
+            return `${base}_u${uid}`;
+        }
+        return base; // legacy/system
+    }
+
+    /**
+     * Get logs for a task.
+     * - If untilTime is falsy: return ALL logs for this unit.
+     * - If untilTime is truthy: return logs up to that time
+     */
+    async getEntriesFor(taskInstance, untilTime?: string) {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const templateName = formatTemplateName(taskInstance.template.name);
         const taskName = taskInstance.name;
 
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
+        const serviceUnit = `${fullTaskName}.service`;
+
         try {
+            // Show ALL logs for this unit by default
             if (!untilTime) {
-                console.log("No until time provided");
-                // Fallback to get the most recent log entries if no start time is available
-                const logCommand = ['journalctl', '-r', '-u', fullTaskName, '--no-pager', '--all', '-n', '1']; // Limit to the most recent log entry
-                const logState = useSpawn(logCommand, { superuser: 'try' });
-                const logResult = await logState.promise();
-                return logResult.stdout;
+                const logCommand = [
+                    'journalctl',
+                    '-u', serviceUnit,
+                    '--no-pager',
+                    '--all'
+                ];
+                const { stdout } = await runCommand(logCommand, { superuser: 'try' });
+                return (stdout || '').trim();
             }
 
-            const command = ['journalctl', '-u', fullTaskName, '--until', untilTime, '--no-pager', '--all'];
-            const state = useSpawn(command, { superuser: 'try' });
-            const result = await state.promise();
-            const taskLogData = result.stdout!.trim();
-            // console.log('taskLogData:', taskLogData);
-
+            // Optional: logs up to a specific time if desired
+            const command = [
+                'journalctl',
+                '-u', serviceUnit,
+                '--until', untilTime,
+                '--no-pager',
+                '--all'
+            ];
+            const { stdout } = await runCommand(command, { superuser: 'try' });
+            const taskLogData = (stdout || '').trim();
             return taskLogData;
         } catch (error) {
             console.error(errorString(error));
@@ -39,137 +93,114 @@ export class TaskExecutionLog {
         }
     }
 
-    //original logs function
-
-    //original logs function
-  /*   async getLatestEntryFor(taskInstance) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const taskName = taskInstance.name;
-
-        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
-
+    async getLatestEntryFor(taskInstance: TaskInstanceType) {
         try {
-            const execCommand = ['systemctl', 'show', fullTaskName, '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp'];
-            const execState = useSpawn(execCommand, { superuser: 'try' });
-            const execResult = await execState.promise();
+            const unit = await this.fullUnitNameForLogs(taskInstance);
+            const isUserScope = (taskInstance as any).scope === 'user';
 
-            const properties = Object.fromEntries(execResult.stdout!.split('\n').filter(line => line.includes('=')).map(line => line.split('=')));
-            const exitCode = properties['ExecMainStatus'] || '0';
-            let startTime = properties['ExecMainStartTimestamp'] || '';
-            let finishTime = properties['ExecMainExitTimestamp'] || '';
+            // --- DAEMON path (user units): avoid journalctl; parse show()
+            if (isUserScope) {
+                const templateName = formatTemplateName(taskInstance.template.name);
+                const st: any = await daemon.getStatus(templateName, taskInstance.name);
+                const show = String(st?.service || '');
 
-            let output = "";
-            if (startTime) {
-                const logCommand = ['journalctl', '-u', fullTaskName, '--since', startTime, '--no-pager', '--all'];
-                const logState = useSpawn(logCommand, { superuser: 'try' });
-                const logResult = await logState.promise();
-                output = logResult.stdout!;
-            } else {
-                // If no `ExecMainStartTimestamp`, fetch the latest "Starting" entry from journalctl.
-                const journalCommand = [
-                    'bash',
-                    '-c',
-                    `journalctl -u ${fullTaskName} --no-pager --output=short-full | grep "Starting" | tail -n 1 | awk '{print $1, $2, $3, $4}'`
-                ];
-                const journalState = useSpawn(journalCommand, { superuser: 'try' });
-                const journalResult = await journalState.promise();
-                const lastRun = journalResult.stdout!.trim();
-                startTime = lastRun;
-                const finishingCommand = [
-                    'bash',
-                    '-c',
-                    `journalctl -u ${fullTaskName} --no-pager --output=short-full | grep "Succeeded" | tail -n 1 | awk '{print $1, $2, $3, $4}'`
-                ];
-                const finishingState = useSpawn(finishingCommand, { superuser: 'try' });
-                const finishingResult = await finishingState.promise();
-                finishTime = finishingResult.stdout!.trim();
-                let logResult;
-                if(lastRun){
-                    const formattedLastRun = lastRun.replace(/^\w{3}\s|\s[A-Z]{3}$/g, '').trim();
-                     const logCommand = [
-                         'journalctl',
-                         '-u',
-                         fullTaskName,
-                         '--no-pager',
-                         '--all',
-                         '--since',
-                         formattedLastRun
-                     ];
+                const props = new Map(
+                    (show || '').split(/\r?\n/).map((line) => {
+                        const i = line.indexOf('=');
+                        return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : [line, ''];
+                    })
+                );
+                const rawResult = (props.get('Result') || '').toString().toLowerCase();
+                const exitCode = (rawResult === 'success') ? 0 : 1;
 
-                const logState = useSpawn(logCommand, { superuser: 'try' });
-                logResult = await logState.promise();
-                }
-      
+                const startTime = props.get('ActiveEnterTimestamp') || '';
+                const finishTime =
+                    props.get('InactiveEnterTimestamp') ||
+                    props.get('ExecMainExitTimestamp') ||
+                    '';
 
-                if (logResult) {
-                    output = logResult.stdout;
-                    
-                } else {
-                    output = "No executions found.";
-                }
-                
+                const output = '';
+                return new TaskExecutionResult(exitCode, output, startTime, finishTime);
             }
-            const latestEntry = new TaskExecutionResult(exitCode, output, startTime, finishTime);
-            // console.log('latest entry:', latestEntry);
-            return latestEntry;
-        } catch (error) {
-            console.error(errorString(error));
-            return false;
-        }
-    } */
 
-    async getLatestEntryFor(taskInstance) {
-        const houstonSchedulerPrefix = 'houston_scheduler_';
-        const templateName = formatTemplateName(taskInstance.template.name);
-        const taskName = taskInstance.name;
-        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskName}`;
+            // --- LEGACY path (system units)
+            const showCmd = [
+                'systemctl', 'show', `${unit}.service`,
+                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp',
+                '--no-pager',
+            ];
+            const showRes = await runCommand(showCmd, { superuser: 'try' });
+            const kv = Object.fromEntries(
+                (showRes.stdout || '')
+                    .split('\n')
+                    .filter((l: string) => l.includes('='))
+                    .map((l: string) => l.split('=', 2))
+            );
 
-        try {
-            const execCommand = ['systemctl', 'show', fullTaskName, '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp'];
-            const execState = useSpawn(execCommand, { superuser: 'try' });
-            const execResult = await execState.promise();
+            const rawStatus = kv['ExecMainStatus'];
+            const exitCode = Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0;
 
-            const properties = Object.fromEntries(execResult.stdout!.split('\n').filter(line => line.includes('=')).map(line => line.split('=')));
-            const exitCode = properties['ExecMainStatus'] || '0';
-            let startTime = properties['ExecMainStartTimestamp'] || '';
-            let finishTime = properties['ExecMainExitTimestamp'] || '';
+            const startTime =
+                kv['ExecMainStartTimestamp'] ||
+                kv['ActiveEnterTimestamp'] ||
+                '';
 
-            let output = "";
+            const finishTime =
+                kv['ExecMainExitTimestamp'] ||
+                kv['InactiveEnterTimestamp'] ||
+                '';
+
+            let output = '';
             if (startTime) {
-                const logCommand = ['journalctl', '-u', fullTaskName, '--since', startTime, '--no-pager', '--all'];
-                const logState = useSpawn(logCommand, { superuser: 'try' });
-                const logResult = await logState.promise();
-                output = logResult.stdout || '';
-
-                // **REMOVE Journalctl Metadata Header**
-                output = output.split('\n').filter(line => !line.startsWith('-- Logs begin at')).join('\n');
+                const logCmd = [
+                    'journalctl', '-q', '--output=cat',
+                    '-u', `${unit}.service`,
+                    '--since', startTime,
+                    '--no-pager', '--all',
+                ];
+                try {
+                    const logRes = await runCommand(logCmd, { superuser: 'try' });
+                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                } catch (e) {
+                    const msg = errorString(e);
+                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
+                        console.warn('journalctl failed:', msg);
+                    }
+                }
             }
 
             return new TaskExecutionResult(exitCode, output, startTime, finishTime);
-        } catch (error) {
-            console.error(errorString(error));
+        } catch (e) {
+            console.warn('getLatestEntryFor failed:', errorString(e));
             return false;
         }
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
-        const taskLog = new TaskExecutionLog([]);
+        const latestEntry = await this.getLatestEntryFor(taskInstance);
 
-        // Get the latest entry for the task
-        const latestEntry = await taskLog.getLatestEntryFor(taskInstance);
-
-        if (!latestEntry || !latestEntry.finishDate) {
-            return false;  // No previous run or no finish date
+        if (!latestEntry) {
+            return false;
         }
 
-        const finishDate = new Date(latestEntry.finishDate).getTime();
+        // Only treat it as "completed" if it exited successfully
+        if (typeof latestEntry.exitCode === 'number' && latestEntry.exitCode !== 0) {
+            return false;
+        }
+
+        const tsSource = latestEntry.finishDate || latestEntry.startDate;
+        if (!tsSource) {
+            return false;
+        }
+
+        const finishDate = new Date(tsSource).getTime();
+        if (!Number.isFinite(finishDate)) {
+            return false;
+        }
+
         const currentTime = Date.now();
+        const threshold = 10 * 60 * 1000; // 10 minutes
 
-        // Define a threshold for "recently completed" (e.g., 10 minutes in milliseconds)
-        const threshold = 10 * 60 * 1000;
-
-        // Check if the task finished within the threshold
         return (currentTime - finishDate) <= threshold;
     }
 

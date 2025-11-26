@@ -60,7 +60,7 @@
                 <button @click="changeMonth(-1)" class="btn btn-secondary">
                     Prev
                 </button>
-                <span class="text-lg font-semibold text-default">{{ monthNames[currentMonth] }} {{
+                <span class="text-lg font-semibold text-default text-center">{{ monthNames[currentMonth] }} {{
                     currentYear
                     }}</span>
                 <button @click="changeMonth(1)" class="btn btn-secondary">
@@ -118,29 +118,11 @@ const hourValue = ref(schedule.value.startDate.getHours());
 const minuteValue = ref(schedule.value.startDate.getMinutes());
 const yearValue = ref(schedule.value.startDate.getFullYear());
 
-/// Calendar logic
-// const today = new Date();
-// const currentMonth = ref(today.getMonth());
-// const currentYear = ref(today.getFullYear());
+// Calendar logic
 const currentMonth = ref(schedule.value.startDate.getMonth());
 const currentYear = ref(schedule.value.startDate.getFullYear());
 
 // Update startDate when inputs change and check for valid day/month combos
-// const updateStartDate = () => {
-//     let day = dayValue.value;
-//     const month = monthValue.value - 1; // JS months are 0-indexed
-//     const year = yearValue.value;
-
-//     if (schedule.value.repeatFrequency === 'month') {
-//         const daysInMonth = new Date(year, month + 1, 0).getDate();
-//         if (day > daysInMonth) {
-//             day = daysInMonth;
-//             dayValue.value = day; // Adjust UI to show new valid day
-//         }
-//     }
-
-//     schedule.value.startDate = new Date(year, month, day, hourValue.value, minuteValue.value);
-// };
 const updateStartDate = () => {
     let day = dayValue.value;
     const month = monthValue.value - 1;

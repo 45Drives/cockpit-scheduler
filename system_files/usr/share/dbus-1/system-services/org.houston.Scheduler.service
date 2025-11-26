@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.houston.Scheduler
+Exec=/usr/bin/python3 /usr/local/libexec/45drives-schedulerd
+User=root
+SystemdService=org.45drives.Scheduler.service

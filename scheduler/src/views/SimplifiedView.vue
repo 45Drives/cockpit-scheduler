@@ -1,6 +1,5 @@
 <template>
-    <!-- mirror host: transparent bg, fill height -->
-    <div class="h-full flex flex-col bg-well text-default p-2">
+    <div class="h-full flex flex-col bg-well text-default">
         <!-- Toolbar (same as BackUpListView) -->
         <div class="flex flex-row items-center justify-between font-bold">
             <div class="flex items-center justify-start">
@@ -58,7 +57,7 @@
                         </thead>
                         <tbody>
                             <tr v-for="row in displayRows" :key="row.id"
-                                class="border-b border-default bg-default hover:bg-well">
+                                class="border-b border-default bg-default hover:bg-well text-left">
                                 <td class="px-3 py-2 align-top">
                                     <div class="font-medium">{{ row.name }}</div>
                                 </td>
@@ -66,7 +65,7 @@
                                     <span
                                         class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
                                         :title="row.type">
-                                        {{ row.type }}
+                                        {{ row.type }} (Scope: {{ row.scope }})
                                     </span>
                                 </td>
                                 <td class="px-3 py-2 align-top">
@@ -108,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onActivated, onUnmounted, onMounted, watch } from 'vue';
+import { computed, ref, onActivated, onUnmounted, onMounted, watch, provide } from 'vue';
 import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
@@ -238,25 +237,29 @@ function isBlank(v: any) {
 function formatRsyncDestination(t: any) {
     const host = getHost(t);
     const path = getTargetPath(t);
-    if (isBlank(host)) {
-        // no host → just show the path (local/undefined remote)
-        return isBlank(path) ? '—' : String(path);
-    }
+    if (isBlank(host)) return isBlank(path) ? '—' : String(path);
+
     const user = getUser(t);
     const portNum = Number(getPort(t));
     const userPart = isBlank(user) ? '' : `${user}@`;
-    const portPart = Number.isFinite(portNum) && portNum > 0 ? `:${portNum}` : '';
+    const includePort = Number.isFinite(portNum) && portNum > 0 && portNum !== 22; // ← only show non-22 ports
+    const portPart = includePort ? `:${portNum}` : '';
     const pathPart = isBlank(path) ? '' : `:${path}`;
+
     return `${userPart}${host}${portPart}${pathPart}`;
 }
 
 function formatCloudDestination(t: any) {
-    const remote = getRemoteName(t);
-    const path = getTargetPath(t);
-    if (isBlank(remote)) return isBlank(path) ? '—' : String(path);
+    const remote = String(getRemoteName(t) ?? '').trim();
+    const rawPath = String(getTargetPath(t) ?? '').trim();
+
+    if (isBlank(remote)) return isBlank(rawPath) ? '—' : rawPath;
+
+    // If path already starts with "<remote>:", strip that prefix
+    let path = rawPath.startsWith(`${remote}:`) ? rawPath.slice(remote.length + 1) : rawPath;
+
     return `${remote}${isBlank(path) ? '' : `:${path}`}`;
 }
-
 function detailsFor(t: any) {
     const source = getSource(t);
     if (isRsync(t)) {
@@ -323,6 +326,7 @@ const rows = computed(() => {
             schedule: getSchedule(t),
             lastRun: live.lastRunFor(t) ?? getLastRun(t),
             raw: t,
+            scope: t.scope
         }));
 });
 
@@ -365,7 +369,9 @@ async function runNow(t: any) {
 
 async function edit(t: any) {
     draftStore.setDraft(t, 'edit');
-    router.push({ name: 'SimpleEditTask' });
+    // router.push({ name: 'SimpleEditTask' });
+    router.push({ name: 'SimpleEditTask', query: { session: t.id || t.name } });
+
 }
 
 async function remove(t: any) {
@@ -378,7 +384,7 @@ async function remove(t: any) {
         pushNotification(new Notification('Task Removed', 'Backup task deleted.', 'success', 6000));
         await myScheduler.loadTaskInstances();
     } catch (e: any) {
-        pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 8000));
+        pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 6000));
     } finally {
         loading.value = false;
         fetching.value = false;
@@ -389,6 +395,8 @@ async function remove(t: any) {
  */
 async function openAdd() {
     draftStore.clear();
-    router.push({ name: 'SimpleAddTask' });
+    // router.push({ name: 'SimpleAddTask' });
+    const session = Date.now().toString(); // or nanoid/uuid
+    router.push({ name: 'SimpleAddTask', query: { session } });
 }
 </script>

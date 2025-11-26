@@ -32,7 +32,7 @@
                                     <div class="flex flex-row justify-between items-center">
                                         <label class="block text-sm leading-6 text-default">Hour</label>
                                         <InfoTile class="ml-1"
-                                            title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Hyphen to specify a range of values." />
+                                            title="Use * for every value. Use A/N for repeats (e.g., 0/4 = every 4 hours starting at 00). Use commas for lists (e.g., 0,15,30). Use double periods for ranges (e.g., 8..17)." />
                                     </div>
                                     <ExclamationCircleIcon v-if="hourErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                 </div>
@@ -41,14 +41,14 @@
                                     'my-1 block w-full text-default input-textlike bg-default',
                                     hourErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                     ]"
-                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)" />
+                                    title="Use * for every value. Use A/N for repeats (e.g., 0/4 = every 4 hours starting at 00). Use commas for lists (e.g., 0,15,30). Use double periods for ranges (e.g., 8..17)." />
                             </div>
                             <div name="minute">
                                 <div class="flex flex-row justify-between items-center">
                                     <div class="flex flex-row justify-between items-center">
                                         <label class="block text-sm leading-6 text-default">Minute</label>
                                         <InfoTile class="ml-1"
-                                            title="Use * for Every Value, */N for Every Nth Value, Commas to specify separate values, Hyphen to specify a range of values." />
+                                            title="Use * for every value. Use A/N for repeats (e.g., 0/4 = every 4 hours starting at 00). Use commas for lists (e.g., 0,15,30). Use double periods for ranges (e.g., 8..17)." />
                                     </div>
                                     <ExclamationCircleIcon v-if="minuteErrorTag" class="mt-1 w-5 h-5 text-danger" />
                                 </div>
@@ -57,7 +57,7 @@
                                     'my-1 block w-full text-default input-textlike bg-default',
                                     minuteErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                                     ]"
-                                    title="Use asterisk (*) for all values, hyphen (-) for ranges (eg. 2-7), and commas for lists (eg. 2,4,7)" />
+                                    title="Use * for every value. Use A/N for repeats (e.g., 0/4 = every 4 hours starting at 00). Use commas for lists (e.g., 0,15,30). Use double periods for ranges (e.g., 8..17)." />
                             </div>
 
                             <div name="date-data" class="col-span-2 grid grid-cols-3 gap-2">
@@ -133,8 +133,7 @@
                                 </table>
                             </div>
                             <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
-                                <button name="clearFields" @click.stop="clearFields()"
-                                    class="btn btn-danger h-min">
+                                <button name="clearFields" @click.stop="clearFields()" class="btn btn-danger h-min">
                                     Clear Interval
                                 </button>
                                 <button v-if="selectedIndex !== undefined" name="updateInterval"
@@ -160,8 +159,7 @@
                         class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
                         <div @click="clearSelectedInterval()">
                             <div class="flex flex-row justify-between">
-                                <label
-                                    class="block text-sm font-medium leading-6 text-default whitespace-nowrap">
+                                <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">
                                     Current Intervals</label>
                             </div>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2">
@@ -196,6 +194,12 @@
                         <button @click.stop="closeBtn()" id="close-add-schedule-btn" name="close-add-schedule-btn"
                             class="btn btn-danger h-fit w-full">Close</button>
                     </div>
+                    <!-- Delete Schedule -->
+                    <button v-if="props.mode === 'edit'" type="button" class="btn btn-danger h-fit w-fit"
+                        @click="deleteScheduleBtn()" :disabled="deletingSchedule">
+                        <span v-if="deletingSchedule">Deleting…</span>
+                        <span v-else>Delete Schedule</span>
+                    </button>
                     <div class="button-group-row">
                         <button disabled v-if="savingSchedule && hasIntervals" id="adding-schedule-btn" type="button"
                             class="btn btn-primary h-fit w-full">
@@ -234,6 +238,15 @@
             :confirmYes="confirmCancel" :confirmNo="cancelCancel" :operation="'canceling'"
             :operating="cancelingAddTask" />
     </div>
+
+    <div v-if="showDeleteConfirmation">
+        <component :is="deleteConfirmationComponent" @close="updateShowDeleteConfirmation"
+            :showFlag="showDeleteConfirmation" :title="'Delete Schedule'"
+            :message="'This will disable the timer and delete the schedule files. The task itself will remain and can still be run manually. Proceed?'"
+            :confirmYes="confirmDeleteSchedule" :confirmNo="cancelDeleteSchedule" :operation="'deleting'"
+            :operating="deletingSchedule" />
+    </div>
+
 
 </template>
 <script setup lang="ts">
@@ -418,122 +431,176 @@ function clearAllErrors() {
     yearErrorTag.value = false;
 }
 
-function isOnCalendarExpression(value, type) {
-    // Check for empty value
-    if (value.trim() === '') {
-        return false;
+function normalizeField(raw: string, kind: 'min' | 'hour' | 'day' | 'month' | 'year'): string {
+    let v = (raw ?? '').trim();
+    if (v === '') return '*';
+
+    // 1) Normalize cron-style "*/N" -> "0/N"
+    v = v.replace(/^\*\/(\d+)$/g, '0/$1');
+
+    // 2) Normalize hyphen ranges "a-b" -> "a..b" (systemd uses '..')
+    v = v.replace('-', '..');
+
+    // 3) Trim spaces around comma lists
+    if (v.includes(',')) v = v.split(',').map(s => s.trim()).join(',');
+
+    return v;
+}
+
+function inRange(n: number, min: number, max: number) {
+    return Number.isInteger(n) && n >= min && n <= max;
+}
+
+function validateSystemdField(value: string, kind: 'min' | 'hour' | 'day' | 'month' | 'year'): boolean {
+    const v = (value ?? '').trim();
+    if (v === '') return false;
+    if (v === '*') return true;
+
+    // Accept comma-separated unions of valid atoms
+    if (v.includes(',')) {
+        return v.split(',').every(part => validateSystemdField(part, kind));
     }
 
-    // Function to validate the format with steps (e.g., "*/2")
-    const validateStepFormat = (stepValue) => {
-        const stepNumber = Number(stepValue);
-        return !isNaN(stepNumber) && stepNumber > 0;
-    };
-
-    // Check for asterisk, steps like "*/3", or named day steps like "Mon/2"
-    if (value === '*') {
-        return true;
-    } else if (value.includes('/') && type !== 'year' && type !== 'month') {
-        const parts = value.split('/');
-        if (parts.length === 2) {
-            return validateStepFormat(parts[1]);
-        }
-        return false;
-    }
-
-    // Check for lists like "1,2,3"
-    if (value.includes(',')) {
-        const listValues = value.split(',').map(v => v.trim());
-        return listValues.every(val => isOnCalendarExpression(val, type)); // Recursive call to handle each value in list
-    }
-
-    // Check for ranges like "1-5" or "1..5"
-    const rangeDelimiter = value.includes('..') ? '..' : '-';
-    if (value.includes(rangeDelimiter)) {
-        const rangeParts = value.split(rangeDelimiter).map(v => v.trim());
-        if (rangeParts.length !== 2 || rangeParts.some(rp => isNaN(Number(rp)))) {
-            return false;
-        }
-        const range = rangeParts.map(Number);
-        // Adjust these ranges based on the type
-        let [min, max] = [0, 59]; // Defaults for minutes
-        if (type === 'hour') [min, max] = [0, 23];
-        else if (type === 'day') [min, max] = [1, 31];
-        else if (type === 'month') [min, max] = [1, 12];
-        else if (type === 'year') [min, max] = [1970, 9999];
-        return range[0] >= min && range[0] <= max && range[1] >= min && range[1] <= max && range[0] < range[1];
-    }
-
-    // Check for single numbers or named days (for dayOfWeek)
-    if (type !== 'dayOfWeek') {
-        const number = Number(value);
-        if (!isNaN(number)) {
-            // Adjust these ranges based on the type
-            let [min, max] = [0, 59]; // Defaults for minutes
-            if (type === 'hour') [min, max] = [0, 23];
-            else if (type === 'day') [min, max] = [1, 31];
-            else if (type === 'month') [min, max] = [1, 12];
-            return number >= min && number <= max;
+    // Accept ranges "a..b" (not "a-b")
+    const range = v.match(/^(\d+)\.\.(\d+)$/);
+    if (range) {
+        const a = Number(range[1]), b = Number(range[2]);
+        if (a >= b) return false;
+        switch (kind) {
+            case 'min': return inRange(a, 0, 59) && inRange(b, 0, 59);
+            case 'hour': return inRange(a, 0, 23) && inRange(b, 0, 23);
+            case 'day': return inRange(a, 1, 31) && inRange(b, 1, 31);
+            case 'month': return inRange(a, 1, 12) && inRange(b, 1, 12);
+            case 'year': return inRange(a, 1970, 9999) && inRange(b, 1970, 9999);
         }
     }
+
+    // Accept repetitions "A/N" (start/step), not "*/N"
+    const rep = v.match(/^(\d+)\/(\d+)$/);
+    if (rep) {
+        const start = Number(rep[1]), step = Number(rep[2]);
+        if (step <= 0) return false;
+        switch (kind) {
+            case 'min': return inRange(start, 0, 59);
+            case 'hour': return inRange(start, 0, 23);
+            case 'day': return inRange(start, 1, 31);
+            case 'month': return inRange(start, 1, 12);
+            case 'year': return inRange(start, 1970, 9999);
+        }
+    }
+
+    // Accept single integers
+    if (/^\d+$/.test(v)) {
+        const n = Number(v);
+        switch (kind) {
+            case 'min': return inRange(n, 0, 59);
+            case 'hour': return inRange(n, 0, 23);
+            case 'day': return inRange(n, 1, 31);
+            case 'month': return inRange(n, 1, 12);
+            case 'year': return inRange(n, 1970, 9999);
+        }
+    }
+
     return false;
 }
+
+
+const deletingSchedule = ref(false);
+const showDeleteConfirmation = ref(false);
+const deleteConfirmationComponent = ref();
+
+async function loadDeleteConfirmationComponent() {
+    const module = await import('../common/ConfirmationDialog.vue');
+    deleteConfirmationComponent.value = module.default;
+}
+
+async function deleteScheduleBtn() {
+    await loadDeleteConfirmationComponent();
+    showDeleteConfirmation.value = true;
+}
+
+const updateShowDeleteConfirmation = (newVal: boolean) => {
+    showDeleteConfirmation.value = newVal;
+};
+
+const confirmDeleteSchedule: ConfirmationCallback = async () => {
+    try {
+        deletingSchedule.value = true;
+
+        const ok = await myScheduler.deleteSchedule(thisTask.value);
+        if (ok) {
+            pushNotification(new Notification(
+                'Schedule Removed',
+                `The schedule for "${thisTask.value.name}" has been removed.`,
+                'success',
+                6000
+            ));
+        } else {
+            pushNotification(new Notification(
+                'Delete Failed',
+                `Failed to remove the schedule for "${thisTask.value.name}". Check logs for details.`,
+                'error',
+                6000
+            ));
+        }
+
+        // Close modal and refresh list so the toggle/labels update everywhere
+        updateShowDeleteConfirmation(false);
+        showScheduleWizard.value = false;
+        showTaskWizard.value = false;
+
+        loading.value = true;
+        await myScheduler.loadTaskInstances();
+        loading.value = false;
+    } finally {
+        deletingSchedule.value = false;
+    }
+};
+
+const cancelDeleteSchedule: ConfirmationCallback = async () => {
+    updateShowDeleteConfirmation(false);
+};
+
 
 function validateFields(interval) {
     clearAllErrors();
 
-    // Validate hour
-    if (!isOnCalendarExpression(interval.hour.value, 'hour')) {
-        hourErrorTag.value = true;
-        errorList.value.push("Hour value is invalid.");
-    }
+    // Keep originals for nudges before we normalize
+    const origHour = interval.hour.value ?? '';
+    const origMinute = interval.minute.value ?? '';
+    const origDay = interval.day.value ?? '';
 
-    // Validate minute
-    if (!isOnCalendarExpression(interval.minute.value, 'minute')) {
-        minuteErrorTag.value = true;
-        errorList.value.push("Minute value is invalid.");
-    }
+    // Normalize in-place so the UI reflects corrections like "*/4" -> "0/4"
+    interval.hour.value = normalizeField(interval.hour.value, 'hour');
+    interval.minute.value = normalizeField(interval.minute.value, 'min');
+    interval.day.value = normalizeField(interval.day.value, 'day');
+    interval.month.value = normalizeField(interval.month.value, 'month');
+    interval.year.value = normalizeField(interval.year.value, 'year');
 
-    // Validate day
-    if (!isOnCalendarExpression(interval.day.value, 'day')) {
-        dayErrorTag.value = true;
-        errorList.value.push("Day value is invalid.");
-    }
+    // Nudges for cron-style step syntax the user typed
+    nudgeIfCronStep(origHour, 'hour');
+    nudgeIfCronStep(origMinute, 'minute');
+    nudgeIfCronStep(origDay, 'day');
 
-    // Validate month
-    if (!isOnCalendarExpression(interval.month.value, 'month')) {
-        monthErrorTag.value = true;
-        errorList.value.push("Month value is invalid.");
-    }
+    // Validate against systemd-only rules
+    if (!validateSystemdField(interval.hour.value, 'hour')) { hourErrorTag.value = true; errorList.value.push('Hour must be *, A, A..B, or A/N (e.g., 0/4).'); }
+    if (!validateSystemdField(interval.minute.value, 'min')) { minuteErrorTag.value = true; errorList.value.push('Minute must be *, A, A..B, or A/N (e.g., 0/15).'); }
+    if (!validateSystemdField(interval.day.value, 'day')) { dayErrorTag.value = true; errorList.value.push('Day must be *, A, A..B, or A/N.'); }
+    if (!validateSystemdField(interval.month.value, 'month')) { monthErrorTag.value = true; errorList.value.push('Month must be *, A, A..B, or list (1..12).'); }
+    if (!validateSystemdField(interval.year.value, 'year')) { yearErrorTag.value = true; errorList.value.push('Year must be *, a year number, A..B, or list.'); }
 
-    // Validate year
-    if (!isOnCalendarExpression(interval.year.value, 'year')) {
-        yearErrorTag.value = true;
-        errorList.value.push("Year value is invalid.");
-    }
-
-    // Print out errorList or do whatever you need with it
     if (errorList.value.length > 0) {
-        // Handle errors
-        console.log('Validation errors:', errorList);
-        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 6000));
+        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 6000));
         return false;
-    } else {
-        // No errors, continue with processing
-        return true;
     }
+    return true;
 }
 
 const selectedInterval = ref<TaskScheduleIntervalType>();
 const selectedIndex = ref<number>();
 function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
     selectedInterval.value = interval;
-    // Object.assign(newInterval, JSON.parse(JSON.stringify(interval)));
     selectedIndex.value = index;
-  //  console.log('selectedInterval (selectionMethod):', selectedInterval.value);
-    // console.log('selected interval for editing:', interval);
-  //  console.log('selectedIndex (selectionMethod):', selectedIndex.value);
-    // clearFields();
     editSelectedInterval(selectedInterval.value);
 }
 
@@ -603,29 +670,34 @@ async function showConfirmationDialog() {
     console.log('Showing confirmation dialog...');
 }
 
-const confirmScheduleTask : ConfirmationCallback = async () => {
-    console.log('Saving and scheduling task now...');
-   
+const confirmScheduleTask: ConfirmationCallback = async () => {
     savingSchedule.value = true;
-  //  console.log('task:', thisTask.value);
-    if (props.mode == 'new') {
-        await myScheduler.registerTaskInstance(thisTask.value);
-        pushNotification(new Notification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 6000));
-    } else {
-        await myScheduler.updateSchedule(thisTask.value);
-        pushNotification(new Notification('Schedule Save Successful', `Schedule has been updated.`, 'success', 6000));
-    }
-    
-    updateShowSaveConfirmation(false);
-   
-    savingSchedule.value = false;
-    showScheduleWizard.value = false;
-    showTaskWizard.value = false;
+    try {
+        // ensure we attach a plain schedule object to the task
+        thisTask.value.schedule = JSON.parse(JSON.stringify(newSchedule));
 
-    loading.value = true;
-    await myScheduler.loadTaskInstances();
-    loading.value = false;
-}
+        if (props.mode === 'new') {
+            await myScheduler.registerTaskInstance(thisTask.value);
+            pushNotification(new Notification('Task + Schedule Saved', 'Task and schedule have been saved.', 'success', 6000));
+        } else {
+            await myScheduler.updateSchedule(thisTask.value);
+            pushNotification(new Notification('Schedule Saved', 'Schedule has been updated.', 'success', 6000));
+        }
+
+        updateShowSaveConfirmation(false);
+        showScheduleWizard.value = false;
+        showTaskWizard.value = false;
+
+        loading.value = true;
+        try { await myScheduler.loadTaskInstances(); } finally { loading.value = false; }
+
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', String(e?.message || e), 'error', 6000));
+    } finally {
+        savingSchedule.value = false;
+    }
+};
+
 
 const cancelScheduleTask : ConfirmationCallback = async () => {
     updateShowSaveConfirmation(false);
@@ -641,21 +713,37 @@ async function saveScheduleBtn() {
     if (localIntervals.value.length < 1) {
         pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 6000));
     } else {
-      //  console.log('intervals before (saveBtn):', intervals.value);
-      //  console.log('localIntervals (saveBtn):', localIntervals.value);
-        
-        intervals.value = [...localIntervals.value];
-        intervals.value.forEach(interval => {
-            newSchedule.intervals.push(interval);
+
+        // Normalize all intervals once more prior to save
+        const cleaned = localIntervals.value.map(i => {
+            const copy = JSON.parse(JSON.stringify(i)) as TaskScheduleIntervalType;
+            copy.hour!.value = normalizeField(copy.hour!.value, 'hour');
+            copy.minute!.value = normalizeField(copy.minute!.value, 'min');
+            copy.day!.value = normalizeField(copy.day!.value, 'day');
+            copy.month!.value = normalizeField(copy.month!.value, 'month');
+            copy.year!.value = normalizeField(copy.year!.value, 'year');
+            return copy;
         });
-      //  console.log('intervals after (saveBtn):', intervals.value);
+
+        newSchedule.intervals = [];                // clear first to avoid duplicates across edits
+        newSchedule.intervals.push(...cleaned);
         thisTask.value.schedule = newSchedule;
-      //  console.log('schedule to save (saveBtn):', newSchedule);
-      //  console.log('task to save (saveBtn):', thisTask.value);
 
         await showConfirmationDialog();
     }
 }
+
+function nudgeIfCronStep(raw: string, fieldLabel: string) {
+    if (/^\*\/\d+$/.test((raw ?? '').trim())) {
+        pushNotification(new Notification(
+            'Adjusted Step Syntax',
+            `Converted "${raw}" to systemd's "start/step" form for ${fieldLabel} (e.g., 0/4).`,
+            'info',
+            5000
+        ));
+    }
+}
+
 
 watch(selectedPreset, (newVal, oldVal) => {
     switch (selectedPreset.value) {
@@ -707,8 +795,6 @@ function forceUpdateCalendar() {
 
 onMounted(() => {
     console.log('mode (onMounted):', props.mode);
-    // clearFields();
-    // clearAllErrors();
     
   //  console.log('task data (onMounted)', props.task);
     if (props.mode == 'new') {

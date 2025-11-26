@@ -1,5 +1,9 @@
-:root {
-  /* fallback (same as default) */
+/* =====================
+   Design tokens (simple-mode only)
+   ===================== */
+
+/* Base tokens for simple mode */
+.simple-mode {
   --btn-primary-bg: #D92B2F;
   --btn-primary-border: #D92B2F;
   --btn-primary-hover-bg: #b02428;
@@ -11,30 +15,63 @@
   --btn-secondary-hover-border: #821b1f;
 
   --checkbox-border: #737373;
-  --checkbox-checked-border: #D92B2F;
-  --checkbox-checked-bg: #b02428;
   --outline-color: black;
-
   --wizard-glow-color: rgba(255, 255, 255, 0.7);
+
+  --checkbox-checked-border: var(--btn-primary-border);
+  --checkbox-checked-bg: var(--btn-primary-bg);
+
+  --row-hover-bg: rgba(0, 0, 0, 0.03);
+  --row-selected-bg: color-mix(in srgb, var(--btn-primary-bg) 12%, transparent);
+
+  --btn-success-bg: #22C55E;
+  --btn-success-border: #22C55E;
+  --btn-success-hover-bg: #16A34A;
+  --btn-success-hover-border: #16A34A;
 }
 
-.theme-default {
-  --btn-primary-bg: #D92B2F;
-  --btn-primary-border: #D92B2F;
-  --btn-primary-hover-bg: #b02428;
-  --btn-primary-hover-border: #b02428;
-
-  --btn-secondary-bg: #a02226;
-  --btn-secondary-border: #a02226;
-  --btn-secondary-hover-bg: #821b1f;
-  --btn-secondary-hover-border: #821b1f;
-
-  --checkbox-checked-border: #D92B2F;
-  --checkbox-checked-bg: #b02428;
-  --outline-color: black;
+/* Success button only in simple mode */
+.simple-mode .btn-success {
+  background-color: var(--btn-success-bg) !important;
+  border-color: var(--btn-success-border) !important;
+  color: white !important;
 }
 
-.theme-homelab {
+.simple-mode .btn-success:hover {
+  background-color: var(--btn-success-hover-bg) !important;
+  border-color: var(--btn-success-hover-border) !important;
+}
+
+.simple-mode .btn-success:disabled,
+.simple-mode .btn-success.disabled {
+  background-color: #d3d3d3 !important;
+  border-color: #d3d3d3 !important;
+  color: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Helpers only in simple mode */
+.simple-mode .bg-success {
+  background-color: var(--btn-success-bg) !important;
+  border-color: var(--btn-success-border) !important;
+  color: white !important;
+}
+
+.simple-mode .border-success {
+  border-color: var(--btn-success-border) !important;
+}
+
+/* =====================
+   Theme overrides (simple-mode only)
+   ===================== */
+
+/* default simple-mode theme */
+.simple-mode.theme-default {
+  /* uses .simple-mode defaults */
+}
+
+.simple-mode.theme-homelab {
   --btn-primary-bg: #2563EB;
   --btn-primary-border: #2563EB;
   --btn-primary-hover-bg: #1E4FCB;
@@ -44,13 +81,9 @@
   --btn-secondary-border: #1B50C1;
   --btn-secondary-hover-bg: #153fa0;
   --btn-secondary-hover-border: #153fa0;
-
-  --checkbox-checked-border: #2563EB;
-  --checkbox-checked-bg: #1E4FCB;
-  --outline-color: black;
 }
 
-.theme-professional {
+.simple-mode.theme-professional {
   --btn-primary-bg: #65A443;
   --btn-primary-border: #65A443;
   --btn-primary-hover-bg: #4F8F37;
@@ -60,112 +93,126 @@
   --btn-secondary-border: #447c31;
   --btn-secondary-hover-bg: #346527;
   --btn-secondary-hover-border: #346527;
-
-  --checkbox-checked-border: #65A443;
-  --checkbox-checked-bg: #4F8F37;
-  --outline-color: black;
 }
 
-.dark {
+.simple-mode.theme-studio {
+  --btn-primary-bg: #6557A5;
+  --btn-primary-border: #6557A5;
+  --btn-primary-hover-bg: #504584;
+  --btn-primary-hover-border: #504584;
+
+  --btn-secondary-bg: #584C91;
+  --btn-secondary-border: #584C91;
+  --btn-secondary-hover-bg: #463C73;
+  --btn-secondary-hover-border: #463C73;
+}
+
+.simple-mode.dark {
   --outline-color: white;
+  --row-hover-bg: rgba(255, 255, 255, 0.06);
 }
 
-.btn-primary {
+/* =====================
+   Buttons (simple-mode only)
+   ===================== */
+
+.simple-mode .btn-primary {
   background-color: var(--btn-primary-bg) !important;
   border-color: var(--btn-primary-border) !important;
   color: white !important;
-  z-index: 10;
 }
 
-.btn-primary:hover {
+.simple-mode .btn-primary:hover {
   background-color: var(--btn-primary-hover-bg) !important;
   border-color: var(--btn-primary-hover-border) !important;
-  z-index: 10;
 }
 
-.btn-secondary {
+.simple-mode .btn-secondary {
   background-color: var(--btn-secondary-bg) !important;
   border-color: var(--btn-secondary-border) !important;
   color: white !important;
-  z-index: 10;
 }
 
-.btn-secondary:hover {
+.simple-mode .btn-secondary:hover {
   background-color: var(--btn-secondary-hover-bg) !important;
   border-color: var(--btn-secondary-hover-border) !important;
-  z-index: 10;
 }
 
-/* Disabled state */
-.btn-secondary:disabled,
-.btn-primary:disabled,
-.btn-secondary.disabled,
-.btn-primary.disabled {
+/* Disabled state in simple mode */
+.simple-mode .btn-secondary:disabled,
+.simple-mode .btn-primary:disabled,
+.simple-mode .btn-secondary.disabled,
+.simple-mode .btn-primary.disabled {
   background-color: #d3d3d3 !important;
   border-color: #d3d3d3 !important;
   color: #6c757d !important;
   cursor: not-allowed;
   opacity: 0.65;
-  z-index: 10;
 }
 
-.bg-primary {
+/* Helpers */
+.simple-mode .bg-primary {
   background-color: var(--btn-primary-bg) !important;
   border-color: var(--btn-primary-border) !important;
   color: white !important;
 }
 
-.bg-secondary {
+.simple-mode .bg-secondary {
   background-color: var(--btn-secondary-bg) !important;
   border-color: var(--btn-secondary-border) !important;
   color: white !important;
 }
 
-.border-primary {
+.simple-mode .border-primary {
   border-color: var(--btn-primary-border);
 }
 
-.border-secondary {
+.simple-mode .border-secondary {
   border-color: var(--btn-secondary-border);
 }
 
-.input-checkbox {
-  background-color: var(--checkbox-bg, #fff);
-  border: 1px solid var(--checkbox-border, #737373);
-  border-radius: 0.25rem;
-  height: 1rem;
-  width: 1rem;
-  outline: none;
-  box-shadow: 0 0 0 2px transparent;
-  appearance: none;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+/* =====================
+   Text color overrides (simple-mode only)
+   ===================== */
+
+.simple-mode,
+.simple-mode.theme-default,
+.simple-mode.theme-homelab,
+.simple-mode.theme-professional,
+.simple-mode.theme-studio,
+.simple-mode.dark {
+  --text-primary: var(--btn-primary-bg);
+  --text-primary-hover: var(--btn-primary-hover-bg);
+  --text-secondary: var(--btn-secondary-bg);
+  --text-secondary-hover: var(--btn-secondary-hover-bg);
 }
 
-.input-checkbox:checked {
-  border-color: var(--checkbox-checked-border, #D92B2F);
-  background-color: var(--checkbox-checked-bg, #D92B2F);
+.simple-mode .text-primary {
+  color: var(--text-primary) !important;
 }
 
-/* Wizard Highlight Glow */
-.animate-glow {
+.simple-mode .text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+.simple-mode .text-primary.interactive:hover,
+.simple-mode a.text-primary:hover,
+.simple-mode button.text-primary:hover,
+.simple-mode .btn.text-primary:hover {
+  color: var(--text-primary-hover) !important;
+}
+
+.simple-mode .text-secondary.interactive:hover,
+.simple-mode a.text-secondary:hover,
+.simple-mode button.text-secondary:hover,
+.simple-mode .btn.text-secondary:hover {
+  color: var(--text-secondary-hover) !important;
+}
+
+.simple-mode a.text-primary:focus-visible,
+.simple-mode button.text-primary:focus-visible,
+.simple-mode a.text-secondary:focus-visible,
+.simple-mode button.text-secondary:focus-visible {
   outline: 2px solid var(--outline-color);
-  border-radius: 0.375rem;
-  position: relative;
-  z-index: 1;
-}
-
-.animate-glow:hover {
-  outline-width: 3px;
-}
-
-/* Wizard Button Styling */
-.wizard-btn {
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  will-change: transform;
-}
-
-.wizard-btn:hover {
-  transform: scale(1.03);
+  outline-offset: 2px;
 }

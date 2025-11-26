@@ -1,0 +1,14 @@
+{
+  "drive": {
+    "client_id": "YOUR_GOOGLE_CLIENT_ID",
+    "client_secret": "YOUR_GOOGLE_CLIENT_SECRET"
+  },
+  "google cloud storage": {
+    "client_id": "YOUR_GOOGLE_CLIENT_ID",
+    "client_secret": "YOUR_GOOGLE_CLIENT_SECRET"
+  },
+  "dropbox": {
+    "client_id": "YOUR_DROPBOX_CLIENT_ID",
+    "client_secret": "YOUR_DROPBOX_CLIENT_SECRET"
+  }
+}

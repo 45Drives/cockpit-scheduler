@@ -2,6 +2,54 @@
     <!-- SIMPLE MODE -->
     <div v-if="props.simple" class="space-y-4 my-2">
 
+        <!-- Paths -->
+        <SimpleFormCard title="What do you want to copy?" description="Choose a folder stored on this server that was
+            created by a client backup. This is the backed-up copy of your files, not your live PC.">
+            <label class="block text-sm mt-1 text-default">Local folder</label>
+
+            <!-- loading -->
+            <div v-if="loadingFolders" class="mt-2 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'"
+                    :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Discovering your folders…</span>
+            </div>
+
+            <!-- error -->
+            <div v-else-if="discoveryError" class="mt-2 p-2 rounded bg-danger/10 text-danger text-sm">
+                {{ discoveryError }}
+                <div class="mt-1 text-xs text-default/70">
+                    You can still type a path manually below.
+                    <button class="btn btn-xxs btn-secondary ml-2" @click="folderList.refresh()">Retry</button>
+                </div>
+            </div>
+
+            <!-- select when we have options -->
+            <div v-else-if="opts.length">
+                <select v-model="localPath" class="input-textlike text-sm w-full text-default bg-default rounded-md">
+                    <option v-for="opt in opts" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                    </option>
+                </select>
+                <p class="text-[11px] text-muted mt-1">
+                    Scope: {{ shareRoot || '—' }}
+                    <span> • Full Path: {{ localPath }}</span>
+                    <span v-if="smbUser"> • User: {{ smbUser }}</span>
+                </p>
+            </div>
+
+            <!-- manual input fallback -->
+            <div v-else class="mt-1">
+                <input type="text" v-model="localPath" @blur="ensureTrailingSlash('local')" :class="[
+                    'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
+                    errorTags?.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" placeholder="/data/photos/" />
+                <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
+                <p class="text-[11px] text-muted mt-1">
+                    Tip: Local path should end with a <code>/</code>. We’ll add it for you if missing.
+                </p>
+            </div>
+
+        </SimpleFormCard>
         <!-- Remote/account -->
         <SimpleFormCard title="Choose your cloud account" description="Pick an existing account or add a new one.">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
@@ -27,8 +75,6 @@
                 </div>
 
                 <div class="flex lg:justify-end gap-2">
-                    <!-- <button @click.stop="createRemoteBtn()" class="btn btn-primary w-full lg:w-auto">Add
-                        Account</button> -->
                     <button @click.stop="manageRemotesBtn()" class="btn btn-secondary w-full lg:w-auto">
                         Add/Manage Cloud Credentials
                     </button>
@@ -37,29 +83,7 @@
         </SimpleFormCard>
 
         <!-- Direction + behavior -->
-        <!-- <SimpleFormCard title="How should we transfer?" description="Set direction and behavior."> -->
         <SimpleFormCard title="How should we transfer?">
-            <!-- <div class="flex items-center justify-between bg-plugin-header rounded-lg p-2 cursor-pointer select-none"
-                role="button" tabindex="0" @click="directionSwitched = !directionSwitched"
-                @keydown.enter.prevent="directionSwitched = !directionSwitched"
-                @keydown.space.prevent="directionSwitched = !directionSwitched">
-                <span class="text-sm text-default font-medium">
-                    {{ directionSwitched ? 'Download from Cloud → Local' : 'Upload from Local → Cloud' }}
-                </span>
-
-                <Switch v-model="directionSwitched" @click.stop :class="[
-                    directionSwitched ? 'bg-secondary' : 'bg-well',
-                    'relative inline-flex h-6 w-11 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2'
-                ]">
-                    <span class="sr-only">Toggle direction</span>
-                    <span aria-hidden="true" :class="[
-                        directionSwitched ? 'translate-x-5' : 'translate-x-0',
-                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200'
-                    ]" />
-                </Switch>
-            </div> -->
-
-
             <fieldset class="mt-2">
                 <legend class="sr-only">Transfer behavior</legend>
                 <div class="grid gap-2 sm:grid-cols-3">
@@ -77,7 +101,8 @@
                         <input type="radio" class="mt-1 h-4 w-4" value="sync" v-model="transferType" />
                         <div>
                             <div class="text-sm text-default font-medium">Sync</div>
-                            <div class="text-[11px] text-muted">Make destination match source (may delete extras).</div>
+                            <div class="text-[11px] text-muted">Make destination match source (may delete extras).
+                            </div>
                         </div>
                     </label>
 
@@ -94,18 +119,7 @@
         </SimpleFormCard>
 
         <!-- Paths -->
-        <SimpleFormCard title="What do you want to copy?"
-            description="Choose the local folder and where it lives in the cloud.">
-            <label class="block text-sm mt-1 text-default">
-                Local folder
-            </label>
-            <input type="text" v-model="localPath"
-                class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
-                :class="[errorTags?.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                placeholder="/data/photos/" />
-            <p class="text-[11px] text-muted mt-1">
-                Tip: add a trailing <code>/</code> to copy folder contents.
-            </p>
+        <SimpleFormCard title="Where do you want to copy it to?" description="Choose where it will live in the cloud.">
 
             <label class="block text-sm mt-2 text-default">
                 Cloud folder <span v-if="selectedRemote">({{ selectedRemote.name }})</span>
@@ -279,7 +293,7 @@
                 <label class="mt-1 block text-base leading-6 text-default">Rclone Options</label>
                 <!-- Basic options -->
                 <div class="grid grid-cols-4 gap-4 mt-2">
-                    <div class="col-span-1 pl-1">
+                    <div class="col-span-1 items-center">
                         <div name="options-parallel-threads" class="col-span-1 mt-1">
                             <label class="mt-1 block text-sm leading-6 text-default">
                                 Number of Transfers
@@ -361,8 +375,22 @@
                                     :title="`Specify a pattern of files to exclude in the transfer.\n(E.g., *.log excludes all log files.)\n- Separate patterns with commas (,).`" />
                             </div>
                         </div>
-
-                        <div name="options-extra-params" class="col-span-2">
+                        <div name="options-log-file-path" class="col-span-1">
+                            <div class="flex flex-row justify-between items-center">
+                                <label class="block text-sm leading-6 text-default">
+                                    Log File Path
+                                    <InfoTile class="ml-1"
+                                        :title="`Optional path to an rclone log file. If set, rclone will write logs to this file using --log-file=PATH.`" />
+                                </label>
+                                <ExclamationCircleIcon v-if="errorTags.logFilePath" class="mt-1 w-5 h-5 text-danger" />
+                            </div>
+                            <input type="text" v-model="logFilePath"
+                                :class="[errorTags.logFilePath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                placeholder="Eg. /var/log/newtask.log"
+                                :title="`Optional path to an rclone log file. If set, rclone will write logs to this file using --log-file=PATH.`" />
+                        </div>
+                        <div name="options-extra-params" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="block text-sm leading-6 text-default">
                                     Extra Parameters
@@ -670,17 +698,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref, onMounted, inject, provide, watch, computed } from 'vue';
+import { ref, Ref, onMounted, inject, provide, watch, computed, watchEffect } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, IntParameter, StringParameter, BoolParameter, SelectionParameter, SelectionOption } from '../../../models/Parameters';
-import { CloudSyncRemote, getProviderLogo } from '../../../models/CloudSync';
-import { injectWithCheck, checkLocalPathExists } from '../../../composables/utility';
+import { CloudSyncRemote, getProviderLogo, getButtonStyles, CloudSyncProvider, CloudAuthParameter, cloudSyncProviders } from '../../../models/CloudSync';
+import { injectWithCheck, checkLocalPathExists, validateRemotePath, validateLocalPath } from '../../../composables/utility';
 import { rcloneRemotesInjectionKey, remoteManagerInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
+import { useClientContextStore } from '../../../stores/clientContext';
+
 const router = useRouter()
 const route = useRoute()
 
@@ -696,24 +727,6 @@ const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not
 const parameters = inject<Ref<any>>('parameters')!;
 
 const initialParameters = ref({});
-
-// Create dummy CloudSyncRemote instance for dev
-// const dummyDropboxProvider: CloudSyncProvider = cloudSyncProviders["dropbox"];
-// const dummyDropboxAuthParams: CloudAuthParameter = {
-//     parameters: {
-//         token: { value: "", type: "object", defaultValue: "" },
-//         client_id: { value: "dropbox-client-id", type: "string", defaultValue: "" },
-//         client_secret: { value: "dropbox-client-secret", type: "string", defaultValue: "" },
-//     },
-//     oAuthSupported: true,
-// };
-// const dummyCloudSyncRemote = new CloudSyncRemote(
-//     "dummyRemote",          // Name of the remote
-//     "dropbox",              // Type of remote, matching the provider type
-//     dummyDropboxAuthParams,      // Authentication parameters for Dropbox
-//     dummyDropboxProvider         // The Dropbox provider instance
-// );
-// const dummyRemote = ref(dummyCloudSyncRemote);
 
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
@@ -736,6 +749,7 @@ const errorTags = ref({
     multiThreadCutoff: false,
     multiThreadStreams: false,
     multiThreadWriteBufferSize: false,
+    logFilePath: false,
 });
 
 const localPath = ref('');
@@ -752,7 +766,7 @@ const numberOfTransfers = ref(4);
 const includePattern = ref('');
 const excludePattern = ref('');
 const customArgs = ref('');
-
+const logFilePath = ref('');
 const limitBandwidthKbps = ref()
 const ignoreSize = ref(false);
 const inplace = ref(false);
@@ -774,11 +788,6 @@ const noTraverse = ref(false);
 const isTaskLoading = ref(false);
 
 onMounted(async () => {
-    //for development only
-    // if (existingRemotes.value.length < 1) {
-    //     existingRemotes.value.push(dummyRemote.value);
-    // }
-
     isTaskLoading.value = true; // Start loading the task
     await initializeData();
     isTaskLoading.value = false; // Mark loading as complete
@@ -793,9 +802,85 @@ watch(selectedRemote, (newVal) => {
     }
 });
 
+// ---------- User-scoped folder discovery (same as Rsync) ----------
+const ctx = useClientContextStore();
+const allowContextFallback = ref(false);
+
+function parseFromHash(): string {
+    const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+const installId = computed(() => {
+    const fromHash = parseFromHash();
+    return fromHash || (allowContextFallback.value ? (ctx.clientId || '') : '');
+});
+
+const folderList = useUserScopedFolderListByInstall(installId, 2);
+
+watchEffect(() => {
+    console.log('[cloud-sync folderList]',
+        'loading=', folderList.loading.value,
+        'error=', folderList.error.value,
+        'shareRoot=', folderList.shareRoot.value,
+        'smbUser=', folderList.smbUser.value,
+        'abs=', folderList.absDirs.value.length
+    );
+});
+
+// derived values for template
+const loadingFolders = folderList.loading;
+const discoveryError = folderList.error;
+const shareRoot = computed(() => folderList.shareRoot.value);
+const smbUser = computed(() => folderList.smbUser.value);
+const isEditMode = computed(() => !!props.task);
+
+// label builder to hide UUID segment (same as Rsync)
+function prettyLabelFromAbs(abs: string) {
+    const root = shareRoot.value || '';
+    if (!abs.startsWith(root)) return abs;
+    const rel = abs.slice(root.length).replace(/^\/+/, '');
+    const parts = rel.split('/').filter(Boolean);
+    // drop UUID segment
+    return parts.length >= 2 ? parts.slice(1).join('/') + '/' : rel + '/';
+}
+
+const opts = computed<Array<{ value: string; label: string }>>(() =>
+    (folderList.absDirs.value ?? []).map(abs => ({
+        value: abs,
+        label: prettyLabelFromAbs(abs),
+    }))
+);
+
+// choose a sane default when options arrive
+watch(opts, (list) => {
+    if (!props.simple || isEditMode.value) return;
+    if (!list.length) return;
+    if (!localPath.value || !folderList.underRoot(localPath.value)) {
+        localPath.value = list[0].value;
+    }
+}, { immediate: true });
+
+watch([() => folderList.absDirs.value, () => folderList.shareRoot.value], ([abs]) => {
+    if (!props.simple || isEditMode.value) return;
+    const list = abs || [];
+    if (!list.length) return;
+    if (!localPath.value || !folderList.underRoot(localPath.value)) {
+        localPath.value = list[0];
+    }
+}, { immediate: true });
+
+// trailing slash helper (mirrors Rsync)
+function ensureTrailingSlash(which: 'local' | 'target') {
+    if (which === 'local') {
+        if (localPath.value && !localPath.value.endsWith('/')) localPath.value += '/';
+    } else {
+        if (targetPath.value && !targetPath.value.endsWith('/')) targetPath.value += '/';
+    }
+}
+
 async function initializeData() {
     if (props.task) {
-        // enableTargetPathWatcher.value = false;  // Disable the watcher temporarily
          console.log('loading task:', props.task);
         loading.value = true;
 
@@ -815,6 +900,8 @@ async function initializeData() {
         selectedRemote.value = await myRemoteManager.getRemoteByName(remoteName) || undefined;
 
         const rcloneOptions = params.find(p => p.key === 'rcloneOptions')!.children;
+        const logFileParam = rcloneOptions.find(p => p.key === 'log_file_path');
+        logFilePath.value = logFileParam ? logFileParam.value : '';
         checkFirst.value = rcloneOptions.find(p => p.key === 'check_first_flag')!.value;
         checksum.value = rcloneOptions.find(p => p.key === 'checksum_flag')!.value;
         update.value = rcloneOptions.find(p => p.key === 'update_flag')!.value;
@@ -880,10 +967,10 @@ async function initializeData() {
             maxTransferSizeUnit: maxTransferSizeUnit.value,
             cutoffMode: cutoffMode.value,
             noTraverse: noTraverse.value,
+            logFilePath: logFilePath.value,
         }));
 
         loading.value = false;
-        // enableTargetPathWatcher.value = true; // Re-enable watcher
     }
 }
 
@@ -916,6 +1003,7 @@ function hasChanges() {
         maxTransferSizeUnit: maxTransferSizeUnit.value,
         cutoffMode: cutoffMode.value,
         noTraverse: noTraverse.value,
+        logFilePath: logFilePath.value,
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -976,7 +1064,6 @@ function handleMutuallyExclusiveOptions() {
         update.value = false;
         ignoreExisting.value = false;
         checksum.value = false;
-        // Additional options affecting transfers can be disabled here
     }
 }
 
@@ -1082,7 +1169,7 @@ async function loadManageRemotesComponent() {
 }
 
 
-async function validateLocalPath() {
+async function validateLocalTransferPath() {
     // Clear the local path error before validation
     errorTags.value.localPath = false;
 
@@ -1109,12 +1196,11 @@ async function validateLocalPath() {
         return false;
     }
 
-    // If everything is valid
     //  console.log("Valid source path.");
     return true;
 }
 
-function validateDestinationPath() {
+function validateDestinationTransferPath() {
     if (!targetPath.value) {
         errorList.value.push("Target path is required.");
         errorTags.value.targetPath = true;
@@ -1123,10 +1209,6 @@ function validateDestinationPath() {
 
     if (validatePath(targetPath.value, true)) {
         errorTags.value.targetPath = false;
-        // if (!targetPath.value.endsWith('/')) {
-        //     targetPath.value += '/';
-        // }
-        //  console.log("Valid destination path: " + targetPath.value);
         return true;
     } else {
         errorList.value.push("Target path is invalid.");
@@ -1135,20 +1217,9 @@ function validateDestinationPath() {
     }
 }
 
-function validatePath(path, isRemote?) {
-    //no spaces allowed
-    // const pathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\-.]+(?:\\|\/)?)*$/;
-
-    if (isRemote) {
-        const rcloneRegex = /^[\w\-.]+:[\\/]*(?:[\w\s\-.]+[\\/])*[\w\s\-.]*$/;
-        return rcloneRegex.test(path);
-    } else {
-        // Allow flexible, valid paths with spaces
-        const localPathRegex = /^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-.]+(?:\\|\/)?)*$/;
-        return localPathRegex.test(path);
-    }
+function validatePath(path: string, isRemote?: boolean) {
+    return isRemote ? validateRemotePath(path) : validateLocalPath(path);
 }
-
 
 async function validateAllValues() {
 
@@ -1160,6 +1231,12 @@ async function validateAllValues() {
     if (numberOfTransfers.value && typeof numberOfTransfers.value !== 'number' || numberOfTransfers.value < 0) {
         errorList.value.push("Number of Transfers must be a valid number.");
         errorTags.value.numberOfTransfers = true;
+    }
+
+    // Validate logFilePath
+    if (logFilePath.value && typeof logFilePath.value !== 'string') {
+        errorList.value.push("Log File Path must be a string.");
+        errorTags.value.logFilePath = true;
     }
 
     // Validate includePattern
@@ -1268,8 +1345,8 @@ async function validateParams() {
     // clearErrorTags();
     await validateSelectedRemote();
     await validateAllValues();
-    await validateLocalPath();
-    validateDestinationPath();
+    await validateLocalTransferPath();
+    validateDestinationTransferPath();
 
     if (errorList.value.length == 0 && Object.values(errorTags.value).every(tag => tag === false)) {
         setParams();
@@ -1281,7 +1358,6 @@ function setParams() {
     const directionPULL = new SelectionOption('pull', 'Pull');
 
     const transferDirection = directionSwitched.value ? directionPULL : directionPUSH;
-    // const rclonePath = `${selectedRemote.value!.name}:${targetPath.value}`;
     const newParams = new ParameterNode("Cloud Sync Task Config", "cloudSyncConfig")
         .addChild(new StringParameter('Local Path', 'local_path', localPath.value))
         .addChild(new StringParameter('Target Path', 'target_path', targetPath.value))
@@ -1290,6 +1366,8 @@ function setParams() {
         .addChild(new SelectionParameter('Provider', 'provider', selectedRemote.value!.type))
         .addChild(new StringParameter('Rclone Remote', 'rclone_remote', selectedRemote.value!.name))
         .addChild(new ParameterNode('Rclone Options', 'rcloneOptions')
+            .addChild(new StringParameter('Log File Path', 'log_file_path', logFilePath.value))
+
             .addChild(new BoolParameter('Check First', 'check_first_flag', checkFirst.value))
             .addChild(new BoolParameter('Checksum', 'checksum_flag', checksum.value))
             .addChild(new BoolParameter('Update', 'update_flag', update.value))
@@ -1323,8 +1401,6 @@ function setParams() {
 
 onMounted(async () => {
     await initializeData();
-    // console.log("Component mounted");
-    //  console.log("Existing remotes:", existingRemotes);  // Check if existingRemotes are populated
 });
 
 defineExpose({

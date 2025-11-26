@@ -75,7 +75,7 @@
                         </div>
                     </div>
 
-                    <div v-if="!loadingLogs" class="bg-plugin-header p-4 rounded-lg">
+                    <div v-if="!loadingLogs" class="bg-plugin-header p-4 rounded-lg mt-1">
                         <ul v-if="thisLogEntry !== undefined" ref="logContainer" role="list"
                             class="divide-y divide-default h-96 overflow-y-scroll">
                             <li v-if="!viewMoreLogs && !loadingMoreLogs"
@@ -85,7 +85,8 @@
                             </li>
                             <li v-if="viewMoreLogs && !loadingMoreLogs"
                                 class="m-1 block text-sm leading-6 text-default bold italic text-center bg-default">
-                                Previous Logs</li>
+                                All Logs
+                            </li>
                             <li v-if="viewMoreLogs && !loadingMoreLogs"
                                 v-for="line, idx in allLogsForThisTask.split('\n')" :key="idx"
                                 class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
@@ -105,7 +106,7 @@
                             </li>
                         </ul>
                     </div>
-                    <div v-else class="bg-plugin-header p-4 rounded-lg">
+                    <div v-else class="bg-plugin-header p-4 rounded-lg mt-1">
                         <div class="flex items-center justify-center">
                             <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
                                 :fillColor="'fill-gray-500'" />
@@ -186,11 +187,13 @@ async function refreshLogs() {
 
             // If viewing all logs, also refresh previous logs
             if (viewMoreLogs.value) {
-                const logs = await myTaskLog.getEntriesFor(taskInstance.value, thisLogEntry.value?.startDate);
+                // Show ALL logs for this unit (all runs)
+                const logs = await myTaskLog.getEntriesFor(taskInstance.value);
                 if (logs) {
-                    allLogsForThisTask.value = logs + '\n' + thisLogEntry.value!.output; // Ensure latest is appended
+                    allLogsForThisTask.value = logs;
                 }
             }
+
         } catch (error) {
             console.error("Failed to refresh logs:", error);
         } finally {
@@ -226,9 +229,9 @@ const fetchAllLogs = async () => {
 
     loadingMoreLogs.value = true;
     try {
-        const logs = await myTaskLog.getEntriesFor(taskInstance.value, thisLogEntry.value?.startDate);
+        const logs = await myTaskLog.getEntriesFor(taskInstance.value);
         if (logs) {
-            allLogsForThisTask.value += '\n' + logs; // Append logs instead of replacing
+            allLogsForThisTask.value = logs;
         }
     } catch (error) {
         console.error("Failed to fetch logs:", error);

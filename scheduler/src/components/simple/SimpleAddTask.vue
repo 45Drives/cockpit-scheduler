@@ -1,12 +1,12 @@
 <template>
-    <div class="h-full w-full flex flex-col bg-well p-2">
+    <div class="h-full w-full flex flex-col bg-well">
         <!-- Single scroll area (same height/feel as local list) --> <!-- Top toolbar (mirrors List toolbar) -->
         <div class="flex flex-row items-center justify-between font-bold shrink-0 text-default">
             <div class="flex items-center">
                 <button class="btn btn-danger text-sm mr-3" @click="goBack">Cancel</button>
                 {{ isEditMode ? 'Edit Backup Task' : 'Create Backup Task' }}
             </div>
-            <button class="btn btn-primary text-sm" :disabled="!isDirty || adding" @click="saveAll">
+            <button class="btn btn-success text-sm" :disabled="!isDirty || adding" @click="saveAll">
                 {{ isEditMode ? (adding ? 'Saving…' : 'Save Changes') : (adding ? 'Creating…' : 'Create Task') }}
             </button>
         </div>
@@ -96,6 +96,7 @@ import { useTaskDraftStore } from '../../stores/taskDraft';
 import { injectWithCheck } from '../../composables/utility';
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
+defineOptions({ name: 'SimpleTaskForm' });
 // ---- props ----
 const props = defineProps<{ mode?: 'create' | 'edit', existingTask?: TaskInstanceType }>();
 const draft = useTaskDraftStore();
@@ -110,6 +111,7 @@ const isEditMode = computed(() => (props.mode ?? draft.mode) === 'edit');
 const newTask = ref<TaskInstance | null>(null);
 const adding = ref(false);
 const errorList = ref<string[]>([]);
+const originalName = ref(props.existingTask?.name);
 const newTaskName = ref('');
 const newTaskNameErrorTag = ref(false);
 const selectedTemplate = ref<TaskTemplateType>();
@@ -135,6 +137,21 @@ function resetForm() {
 watch(isEditMode, (edit) => {
     if (!edit) resetForm();
 }, { immediate: true });
+
+onMounted(async () => {
+    await nextTick();
+
+    if (isEditMode.value && originalTask.value) {
+        // Editing: load the task’s existing schedule + other fields
+        uiSchedule.value = toUISchedule(originalTask.value.schedule);
+        prefillFromTask(originalTask.value);
+    } else {
+        // Creating: clear to defaults (blank schedule + empty form)
+        resetForm();                   // clears name/template/params/notes
+        uiSchedule.value = toUISchedule(null); // default blank UI schedule
+    }
+});
+
 
 // ---- deps ----
 const router = useRouter();
@@ -164,9 +181,18 @@ const displayName = (template: TaskTemplateType) => nameOverrides[template.name]
 // ---- schedule bridge (UI <-> model) ----
 function toUISchedule(model?: ModelTaskSchedule | null): UITaskSchedule {
     const now = new Date();
+    // ----- DEFAULT when no model schedule: HOURLY, start in 1 hour -----
     if (!model || !Array.isArray(model.intervals) || model.intervals.length === 0) {
-        return { repeatFrequency: 'day', startDate: now } as UITaskSchedule;
+        // assume `now` already exists; if not: const now = new Date();
+        const start = new Date(now);
+        start.setMinutes(0, 0, 0);
+        if (start <= now) start.setHours(start.getHours() + 1);
+
+        return { repeatFrequency: 'hour', startDate: start } as UITaskSchedule;
     }
+    // ---------------------------------------------------------
+
+
     const intv: any = model.intervals[0] ?? {};
     const v = (x: any) => (x?.value ?? x);
     const isStar = (x: any) => String(v(x) ?? '*') === '*';
@@ -399,9 +425,7 @@ async function saveAll() {
             const templateChanged = old.template?.name !== built.template?.name;
 
             if (nameChanged || templateChanged) {
-                // full replace to avoid duplicate systemd units
-                await myScheduler.unregisterTaskInstance(old);
-                await myScheduler.registerTaskInstance(built);
+                await myScheduler.updateTaskInstance(built, { oldName: originalName.value });
             } else {
                 await (myScheduler as any).updateTaskInstance(built);
             }
@@ -419,12 +443,11 @@ async function saveAll() {
 
         router.push({ name: 'SimpleTasks' });
     } catch (e: any) {
-        pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 8000));
+        pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 6000));
     } finally { adding.value = false; loading.value = false; }
 }
 
 
-// ---- provide for children that read these symbols ----
 provide('new-task', newTask);
 provide('parameters', parameters);
 provide('errors', errorList);

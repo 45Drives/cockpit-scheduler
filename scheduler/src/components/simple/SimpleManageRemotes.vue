@@ -534,7 +534,7 @@ function openEdit(r: CloudSyncRemote) {
     // only set the ref; watcher will snapshot + populate
     selectedRemote.value = r
     console.log('editing:', selectedRemote.value)
-    // enable edit mode immediately if you want
+    // enable edit mode immediately
     editMode.value = true
 }
 

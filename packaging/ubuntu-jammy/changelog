@@ -1,3 +1,11 @@
+cockpit-scheduler (1.4.0-1jammy) jammy; urgency=medium
+
+  * Major overhaul - Updates task status + logging, adds progress tracking, fixes
+    rclone token expiry after 1hr for long transfers, among numerous other QoL improvements
+    and bugfixes
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 21 Nov 2025 10:34:29 -0400
+
 cockpit-scheduler (1.3.9-6jammy) jammy; urgency=medium
 
   * Setting release to stable since testing package building seems to be broken/cannot
