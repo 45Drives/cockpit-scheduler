@@ -26,8 +26,8 @@ make OS_PACKAGE_RELEASE=el9
 make DESTDIR=%{buildroot} WITH_DAEMON={% if enable_daemon %}1{% else %}0{% endif %} install
 
 # Paths inside the buildroot
-TEMPLATE="%{buildroot}/etc/45drives/houston/cloud-sync-client-creds-template.json"
-OUTPUT="%{buildroot}/etc/45drives/houston/cloud-sync-client-creds.json"
+TEMPLATE="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"
+OUTPUT="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"
 
 # Generate the real creds JSON using env vars passed from CI
 mkdir -p "$(dirname "$OUTPUT")"
@@ -46,7 +46,7 @@ rm -f "$TEMPLATE"
 /opt/45drives/houston/scheduler/*
 %dir /etc/45drives
 %dir /etc/45drives/houston
-%config(noreplace) /etc/45drives/houston/cloud-sync-client-creds.json
+%config(noreplace) /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
 
 {% if enable_daemon %}
 # D-Bus scheduler daemon + policy

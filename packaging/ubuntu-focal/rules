@@ -31,8 +31,8 @@ override_dh_auto_install:
 		set +a; \
 	fi; \
 	PKG_DIR=debian/$(DEB_SOURCE); \
-	TEMPLATE="$$PKG_DIR/etc/45drives/houston/cloud-sync-client-creds-template.json"; \
-	OUTPUT="$$PKG_DIR/etc/45drives/houston/cloud-sync-client-creds.json"; \
+	TEMPLATE="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"; \
+	OUTPUT="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"; \
 	mkdir -p "$$(dirname $$OUTPUT)"; \
 	sed \
 	  -e "s|YOUR_GOOGLE_CLIENT_ID|$${GOOGLE_CLIENT_ID}|g" \
