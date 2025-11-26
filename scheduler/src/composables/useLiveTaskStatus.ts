@@ -327,3 +327,42 @@ export function taskStatusClass(status?: string) {
     }
     return '';
 }
+
+export function taskStatusBadgeClass(status?: string) {
+    const base =
+        'inline-flex items-center justify-center px-2 w-full py-0.5 rounded-full text-xs font-semibold whitespace-nowrap';
+
+    if (!status) {
+        return `${base} bg-slate-200 text-muted dark:bg-slate-700`;
+    }
+
+    const s = status.toLowerCase();
+
+    // Failed / error
+    if (s.includes('failed') || s.includes('error')) {
+        return `${base} bg-red-100 text-danger dark:bg-red-900/40`;
+    }
+
+    // Inactive / disabled
+    if (s.includes('inactive') || s.includes('disabled')) {
+        return `${base} bg-amber-100 text-warning dark:bg-amber-900/40`;
+    }
+
+    // Active / running / completed
+    if (
+        s.includes('active') ||
+        s.includes('starting') ||
+        s.includes('running') ||
+        s.includes('completed')
+    ) {
+        return `${base} bg-emerald-100 text-success dark:bg-emerald-900/40`;
+    }
+
+    // Not scheduled
+    if (s.includes('no schedule found') || s.includes('not scheduled')) {
+        return `${base} bg-slate-200 text-muted dark:bg-slate-700`;
+    }
+
+    // Fallback
+    return `${base} bg-slate-200 text-muted dark:bg-slate-700`;
+}

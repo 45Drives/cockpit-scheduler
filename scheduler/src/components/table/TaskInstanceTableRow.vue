@@ -5,48 +5,56 @@
 		class="grid grid-cols-9 grid-flow-cols w-full text-center items-center rounded-sm p-1">
 		<!-- Name -->
 		<td :title="taskInstance.name"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-2 col-span-2">
 			{{ taskInstance.name }}
 		</td>
 
 		<!-- Status -->
-		<td v-if="taskInstance.schedule.enabled" :title="statusText"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass(statusText)">{{ statusText || 'N/A' }}</span>
-		</td>
-		<td v-else title="Disabled"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-2">
-			<span :class="taskStatusClass(statusText)">{{ statusText || 'N/A' }}</span>
+		<td :title="taskInstance.schedule.enabled ? statusText : 'Disabled'"
+			class="truncate text-xs font-medium text-default border-r border-default col-span-1">
+			<span :class="taskStatusBadgeClass(statusText)">
+				{{ statusText || 'N/A' }}
+			</span>
 		</td>
 
 		<!-- Scope -->
 		<!-- <td :title="taskInstance.scope"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
+			class="truncate text-base font-medium text-default border-r border-default text-left ml-2 col-span-1">
 			<span>{{ taskInstance.scope }}</span>
 		</td> -->
 
 		<!-- Last run -->
-		<td :title="lastRunText" class="truncate text-xs font-medium border-r border-default text-left ml-4 col-span-2">
+		<td :title="lastRunText" class="truncate text-sm font-medium border-r border-default text-left ml-2 col-span-3">
 			<span>{{ lastRunText }}</span>
 		</td>
 
 		<!-- Scheduled toggle -->
-		<td class="truncate text-base font-medium text-default border-r border-default text-left ml-4 col-span-1">
-			<input v-if="taskInstance.schedule.intervals.length > 0"
-				:title="`Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`" type="checkbox"
-				:checked="taskInstance.schedule.enabled" @click.prevent="toggleTaskSchedule"
-				class="ml-2 h-4 w-4 rounded" />
-			<input v-else disabled type="checkbox" title="No Schedule Found, Manage Schedule + add intervals to Enable"
-				class="ml-2 h-4 w-4 rounded bg-gray-300 dark:bg-gray-400" />
+		<td class="truncate text-base font-medium text-default border-r border-default text-left col-span-1">
+			<Switch v-model="scheduleEnabledModel" :disabled="taskInstance.schedule.intervals.length === 0" :title="taskInstance.schedule.intervals.length > 0
+				? `Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`
+				: 'No Schedule Found, Manage Schedule + add intervals to Enable'" :class="[
+				taskInstance.schedule.intervals.length === 0
+					? 'bg-gray-300 dark:bg-gray-400 cursor-not-allowed'
+					: taskInstance.schedule.enabled
+						? 'bg-success'
+						: 'bg-well',
+				'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2 ml-2'
+			]">
+				<span class="sr-only">Toggle schedule</span>
+				<span aria-hidden="true" :class="[
+					taskInstance.schedule.enabled ? 'translate-x-5' : 'translate-x-0',
+					'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out'
+				]" />
+			</Switch>
 		</td>
 
 		<!-- Actions -->
 		<td class="text-base font-medium text-default border-default m-1 col-span-2">
 			<button v-if="isExpanded" @click="toggleTaskDetails()"
-				class="btn text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">
+				class="btn w-full text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">
 				Close Details
 			</button>
-			<button v-else @click="toggleTaskDetails()" class="btn btn-secondary">
+			<button v-else @click="toggleTaskDetails()" class="btn w-full btn-secondary">
 				View Details
 			</button>
 		</td>
@@ -129,10 +137,11 @@ import {
 	PencilSquareIcon,
 	StopIcon,
 } from '@heroicons/vue/24/outline';
+import { Switch } from '@headlessui/vue';
 import { injectWithCheck } from '../../composables/utility';
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
-import { useLiveTaskStatus, taskStatusClass } from '../../composables/useLiveTaskStatus';
+import { useLiveTaskStatus, taskStatusBadgeClass } from '../../composables/useLiveTaskStatus';
 
 interface TaskInstanceTableRowProps {
 	task: TaskInstanceType;
@@ -383,9 +392,16 @@ const updateShowDisablePrompt = (v: boolean) => {
 	showDisablePrompt.value = v;
 };
 
-async function toggleTaskSchedule(event: Event) {
-	const intendedValue = !taskInstance.value.schedule.enabled;
-	event.preventDefault();
+const scheduleEnabledModel = computed({
+	get: () => taskInstance.value.schedule.enabled,
+	set: (intendedValue: boolean) => {
+		// reuse your existing logic
+		toggleTaskSchedule(intendedValue);
+	},
+});
+
+async function toggleTaskSchedule(intendedValue: boolean) {
+	if (taskInstance.value.schedule.intervals.length === 0) return;
 
 	if (intendedValue) {
 		await loadConfirmationDialog(enableDialog);
@@ -395,6 +411,7 @@ async function toggleTaskSchedule(event: Event) {
 		showDisablePrompt.value = true;
 	}
 }
+
 
 // Lifecycle: hook into live status engine + optional progress polling
 let progressIntervalId: number | undefined;

@@ -47,7 +47,7 @@
                                             class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
                                             <button @click="sortBy('name')"
                                                 class="flex w-full justify-between whitespace-nowrap">
-                                                Name
+                                                Task Name
                                                 <BarsArrowDownIcon class="ml-1 aspect-square w-5 h-5 text-muted"
                                                     v-if="sort.field === 'name' && sortMode == 'desc'" />
                                                 <BarsArrowUpIcon class="ml-1 aspect-square w-5 h-5 text-muted"
@@ -56,7 +56,7 @@
                                             </button>
                                         </th>
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
                                             Status
                                         </th>
                                         <!-- <th scope="col"
@@ -64,7 +64,7 @@
                                             User-Scope
                                         </th> -->
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-3">
                                             Last Run
                                         </th>
                                         <th scope="col"
