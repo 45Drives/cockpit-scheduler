@@ -29,26 +29,12 @@ jobs:
       matrix:
         build: ${{ fromJSON(needs.prebuild.outputs.matrix).include }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Write cloud creds env file
-        run: |
-          mkdir -p packaging
-          {
-            echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}";
-            echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}";
-            echo "DROPBOX_CLIENT_ID=${{ secrets.DROPBOX_CLIENT_ID }}";
-            echo "DROPBOX_CLIENT_SECRET=${{ secrets.DROPBOX_CLIENT_SECRET }}";
-          } > packaging/cloud-creds.env
-
       - name: Build package
         uses: 45drives/actions/build-package@main
         with:
           manifest: ${{ needs.prebuild.outputs.manifest }}
           build: ${{ toJSON(matrix.build) }}
           uuid: ${{ needs.prebuild.outputs.uuid }}
-
 
   sign:
     needs:

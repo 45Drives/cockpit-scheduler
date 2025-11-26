@@ -21,6 +21,17 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 make OS_PACKAGE_RELEASE=el9
 
 %install
+# Load CI-only cloud creds from the image
+if [ -f /etc/45drives-ci/cloud-creds.env ]; then
+    set -a
+    . /etc/45drives-ci/cloud-creds.env
+    set +a
+fi
+
+# Optional debug (remove once you're happy)
+echo "DEBUG: GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}'" >&2
+echo "DEBUG: DROPBOX_CLIENT_ID='${DROPBOX_CLIENT_ID}'" >&2
+
 make DESTDIR=%{buildroot} install
 
 TEMPLATE="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"
@@ -28,7 +39,6 @@ OUTPUT="%{buildroot}/etc/45drives/houston/scheduler/cloud-sync-client-creds.json
 
 mkdir -p "$(dirname "$OUTPUT")"
 
-# At this point we assume the build env has these set (via entrypoint)
 sed \
   -e "s|YOUR_GOOGLE_CLIENT_ID|${GOOGLE_CLIENT_ID}|g" \
   -e "s|YOUR_GOOGLE_CLIENT_SECRET|${GOOGLE_CLIENT_SECRET}|g" \
@@ -38,7 +48,6 @@ sed \
 
 chmod 600 "$OUTPUT"
 rm -f "$TEMPLATE"
-
 
 %files
 /usr/share/cockpit/scheduler/*

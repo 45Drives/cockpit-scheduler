@@ -23,8 +23,15 @@ override_dh_auto_install:
 		. .env; \
 		set +a; \
 	fi; \
-	# In CI, the container entrypoint should already have exported
-	# GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / DROPBOX_* into the env.
+	# Load CI-only secrets from the image if present
+	if [ -f /etc/45drives-ci/cloud-creds.env ]; then \
+		set -a; \
+		. /etc/45drives-ci/cloud-creds.env; \
+		set +a; \
+	fi; \
+	# Optional debug
+	echo "DEBUG: GOOGLE_CLIENT_ID='$$GOOGLE_CLIENT_ID'" >&2; \
+	echo "DEBUG: DROPBOX_CLIENT_ID='$$DROPBOX_CLIENT_ID'" >&2; \
 	PKG_DIR=debian/$(DEB_SOURCE); \
 	TEMPLATE="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"; \
 	OUTPUT="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"; \
