@@ -25,19 +25,12 @@ make OS_PACKAGE_RELEASE=el8
 %install
 make DESTDIR=%{buildroot} WITH_DAEMON={% if enable_daemon %}1{% else %}0{% endif %} install
 
-# Load secrets from .env if present (in the source tree)
-if [ -f .env ]; then
-    set -a
-    . .env
-    set +a
-fi
-
 # Paths inside the buildroot
 TEMPLATE="%{buildroot}/etc/45drives/houston/cloud-sync-client-creds-template.json"
 OUTPUT="%{buildroot}/etc/45drives/houston/cloud-sync-client-creds.json"
 
-# Generate the real creds JSON
-mkdir -p "$(dirname $OUTPUT)"
+# Generate the real creds JSON using env vars passed from CI
+mkdir -p "$(dirname "$OUTPUT")"
 sed \
   -e "s|YOUR_GOOGLE_CLIENT_ID|${GOOGLE_CLIENT_ID}|g" \
   -e "s|YOUR_GOOGLE_CLIENT_SECRET|${GOOGLE_CLIENT_SECRET}|g" \
@@ -45,10 +38,7 @@ sed \
   -e "s|YOUR_DROPBOX_CLIENT_SECRET|${DROPBOX_CLIENT_SECRET}|g" \
   "$TEMPLATE" > "$OUTPUT"
 
-# Secure permissions
 chmod 600 "$OUTPUT"
-
-# Do not ship the template itself
 rm -f "$TEMPLATE"
 
 %files

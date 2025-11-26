@@ -1,5 +1,10 @@
+# Optional .env for local/dev workflows.
+# In CI/rpmbuild we rely on environment variables instead.
+ifneq (,$(wildcard .env))
 include .env
-export $(shell sed 's/=.*//' .env)
+# export keys from .env into the Make environment
+export $(shell sed -n 's/^\([^#=]*\)=.*/\1/p' .env)
+endif
 
 # Toggle shipping daemon/dbus/polkit/systemd bits
 # 0 = legacy-only, 1 = include daemon bits

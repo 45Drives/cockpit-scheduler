@@ -31,6 +31,11 @@ jobs:
     steps:
       - name: Build package
         uses: 45drives/actions/build-package@main
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
+          DROPBOX_CLIENT_SECRET: ${{ secrets.DROPBOX_CLIENT_SECRET }}
         with:
           manifest: ${{ needs.prebuild.outputs.manifest }}
           build: ${{ toJSON(matrix.build) }}
