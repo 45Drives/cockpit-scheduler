@@ -60,7 +60,6 @@ rm -f "$TEMPLATE"
 
 # systemd unit
 /usr/lib/systemd/system/org.45drives.Scheduler.service
-{% endif %}
 
 # State dirs owned by the package (created if missing)
 %dir /var/lib/45drives/houston
@@ -70,7 +69,6 @@ rm -f "$TEMPLATE"
 # Ensure state dirs exist (idempotent)
 mkdir -p /var/lib/45drives/houston/scheduler || true
 
-{% if enable_daemon %}
 # Reload systemd so the new unit is recognized
 /bin/systemctl daemon-reexec || true
 /bin/systemctl daemon-reload || true
@@ -79,9 +77,7 @@ mkdir -p /var/lib/45drives/houston/scheduler || true
 if /bin/systemctl cat org.45drives.Scheduler.service &>/dev/null; then
     /bin/systemctl enable --now org.45drives.Scheduler.service || true
 fi
-{% endif %}
 
-{% if enable_daemon %}
 %preun
 if [ $1 -eq 0 ]; then
     # package removal (not upgrade)
@@ -93,7 +89,6 @@ fi
 %postun
 /bin/systemctl daemon-reload || true
 {% endif %}
-
 
 %changelog
 * Fri Nov 21 2025 Jordan Keough <jkeough@45drives.com> 1.4.0-1

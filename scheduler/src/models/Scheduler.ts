@@ -412,7 +412,7 @@ export class Scheduler implements SchedulerType {
 
 
     // One canonical root (as requested)
-    private static readonly STATE_ROOT = '/var/lib/45drives/houston/scheduler';
+    // private static readonly STATE_ROOT = '/var/lib/45drives/houston/scheduler';
 
     // Read a file if it exists; otherwise return ''
     private async readMaybe(path: string): Promise<string> {

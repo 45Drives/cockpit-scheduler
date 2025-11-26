@@ -6,10 +6,9 @@ export DEBIAN_FRONTEND=noninteractive
 # 0 = legacy-only (no daemon), 1 = manage and start daemon if installed
 ENABLE_DAEMON=0
 
-# Create state dir (idempotent)
-install -d -m 0755 /var/lib/45drives/houston/scheduler
-
 if [ "$ENABLE_DAEMON" = "1" ]; then
+    # Create state dir (idempotent)
+    install -d -m 0755 /var/lib/45drives/houston/scheduler
     # Reload systemd; enable & start the D-Bus service
     systemctl daemon-reexec || true
     systemctl daemon-reload || true
