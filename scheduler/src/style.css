@@ -1,0 +1,218 @@
+/* =====================
+   Design tokens (simple-mode only)
+   ===================== */
+
+/* Base tokens for simple mode */
+.simple-mode {
+  --btn-primary-bg: #D92B2F;
+  --btn-primary-border: #D92B2F;
+  --btn-primary-hover-bg: #b02428;
+  --btn-primary-hover-border: #b02428;
+
+  --btn-secondary-bg: #a02226;
+  --btn-secondary-border: #a02226;
+  --btn-secondary-hover-bg: #821b1f;
+  --btn-secondary-hover-border: #821b1f;
+
+  --checkbox-border: #737373;
+  --outline-color: black;
+  --wizard-glow-color: rgba(255, 255, 255, 0.7);
+
+  --checkbox-checked-border: var(--btn-primary-border);
+  --checkbox-checked-bg: var(--btn-primary-bg);
+
+  --row-hover-bg: rgba(0, 0, 0, 0.03);
+  --row-selected-bg: color-mix(in srgb, var(--btn-primary-bg) 12%, transparent);
+
+  --btn-success-bg: #22C55E;
+  --btn-success-border: #22C55E;
+  --btn-success-hover-bg: #16A34A;
+  --btn-success-hover-border: #16A34A;
+}
+
+/* Success button only in simple mode */
+.simple-mode .btn-success {
+  background-color: var(--btn-success-bg) !important;
+  border-color: var(--btn-success-border) !important;
+  color: white !important;
+}
+
+.simple-mode .btn-success:hover {
+  background-color: var(--btn-success-hover-bg) !important;
+  border-color: var(--btn-success-hover-border) !important;
+}
+
+.simple-mode .btn-success:disabled,
+.simple-mode .btn-success.disabled {
+  background-color: #d3d3d3 !important;
+  border-color: #d3d3d3 !important;
+  color: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Helpers only in simple mode */
+.simple-mode .bg-success {
+  background-color: var(--btn-success-bg) !important;
+  border-color: var(--btn-success-border) !important;
+  color: white !important;
+}
+
+.simple-mode .border-success {
+  border-color: var(--btn-success-border) !important;
+}
+
+/* =====================
+   Theme overrides (simple-mode only)
+   ===================== */
+
+/* default simple-mode theme */
+.simple-mode.theme-default {
+  /* uses .simple-mode defaults */
+}
+
+.simple-mode.theme-homelab {
+  --btn-primary-bg: #2563EB;
+  --btn-primary-border: #2563EB;
+  --btn-primary-hover-bg: #1E4FCB;
+  --btn-primary-hover-border: #1E4FCB;
+
+  --btn-secondary-bg: #1B50C1;
+  --btn-secondary-border: #1B50C1;
+  --btn-secondary-hover-bg: #153fa0;
+  --btn-secondary-hover-border: #153fa0;
+}
+
+.simple-mode.theme-professional {
+  --btn-primary-bg: #65A443;
+  --btn-primary-border: #65A443;
+  --btn-primary-hover-bg: #4F8F37;
+  --btn-primary-hover-border: #4F8F37;
+
+  --btn-secondary-bg: #447c31;
+  --btn-secondary-border: #447c31;
+  --btn-secondary-hover-bg: #346527;
+  --btn-secondary-hover-border: #346527;
+}
+
+.simple-mode.theme-studio {
+  --btn-primary-bg: #6557A5;
+  --btn-primary-border: #6557A5;
+  --btn-primary-hover-bg: #504584;
+  --btn-primary-hover-border: #504584;
+
+  --btn-secondary-bg: #584C91;
+  --btn-secondary-border: #584C91;
+  --btn-secondary-hover-bg: #463C73;
+  --btn-secondary-hover-border: #463C73;
+}
+
+.simple-mode.dark {
+  --outline-color: white;
+  --row-hover-bg: rgba(255, 255, 255, 0.06);
+}
+
+/* =====================
+   Buttons (simple-mode only)
+   ===================== */
+
+.simple-mode .btn-primary {
+  background-color: var(--btn-primary-bg) !important;
+  border-color: var(--btn-primary-border) !important;
+  color: white !important;
+}
+
+.simple-mode .btn-primary:hover {
+  background-color: var(--btn-primary-hover-bg) !important;
+  border-color: var(--btn-primary-hover-border) !important;
+}
+
+.simple-mode .btn-secondary {
+  background-color: var(--btn-secondary-bg) !important;
+  border-color: var(--btn-secondary-border) !important;
+  color: white !important;
+}
+
+.simple-mode .btn-secondary:hover {
+  background-color: var(--btn-secondary-hover-bg) !important;
+  border-color: var(--btn-secondary-hover-border) !important;
+}
+
+/* Disabled state in simple mode */
+.simple-mode .btn-secondary:disabled,
+.simple-mode .btn-primary:disabled,
+.simple-mode .btn-secondary.disabled,
+.simple-mode .btn-primary.disabled {
+  background-color: #d3d3d3 !important;
+  border-color: #d3d3d3 !important;
+  color: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Helpers */
+.simple-mode .bg-primary {
+  background-color: var(--btn-primary-bg) !important;
+  border-color: var(--btn-primary-border) !important;
+  color: white !important;
+}
+
+.simple-mode .bg-secondary {
+  background-color: var(--btn-secondary-bg) !important;
+  border-color: var(--btn-secondary-border) !important;
+  color: white !important;
+}
+
+.simple-mode .border-primary {
+  border-color: var(--btn-primary-border);
+}
+
+.simple-mode .border-secondary {
+  border-color: var(--btn-secondary-border);
+}
+
+/* =====================
+   Text color overrides (simple-mode only)
+   ===================== */
+
+.simple-mode,
+.simple-mode.theme-default,
+.simple-mode.theme-homelab,
+.simple-mode.theme-professional,
+.simple-mode.theme-studio,
+.simple-mode.dark {
+  --text-primary: var(--btn-primary-bg);
+  --text-primary-hover: var(--btn-primary-hover-bg);
+  --text-secondary: var(--btn-secondary-bg);
+  --text-secondary-hover: var(--btn-secondary-hover-bg);
+}
+
+.simple-mode .text-primary {
+  color: var(--text-primary) !important;
+}
+
+.simple-mode .text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+.simple-mode .text-primary.interactive:hover,
+.simple-mode a.text-primary:hover,
+.simple-mode button.text-primary:hover,
+.simple-mode .btn.text-primary:hover {
+  color: var(--text-primary-hover) !important;
+}
+
+.simple-mode .text-secondary.interactive:hover,
+.simple-mode a.text-secondary:hover,
+.simple-mode button.text-secondary:hover,
+.simple-mode .btn.text-secondary:hover {
+  color: var(--text-secondary-hover) !important;
+}
+
+.simple-mode a.text-primary:focus-visible,
+.simple-mode button.text-primary:focus-visible,
+.simple-mode a.text-secondary:focus-visible,
+.simple-mode button.text-secondary:focus-visible {
+  outline: 2px solid var(--outline-color);
+  outline-offset: 2px;
+}

@@ -5,9 +5,14 @@ import json
 import configparser
 from datetime import datetime, timedelta, timezone
 import requests
-import shlex 
+import shlex
+import re
+from notify import get_notifier
 
-RCLONE_CONF_PATH = '/root/.config/rclone/rclone.conf'
+notifier = get_notifier()
+
+PROGRESS_RE = re.compile(r'(\d+)%')
+DEFAULT_RCLONE_CONF = '/root/.config/rclone/rclone.conf'
 SERVER_URL = 'https://cloud-sync.45d.io'
 
 OAUTH_TYPES = {
@@ -16,6 +21,29 @@ OAUTH_TYPES = {
     "dropbox": "dropbox",
     # "onedrive": "onedrive",
 }
+
+def resolve_rclone_conf_path() -> str:
+    # 1) explicit from task env (you can add it into the .env file)
+    p = os.environ.get('cloudSyncConfig_rclone_config_path')
+    if p:
+        return p
+
+    # 2) standard env that rclone understands
+    p = os.environ.get('RCLONE_CONFIG')
+    if p:
+        return p
+
+    # 3) user config (works for systemd --user units)
+    home = os.path.expanduser('~')
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config')
+    user_conf = os.path.join(xdg, 'rclone', 'rclone.conf')
+    if os.path.isfile(user_conf):
+        return user_conf
+
+    # 4) legacy root fallback (keeps old/system tasks working)
+    return DEFAULT_RCLONE_CONF
+
+RCLONE_CONF_PATH = resolve_rclone_conf_path()
 
 def load_rclone_config():
     """
@@ -57,69 +85,49 @@ def get_remote_details(config, remote_name):
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON token for remote '{remote_name}': {token}")
         raise ValueError(f"Invalid JSON token for remote '{remote_name}': {token}") from e
-
-
-def normalize_to_utc(expiry):
-    """
-    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
-    """
-    if '+' in expiry:
-        dt_part, offset_part = expiry.split('+')
-        sign = 1
-    elif '-' in expiry and not expiry.endswith('Z'):
-        dt_part, offset_part = expiry.split('-')
-        sign = -1
-    else:
-        # Already in UTC
-        return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
-
-    # Parse the main datetime part
-    dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
-
-    # Parse the offset into hours and minutes
-    offset_hours, offset_minutes = map(int, offset_part.split(':'))
-    offset = timedelta(hours=offset_hours, minutes=offset_minutes)
-
-    # Adjust the datetime to UTC
-    dt_utc = dt - sign * offset
-
-    # Return as timezone-aware datetime
-    return dt_utc.replace(tzinfo=timezone.utc)
-
-def normalize_to_utc(expiry):
-    """
-    Normalize a timezone-offset datetime string to a UTC timezone-aware datetime object.
-    """
+    
+def normalize_to_utc(expiry: str) -> datetime:
     if not isinstance(expiry, str):
         raise ValueError(f"Expiry must be a string, got {type(expiry)}: {expiry}")
 
+    s = expiry.strip()
+
+    # Handle trailing Z → convert to +00:00 so fromisoformat understands it
+    if s.endswith('Z'):
+        s = s[:-1] + '+00:00'
+
+    # First try a straight parse
     try:
-        # Check for offset and split accordingly
-        if '+' in expiry:
-            dt_part, offset_part = expiry.split('+', maxsplit=1)
-            sign = 1
-        elif '-' in expiry and not expiry.endswith('Z'):
-            dt_part, offset_part = expiry.rsplit('-', maxsplit=1)
-            sign = -1
-        else:
-            # Handle UTC format without offset
-            return datetime.strptime(expiry, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        # Workaround for timestamps with >6 fractional second digits
+        # e.g. 2025-11-24T15:00:02.831147734-05:00
+        # We trim the fractional part down to microseconds.
+        m = re.match(r'^(.*T\d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}:\d{2})$', s)
+        if not m:
+            # Give the original, more detailed error for unexpected formats
+            raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601: invalid format")
 
-        # Truncate fractional seconds to six digits if present
-        if '.' in dt_part:
-            base, frac = dt_part.split('.')
-            dt_part = f"{base}.{frac[:6]}"
+        base, frac, offset = m.groups()
 
-        # Parse datetime and offset
-        dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S.%f')
-        offset_hours, offset_minutes = map(int, offset_part.split(':'))
-        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
+        if frac and len(frac) > 7:  # '.' + at least 7 digits
+            # Keep only 6 digits after the dot: .xxxxxx
+            frac = frac[:7]
+        # If frac is None or short enough, leave it as is
+        s_trimmed = f"{base}{frac or ''}{offset}"
 
-        # Adjust datetime to UTC
-        return (dt - sign * offset).replace(tzinfo=timezone.utc)
+        try:
+            dt = datetime.fromisoformat(s_trimmed)
+        except ValueError as e:
+            raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601 after trimming: {e}")
 
-    except Exception as e:
-        raise ValueError(f"Failed to normalize expiry '{expiry}' to UTC: {e}")
+    # Ensure UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+
+    return dt
 
 
 def is_token_expired(token_data):
@@ -161,11 +169,10 @@ def refresh_token_via_server(config, remote_name, remote_type, token_data):
             token_data["access_token"] = new_token_data["accessToken"]
             token_data["expiry"] = new_token_data["expiry"]
 
-            # Update the rclone.conf file
             config.set(remote_name, "token", json.dumps(token_data))
+            os.makedirs(os.path.dirname(RCLONE_CONF_PATH), exist_ok=True)
             with open(RCLONE_CONF_PATH, "w") as conf_file:
                 config.write(conf_file)
-
             print(f"Token refreshed and updated for remote '{remote_name}'")
         else:
             raise Exception(f"Failed to refresh token: {response.text}")
@@ -193,7 +200,7 @@ def build_rclone_command(options):
     """
     Construct the rclone command based on options.
     """
-    command = ['rclone', options['type'], '-v']
+    command = ['rclone', f'--config={RCLONE_CONF_PATH}', options['type'], '-v']
 
     option_flags = {
         'check_first_flag': '--check-first',
@@ -239,17 +246,22 @@ def build_rclone_command(options):
         command.append(f'--max-transfer={options["max_transfer_size"]}{options["max_transfer_size_unit"]}')
     if options['cutoff_mode']:
         command.append(f'--cutoff-mode={options["cutoff_mode"].upper()}')
+    if options.get('transfers', 0) > 0:
+        command.append(f'--transfers={options["transfers"]}')
+        
+    if '--stats-one-line' not in command:
+        command.extend(['--stats-one-line', '--stats=1s'])
         
     extra = options.get('custom_args') or ''
     if extra.strip():
         parts = []
-        for chunk in extra.split(','):      # 1) split on commas (if there are none, you just get the whole string)
+        for chunk in extra.split(','):
             chunk = chunk.strip()
             if not chunk:
                 continue
-            parts.extend(shlex.split(chunk))  # 2) within each chunk, split on spaces (respecting quotes)
+            parts.extend(shlex.split(chunk))
         command.extend(parts)
-
+        
     return command
 
 def construct_paths(localPath, direction, targetPath):
@@ -258,26 +270,86 @@ def construct_paths(localPath, direction, targetPath):
     """
     return (localPath, targetPath) if direction == 'push' else (targetPath, localPath)
 
-def execute_command(command, src, dest):
+def execute_command(command, src, dest, log_file_path=None):
     """
-    Execute the constructed rclone command.
+    Execute the constructed rclone command with streaming output and
+    send progress updates to systemd via sd_notify. If log_file_path is
+    set, tee the output into that file as well.
     """
     command.extend([src, dest])
     print(f"Executing command: {' '.join(command)}")
+
+    # Let systemd know we’ve started the real work
+    notifier.notify("STATUS=Starting transfer…")
 
     process = subprocess.Popen(
         command,
         universal_newlines=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.STDOUT,
+        bufsize=1
     )
-    stdout, stderr = process.communicate()
 
-    if process.returncode != 0:
-        print(f"Error: {stderr}")
-        sys.exit(1)
-    else:
-        print(stdout)
+    last_percent = None
+    log_fh = None
+
+    # Open the user log file if one was requested
+    if log_file_path:
+        try:
+            os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+        except Exception:
+            # If dirname is empty or invalid, just ignore; open() will fail if needed
+            pass
+        try:
+            # line-buffered for immediate writes
+            log_fh = open(log_file_path, 'a', buffering=1)
+        except Exception as e:
+            print(f"WARNING: Failed to open log file {log_file_path}: {e}")
+            log_fh = None
+
+    try:
+        assert process.stdout is not None
+        for line in process.stdout:
+            # write to optional log file
+            if log_fh:
+                try:
+                    log_fh.write(line)
+                except Exception as e:
+                    # Don't break the transfer if logging fails
+                    print(f"WARNING: Failed to write to log file {log_file_path}: {e}")
+                    log_fh = None
+
+            # keep logs in journal
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+            # simple percent parse: first "<digits>%"
+            m = PROGRESS_RE.search(line)
+            if m:
+                pct = int(m.group(1))
+                if pct != last_percent:
+                    last_percent = pct
+                    notifier.notify(f"STATUS=Transferring… {pct}% complete")
+
+        process.wait()
+    finally:
+        if log_fh:
+            try:
+                log_fh.close()
+            except Exception:
+                pass
+
+        if process.returncode == 0:
+            notifier.notify("STATUS=Finishing up…")
+        else:
+            notifier.notify("STATUS=Transfer failed")
+
+        if process.returncode != 0:
+            print(f"Error: rclone exited with code {process.returncode}")
+            sys.exit(process.returncode)
+        else:
+            print("Rclone task execution completed.")
+
 
 def execute_rclone(options):
     """
@@ -289,17 +361,15 @@ def execute_rclone(options):
         if not remote_name:
             raise ValueError("No remote name specified in options")
 
-        # print("Starting token validation...")
         validate_and_refresh_token(config, remote_name)
-        # print("Finished token validation.")
 
         command = build_rclone_command(options)
         src, dest = construct_paths(options['local_path'], options['direction'], options['target_path'])
-        # print(f"Source: {src}, Destination: {dest}")
-        execute_command(command, src, dest)
+        execute_command(command, src, dest, options.get('log_file_path') or None)
     except Exception as e:
         print(f"Execution error: {e}")
         sys.exit(1)
+
 
 def parse_arguments():
     """
@@ -336,6 +406,7 @@ def parse_arguments():
         'max_transfer_size_unit': os.environ.get('cloudSyncConfig_rcloneOptions_max_transfer_size_unit', 'MiB'),
         'cutoff_mode': os.environ.get('cloudSyncConfig_rcloneOptions_cutoff_mode', 'HARD').lower(),
         'no_traverse_flag': str_to_bool(os.environ.get('cloudSyncConfig_rcloneOptions_no_traverse_flag', 'False')),
+        'log_file_path': os.environ.get('cloudSyncConfig_rcloneOptions_log_file_path', ''),
     }
 
 def str_to_bool(value):
@@ -345,12 +416,19 @@ def main():
     """
     Main execution entry point.
     """
+    notifier.notify("STATUS=Starting task…")
+    notifier.notify("READY=1")
+    notifier.notify("STATUS=Running task…")
     print("Starting rclone script...")
     # print('env:', os.environ)
     options = parse_arguments()
     # print(f"Options: {options}")
     execute_rclone(options)
+    notifier.notify("STATUS=Finishing up…")
     print("Rclone task execution completed.")
+    
+
 
 if __name__ == '__main__':
+    notifier.notify("STATUS=Starting task…")
     main()

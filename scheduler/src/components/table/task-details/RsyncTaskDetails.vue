@@ -55,11 +55,11 @@
                     0 ? `${findValue(taskInstance.parameters, 'rsyncOptions', 'bandwidth_limit_kbps')} kb/s` : 'No'))
                     }}</b>
             </p>
-            <p class="my-2 truncate"
+            <!-- <p class="my-2 truncate"
                 :title="`Parallel Threads: ${(findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') !== 0 ? findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') : 'No')}`">
                 Parallel Threads: <b>{{ (findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') !== 0 ?
                     findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') : 'No') }}</b>
-            </p>
+            </p> -->
         </div>
         <div class="col-span-2 row-span-2">
             <p class="my-2 font-bold">Current Schedules:</p>

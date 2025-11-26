@@ -3,12 +3,27 @@ import sys
 import datetime
 import os
 import time
+import json
+from notify import get_notifier
+
+notifier = get_notifier()
 
 class Snapshot:
 	def __init__(self, name, guid, creation):
 		self.name = name
 		self.guid = guid
 		self.creation = creation
+def send_houston_notification(payload):
+    try:
+        dbus_script = "/opt/45drives/houston/houston-notify"
+        debug_log = "/tmp/zfs_replication_debug.log"
+        subprocess.run([
+            "python3",
+            dbus_script,
+            json.dumps(payload)
+        ], stdout=open(debug_log, "a"), stderr=subprocess.STDOUT)
+    except Exception as notify_error:
+        print(f"Failed to send D-Bus notification: {notify_error}")
 
 # 	return new_snap
 def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
@@ -19,36 +34,65 @@ def create_snapshot(filesystem, is_recursive, task_name, custom_name=None):
     new_snap = f'{filesystem}@{(custom_name+"-") if custom_name else ""}{task_name}-{timestamp}'
     command.append(new_snap)
 
+    notifier.notify(f"STATUS=Creating snapshot {new_snap}…")
     try:
         subprocess.run(command, check=True, universal_newlines=True)
     except subprocess.CalledProcessError as e:
         msg = (e.stderr or e.stdout or "").lower()
         if "dataset already exists" in msg:
             print(f"Snapshot already exists ({new_snap}) — likely a queued duplicate start; exiting successfully.")
-            sys.exit(0)  # don’t trigger Restart=on-failure
+            notifier.notify(f"STATUS=Snapshot {new_snap} already exists; treating as completed.")
+            sys.exit(0)
+        notifier.notify(f"STATUS=Snapshot creation failed: {msg}")
         raise
 
     print(f"new snapshot created: {new_snap}")
+    notifier.notify(f"STATUS=Snapshot created: {new_snap}")
     return new_snap
 
-
 def prune_snapshots_by_retention(
-    filesystem, task_name, retention_time, retention_unit,
-    excluded_snapshot_name, remote_user=None, remote_host=None, remote_port=22, transferMethod='ssh'
+    filesystem,
+    task_name,
+    retention_time,
+    retention_unit,
+    excluded_snapshot_name,
+    remote_user=None,
+    remote_host=None,
+    remote_port=22,
+    transferMethod='ssh',
+    progress_base=0,
+    progress_span=100,
 ):
+    """
+    Prune snapshots according to retention settings, and report progress
+    as a monotonic percentage segment:
+
+      - progress_base: starting percentage for this phase (0–100)
+      - progress_span: how many percentage points this phase may consume
+
+    The function returns the final percentage reached, so the caller can
+    chain phases without ever going backwards.
+    """
     # Determine whether to fetch snapshots locally or remotely
     if remote_host:
         snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem, transferMethod)
         # If None is returned, that means the dataset doesn't exist at all; no pruning needed
         if snapshots is None:
             print(f"Remote dataset {filesystem} does not exist. Nothing to prune.")
-            return
+            msg = f"Remote dataset {filesystem} does not exist. Nothing to prune."
+            # Advance to the end of this phase anyway
+            final_pct = min(100, int(progress_base) + int(progress_span))
+            notifier.notify(f"STATUS={msg} {final_pct}% complete")
+            return final_pct
     else:
         snapshots = get_local_snapshots(filesystem)
 
     if snapshots is None:
-        print(f"{'Remote ' if remote_host else ''}dataset {filesystem} does not exist. Nothing to prune.")
-        return
+        msg = f"{'Remote ' if remote_host else ''}dataset {filesystem} does not exist. Nothing to prune."
+        print(msg)
+        final_pct = min(100, int(progress_base) + int(progress_span))
+        notifier.notify(f"STATUS={msg} {final_pct}% complete")
+        return final_pct
 
     now = datetime.datetime.now()
 
@@ -68,15 +112,21 @@ def prune_snapshots_by_retention(
     except (TypeError, ValueError):
         retention_val = 0
 
-    # Case 1: retention explicitly disabled -> no pruning, no error
+    # Case 1: retention explicitly disabled -> no pruning, but we still advance progress
     if (retention_val == 0) and (not retention_unit):
-        print("Retention not configured. No pruning will be performed.")
-        return
+        msg = "Retention not configured. No pruning will be performed."
+        print(msg)
+        final_pct = min(100, int(progress_base) + int(progress_span))
+        notifier.notify(f"STATUS={msg} {final_pct}% complete")
+        return final_pct
 
     # Case 2: bad unit or non-positive value -> invalid config
     if retention_val <= 0 or retention_unit not in unit_multipliers:
-        print(f"Retention period is not valid (time={retention_time}, unit='{retention_unit}'). No pruning will be performed.")
-        return
+        msg = f"Retention period is not valid (time={retention_time}, unit='{retention_unit}'). No pruning will be performed."
+        print(msg)
+        final_pct = min(100, int(progress_base) + int(progress_span))
+        notifier.notify(f"STATUS={msg} {final_pct}% complete")
+        return final_pct
 
     multiplier = unit_multipliers[retention_unit]
     retention_milliseconds = retention_val * multiplier
@@ -96,7 +146,23 @@ def prune_snapshots_by_retention(
             if age_milliseconds > retention_milliseconds:
                 snapshots_to_delete.append(snapshot)
 
-    for snapshot in snapshots_to_delete:
+    # Normalise progress segment
+    start = max(0, min(100, int(progress_base)))
+    span = max(0, min(100 - start, int(progress_span)))
+
+    prefix = "remote " if remote_host else ""
+
+    if not snapshots_to_delete:
+        msg = "No snapshots to prune."
+        print(msg)
+        final_pct = min(100, start + span)
+        notifier.notify(f"STATUS={msg} {final_pct}% complete")
+        return final_pct
+
+    total = len(snapshots_to_delete)
+    notifier.notify(f"STATUS=Pruning {total} {prefix}snapshot(s)… {start}% complete")
+
+    for idx, snapshot in enumerate(snapshots_to_delete, start=1):
         # Build the delete command
         if remote_host:
             ssh_cmd = ['ssh']
@@ -113,12 +179,18 @@ def prune_snapshots_by_retention(
             print(f"Deleted snapshot: {snapshot.name}")
         except subprocess.CalledProcessError as e:
             print(f"Failed to delete snapshot {snapshot.name}: {e}")
+            notifier.notify(f"STATUS=Failed to delete snapshot {snapshot.name}")
+            # We still keep progress monotonic; just abort the task
             sys.exit(1)
 
-    if snapshots_to_delete:
-        print(f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_val} {retention_unit}).")
-    else:
-        print("No snapshots to prune.")
+        pct = start + int(idx * span / total)
+        notifier.notify(f"STATUS=Pruning {total} {prefix}snapshot(s)… {pct}% complete")
+
+    msg = f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_val} {retention_unit})."
+    print(msg)
+    final_pct = min(100, start + span)
+    notifier.notify(f"STATUS={msg} {final_pct}% complete")
+    return final_pct
 
 def get_local_snapshots(filesystem):
     # cmd = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
@@ -150,20 +222,9 @@ def get_remote_snapshots(user, host, port, filesystem, transferMethod):
 	  - An empty list [] if the dataset exists but has no snapshots.
 	  - None if the dataset does not exist at all.
 	"""
-	ssh_cmd = ['ssh']
-	
-	# print('transfermethod:', transferMethod)
+ 
+	ssh_cmd = ssh_base_args(user, host, port)
 
-	# If using Netcat, always force SSH to use port 22 for snapshot retrieval
-	if transferMethod == 'netcat':
-		port = '22'  # Override the port for SSH, but do NOT modify Netcat’s actual port
-		
-	  # If using SSH for transfer, use the specified port only if it's not 22
-	if transferMethod == 'ssh' and str(port) != '22':
-		ssh_cmd.extend(['-p', str(port)])
-
-	ssh_cmd.append(f"{user}@{host}")
-	# ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 	ssh_cmd.extend(['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
 
 	try:
@@ -175,7 +236,6 @@ def get_remote_snapshots(user, host, port, filesystem, transferMethod):
 				snapshot_name = parts[0]
 				snapshot_guid = parts[1]
 				try:
-					# snapshot_creation = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
 					snapshot_creation = datetime.datetime.fromtimestamp(int(parts[2]))
 				except ValueError:
 					continue  # Skip if parsing fails
@@ -202,6 +262,25 @@ def get_most_recent_snapshot(snapshots):
 	else:
 		return None
 
+def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw):
+    args = ['zfs', 'send']
+    if recursive:
+        args.append('-R')
+    if compressed:
+        args.append('-Lce')
+    if raw:
+        args.append('-w')
+    if sendName2:
+        args.extend(['-I' if recursive else '-i', sendName2])
+    args.append(sendName)
+    return args
+
+def ssh_base_args(user, host, port):
+    args = ['ssh']
+    if str(port) != '22':
+        args.extend(['-p', str(port)])
+    args.append(f'{user}@{host}')
+    return args
 
 def send_snapshot(
 	sendName, 
@@ -219,17 +298,12 @@ def send_snapshot(
  	recursive=False, 
 ):
 	try:
-		# Build the zfs send command
-		send_cmd = ['zfs', 'send']
-		if recursive:
-			send_cmd.append('-R')
-		if compressed:
-			send_cmd.append('-Lce')
-		if raw:
-			send_cmd.append('-w')
-		if sendName2 != "":
-			send_cmd.extend(['-I' if recursive else '-i', sendName2])
-		send_cmd.append(sendName)
+		notifier.notify("STATUS=Preparing ZFS send/recv pipeline…")
+		send_cmd = build_zfs_send_args( sendName, sendName2,
+			recursive=recursive,
+			compressed=compressed,
+			raw=raw
+   		)
 
 		if sendName2 != "":
 			print(f"sending incrementally from {sendName2} -> {sendName} to {recvName}")
@@ -242,12 +316,14 @@ def send_snapshot(
 			stderr=subprocess.PIPE,
 		)
 
+		print("send_cmd:", send_cmd)
 		# If sending locally
 		if transferMethod == "local":
 			recv_cmd = ['zfs', 'recv']
 			if forceOverwrite:
 				recv_cmd.append('-F')
 			recv_cmd.append(recvName)
+			print("recv_cmd:", recv_cmd)
 
 			print(f"receiving {sendName} in {recvName}")
 			process_recv = subprocess.Popen(
@@ -260,15 +336,18 @@ def send_snapshot(
 
 			stdout, stderr = process_recv.communicate()
 			if process_recv.returncode != 0:
+				notifier.notify("STATUS=Local receive failed.")
 				print(f"recv error: {stderr}")
 				sys.exit(1)
 			else:
+				notifier.notify("STATUS=Local receive completed.")
 				print(stdout)
 			print(f"received local send")
 
 		# If sending remotely via ssh
 		elif transferMethod == "ssh":
 			print("sending via ssh")
+			notifier.notify(f"STATUS=Sending snapshot {sendName} to {recvHostUser}@{recvHost}:{recvName} via ssh…")
 			m_buff_cmd = ['mbuffer', '-s', '256k', '-m', str(mBufferSize) + mBufferUnit]
 			process_m_buff = subprocess.Popen(
 				m_buff_cmd,
@@ -302,20 +381,23 @@ def send_snapshot(
 			stdout, stderr = process_remote_recv.communicate()
 
 			if process_remote_recv.returncode != 0:
+				notifier.notify("STATUS=Remote receive failed.")
 				print(f"ERROR: remote recv error: {stderr}")
 				sys.exit(1)
 			else:
+				notifier.notify("STATUS=Remote receive completed.")
 				print(stdout)
 			print(f"received remote send")
 
 		elif transferMethod == "netcat":
 			try:
+				notifier.notify(f"STATUS=Sending snapshot {sendName} via netcat to {recvHostUser}@{recvHost}:{recvPort}…")
 				print("Sending via netcat...")
 				
 				# Correct listener command
-				listen_cmd = f'nc -l {recvPort} | zfs receive {"-F " + recvName if forceOverwrite else recvName}'
-				# listen_cmd = f"nohup sh -c 'nc -l {recvPort} | zfs receive {'-F ' + recvName if forceOverwrite else recvName}' > /dev/null 2>&1 &"
-				ssh_cmd_listener = ['ssh', f'{recvHostUser}@{recvHost}', listen_cmd]
+				listen_cmd = f"nc -l {recvPort} | zfs recv {'-F ' + recvName if forceOverwrite else recvName}"
+				ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, recvPort)  # control-plane port
+				ssh_cmd_listener.append(listen_cmd)
 				print(f"[Receiver Side] Listener command: {' '.join(ssh_cmd_listener)}")
 
 				ssh_process_listener = subprocess.Popen(
@@ -327,26 +409,19 @@ def send_snapshot(
 
 				# Wait briefly to ensure listener readiness
 				time.sleep(5)
-
-				# Prepare sender-side mbuffer command
-				# m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
-				m_buff_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
-
-				print(f"[Sender Side] mbuffer command: {' '.join(m_buff_cmd)}")
-
-				send_cmd_list = ['zfs', 'send']
-				if compressed:
-					send_cmd_list.append('-Lce')
-				if raw:
-					send_cmd_list.append('-w')
-				if sendName2 != "":
-					send_cmd_list.extend(['-i', sendName2])
-				send_cmd_list.append(sendName)
+    
+				send_cmd_list = build_zfs_send_args(
+					sendName, sendName2,
+					recursive=recursive,
+					compressed=compressed,
+					raw=raw,
+				)
 
 				print(f"[Sender Side] ZFS send command: {' '.join(send_cmd_list)}")
 
 				# Combine send -> mbuffer -> netcat pipeline
-				nc_command = f"{' '.join(send_cmd_list)} | {' '.join(m_buff_cmd)} | nc {recvHost} {recvPort}"
+				# nc_command = f"{' '.join(send_cmd_list)} | {' '.join(m_buff_cmd)} | nc {recvHost} {recvPort}"
+				nc_command = f"{' '.join(send_cmd_list)} | mbuffer -s 256k -m {mBufferSize}{mBufferUnit} | nc {recvHost} {recvPort}"
 				print(f"[Sender Side] Netcat command: {nc_command}")
 
 				nc_process = subprocess.Popen(
@@ -358,6 +433,7 @@ def send_snapshot(
 				nc_stdout, nc_stderr = nc_process.communicate()
 
 				if nc_process.returncode != 0:
+					notifier.notify("STATUS=Netcat send failed.")
 					print(f"[Sender Side] nc error: {nc_stderr.decode()}")
 					ssh_process_listener.terminate()
 					sys.exit(1)
@@ -367,19 +443,12 @@ def send_snapshot(
 				# Ensure receiver completed successfully
 				ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
 				if ssh_process_listener.returncode != 0:
+					notifier.notify("STATUS=Remote receive via netcat failed.")
 					print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
 					sys.exit(1)
-
-				# # Verify dataset on receiver
-				# snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				# snapshot_process = subprocess.run(snapshot_check_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-				# if snapshot_process.returncode != 0:
-				# 	print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr}")
-				# 	sys.exit(1)
-
-				# print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout}")
-
+     
+				notifier.notify("STATUS=Netcat send/receive completed.")
+    
 				# Verify dataset on receiver
 				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
 				snapshot_process = subprocess.run(snapshot_check_cmd, universal_newlines=True, stdout=subprocess.PIPE)
@@ -400,12 +469,12 @@ def send_snapshot(
 				ssh_process_listener.terminate()
 				sys.exit(1)
 
-
 		else:
 			print("ERROR: Invalid transferMethod specified. Must be 'local', 'ssh', or 'netcat'.")
 			sys.exit(1)
 
 	except Exception as e:
+		notifier.notify(f"STATUS=Send error: {e}")
 		print(f"ERROR: Send error: {e}")
 		sys.exit(1)
 
@@ -428,6 +497,9 @@ def join_zfs_path(pool: str, dataset: str) -> str:
 
 def main():
 	try:
+		notifier.notify("STATUS=Starting ZFS replication task…")
+		notifier.notify("READY=1")
+		notifier.notify("STATUS=Planning replication…")
 		# ---------- helpers ----------
 		def as_bool(v, default=False):
 			if v is None:
@@ -468,7 +540,6 @@ def main():
 
 		# ---------- initial state ----------
 		forceOverwrite = False
-		# receivingFilesystem = f"{destinationPath}"  # or f"{destinationRoot}/{destinationPath}" if you prefer
 		incrementalSnapName = ""
 
 		# ---------- fetch snapshots ----------
@@ -546,11 +617,12 @@ def main():
 					forceOverwrite = True
 				# else: normal incremental is fine
 
-
+		notifier.notify("STATUS=Creating source snapshot…")	
 		# ---------- create a fresh source snapshot to send ----------
 		newSnap = create_snapshot(sourceFilesystem, isRecursiveSnap, taskName, customName)
 
 		# ---------- send (full or incremental) ----------
+		notifier.notify("STATUS=Sending snapshot to destination…")
 		send_snapshot(
 			newSnap,
 			receivingFilesystem,
@@ -567,16 +639,24 @@ def main():
 			recursive=isRecursiveSnap, 
 		)
 
-		# ---------- prune ----------
-		prune_snapshots_by_retention(
+		notifier.notify("STATUS=Pruning old snapshots on source/destination…")
+
+		# Start at 0% for pruning phases
+		current_pct = 0
+
+		# Source prune: 0 → 50
+		current_pct = prune_snapshots_by_retention(
 			sourceFilesystem,
 			taskName,
 			sourceRetentionTime,
 			sourceRetentionUnit,
-			newSnap
+			newSnap,
+			progress_base=current_pct,
+			progress_span=50,
 		)
 
-		prune_snapshots_by_retention(
+		# Destination prune: 50 → 100
+		current_pct = prune_snapshots_by_retention(
 			receivingFilesystem,
 			taskName,
 			destinationRetentionTime,
@@ -585,14 +665,41 @@ def main():
 			remoteUser,
 			remoteHost,
 			remotePort,
-			transferMethod
+			transferMethod,
+			progress_base=current_pct,
+			progress_span=50,
 		)
 
-	except SystemExit:
-		raise
+		# Final completion status (should be 100%)
+		final_pct = min(100, int(current_pct))
+		notifier.notify(f"STATUS=ZFS replication task completed. {final_pct}% complete")
+
 	except Exception as e:
+		newSnap = locals().get("newSnap", "unknown")
+		sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
+		receivingFilesystem = os.environ.get('zfsRepConfig_destDataset_dataset', '')
+		notifier.notify("STATUS=ZFS replication task failed.")
+		email_error_message = (
+			f"ZFS replication failed while sending snapshot {newSnap} "
+			f"from {sourceFilesystem} to {receivingFilesystem}"
+			f"Error: {str(e)}"
+		)
+		ui_error_message = str(e)
+
+		send_houston_notification({
+			"timestamp": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+			"event": "zfs_replication_failed",
+			"subject": "ZFS Replication Failed",
+			"email_message": email_error_message,
+			"fileSystem": sourceFilesystem,
+			"snapShot": newSnap,
+			"replicationDestination": receivingFilesystem,
+			"severity": "warning",
+			"errors": ui_error_message
+		})
 		print(f"Exception: {e}")
 		sys.exit(1)
+
 
 if __name__ == "__main__":
 	main()

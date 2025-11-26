@@ -1,3 +1,3 @@
-## task scheduler 1.3.4-1
+## task scheduler 1.4.0-1
 
-* Re-adds Cloud providers Storj and iDriveE2 with Rclone update due to now self-hosting latest rclone version on our repos
+* Major overhaul - Updates task status + logging, adds progress tracking, fixes rclone token expiry after 1hr for long transfers, among numerous other QoL improvements and bugfixes

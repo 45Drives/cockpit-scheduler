@@ -3,3 +3,44 @@
 /* div, td, th, tr, table, ul, li, p, h1, h2, h3, button, input {
   border: 1px dotted gray;
 } */
+
+:root {
+  --btn-success-bg: #22C55E;
+  /* green */
+  --btn-success-border: #22C55E;
+  --btn-success-hover-bg: #16A34A;
+  /* darker on hover */
+  --btn-success-hover-border: #16A34A;
+}
+
+/* === Success button === */
+.btn-success {
+  background-color: var(--btn-success-bg) !important;
+  border-color: var(--btn-success-border) !important;
+  color: white !important;
+}
+
+.btn-success:hover {
+  background-color: var(--btn-success-hover-bg) !important;
+  border-color: var(--btn-success-hover-border) !important;
+}
+
+/* Extend disabled styles to cover success */
+.btn-success:disabled,
+.btn-success.disabled {
+  background-color: #d3d3d3 !important;
+  border-color: #d3d3d3 !important;
+  color: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.bg-success {
+  background-color: var(--btn-success-bg) !important;
+  border-color: var(--btn-success-border) !important;
+  color: white !important;
+}
+
+.border-success {
+  border-color: var(--btn-success-border) !important;
+}

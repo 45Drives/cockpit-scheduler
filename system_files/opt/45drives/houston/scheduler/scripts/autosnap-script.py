@@ -2,9 +2,14 @@
 import subprocess
 import sys
 import datetime as dt
+import json
 import os
 import re
 from typing import List, Optional, Tuple
+
+from notify import get_notifier
+
+notifier = get_notifier()
 
 TASK_PROP = "com.45drives:task"
 LEGACY_NAME_RE = re.compile(r'@(?:[^@]+-)?(?P<task>[^@]+)-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$')
@@ -16,6 +21,17 @@ class Snapshot:
         self.guid = guid
         self.creation_epoch = creation_epoch
         self.task_tag = task_tag
+
+def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
+    try:
+        dbus_script = "/opt/45drives/houston/houston-notify"
+        subprocess.run([
+            "python3",
+            dbus_script,
+            json.dumps(payload)
+        ], stdout=open(debug_log, "a"), stderr=subprocess.STDOUT)
+    except Exception as e:
+        print(f"Failed to send D-Bus notification: {e}")
 
 def run(cmd: List[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -33,11 +49,15 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         cmd.append("-r")
     cmd.append(snapname)
 
+    notifier.notify(f"STATUS=Creating snapshot {snapname}…")
     try:
         res = run(cmd)
         print(f"Created snapshot: {snapname}")
+        notifier.notify(f"STATUS=Snapshot created: {snapname} 20% complete")
     except subprocess.CalledProcessError as e:
-        print(f"ERROR: zfs snapshot failed: {e.stderr.strip()}", file=sys.stderr)
+        msg = e.stderr.strip() if e.stderr else "zfs snapshot failed"
+        notifier.notify(f"STATUS=Snapshot creation failed: {msg}")
+        print(f"ERROR: zfs snapshot failed: {msg}", file=sys.stderr)
         sys.exit(1)
 
     # Tag snapshot with our task property so we can safely identify it later
@@ -109,6 +129,7 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
 def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time: int, retention_unit: str, exclude_snap: str) -> None:
     if retention_time <= 0 or not retention_unit:
         print("Retention not configured; skipping prune.")
+        notifier.notify("STATUS=Snapshot created; pruning not configured.")
         return
 
     unit_seconds = {
@@ -116,13 +137,13 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         "hours":   60 * 60,
         "days":    24 * 60 * 60,
         "weeks":   7 * 24 * 60 * 60,
-        # simple approximations; switch to relativedelta if you need calendar-accurate months/years
         "months":  30 * 24 * 60 * 60,
         "years":   365 * 24 * 60 * 60,
     }.get(retention_unit)
 
     if not unit_seconds:
         print(f"WARNING: Unknown retention unit '{retention_unit}'; skipping prune.")
+        notifier.notify(f"STATUS=Snapshot created; unknown retention unit '{retention_unit}', skipping prune.")
         return
 
     cutoff = int(dt.datetime.now().timestamp()) - (retention_time * unit_seconds)
@@ -130,13 +151,11 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
 
     candidates = []
     for s in snaps:
-        # Only prune snapshots we created (by tag), exclude the one we just created
         if s.name == exclude_snap:
             continue
 
         belongs = (s.task_tag == task_name)
 
-        # If not tagged (older deployments) fall back to legacy name match:
         if not belongs and ENABLE_LEGACY_FALLBACK:
             m = LEGACY_NAME_RE.search(s.name)
             if m and m.group('task') == task_name:
@@ -147,26 +166,33 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         
         if s.creation_epoch <= cutoff:
             candidates.append(s)
-		
+    
     if not candidates:
         print("No snapshots to prune.")
+        notifier.notify("STATUS=Snapshot created; no old snapshots to prune.")
         return
 
-    # Delete oldest first (optional)
     candidates.sort(key=lambda s: s.creation_epoch)
 
     pruned = 0
-    for s in candidates:
+    total = len(candidates)
+    base = 20  # snapshot phase
+    notifier.notify(f"STATUS=Pruning {total} old snapshot(s)… {base}% complete")
+    for idx, s in enumerate(candidates, start=1):
         try:
             run(["zfs", "destroy", s.name])
             pruned += 1
             print(f"Deleted snapshot: {s.name}")
         except subprocess.CalledProcessError as e:
             print(f"ERROR: failed to delete {s.name}: {e.stderr.strip()}", file=sys.stderr)
-            # continue rather than exit; you can flip this if you prefer to fail the unit
             continue
 
-    print(f"Pruned {pruned} snapshot(s) older than {retention_time} {retention_unit}.")
+        pct = int(idx * 100 / total)
+        notifier.notify(f"STATUS=Pruning {total} old snapshot(s)… {pct}% complete")
+
+    msg = f"Pruned {pruned} snapshot(s) older than {retention_time} {retention_unit}."
+    print(msg)
+    notifier.notify(f"STATUS={msg}")
 
 def main():
     filesystem = os.environ.get("autoSnapConfig_filesystem_dataset", "").strip()
@@ -174,7 +200,6 @@ def main():
     custom_name = os.environ.get("autoSnapConfig_customName", "").strip() or None
     task_name = os.environ.get("taskName", "").strip()
 
-    # Parse retention safely
     rt_raw = os.environ.get("autoSnapConfig_snapshotRetention_retentionTime", "0").strip()
     ru = os.environ.get("autoSnapConfig_snapshotRetention_retentionUnit", "").strip()
     try:
@@ -182,8 +207,15 @@ def main():
     except ValueError:
         rt = 0
 
+    notifier.notify("STATUS=Starting snapshot task…")
+    notifier.notify("READY=1")
+    notifier.notify("STATUS=Running snapshot task…")
+
     created = create_snapshot(filesystem, is_recursive, task_name, custom_name)
     prune_snapshots_by_retention(filesystem, task_name, rt, ru, created)
 
+    notifier.notify("STATUS=Snapshot task completed.")
+
 if __name__ == "__main__":
     main()
+

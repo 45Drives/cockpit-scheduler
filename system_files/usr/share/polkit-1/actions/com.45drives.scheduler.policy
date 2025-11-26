@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+
+  <!-- Read-only/list calls for anyone -->
+  <action id="com.45drives.scheduler.list">
+    <description>List scheduler tasks</description>
+    <message>Authentication is required to list scheduler tasks.</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <!-- User-scope modifications (non-admin users allowed by rules) -->
+  <action id="com.45drives.scheduler.modify.user">
+    <description>Modify user-scope scheduler tasks</description>
+    <message>Authentication is required to modify your scheduler tasks.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>no</allow_active>
+    </defaults>
+  </action>
+
+  <!-- System-scope modifications (admins only by rules) -->
+  <action id="com.45drives.scheduler.modify.system">
+    <description>Modify system-scope scheduler tasks</description>
+    <message>Administrator authentication is required to modify system tasks.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>no</allow_active>
+    </defaults>
+  </action>
+
+  <!-- (Optional) keep the legacy generic action for backwards compatibility -->
+  <action id="com.45drives.scheduler.modify">
+    <description>Modify scheduler tasks (legacy)</description>
+    <message>Authentication is required to modify scheduler tasks.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>no</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>

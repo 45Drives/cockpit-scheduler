@@ -41,12 +41,13 @@
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
-                                    <tr class="border border-default border-collapse grid grid-cols-8 w-full">
+                                    <!-- <tr class="border border-default border-collapse grid grid-cols-10 w-full"> -->
+                                    <tr class="border border-default border-collapse grid grid-cols-9 w-full">
                                         <th scope="col"
                                             class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
                                             <button @click="sortBy('name')"
                                                 class="flex w-full justify-between whitespace-nowrap">
-                                                Name
+                                                Task Name
                                                 <BarsArrowDownIcon class="ml-1 aspect-square w-5 h-5 text-muted"
                                                     v-if="sort.field === 'name' && sortMode == 'desc'" />
                                                 <BarsArrowUpIcon class="ml-1 aspect-square w-5 h-5 text-muted"
@@ -55,11 +56,15 @@
                                             </button>
                                         </th>
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
                                             Status
                                         </th>
+                                        <!-- <th scope="col"
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
+                                            User-Scope
+                                        </th> -->
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-3">
                                             Last Run
                                         </th>
                                         <th scope="col"
@@ -67,23 +72,23 @@
                                             Scheduled
                                         </th>
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
                                             Details
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-accent">
-                                    <div v-for="(taskInstance, index) in filteredAndSortedTasks" :key="taskInstance.name">
-                                        <TaskInstanceTableRow :task="taskInstance"
-                                            :isExpanded="expandedTaskName === taskInstance.name"
-                                            @runTask="(task) => runTaskBtn(taskInstance, index)"
-                                            @editTask="(task) => editTaskBtn(task)"
-                                            @manageSchedule="(task) => manageScheduleBtn(task)"
-                                            @removeTask="(task) => removeTaskBtn(task)"
-                                            @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
-                                            @viewNotes="(task) => viewNotesBtn(task)" ref="taskTableRow"
-                                            :attr="taskInstance" />
-                                    </div>
+                                    <TaskInstanceTableRow v-for="(taskInstance, index) in filteredAndSortedTasks"
+                                        :key="taskInstance.name" :task="taskInstance"
+                                        :isExpanded="expandedTaskName === taskInstance.name"
+                                        @runTask="(task) => runTaskBtn(taskInstance, index)"
+                                        @stopTask="(task) => stopTaskBtn(taskInstance, index)"
+                                        @editTask="(task) => editTaskBtn(task)"
+                                        @manageSchedule="(task) => manageScheduleBtn(task)"
+                                        @removeTask="(task) => removeTaskBtn(task)"
+                                        @viewLogs="(task) => viewLogsBtn(task)" @toggleDetails="toggleDetails"
+                                        @viewNotes="(task) => viewNotesBtn(task)" ref="taskTableRow"
+                                        :attr="taskInstance" />
                                 </tbody>
                             </table>
                         </div>
@@ -116,6 +121,12 @@
             :operating="running" :operation="'starting'" />
     </div>
 
+    <div v-if="showStopNowPrompt">
+        <component :is="stopNowDialog" @close="updateShowStopNowPrompt" :showFlag="showStopNowPrompt"
+            :title="'Stop Task'" :message="'Do you wish to stop this task now?'" :confirmYes="stopNowYes"
+            :confirmNo="stopNowNo" :operating="stopping" :operation="'stopping'" />
+    </div>
+
     <div v-if="showRemoveTaskPrompt">
         <component :is="removeTaskDialog" @close="updateShowRemoveTaskPrompt" :showFlag="showRemoveTaskPrompt"
             :title="'Remove Task'" :message="'Are you sure you want to remove this task?'" :confirmYes="removeTaskYes"
@@ -134,14 +145,13 @@
 
 <script setup lang="ts">
 import "@45drives/houston-common-css/src/index.css";
-import { computed, ref, provide, nextTick } from 'vue';
+import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
-import { pushNotification, Notification, CalendarConfig, Modal } from '@45drives/houston-common-ui';
-import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, truncateTextInjectionKey } from '../keys/injection-keys';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
+import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
-import { TaskInstance } from '../models/Tasks';
 
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
@@ -161,16 +171,6 @@ async function refreshBtn() {
     loading.value = true;
     await myScheduler.loadTaskInstances();
     loading.value = false;
-
-    await nextTick();
-
-    taskInstances.value.forEach((task, index) => {
-        const row = taskTableRow.value[index];
-        if (row) {
-            row.updateTaskStatus(task);
-            row.fetchLatestLog(task);
-        }
-    });
 }
 
 const expandedTaskName = ref(null);
@@ -249,6 +249,9 @@ async function showRunNowDialog() {
 
 const updateShowRunNowPrompt = (newVal) => {
     showRunNowPrompt.value = newVal;
+    if (!newVal) {
+        running.value = false;
+    }
 }
 
 const runNowNo: ConfirmationCallback = async () => {
@@ -258,7 +261,6 @@ const runNowNo: ConfirmationCallback = async () => {
 
 const runNowYes: ConfirmationCallback = async () => {
     if (selectedTask.value == null || selectedRowIndex.value == null) {
-        // No selected row; just bail out quietly
         updateShowRunNowPrompt(false);
         return;
     }
@@ -268,32 +270,144 @@ const runNowYes: ConfirmationCallback = async () => {
     const rowIndex = selectedRowIndex.value;
 
     pushNotification(
-        new Notification('Task Started', `Task ${task.name} has started running.`, 'info', 8000)
+        new Notification('Task Started', `Task ${task.name} has started running.`, 'info', 6000)
     );
 
     const row = taskTableRow.value[rowIndex];
-
-    // Tell the row to treat the next 60 seconds as a "manual run" window
     row?.markManualRun(60_000);
 
-    // Kick an immediate status/log refresh so the UI flips quickly
     await updateStatusAndTime(task, rowIndex);
 
     updateShowRunNowPrompt(false);
 
     try {
-        await myScheduler.runTaskNow(task);
-        pushNotification(
-            new Notification('Task Successful', `Task ${task.name} has successfully completed.`, 'success', 8000)
-        );
+        const finalStatus = await myScheduler.runTaskNow(task);
+        const lower = (finalStatus || '').toLowerCase();
+
+        if (lower.includes('failed')) {
+            // Explicit failure
+            pushNotification(
+                new Notification(
+                    'Task Failed',
+                    `Task ${task.name} failed to complete.`,
+                    'error',
+                    6000
+                )
+            );
+        } else if (
+            lower.includes('inactive') ||
+            lower.includes('disabled') ||
+            lower.includes('stopped')
+        ) {
+            // Treat as stopped/cancelled
+            pushNotification(
+                new Notification(
+                    'Task Stopped',
+                    `Task ${task.name} was stopped before completion.`,
+                    'error',
+                    6000
+                )
+            );
+        } else {
+            // Only here do we report success
+            pushNotification(
+                new Notification(
+                    'Task Successful',
+                    `Task ${task.name} has successfully completed.`,
+                    'success',
+                    6000
+                )
+            );
+        }
     } catch (error) {
         pushNotification(
-            new Notification('Task Failed', `Task ${task.name} failed to complete.`, 'error', 8000)
+            new Notification(
+                'Task Failed',
+                `Task ${task.name} failed to complete.`,
+                'error',
+                6000
+            )
         );
     } finally {
         running.value = false;
     }
 };
+
+
+/* Stop Task Now */
+const showStopNowPrompt = ref(false);
+const stopNowDialog = ref();
+const stopping = ref(false);
+
+function stopTaskBtn(task, rowIndex: number) {
+    selectedTask.value = task;
+    selectedRowIndex.value = rowIndex;
+    showStopNowDialog();
+}
+async function showStopNowDialog() {
+    await loadConfirmationDialog(stopNowDialog);
+    showStopNowPrompt.value = true;
+}
+
+
+const updateShowStopNowPrompt = (newVal) => {
+    showStopNowPrompt.value = newVal;
+    if (!newVal) {
+        stopping.value = false;
+    }
+}
+
+const stopNowNo: ConfirmationCallback = async () => {
+    updateShowStopNowPrompt(false);
+}
+
+const stopNowYes: ConfirmationCallback = async () => {
+    if (selectedTask.value == null || selectedRowIndex.value == null) {
+        updateShowStopNowPrompt(false);
+        return;
+    }
+
+    stopping.value = true;
+    const task = selectedTask.value;
+    const rowIndex = selectedRowIndex.value;
+
+    pushNotification(
+        new Notification('Task Stopping', `Task ${task.name} is stopping.`, 'info', 6000)
+    );
+
+    const row = taskTableRow.value[rowIndex];
+
+    // End the manual window immediately so the row flips back to "Run Now"
+    row?.markManualRun(0);   // manualRunUntil = now → manualWindowActive becomes false
+
+    await updateStatusAndTime(task, rowIndex);
+
+    updateShowStopNowPrompt(false);
+
+    try {
+        await myScheduler.stopTaskNow(task);
+        pushNotification(
+            new Notification(
+                'Task Stopped',
+                `Task ${task.name} has successfully been stopped.`,
+                'success',
+                6000
+            )
+        );
+    } catch (error) {
+        pushNotification(
+            new Notification(
+                'Task Stop Failed',
+                `Task ${task.name} failed to stop.`,
+                'error',
+                6000
+            )
+        );
+    } finally {
+        stopping.value = false;
+    }
+};
+
 
 
 /* Remove Task */
@@ -325,6 +439,9 @@ const removeTaskNo: ConfirmationCallback = async () => {
 }
 const updateShowRemoveTaskPrompt = (newVal) => {
     showRemoveTaskPrompt.value = newVal;
+    if (!newVal) {
+        removing.value = false;
+    }
 }
 
 
@@ -364,11 +481,6 @@ const addScheduleHandler = async (task) => {
     scheduleMode.value = 'new';
     await loadScheduleWizardComponent();
     showThisScheduleWizard.value = true;
-}
-
-const showNewScheduleWizard = ref(false);
-function showNewScheduleComponent() {
-    showNewScheduleWizard.value = !showNewScheduleWizard.value;
 }
 
 

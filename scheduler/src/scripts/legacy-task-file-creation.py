@@ -18,19 +18,29 @@ def parse_env_file(parameter_env_file_path):
     logging.debug(f'Parsing env file: {parameter_env_file_path}')
     parameters = {}
     with open(parameter_env_file_path, "r") as f:
-        for line in f:
-            key, value = line.strip().split('=')
+        for raw in f:
+            line = raw.strip()
+            # skip empty lines and comments
+            if not line or line.startswith('#'):
+                continue
+
+            if '=' not in line:
+                logging.warning(f"Skipping malformed env line (no '='): {line!r}")
+                continue
+
+            key, value = line.split('=', 1)  # <-- only split once
             parameters[key] = value
-        
+
     logging.debug('Env file parsed successfully')
     return parameters
 
 def generate_exec_start(templateName, parameters, scriptPath):
     base_python_command = f"python3 {scriptPath}"
     
-    if templateName == 'ScrubTask':
-        return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
-    elif(templateName=="CustomTask"):
+    # if templateName == 'ScrubTask':
+    #     return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
+    # elif(templateName=="CustomTask"):
+    if(templateName=="CustomTask"):
         file_path = parameters.get('customTaskConfig_filePath', '')
         if not file_path:
             return parameters.get('customTaskConfig_command', 'No command provided')  # Return command or a message if not provided
@@ -61,8 +71,14 @@ def interval_to_on_calendar(interval):
     parts = []
     
     if 'dayOfWeek' in interval and interval['dayOfWeek']:
-        day_of_week = ','.join(interval['dayOfWeek'])
-        parts.append(day_of_week)
+        DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+        normalized = []
+        for v in interval['dayOfWeek']:
+            if isinstance(v, int):
+                normalized.append(DOW_NAMES[max(0, min(6, v))])
+            else:
+                normalized.append(str(v)[:3].title())
+        parts.append(','.join(normalized))
     
     year_part = interval.get('year', {}).get('value', '*')
     month_part = interval.get('month', {}).get('value', '*')

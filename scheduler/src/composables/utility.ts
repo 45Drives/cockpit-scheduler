@@ -1,4 +1,4 @@
-import { legacy } from "@45drives/houston-common-lib";
+import { server, unwrap, Command } from "@45drives/houston-common-lib"
 // @ts-ignore
 import get_zfs_data_script from "../scripts/get-zfs-data.py?raw";
 // @ts-ignore
@@ -6,17 +6,46 @@ import test_ssh_script from "../scripts/test-ssh.py?raw";
 // @ts-ignore
 import test_netcat_script from '../scripts/test-netcat.py?raw'
 //@ts-ignore
-import task_file_creation_script from "../scripts/task-file-creation.py?raw";
+import task_file_creation_script from "../scripts/legacy-task-file-creation.py?raw";
 //@ts-ignore
-import remove_task_script from "../scripts/remove-task-files.py?raw";
+import remove_task_script from "../scripts/legacy-remove-task-files.py?raw";
 //@ts-ignore
-import run_task_script from "../scripts/run-task-now.py?raw";
+import run_task_script from "../scripts/legacy-run-task-now.py?raw";
 //@ts-ignore
 import get_disks_script from "../scripts/get-disk-data.py?raw";
+//@ts-ignore
+import ensure_ssh_script from "../scripts/ensure_passwordless_ssh.py?raw";
+//@ts-ignore
+import stop_task_script from "../scripts/legacy-stop-task-now.py?raw";
 
-import { inject, InjectionKey, ref } from "vue";
+import { inject, InjectionKey, ref, type Ref } from "vue";
 
-const { useSpawn, errorString } = legacy;
+const errorString = (e: any) => e?.message ?? String(e);
+const textDecoder = new TextDecoder("utf-8");
+
+/**
+ * Small helper to run a command via Server.execute + unwrap
+ * and return decoded stdout plus the raw ExitedProcess.
+ */
+async function runCommand(
+	argv: string[],
+	opts: { superuser?: "try" | "require"; directory?: string } = { superuser: "try" }
+): Promise<{ stdout: string; proc: any }> {
+	const proc = await unwrap(server.execute(new Command(argv, opts), /* failIfNonZero */ false));
+	const stdout = textDecoder.decode(proc.stdout ?? new Uint8Array());
+	return { stdout, proc };
+}
+
+
+function safeParseJsonLoose(s: string) {
+	try { return JSON.parse(s); } catch {
+		const start = s.indexOf('{'); const end = s.lastIndexOf('}');
+		if (start !== -1 && end !== -1 && end > start) {
+			try { return JSON.parse(s.slice(start, end + 1)); } catch { }
+		}
+		return null;
+	}
+}
 
 export function injectWithCheck<T>(
   key: InjectionKey<T>,
@@ -61,165 +90,138 @@ export function findValue(obj, targetKey, valueKey) {
 }
 
 export async function getPoolData(host?, port?, user?) {
-  try {
-	const cmd = [
-	  "/usr/bin/env",
-	  "python3",
-	  "-c",
-	  get_zfs_data_script,
-	  "-t",
-	  "pools",
-	];
-	if (host) {
-	  cmd.push("--host");
-	  cmd.push(host);
-	}
-	if (port) {
-	  cmd.push("--port");
-	  cmd.push(port);
-	}
-	if (user) {
-	  cmd.push("--user");
-	  cmd.push(user);
-	}
-	const state = useSpawn(cmd, { superuser: "try" });
-
 	try {
-	  const result = (await state.promise()).stdout!; // This contains the JSON string
-	  // console.log('raw script output (pools):', result);
-	  const parsedResult = JSON.parse(result); // Parse the JSON string into an object
-	  if (parsedResult.success) {
-	  //  console.log("Pools array:", parsedResult.data);
-		return parsedResult.data;
-	  } else if (parsedResult.error) {
-		console.error("Script error:", parsedResult.error);
-	  } else {
-		console.log("Script executed but no pools found.");
-	  }
-	} catch (error) {
-	  // console.error('Error parsing JSON or during script execution:', error);
-	  return [];
+		const cmd = [
+			"/usr/bin/env",
+			"python3",
+			"-c",
+			get_zfs_data_script,
+			"-t",
+			"pools",
+		];
+		if (host) {
+			cmd.push("--host", host);
+		}
+		if (port) {
+			cmd.push("--port", port);
+		}
+		if (user) {
+			cmd.push("--user", user);
+		}
+
+		const { stdout } = await runCommand(cmd, { superuser: "try" });
+
+		try {
+			const parsedResult = JSON.parse(stdout);
+			if (parsedResult.success) {
+				return parsedResult.data;
+			} else if (parsedResult.error) {
+				console.error("Script error:", parsedResult.error);
+			} else {
+				console.log("Script executed but no pools found.");
+			}
+		} catch {
+			return [];
+		}
+	} catch (err) {
+		console.error(err);
+		return null;
 	}
-  } catch (state) {
-	console.error(errorString(state));
-	return null;
-  }
 }
 
 export async function getDatasetData(pool, host?, port?, user?) {
-  try {
-	const cmd = [
-	  "/usr/bin/env",
-	  "python3",
-	  "-c",
-	  get_zfs_data_script,
-	  "-t",
-	  "datasets",
-	];
-
-	cmd.push("--pool");
-	cmd.push(pool);
-
-	if (host) {
-	  cmd.push("--host");
-	  cmd.push(host);
-	}
-	if (port) {
-	  cmd.push("--port");
-	  cmd.push(port);
-	}
-	if (user) {
-	  cmd.push("--user");
-	  cmd.push(user);
-	}
-
-	const state = useSpawn(cmd, { superuser: "try" });
-
 	try {
-	  const result = (await state.promise()).stdout!; // This contains the JSON string
-	  // console.log('raw script output (pools):', result);
-	  const parsedResult = JSON.parse(result); // Parse the JSON string into an object
-	  if (parsedResult.success) {
-	  //  console.log("Datasets array:", parsedResult.data);
-		return parsedResult.data;
-	  } else if (parsedResult.error) {
-		console.error("Script error:", parsedResult.error);
-	  } else {
-		console.log("Script executed but no pools found.");
-	  }
-	} catch (error) {
-	  // console.error('Error parsing JSON or during script execution:', error);
-	  return [];
+		const cmd = [
+			"/usr/bin/env",
+			"python3",
+			"-c",
+			get_zfs_data_script,
+			"-t",
+			"datasets",
+			"--pool",
+			pool,
+		];
+
+		if (host) {
+			cmd.push("--host", host);
+		}
+		if (port) {
+			cmd.push("--port", port);
+		}
+		if (user) {
+			cmd.push("--user", user);
+		}
+
+		const { stdout } = await runCommand(cmd, { superuser: "try" });
+
+		try {
+			const parsedResult = JSON.parse(stdout);
+			if (parsedResult.success) {
+				return parsedResult.data;
+			} else if (parsedResult.error) {
+				console.error("Script error:", parsedResult.error);
+			} else {
+				console.log("Script executed but no datasets found.");
+			}
+		} catch {
+			return [];
+		}
+	} catch (err) {
+		console.error(err);
+		return null;
 	}
-  } catch (state) {
-	console.error(errorString(state));
-	return null;
-  }
 }
 
 export async function testSSH(sshTarget) {
-  try {
-  //  console.log(`target: ${sshTarget}`);
-	const state = useSpawn(
-	  ["/usr/bin/env", "python3", "-c", test_ssh_script, sshTarget],
-	  { superuser: "try", err: "out" }
-	);
+	try {
+		const argv = ["/usr/bin/env", "python3", "-c", test_ssh_script, sshTarget];
+		const { stdout } = await runCommand(argv, { superuser: "try" });
 
-	const output = await state.promise();
-  //  console.log("testSSH output:", output);
-
-	if (output.stdout!.includes("True")) {
-	  return true;
-	} else {
-	  return false;
+		return stdout.includes("True");
+	} catch (err) {
+		console.error(err);
+		return false;
 	}
-  } catch (error) {
-	console.error(errorString(error));
-	return false;
-  }
 }
 
 export async function testNetcat(user, netcatHost, port) {
 	try {
-	  console.log(`target: ${netcatHost}, port: ${port}`);
-	  
-	  // Pass both hostname and port to the Python script
-	  const state = useSpawn(
-		["/usr/bin/env", "python3", "-c", test_netcat_script, user, netcatHost, port],
-		{ superuser: "try" }
-	  );
-  
-	  const output = await state.promise();
-	  console.log("testNetcat output:", output);
-  
-	  // Check for "Connected" in stdout to confirm a successful connection
-	  if (output.stdout!.includes("True")) {
-		return true;
-	  } else {
-		return false;
-	  }
-	} catch (error) {
-	  console.error(errorString(error));
-	  return false;
-	}
-  }
-  
-export async function executePythonScript(
-  script: string,
-  args: string[]
-): Promise<any> {
-  try {
-	const command = ["/usr/bin/env", "python3", "-c", script, ...args];
-	const state = useSpawn(command, { superuser: "try" });
+		console.log(`target: ${netcatHost}, port: ${port}`);
 
-	const output = await state.promise();
-	// console.log(`output:`, output);
-	return output.stdout;
-  } catch (error) {
-	console.error(errorString(error));
-	return false;
-  }
+		const argv = [
+			"/usr/bin/env",
+			"python3",
+			"-c",
+			test_netcat_script,
+			user,
+			netcatHost,
+			port,
+		];
+
+		const { stdout } = await runCommand(argv, { superuser: "try" });
+
+		console.log("testNetcat output:", stdout);
+		return stdout.includes("True");
+	} catch (err) {
+		console.error(err);
+		return false;
+	}
 }
+
+export async function executePythonScript(
+	script: string,
+	args: string[]
+): Promise<string | false> {
+	try {
+		const argv = ["/usr/bin/env", "python3", "-c", script, ...args];
+		const { stdout } = await runCommand(argv, { superuser: "try" });
+		return stdout;
+	} catch (err) {
+		console.error(err);
+		return false;
+	}
+}
+
 
 export async function createTaskFiles(
   templateName,
@@ -288,6 +290,10 @@ export async function runTask(taskName) {
   return executePythonScript(run_task_script, [taskName]);
 }
 
+export async function stopTask(taskName) {
+	return executePythonScript(stop_task_script, [taskName]);
+}
+
 //change the first letter of a word to upper case
 export const upperCaseWord = (word) => {
   let lowerCaseWord = word.toLowerCase();
@@ -327,35 +333,30 @@ export function validateNumber(field, number) {
 }
 
 export async function getDisks(diskGroup) {
-  try {
-	const state = useSpawn(
-	  ["/usr/bin/env", "python3", "-c", get_disks_script],
-	  { superuser: "try" }
-	);
-	const disks = (await state.promise()).stdout!;
-	// return disks;
-	const parsedJSON = JSON.parse(disks);
-	//loops through and adds disk data from JSON to disk data object, pushes objects to disks array
-	for (let i = 0; i < parsedJSON.length; i++) {
-	  const disk: DiskData = {
-		name: parsedJSON[i].name,
-		capacity: parsedJSON[i].capacity,
-		model: parsedJSON[i].model,
-		type: parsedJSON[i].type,
-		phy_path: parsedJSON[i].phy_path,
-		sd_path: parsedJSON[i].sd_path,
-		vdev_path: parsedJSON[i].vdev_path,
-		serial: parsedJSON[i].serial,
-		health: parsedJSON[i].health,
-		temp: parsedJSON[i].temp,
-	  };
-	  diskGroup.value.push(disk);
-	  // console.log("Disk:", disk);
+	try {
+		const argv = ["/usr/bin/env", "python3", "-c", get_disks_script];
+		const { stdout } = await runCommand(argv, { superuser: "try" });
+		const parsedJSON = JSON.parse(stdout);
+
+		for (let i = 0; i < parsedJSON.length; i++) {
+			const disk: DiskData = {
+				name: parsedJSON[i].name,
+				capacity: parsedJSON[i].capacity,
+				model: parsedJSON[i].model,
+				type: parsedJSON[i].type,
+				phy_path: parsedJSON[i].phy_path,
+				sd_path: parsedJSON[i].sd_path,
+				vdev_path: parsedJSON[i].vdev_path,
+				serial: parsedJSON[i].serial,
+				health: parsedJSON[i].health,
+				temp: parsedJSON[i].temp,
+			};
+			diskGroup.value.push(disk);
+		}
+	} catch (err) {
+		console.error(err);
+		return null;
 	}
-  } catch (state) {
-	console.error(errorString(state));
-	return null;
-  }
 }
 
 export function getDiskIDName(
@@ -417,150 +418,118 @@ export function splitAndClean(inputString: string, isDisk: boolean) {
 
 export async function checkLocalPathExists(localPathStr: string): Promise<boolean> {
 	try {
-		console.log('Checking local path:', localPathStr);
-
-		// Run 'test -e <path>' to check existence
-		// test -e /the/dir && echo "exist" || echo "does not exist"
-		const state = useSpawn(['test', '-e', localPathStr]);
-
-		// Await the spawn state promise to get the exit code
-		// const output = await state.promise();
-		// if (output.stdout.includes("exists")) {
-		//     return true;
-		// } else {
-		//     return false;
-		// }
-
-		await state.promise();
-		// If the command succeeds, the path exists
-		return true;
-	} catch (error: any) {
-		// If 'test' fails with status 1, it means the path does not exist
-		if (error.status === 1) {
-			console.log('Path does not exist:', localPathStr);
-			return false;
-		}
-
-		// Log unexpected errors and rethrow them for debugging
-		console.error('Unexpected error:', errorString(error));
-		throw new Error(`Failed to check path existence: ${errorString(error)}`);
+		const { proc } = await runCommand(["test", "-e", localPathStr], { superuser: "try" });
+		// exitStatus 0 → path exists; non-zero → does not
+		return proc.exitStatus === 0;
+	} catch (err) {
+		// Transport/driver errors (not just non-zero exit)
+		console.error("Unexpected error:", err);
+		throw new Error(`Failed to check path existence: ${(err as any)?.message ?? String(err)}`);
 	}
 }
 
-
 export async function checkRemotePathExists(remoteName: string, remotePathStr: string) {
 	try {
-		console.log('remotePathStr:', remotePathStr);
+		const { proc } = await runCommand(
+			["rclone", "lsf", `${remoteName}:${remotePathStr}`],
+			{ superuser: "try" }
+		);
 
-		// Use 'rclone lsf' to list the remote path
-		const state = useSpawn(['rclone', 'lsf', `${remoteName}:${remotePathStr}`]);
-
-		// Await the promise and handle the exit code
-		await state.promise();
-		console.log('path exists');
-
-		// If rclone lsf succeeds, the path exists
-		return true;
-	} catch (error: any) {
-		// If 'rclone lsf' fails with exit code 1, it means the path does not exist
-		if (error.status === 1) {
-			console.log('Path does not exist');
-			return false;
+		if (proc.exitStatus === 0) {
+			console.log("path exists");
+			return true;
 		}
 
-		// Log unexpected errors
-		console.error('Unexpected error:', JSON.stringify(error));
+		console.log("Path does not exist");
+		return false;
+	} catch (err) {
+		console.error("Unexpected error:", err);
 		return false;
 	}
 }
 
-export async function isDatasetEmpty(mountpoint, user?: string, host?: string, port?: string) {
+export async function isDatasetEmpty(
+	mountpoint,
+	user?: string,
+	host?: string,
+	port?: string
+) {
 	try {
-		const baseCommand = ['ls', '-la', `/${mountpoint}`,];
+		const baseCommand = ["ls", "-la", `/${mountpoint}`];
 		let command: string[] = [];
 
-	if (user && host) {
-	  // Use SSH for remote command
-	  command = ["ssh"];
-	  if (port && port !== "22") {
-		command.push("-p", port);
-	  }
-	  command.push(`${user}@${host}`, ...baseCommand);
-	} else {
-	  // Local command
-	  command = baseCommand;
+		if (user && host) {
+			command = ["ssh"];
+			if (port && port !== "22") {
+				command.push("-p", port);
+			}
+			command.push(`${user}@${host}`, ...baseCommand);
+		} else {
+			command = baseCommand;
+		}
+
+		const { stdout } = await runCommand(command, { superuser: "try" });
+
+		const lines = stdout.split("\n");
+		const pattern =
+			/^\S+\s+\d+\s+\S+\s+\S+\s+\d+\s+\w+\s+\d+\s+\d+:\d+\s+(\.|\.\.)$/;
+
+		const matches = lines.filter((line) => pattern.test(line));
+
+		if (matches.length <= 2) {
+			console.log(`dataset at /${mountpoint} is empty`);
+			return true;
+		} else {
+			console.log(`dataset at /${mountpoint} is NOT empty`);
+			return false;
+		}
+	} catch (err) {
+		console.error(`Error checking dataset contents: ${String(err)}`);
+		return false;
 	}
-
-	const state = useSpawn(command, { superuser: "try" });
-	const output = await state.promise();
-	// console.log(`output:`, output);
-	// return output.stdout;
-
-	// Split the output into lines
-	const lines = output.stdout!.split("\n");
-
-	// Define the regex pattern to match '.' and '..'
-	const pattern =
-	  /^\S+\s+\d+\s+\S+\s+\S+\s+\d+\s+\w+\s+\d+\s+\d+:\d+\s+(\.|\.\.)$/;
-
-	// Check each line for matches
-	const matches = lines.filter((line) => pattern.test(line));
-
-	// If we find only '.' and '..', return true (dataset is empty)
-	if (matches.length <= 2) {
-	  console.log(`dataset at /${mountpoint} is empty`);
-	  return true;
-	} else {
-	  console.log(`dataset at /${mountpoint} is NOT empty`);
-	  return false;
-	}
-  } catch (error) {
-	console.error(`Error checking dataset contents: ${errorString(error)}`);
-	return false;
-  }
 }
 
 export async function doSnapshotsExist(
-  filesystem: string,
-  user?: string,
-  host?: string,
-  port?: string
+	filesystem: string,
+	user?: string,
+	host?: string,
+	port?: string
 ) {
-  try {
-	const baseCommand = ["zfs", "list", "-H", "-t", "snapshot", filesystem];
-	let command: string[] = [];
+	try {
+		const baseCommand = ["zfs", "list", "-H", "-t", "snapshot", filesystem];
+		let command: string[] = [];
 
-	if (user && host) {
-	  // Use SSH for remote command
-	  command = ["ssh"];
-	  if (port && port !== "22") {
-		command.push("-p", port);
-	  }
-	  command.push(`${user}@${host}`, ...baseCommand);
-	} else {
-	  // Local command
-	  command = baseCommand;
+		if (user && host) {
+			command = ["ssh"];
+			if (port && port !== "22") {
+				command.push("-p", port);
+			}
+			command.push(`${user}@${host}`, ...baseCommand);
+		} else {
+			command = baseCommand;
+		}
+
+		const { stdout } = await runCommand(command, { superuser: "try" });
+
+		const trimmed = stdout.trim();
+		if (!trimmed) {
+			console.log("No snapshots found.");
+			return false;
+		}
+
+		const lines = trimmed.split("\n");
+		if (lines.length > 0) {
+			console.log("Snapshots exist, must overwrite dataset to continue.");
+			return true;
+		}
+
+		return false;
+	} catch (err) {
+		console.error(`Error checking dataset contents: ${String(err)}`);
+		return null;
 	}
-
-	// Execute the command
-	const state = useSpawn(command, { superuser: "try" }); // Ensure you handle superuser permissions if necessary
-	const output = await state.promise();
-
-	// Parse the output
-	const lines = output.stdout!.trim().split("\n"); // Use trim() to remove empty lines
-	if (lines.length === 1 && lines[0] === "") {
-	  // If there's only one empty line, there are no snapshots
-	  console.log("No snapshots found.");
-	  return false;
-	} else if (lines.length > 0) {
-	  console.log("Snapshots exist, must overwrite dataset to continue.");
-	  return true;
-	}
-  } catch (error) {
-	console.error(`Error checking dataset contents: ${errorString(error)}`);
-	return null;
-  }
 }
+
 export type ZfsSnap = {
 	name: string;      // tank/fs@stamp
 	guid: string;
@@ -576,25 +545,24 @@ export async function listSnapshots(
 ): Promise<ZfsSnap[]> {
 	const base = ["zfs", "list", "-H", "-o", "name,guid,creation", "-t", "snapshot", "-r", dataset];
 	const cmd: string[] = user && host
-		? (port && port !== "22" ? ["ssh", "-p", port, `${user}@${host}`, ...base] : ["ssh", `${user}@${host}`, ...base])
+		? (port && port !== "22"
+			? ["ssh", "-p", String(port), `${user}@${host}`, ...base]
+			: ["ssh", `${user}@${host}`, ...base])
 		: base;
 
-	const { useSpawn, errorString } = legacy; // you already import legacy elsewhere
-
 	try {
-		const st = useSpawn(cmd, { superuser: "try" });
-		const out = (await st.promise()).stdout!;
-		const snaps: ZfsSnap[] = out
+		const { stdout } = await runCommand(cmd, { superuser: "try" });
+		const snaps: ZfsSnap[] = stdout
 			.trim()
 			.split("\n")
 			.filter(Boolean)
 			.map(line => {
 				const [name, guid, cstr] = line.split(/\s+/, 3);
-				// creation is like: "Fri Sep 13 14:08 2024" on many distros
-				const creation = Date.parse(cstr) ? Math.floor(Date.parse(cstr) / 1000) : Math.floor(new Date(cstr).getTime() / 1000);
-				return { name, guid, creation: creation || 0 };
+				const ms = Date.parse(cstr);
+				const creation = Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+				return { name, guid, creation };
 			});
-		// Sort oldest -> newest
+
 		snaps.sort((a, b) => a.creation - b.creation);
 		return snaps;
 	} catch (e) {
@@ -619,4 +587,131 @@ export function destAheadOfCommon(src: ZfsSnap[], dst: ZfsSnap[], common: ZfsSna
 	const srcGuids = new Set(src.map(s => s.guid));
 	// any dest snapshot after common.creation that source does NOT have?
 	return dst.some(d => d.creation > common.creation && !srcGuids.has(d.guid));
+}
+
+export async function ensurePasswordlessSSH(
+	host: string,
+	user: string = "root",
+	port: number | string = 22,
+	password?: string,
+	quiet: boolean = true
+): Promise<{ success: boolean; message: string; data?: any; raw?: string; status?: number }> {
+	const args = ["--host", host, "--user", user, "--port", String(port), "--key-type", "auto"];
+	if (password) args.push("--password", password);
+	if (quiet) args.push("--quiet");
+
+	const argv = ["/usr/bin/env", "python3", "-c", ensure_ssh_script, ...args];
+
+	try {
+		const { stdout, proc } = await runCommand(argv, { superuser: "try" });
+
+		const parsed = safeParseJsonLoose(stdout);
+		if (proc.exitStatus === 0) {
+			return {
+				success: true,
+				message: (parsed?.message || stdout || "OK"),
+				data: parsed || undefined,
+				raw: stdout,
+				status: proc.exitStatus,
+			};
+		}
+
+		// Non-zero exit, but we still have output
+		return {
+			success: false,
+			message: (parsed?.message || stdout || "Unknown error"),
+			data: parsed || undefined,
+			raw: stdout,
+			status: proc.exitStatus,
+		};
+	} catch (err: any) {
+		const msg = (err?.message ?? String(err));
+		return {
+			success: false,
+			message: msg,
+			raw: msg,
+		};
+	}
+}
+
+export type SshOutcome = 'ok-local' | 'ok-already' | 'ok-configured' | 'failed' | 'error';
+
+export interface TestOrSetupSSHResult {
+	success: boolean;
+	outcome: SshOutcome;
+	message: string;
+	details?: any;
+}
+
+export async function testOrSetupSSH(opts: {
+	host: string;
+	user?: string;
+	port?: number | string;
+	passwordRef?: Ref<string>;   // cleared if provided
+	onEvent?: (e: { type: 'info' | 'success' | 'error'; title: string; message: string }) => void; // optional hook
+}): Promise<TestOrSetupSSHResult> {
+	const host = (opts.host || '').trim();
+	const user = (opts.user || 'root').trim();
+	const port = opts.port ?? 22;
+
+	if (!host) {
+		opts.onEvent?.({ type: 'success', title: 'Local Transfer', message: 'No remote host specified. SSH not required.' });
+		return { success: true, outcome: 'ok-local', message: 'Local transfer (no host)' };
+	}
+
+	try {
+		const pre = await testSSH(`${user}@${host}`);
+		if (pre) {
+			opts.onEvent?.({ type: 'success', title: 'Connection Successful!', message: 'Passwordless SSH connection established.' });
+			return { success: true, outcome: 'ok-already', message: 'Passwordless already works' };
+		}
+	} catch {
+		// ignore; proceed to setup attempt
+	}
+
+	opts.onEvent?.({
+		type: 'info',
+		title: 'Setting up SSH…',
+		message: `Passwordless SSH not detected for ${user}@${host}. Generating/installing a key…`
+	});
+
+	try {
+		const password = opts.passwordRef?.value;
+		const res = await ensurePasswordlessSSH(host, user, port, password, /*quiet*/ true);
+		if (opts.passwordRef) opts.passwordRef.value = ''; // always scrub
+
+		if (res.success) {
+			opts.onEvent?.({ type: 'success', title: 'SSH Ready', message: 'Passwordless SSH is configured.' });
+			return { success: true, outcome: 'ok-configured', message: res.message || 'Configured', details: res.data };
+		} else {
+			opts.onEvent?.({ type: 'error', title: 'SSH Setup Failed', message: res.message?.toString().slice(0, 800) || 'Unknown error' });
+			return { success: false, outcome: 'failed', message: res.message || 'Failed', details: res.data };
+		}
+	} catch (err: any) {
+		if (opts.passwordRef) opts.passwordRef.value = '';
+		const msg = (err?.message || errorString(err) || 'Unknown error').toString().slice(0, 800);
+		opts.onEvent?.({ type: 'error', title: 'SSH Setup Error', message: msg });
+		return { success: false, outcome: 'error', message: msg };
+	}
+}
+
+export async function currentUserIsPrivileged(): Promise<boolean> {
+	const u = await (window as any).cockpit.user();
+	const groups: string[] = u?.groups || [];
+	return (u?.id === 0) || groups.includes('wheel') || groups.includes('sudo');
+}
+
+
+export function validateLocalPath(path: string): boolean {
+	// Local paths: allow spaces, (), and '
+	const localPathRegex =
+		/^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-().']+(?:\\|\/)?)*$/;
+	return localPathRegex.test(path);
+}
+
+export function validateRemotePath(path: string): boolean {
+	// remoteName:bucket/path – allow spaces, (), and '
+	const rcloneRegex =
+		/^[\w\-.]+:[\\/]*(?:[\w\s\-().']+[\\/]?)*$/;
+	return rcloneRegex.test(path);
 }

@@ -179,7 +179,7 @@ async function validateComponentParams() {
     await validateTaskName();
     await parameterInputComponent.value.validation();
     if (errorList.value.length > 0) {
-       pushNotification(new Notification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 8000));
+       pushNotification(new Notification('Task Save Failed', `Task submission has errors: \n- ${errorList.value.join("\n- ")}`, 'error', 6000));
         return false;
     } else {
         return true;
@@ -203,25 +203,37 @@ async function showSchedulePromptDialog() {
     // console.log('Showing confirmation dialog...');
 }
 
-const makeScheduleLater : ConfirmationCallback = async () => {
+
+const makeScheduleLater: ConfirmationCallback = async () => {
     adding.value = true;
     isStandaloneTask.value = true;
-    console.log('Make Schedule Later. isStandalone Task:', isStandaloneTask.value);
-    await saveTask();
-    updateShowSchedulePrompt(false);
-    closeModal();
-    adding.value = true;
-}
+    try {
+        await saveTask();                    // creates task only
+        pushNotification(new Notification('Task Saved', 'Task has been saved.', 'success', 6000));
+        updateShowSchedulePrompt(false);
+        closeModal();
+    } catch (e: any) {
+        pushNotification(new Notification('Task Save Failed', String(e?.message || e), 'error', 6000));
+    } finally {
+        adding.value = false;
+    }
+};
 
-const makeScheduleNow : ConfirmationCallback = async () => {
+const makeScheduleNow: ConfirmationCallback = async () => {
+    adding.value = true;
     isStandaloneTask.value = false;
-    console.log('Make Schedule Now. isStandalone:', isStandaloneTask.value);
-    await saveTask();
-    emit('manageSchedule', newTask.value);
-    updateShowSchedulePrompt(false);
-    // showScheduleWizardComponent();
-    closeModal();
-}
+    try {
+        await saveTask();                    // creates task, sets newTask.value
+        updateShowSchedulePrompt(false);
+        // hand off to schedule wizard
+        emit('manageSchedule', newTask.value);
+        closeModal();
+    } catch (e: any) {
+        pushNotification(new Notification('Task Save Failed', String(e?.message || e), 'error', 6000));
+    } finally {
+        adding.value = false;
+    }
+};
 
 const updateShowSchedulePrompt = (newVal) => {
     showSchedulePrompt.value = newVal;
@@ -250,31 +262,21 @@ async function saveTask() {
     if (sanitizedName.startsWith('_')) {
         sanitizedName = 'task' + sanitizedName;
     }
-  //  console.log('sanitizedName:', sanitizedName);
 
-    // console.log("template: ", template, " parameters ", parameters)
-    // const notes = notesTask.value ? notesTask.value : '  '; // Assign notesTask value or two spaces if empty
-    const notes = notesTask.value ? notesTask.value : '';  // Ensure notes is always a string
+    const notes = notesTask.value || '';
+
     if (isStandaloneTask.value) {
         const schedule = new TaskSchedule(false, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes || '');
-      //  console.log('task (no schedule):', task);
-        // console.log("Saving task with notes:", JSON.stringify(notes));
-        // console.log("Task instance:", JSON.stringify(task));
-
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes);
+        // create immediately
         await myScheduler.registerTaskInstance(task);
-        pushNotification(new Notification('Task Save Successful', `Task has been saved.`, 'success', 8000));
+        // refresh list
         loading.value = true;
-        await myScheduler.loadTaskInstances();
-        loading.value = false;
+        try { await myScheduler.loadTaskInstances(); } finally { loading.value = false; }
     } else {
-        const schedule = new TaskSchedule(true, []);
-        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes);
-      //  console.log('task (for scheduling):', task);
-        // console.log("Saving task with notes:", JSON.stringify(notes));
-        // console.log("Task instance:", JSON.stringify(task));
-
-        newTask.value = task;
+        const schedule = new TaskSchedule(true, []);           // no intervals yet; wizard will add
+        const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule, notes);
+        newTask.value = task;                                   // the wizard will save schedule
     }
 }
 
@@ -283,7 +285,6 @@ async function addTaskBtn() {
         showSchedulePromptDialog();
     }
 }
-
 
 provide('new-task', newTask);
 provide('parameters', parameters);

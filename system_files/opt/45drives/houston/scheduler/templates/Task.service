@@ -1,16 +1,16 @@
 [Unit]
 Description=Service for {task_name}
+StartLimitBurst=2
+StartLimitIntervalSec=80
 
 [Service]
-Type=oneshot
+Type=notify
+NotifyAccess=all
 EnvironmentFile={env_path}
 ExecStart={ExecStart}
 Restart=on-failure
 RestartSec=30sec
-StartLimitBurst=2
-StartLimitInterval=80s
-StandardOutput=journal
-StandardError=journal
+TimeoutStartSec=0
 
 [Install]
 WantedBy=multi-user.target

@@ -67,9 +67,6 @@ const days = computed(() => {
 	return [...startPaddingDays, ...daysArray, ...endPaddingDays];
 });
 
-// watchEffect(() => {
-//   	console.log('Interval prop in CalendarComponent', props.interval);
-// });
 
  function checkSchedule(date: Date, interval: TaskScheduleIntervalType): boolean {
     const dayOfWeekMap = {

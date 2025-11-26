@@ -56,7 +56,7 @@
 import { inject, provide, ref, Ref,computed } from 'vue';
 import Modal from '../common/Modal.vue';
 import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue';
-import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate } from '../../models/Tasks';
+import { TaskInstance, ZFSReplicationTaskTemplate, TaskSchedule, AutomatedSnapshotTaskTemplate, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CustomTaskTemplate, CloudSyncTaskTemplate } from '../../models/Tasks';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
@@ -90,10 +90,6 @@ const closeModal = () => {
 const cancelingEditTask = ref(false);
 const showCloseConfirmation = ref(false);
 const closeConfirmationComponent = ref();
-async function loadCloseConfirmationComponent() {
-    const module = await import('../common/ConfirmationDialog.vue');
-    closeConfirmationComponent.value = module.default;    
-}
 
 const closeBtn = async () => {
         closeModal();
@@ -155,6 +151,8 @@ async function saveEditedTask() {
         template.value = new ScrubTaskTemplate();
     } else if (taskInstance.value?.template.name == "SMART Test") {
         template.value = new SmartTestTemplate();
+    } else if (taskInstance.value?.template.name == "Cloud Sync Task") {
+        template.value = new CloudSyncTaskTemplate();
     } else if (taskInstance.value?.template.name == "Custom Task") {
         template.value = new CustomTaskTemplate();
     }
@@ -167,11 +165,11 @@ async function saveEditedTask() {
 
     const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
     const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes.value);
-    console.log('edited task with note: ', task);
+    console.log('editing note for task: ', task);
 
     await myScheduler.updateTaskNotes(task);
 
-    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 8000));
+    pushNotification(new Notification('Changes Saved', `Task has successfully been edited.`, 'success', 6000));
 }
 
 const updateShowSaveConfirmation = (newVal) => {
@@ -182,16 +180,6 @@ async function saveChangesBtn() {
     showConfirmationDialog();
     
 }
-
-
-const addNote = () => {
-    notes.value = ''; 
-};
-
-const editNote = () => {
-
-};
-
 
 provide('task-for-editing', taskInstance);
 provide('parameters', parameters);

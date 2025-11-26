@@ -484,7 +484,6 @@ function validateSystemdField(value: string, kind: 'min' | 'hour' | 'day' | 'mon
             case 'min': return inRange(start, 0, 59);
             case 'hour': return inRange(start, 0, 23);
             case 'day': return inRange(start, 1, 31);
-            // systemd allows repetition on month/year in many versions; be conservative and forbid it if you prefer:
             case 'month': return inRange(start, 1, 12);
             case 'year': return inRange(start, 1970, 9999);
         }
@@ -534,14 +533,14 @@ const confirmDeleteSchedule: ConfirmationCallback = async () => {
                 'Schedule Removed',
                 `The schedule for "${thisTask.value.name}" has been removed.`,
                 'success',
-                8000
+                6000
             ));
         } else {
             pushNotification(new Notification(
                 'Delete Failed',
                 `Failed to remove the schedule for "${thisTask.value.name}". Check logs for details.`,
                 'error',
-                8000
+                6000
             ));
         }
 
@@ -591,7 +590,7 @@ function validateFields(interval) {
     if (!validateSystemdField(interval.year.value, 'year')) { yearErrorTag.value = true; errorList.value.push('Year must be *, a year number, A..B, or list.'); }
 
     if (errorList.value.length > 0) {
-        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 8000));
+        pushNotification(new Notification('Schedule Interval Save Failed', `Submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 6000));
         return false;
     }
     return true;
@@ -601,18 +600,13 @@ const selectedInterval = ref<TaskScheduleIntervalType>();
 const selectedIndex = ref<number>();
 function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
     selectedInterval.value = interval;
-    // Object.assign(newInterval, JSON.parse(JSON.stringify(interval)));
     selectedIndex.value = index;
-  //  console.log('selectedInterval (selectionMethod):', selectedInterval.value);
-    // console.log('selected interval for editing:', interval);
-  //  console.log('selectedIndex (selectionMethod):', selectedIndex.value);
-    // clearFields();
     editSelectedInterval(selectedInterval.value);
 }
 
 function saveInterval(interval) {
     if (usingSnapshotRetention.value) {
-        pushNotification(new Notification('Interval Limit Reached', 'Tasks using Snapshot Retention Policy can currently only have one scheduled interval.\nCreate multiple tasks to handle different retention policies.', 'warning', 8000));
+        pushNotification(new Notification('Interval Limit Reached', 'Tasks using Snapshot Retention Policy can currently only have one scheduled interval.\nCreate multiple tasks to handle different retention policies.', 'warning', 6000));
     }
 
     if (validateFields(interval)) {
@@ -676,29 +670,34 @@ async function showConfirmationDialog() {
     console.log('Showing confirmation dialog...');
 }
 
-const confirmScheduleTask : ConfirmationCallback = async () => {
-    console.log('Saving and scheduling task now...');
-   
+const confirmScheduleTask: ConfirmationCallback = async () => {
     savingSchedule.value = true;
-  //  console.log('task:', thisTask.value);
-    if (props.mode == 'new') {
-        await myScheduler.registerTaskInstance(thisTask.value);
-        pushNotification(new Notification('Task + Schedule Save Successful', `Task and Schedule have been saved.`, 'success', 8000));
-    } else {
-        await myScheduler.updateSchedule(thisTask.value);
-        pushNotification(new Notification('Schedule Save Successful', `Schedule has been updated.`, 'success', 8000));
-    }
-    
-    updateShowSaveConfirmation(false);
-   
-    savingSchedule.value = false;
-    showScheduleWizard.value = false;
-    showTaskWizard.value = false;
+    try {
+        // ensure we attach a plain schedule object to the task
+        thisTask.value.schedule = JSON.parse(JSON.stringify(newSchedule));
 
-    loading.value = true;
-    await myScheduler.loadTaskInstances();
-    loading.value = false;
-}
+        if (props.mode === 'new') {
+            await myScheduler.registerTaskInstance(thisTask.value);
+            pushNotification(new Notification('Task + Schedule Saved', 'Task and schedule have been saved.', 'success', 6000));
+        } else {
+            await myScheduler.updateSchedule(thisTask.value);
+            pushNotification(new Notification('Schedule Saved', 'Schedule has been updated.', 'success', 6000));
+        }
+
+        updateShowSaveConfirmation(false);
+        showScheduleWizard.value = false;
+        showTaskWizard.value = false;
+
+        loading.value = true;
+        try { await myScheduler.loadTaskInstances(); } finally { loading.value = false; }
+
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', String(e?.message || e), 'error', 6000));
+    } finally {
+        savingSchedule.value = false;
+    }
+};
+
 
 const cancelScheduleTask : ConfirmationCallback = async () => {
     updateShowSaveConfirmation(false);
@@ -712,7 +711,7 @@ const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 async function saveScheduleBtn() {
     if (localIntervals.value.length < 1) {
-        pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 8000));
+        pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 6000));
     } else {
 
         // Normalize all intervals once more prior to save
@@ -796,8 +795,6 @@ function forceUpdateCalendar() {
 
 onMounted(() => {
     console.log('mode (onMounted):', props.mode);
-    // clearFields();
-    // clearAllErrors();
     
   //  console.log('task data (onMounted)', props.task);
     if (props.mode == 'new') {
