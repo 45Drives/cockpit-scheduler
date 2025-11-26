@@ -17,10 +17,16 @@
 	dh $@
 
 override_dh_auto_install:
-	# Load secrets from .env if present (from repo root)
+	# Load secrets from .env if present (for local builds)
 	if [ -f .env ]; then \
 		set -a; \
 		. .env; \
+		set +a; \
+	fi; \
+	# Load CI-only secrets file if present (from packaging root)
+	if [ -f ../cloud-creds.env ]; then \
+		set -a; \
+		. ../cloud-creds.env; \
 		set +a; \
 	fi; \
 	PKG_DIR=debian/$(DEB_SOURCE); \
@@ -35,6 +41,7 @@ override_dh_auto_install:
 	  "$$TEMPLATE" > "$$OUTPUT"; \
 	chmod 600 "$$OUTPUT"; \
 	rm -f "$$TEMPLATE"
+
 
 # dh_make generated override targets
 # This is example for Cmake (See https://bugs.debian.org/641051 )

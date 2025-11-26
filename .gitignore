@@ -29,3 +29,4 @@ node_modules/
 
 # Generated files
 src/version.js
+packaging/cloud-creds.env
