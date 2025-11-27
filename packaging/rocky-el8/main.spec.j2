@@ -21,6 +21,13 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 make OS_PACKAGE_RELEASE=el8
 
 %install
+echo "===== RPM BUILD USER INFO =====" >&2
+id >&2
+echo "RPMBUILD_USER=$(id -un)" >&2
+echo "RPMBUILD_UID=$(id -u)" >&2
+echo "RPMBUILD_GROUPS=$(id -Gn)" >&2
+echo "================================" >&2
+
 # Load CI-only cloud creds from the image
 if [ -f /etc/45drives-ci/cloud-creds.env ]; then
     set -a
@@ -45,7 +52,6 @@ sed \
 
 chmod 600 "$OUTPUT"
 rm -f "$TEMPLATE"
-
 
 %files
 /usr/share/cockpit/scheduler/*
