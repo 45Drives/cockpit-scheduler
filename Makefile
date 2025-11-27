@@ -74,7 +74,8 @@ default: $(OUTPUTS)
 all: default
 
 .PHONY: default all install clean help install-local install-remote install \
-        houston-common bootstrap-yarn remote-postinstall clean-remote
+        houston-common bootstrap-yarn \
+# 		remote-postinstall clean-remote
 
 bootstrap-yarn: .yarnrc.yml
 
@@ -116,17 +117,17 @@ endif
 install-remote : SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
 install-remote: remote-postinstall
 
-remote-postinstall:
-	$(SSH) mkdir -p /var/lib/45drives/houston/scheduler
+# remote-postinstall:
+# 	$(SSH) mkdir -p /var/lib/45drives/houston/scheduler
 
-	$(SSH) \
-	  GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" \
-	  GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
-	  DROPBOX_CLIENT_ID="$(DROPBOX_CLIENT_ID)" \
-	  DROPBOX_CLIENT_SECRET="$(DROPBOX_CLIENT_SECRET)" \
-	  /opt/45drives/houston/scheduler/scripts/generate_creds_json.sh \
-	      /etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json \
-	      /etc/45drives/houston/cloud-sync-client-creds.json
+# 	$(SSH) \
+# 	  GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" \
+# 	  GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
+# 	  DROPBOX_CLIENT_ID="$(DROPBOX_CLIENT_ID)" \
+# 	  DROPBOX_CLIENT_SECRET="$(DROPBOX_CLIENT_SECRET)" \
+# 	  /opt/45drives/houston/scheduler/scripts/generate_creds_json.sh \
+# 	      /etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json \
+# 	      /etc/45drives/houston/cloud-sync-client-creds.json
 
 plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo -e $(call cyantext,Installing $*)
@@ -180,14 +181,14 @@ clean-all: clean FORCE
 # Remove scheduler binary and systemd/dbus/polkit bits
 # Remove scheduler code/data and creds
 # Remove the cockpit plugin installed with -test suffix for the remote user
-clean-remote: SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
-clean-remote:
-	$(SSH) rm -rf /opt/45drives/houston/scheduler || true
-	$(SSH) rm -rf /etc/45drives/houston/scheduler || true
-	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds.json || true
-	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds-template.json || true
+# clean-remote: SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
+# clean-remote:
+# 	$(SSH) rm -rf /opt/45drives/houston/scheduler || true
+# 	$(SSH) rm -rf /etc/45drives/houston/scheduler || true
+# 	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds.json || true
+# 	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds-template.json || true
 
-	$(SSH) sh -lc 'rm -rf "$$HOME/.local/share/cockpit/scheduler-test" 2>/dev/null || true'
+# 	$(SSH) sh -lc 'rm -rf "$$HOME/.local/share/cockpit/scheduler-test" 2>/dev/null || true'
 
 help:
 	@echo 'make usage'
