@@ -1,3 +1,9 @@
+cockpit-scheduler (1.4.0-2bookworm) bookworm; urgency=medium
+
+  * incrementing build for sanity check
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Nov 2025 16:18:32 -0400
+
 cockpit-scheduler (1.4.0-1bookworm) bookworm; urgency=medium
 
   * Major overhaul - Updates task status + logging, adds progress tracking, fixes
