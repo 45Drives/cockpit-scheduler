@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.1-1focal) focal; urgency=medium
+
+  * Fixes bug with creating schedule failing on a task after task already created
+    without schedule, also custom task script path not being used properly
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 03 Dec 2025 07:50:01 -0400
+
 cockpit-scheduler (1.4.0-2focal) focal; urgency=medium
 
   * incrementing build for sanity check
