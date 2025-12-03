@@ -734,7 +734,7 @@ export class Scheduler implements SchedulerType {
 
         if (templateName === 'CustomTask') {
             const children = taskInstance.parameters?.children;
-            const pathParam = children?.find((child: any) => child.key === 'path');
+            const pathParam = children?.find((child: any) => child.key === 'filePath');
             scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
         } else {
             const scriptFileName = this.getScriptFromTemplateName(templateName);

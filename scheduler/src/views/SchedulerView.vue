@@ -450,7 +450,11 @@ const scheduleMode = ref('');
 const showThisScheduleWizard = ref(false);
 function manageScheduleBtn(task) {
     selectedTask.value = task;
-    scheduleMode.value = 'edit';
+    if (selectedTask.value!.schedule && selectedTask.value!.schedule.intervals.length >= 1) {
+        scheduleMode.value = 'edit';
+    } else {
+        scheduleMode.value = 'new';
+    }
     showThisScheduleWizardComponent();
 }
 const scheduleWizardComponent = ref();
