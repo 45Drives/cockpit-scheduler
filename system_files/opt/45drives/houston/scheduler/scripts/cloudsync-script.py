@@ -86,48 +86,55 @@ def get_remote_details(config, remote_name):
         print(f"ERROR: Invalid JSON token for remote '{remote_name}': {token}")
         raise ValueError(f"Invalid JSON token for remote '{remote_name}': {token}") from e
     
+ISO_WITH_OFFSET_RE = re.compile(
+    r'^(?P<date>\d{4}-\d{2}-\d{2})T'
+    r'(?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})'
+    r'(?P<fraction>\.\d+)?'
+    r'(?P<tz>Z|[+-]\d{2}:\d{2})$'
+)
+
 def normalize_to_utc(expiry: str) -> datetime:
     if not isinstance(expiry, str):
         raise ValueError(f"Expiry must be a string, got {type(expiry)}: {expiry}")
 
     s = expiry.strip()
+    m = ISO_WITH_OFFSET_RE.match(s)
+    if not m:
+        raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601: unsupported format")
 
-    # Handle trailing Z → convert to +00:00 so fromisoformat understands it
-    if s.endswith('Z'):
-        s = s[:-1] + '+00:00'
+    parts = m.groupdict()
 
-    # First try a straight parse
-    try:
-        dt = datetime.fromisoformat(s)
-    except ValueError:
-        # Workaround for timestamps with >6 fractional second digits
-        # e.g. 2025-11-24T15:00:02.831147734-05:00
-        # We trim the fractional part down to microseconds.
-        m = re.match(r'^(.*T\d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}:\d{2})$', s)
-        if not m:
-            # Give the original, more detailed error for unexpected formats
-            raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601: invalid format")
-
-        base, frac, offset = m.groups()
-
-        if frac and len(frac) > 7:  # '.' + at least 7 digits
-            # Keep only 6 digits after the dot: .xxxxxx
-            frac = frac[:7]
-        # If frac is None or short enough, leave it as is
-        s_trimmed = f"{base}{frac or ''}{offset}"
-
-        try:
-            dt = datetime.fromisoformat(s_trimmed)
-        except ValueError as e:
-            raise ValueError(f"Failed to parse expiry '{expiry}' as ISO8601 after trimming: {e}")
-
-    # Ensure UTC
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    # Fractional seconds → microseconds (pad or trim to 6 digits)
+    frac = parts["fraction"] or ""
+    if frac:
+        micros = int((frac[1:] + "000000")[:6])  # drop the dot and normalize length
     else:
-        dt = dt.astimezone(timezone.utc)
+        micros = 0
 
-    return dt
+    # Base naive datetime
+    dt = datetime(
+        int(parts["date"][0:4]),
+        int(parts["date"][5:7]),
+        int(parts["date"][8:10]),
+        int(parts["hour"]),
+        int(parts["minute"]),
+        int(parts["second"]),
+        micros,
+    )
+
+    tz_str = parts["tz"]
+    if tz_str == "Z":
+        tzinfo = timezone.utc
+    else:
+        # tz like +HH:MM or -HH:MM
+        sign = 1 if tz_str[0] == "+" else -1
+        offset_hours = int(tz_str[1:3])
+        offset_minutes = int(tz_str[4:6])
+        delta = timedelta(hours=sign * offset_hours, minutes=sign * offset_minutes)
+        tzinfo = timezone(delta)
+
+    dt = dt.replace(tzinfo=tzinfo)
+    return dt.astimezone(timezone.utc)
 
 
 def is_token_expired(token_data):
@@ -135,16 +142,13 @@ def is_token_expired(token_data):
     Check if the token is expired based on the expiry time.
     """
     expiry = token_data.get("expiry")
-    
     if not expiry:
         raise ValueError("No expiry information found in token")
 
-    # Normalize the expiry to a UTC-aware datetime
     expiry_datetime = normalize_to_utc(expiry)
-    # print(f'Token expiry: {expiry_datetime} vs now: {datetime.now(timezone.utc)}')
-    
-    # Compare with the current UTC time
-    return datetime.now(timezone.utc) >= expiry_datetime
+    now = datetime.now(timezone.utc)
+    print(f"Token expiry: {expiry_datetime.isoformat()} | now: {now.isoformat()}")
+    return now >= expiry_datetime
 
 def refresh_token_via_server(config, remote_name, remote_type, token_data):
     """
