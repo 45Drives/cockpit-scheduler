@@ -18,30 +18,35 @@
 	dh $@
 
 override_dh_auto_install:
+	dh_auto_install
+
+	# Optional: load local/CI env vars
 	if [ -f .env ]; then \
 		set -a; \
 		. .env; \
 		set +a; \
 	fi; \
-	# Load CI-only secrets from the image if present
 	if [ -f /etc/45drives-ci/cloud-creds.env ]; then \
 		set -a; \
 		. /etc/45drives-ci/cloud-creds.env; \
 		set +a; \
 	fi; \
-
 	PKG_DIR=debian/cockpit-scheduler; \
 	TEMPLATE="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"; \
 	OUTPUT="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"; \
-	mkdir -p "$$(dirname $$OUTPUT)"; \
-	sed \
-	  -e "s|YOUR_GOOGLE_CLIENT_ID|$${GOOGLE_CLIENT_ID}|g" \
-	  -e "s|YOUR_GOOGLE_CLIENT_SECRET|$${GOOGLE_CLIENT_SECRET}|g" \
-	  -e "s|YOUR_DROPBOX_CLIENT_ID|$${DROPBOX_CLIENT_ID}|g" \
-	  -e "s|YOUR_DROPBOX_CLIENT_SECRET|$${DROPBOX_CLIENT_SECRET}|g" \
-	  "$$TEMPLATE" > "$$OUTPUT"; \
-	chmod 600 "$$OUTPUT"; \
-	rm -f "$$TEMPLATE"
+	if [ -f "$$TEMPLATE" ]; then \
+		mkdir -p "$$(dirname "$$OUTPUT")"; \
+		sed \
+		  -e "s|YOUR_GOOGLE_CLIENT_ID|$${GOOGLE_CLIENT_ID}|g" \
+		  -e "s|YOUR_GOOGLE_CLIENT_SECRET|$${GOOGLE_CLIENT_SECRET}|g" \
+		  -e "s|YOUR_DROPBOX_CLIENT_ID|$${DROPBOX_CLIENT_ID}|g" \
+		  -e "s|YOUR_DROPBOX_CLIENT_SECRET|$${DROPBOX_CLIENT_SECRET}|g" \
+		  "$$TEMPLATE" > "$$OUTPUT"; \
+		chmod 600 "$$OUTPUT"; \
+		rm -f "$$TEMPLATE"; \
+	else \
+		echo "WARNING: $$TEMPLATE not found; creds file not generated" >&2; \
+	fi
 
 
 # dh_make generated override targets
