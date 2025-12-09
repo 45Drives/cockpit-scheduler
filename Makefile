@@ -115,7 +115,7 @@ endif
 endif
 
 install-remote : SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
-install-remote: remote-postinstall
+# install-remote: remote-postinstall
 
 # remote-postinstall:
 # 	$(SSH) mkdir -p /var/lib/45drives/houston/scheduler

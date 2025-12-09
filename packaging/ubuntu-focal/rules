@@ -18,14 +18,6 @@
 	dh $@
 
 override_dh_auto_install:
-	@echo "===== DEB BUILD USER INFO =====" >&2
-	@id >&2
-	@echo "RPMBUILD_USER=$$(id -un)" >&2
-	@echo "RPMBUILD_UID=$$(id -u)" >&2
-	@echo "RPMBUILD_GROUPS=$$(id -Gn)" >&2
-	@echo "================================" >&2
-
-	# Load secrets from .env if present (for local builds)
 	if [ -f .env ]; then \
 		set -a; \
 		. .env; \
@@ -38,7 +30,7 @@ override_dh_auto_install:
 		set +a; \
 	fi; \
 
-	PKG_DIR=debian/$(DEB_SOURCE); \
+	PKG_DIR=debian/cockpit-scheduler; \
 	TEMPLATE="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json"; \
 	OUTPUT="$$PKG_DIR/etc/45drives/houston/scheduler/cloud-sync-client-creds.json"; \
 	mkdir -p "$$(dirname $$OUTPUT)"; \
