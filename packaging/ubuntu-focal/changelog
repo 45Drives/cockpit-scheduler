@@ -1,3 +1,9 @@
+cockpit-scheduler (1.4.1-2focal) focal; urgency=medium
+
+  * Updates rules file to properly build ubuntu packages
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 09 Dec 2025 07:40:25 -0400
+
 cockpit-scheduler (1.4.1-1focal) focal; urgency=medium
 
   * Fixes bug with creating schedule failing on a task after task already created

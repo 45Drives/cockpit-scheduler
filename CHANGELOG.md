@@ -1,3 +1,3 @@
-## task scheduler 1.4.1-1
+## task scheduler 1.4.1-2
 
-* Fixes bug with creating schedule failing on a task after task already created without schedule, also custom task script path not being used properly
+* Updates rules file to properly build ubuntu packages
