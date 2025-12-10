@@ -1,3 +1,3 @@
-## task scheduler 1.4.1-2
+## task scheduler 1.4.2-1
 
-* Updates rules file to properly build ubuntu packages
+* Updates cloudsync task to properly handle mututally exclusive rclone options + notify user, fixes dry-run tasks notifying errors, adds logic to handle verbosity flags in rsync/rclone commands

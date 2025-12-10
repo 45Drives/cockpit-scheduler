@@ -1,3 +1,11 @@
+cockpit-scheduler (1.4.2-1focal) focal; urgency=medium
+
+  * Updates cloudsync task to properly handle mututally exclusive rclone options
+    + notify user, fixes dry-run tasks notifying errors, adds logic to handle verbosity
+    flags in rsync/rclone commands
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 10 Dec 2025 11:22:45 -0400
+
 cockpit-scheduler (1.4.1-2focal) focal; urgency=medium
 
   * Updates rules file to properly build ubuntu packages
