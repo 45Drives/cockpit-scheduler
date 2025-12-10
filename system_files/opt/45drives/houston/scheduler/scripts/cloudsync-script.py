@@ -204,8 +204,34 @@ def build_rclone_command(options):
     """
     Construct the rclone command based on options.
     """
-    command = ['rclone', f'--config={RCLONE_CONF_PATH}', options['type'], '-v']
+    command = ['rclone', f'--config={RCLONE_CONF_PATH}', options['type']]
 
+    # Parse custom args first so we can inspect them
+    extra = options.get('custom_args') or ''
+    extra_parts = []
+    if extra.strip():
+        for chunk in extra.split(','):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            extra_parts.extend(shlex.split(chunk))
+
+    # Does user already control log level?
+    def is_log_flag(arg: str) -> bool:
+        if arg in ('-q', '-v', '-vv', '-vvv', '--quiet', '--verbose'):
+            return True
+        if arg == '--log-level':
+            return True
+        if arg.startswith('--log-level='):
+            return True
+        return False
+
+    has_log_flag = any(is_log_flag(p) for p in extra_parts)
+
+    # Default verbosity if user didn’t specify
+    if not has_log_flag:
+        command.append('-v')
+        
     option_flags = {
         'check_first_flag': '--check-first',
         'checksum_flag': '--checksum',
@@ -256,15 +282,7 @@ def build_rclone_command(options):
     if '--stats-one-line' not in command:
         command.extend(['--stats-one-line', '--stats=1s'])
         
-    extra = options.get('custom_args') or ''
-    if extra.strip():
-        parts = []
-        for chunk in extra.split(','):
-            chunk = chunk.strip()
-            if not chunk:
-                continue
-            parts.extend(shlex.split(chunk))
-        command.extend(parts)
+    command.extend(extra_parts)
         
     return command
 

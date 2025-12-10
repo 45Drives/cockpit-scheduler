@@ -8,16 +8,49 @@ from notify import get_notifier
 notifier = get_notifier()
 PROGRESS_RE = re.compile(r'(\d+)%')
 
-
 def build_rsync_command(options):
-    command = ['rsync', '-h', '-i', '-v', '--progress', '--info=progress2']
+    # Base rsync options: human-readable, itemized, with progress
+    command = ['rsync', '-h', '-i', '--progress', '--info=progress2']
+
+    custom = options.get('customArgs') or ''
+    custom_parts = []
+
+    if isinstance(custom, str):
+        if custom.strip():
+            for chunk in custom.split(','):
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                custom_parts.extend(shlex.split(chunk))
+    elif isinstance(custom, (list, tuple)):
+        for arg in custom:
+            if arg:
+                custom_parts.append(str(arg))
+
+    # ---- Detect if the user already controls verbosity ----
+    def is_verbosity_flag(arg: str) -> bool:
+        if arg in ('-q', '-v', '-vv', '-vvv', '--quiet', '--verbose'):
+            return True
+        if arg.startswith('--info='):
+            # rsync's --info controls how chatty it is, including progress detail
+            return True
+        return False
+
+    user_has_verbosity = any(is_verbosity_flag(a) for a in custom_parts)
+
+    # ---- Decide quiet vs verbose default ----
+    is_quiet = options.get('isQuiet')
+    if is_quiet:
+        # User explicitly chose quiet mode via the UI/env flag
+        command.append('-q')
+    elif not user_has_verbosity:
+        command.append('-v')
 
     option_flags = {
         'isArchive': '-a',
         'isRecursive': '-r',
         'isCompressed': '-z',
         'isDelete': '--delete',
-        'isQuiet': '-q',
         'preserveTimes': '-t',
         'preserveHardLinks': '-H',
         'preservePerms': '-p',
@@ -27,21 +60,6 @@ def build_rsync_command(options):
     for key, flag in option_flags.items():
         if options.get(key):
             command.append(flag)
-
-    # customArgs can be either a comma-separated string or a list
-    custom = options.get('customArgs') or ''
-    if isinstance(custom, str):
-        if custom.strip():
-            for chunk in custom.split(','):
-                chunk = chunk.strip()
-                if not chunk:
-                    continue
-                # allow quoting, multiple flags per chunk
-                command.extend(shlex.split(chunk))
-    elif isinstance(custom, (list, tuple)):
-        for arg in custom:
-            if arg:
-                command.append(str(arg))
 
     if int(options['bandwidthLimit']) > 0:
         command.append(f'--bwlimit={options["bandwidthLimit"]}')
@@ -63,11 +81,12 @@ def build_rsync_command(options):
         else:
             command.append("-e ssh")
 
-    # Auto-create remote path for push
     if options['targetHost'] and options['direction'] == 'push':
         remote_parent = os.path.dirname(options['targetPath'].rstrip('/'))
         rsync_path_cmd = f"mkdir -p '{remote_parent}' && rsync"
         command.append(f"--rsync-path={rsync_path_cmd}")
+
+    command.extend(custom_parts)
 
     return command
 
