@@ -291,6 +291,14 @@
                 class="border border-default rounded-md p-2 col-span-2 row-span-1 row-start-2 bg-accent"
                 style="grid-row: 2 / span 1;">
                 <label class="mt-1 block text-base leading-6 text-default">Rclone Options</label>
+                <!-- Mutually-exclusive option warnings -->
+                <div v-if="mutexWarnings.length" class="mt-2">
+                    <div v-for="(msg, idx) in mutexWarnings" :key="'mutex-warning-' + idx"
+                        class="mb-1 flex items-start gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 text-xs text-amber-900 dark:text-amber-100">
+                        <ExclamationCircleIcon class="mt-[2px] h-4 w-4" />
+                        <span>{{ msg }}</span>
+                    </div>
+                </div>
                 <!-- Basic options -->
                 <div class="grid grid-cols-4 gap-4 mt-2">
                     <div class="col-span-1 items-center">
@@ -785,6 +793,7 @@ const maxTransferSizeUnit = ref('MiB');
 const cutoffMode = ref();
 const noTraverse = ref(false);
 
+const mutexWarnings = ref<string[]>([]);
 const isTaskLoading = ref(false);
 
 onMounted(async () => {
@@ -1009,62 +1018,77 @@ function hasChanges() {
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
-watch(
-    [
-        update,
-        ignoreExisting,
-        multiThreadOptions,
-        checksum,
-        ignoreSize,
-        noTraverse,
-        includeFromPath,
-        excludeFromPath,
-    ],
-    () => handleMutuallyExclusiveOptions()
-);
+
+watchEffect(() => {
+    handleMutuallyExclusiveOptions();
+});
 
 function handleMutuallyExclusiveOptions() {
-    // Case: Update vs Ignore Existing
+    const warnings: string[] = [];
+
+    // Case: Update vs Ignore Existing (real mutual exclusion)
     if (update.value && ignoreExisting.value) {
         ignoreExisting.value = false; // Prefer update by default
-    }
-
-    // Case: Checksum vs Ignore Size
-    if (checksum.value && ignoreSize.value) {
-        ignoreSize.value = false; // Prefer checksum for accuracy
+        warnings.push(
+            'Update and Ignore Existing cannot be used together; keeping Update enabled and turning off Ignore Existing.'
+        );
     }
 
     // Case: No Traverse vs Include/Exclude Files from Path
+    // Allow the combination, but warn that it can be surprising.
     if (noTraverse.value && (includeFromPath.value || excludeFromPath.value)) {
-        includeFromPath.value = '';
-        excludeFromPath.value = ''; // Clear include/exclude paths if noTraverse is enabled
+        if (includeFromPath.value) {
+            warnings.push(
+                'No Traverse is enabled along with Include Files from Path; make sure your include patterns do not rely on destination traversal.'
+            );
+        }
+        if (excludeFromPath.value) {
+            warnings.push(
+                'No Traverse is enabled along with Exclude Files from Path; make sure your exclude patterns do not rely on destination traversal.'
+            );
+        }
     }
 
     // Case: Multi-threading settings
     if (multiThreadOptions.value) {
-        multiThreadChunkSize.value = multiThreadChunkSize.value || 64;
-        multiThreadCutoff.value = multiThreadCutoff.value || 256;
-        multiThreadStreams.value = multiThreadStreams.value || 4;
-        multiThreadWriteBufferSize.value =
-            multiThreadWriteBufferSize.value || 128;
+        if (!multiThreadChunkSize.value) {
+            multiThreadChunkSize.value = 64;
+        }
+        if (!multiThreadCutoff.value) {
+            multiThreadCutoff.value = 256;
+        }
+        if (!multiThreadStreams.value) {
+            multiThreadStreams.value = 4;
+        }
+        if (!multiThreadWriteBufferSize.value) {
+            multiThreadWriteBufferSize.value = 128;
+        }
     } else {
+        if (
+            multiThreadChunkSize.value ||
+            multiThreadCutoff.value ||
+            multiThreadStreams.value ||
+            multiThreadWriteBufferSize.value
+        ) {
+            warnings.push(
+                'Multi-threading has been disabled; chunking and related options have been cleared.'
+            );
+        }
         multiThreadChunkSize.value = undefined;
         multiThreadCutoff.value = undefined;
         multiThreadStreams.value = undefined;
         multiThreadWriteBufferSize.value = undefined;
     }
 
-    // Case: Max Transfer Size vs Cutoff Mode
-    if (maxTransferSize.value > 0 && cutoffMode.value) {
-        cutoffMode.value = null; // Prioritize max transfer size if both are set
+    // Case: Dry Run vs Transfer Options
+    // Allow all combinations; just clarify behavior.
+    if (dryRun.value) {
+        warnings.push(
+            'Dry Run is enabled; no changes will be made, but options like Update, Ignore Existing, and Checksum still affect which actions are simulated.'
+        );
     }
 
-    // Case: Dry Run vs Transfer Options
-    if (dryRun.value) {
-        update.value = false;
-        ignoreExisting.value = false;
-        checksum.value = false;
-    }
+    mutexWarnings.value = warnings;
 }
 
 const localTitleComputed = computed(() => {
@@ -1398,10 +1422,6 @@ function setParams() {
     parameters.value = newParams;
     //  console.log('newParams:', newParams);
 }
-
-onMounted(async () => {
-    await initializeData();
-});
 
 defineExpose({
     validateParams,

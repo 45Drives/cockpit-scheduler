@@ -398,21 +398,21 @@
                             </DisclosureButton>
                             <DisclosurePanel>
                                 <div class="w-full grid grid-cols-4 gap-4 bg-default p-4 -mt-1">
-                                    <div class="col-span-2 grid grid-cols-2">
+                                    <div class="col-span-2 grid grid-cols-2 gap-2">
                                         <div name="options-preserve-hard-links"
-                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                            class="flex items-center gap-2 mt-1 col-span-1">
+                                            <label class="text-sm leading-6 text-default">
                                                 Preserve Hard Links
                                             </label>
                                             <input type="checkbox" v-model="preserveHardLinks"
                                                 class="h-4 w-4 rounded" />
                                         </div>
                                         <div name="options-preserve-extended-attributes"
-                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                            class="flex items-center gap-2 mt-1 col-span-1">
+                                            <label class="text-sm leading-6 text-default">
                                                 Preserve Extended Attrs.
                                             </label>
-                                            <input type="checkbox" v-model="preserveXattr" class="h-4 w-4 rounded" />
+                                             <input type="checkbox" v-model="preserveXattr" class="h-4 w-4 rounded" />
                                         </div>
                                         <div name="options-limit-bw" class="col-span-2">
                                             <label class="mt-1 block text-sm leading-6 text-default">
@@ -424,37 +424,31 @@
                                                 placeholder="0" />
                                         </div>
                                     </div>
-
-                                    <div class="col-span-2 grid grid-cols-2">
+                                    <div class="col-span-2 grid grid-cols-2 gap-2">
                                         <div name="options-preserve-permissions"
-                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                            class="flex items-center gap-2 mt-1 col-span-1">
+                                            <label class="text-sm leading-6 text-default">
                                                 Preserve Permissions
                                             </label>
                                             <input type="checkbox" v-model="preservePerms" class="h-4 w-4 rounded" />
                                         </div>
 
-                                        <div name="options-parallel"
-                                            class="flex flex-row justify-between items-center mt-1 col-span-1 col-start-1">
-                                            <label class="block text-sm leading-6 text-default mt-0.5">
+                                        <div name="options-parallel" class="flex items-center gap-2 mt-1 col-span-1">
+                                            <label class="text-sm leading-6 text-default flex items-center">
                                                 Use Parallel Threads
                                                 <InfoTile class="ml-1"
                                                     title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
                                             </label>
-                                            <input type="checkbox" v-model="isParallel" class="h-4 w-4 rounded" />
+                                             <input type="checkbox" v-model="isParallel" class="h-4 w-4 rounded" />
                                         </div>
-                                        <div name="options-parallel-threads" class="col-span-1 col-start-1">
+                                        <div name="options-parallel-threads" class="col-span-1">
                                             <label class="mt-1 block text-sm leading-6 text-default">
                                                 # of Threads
                                                 <InfoTile class="ml-1"
                                                     title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
                                             </label>
-                                            <input v-if="isParallel" type="number" v-model="parallelThreads"
-                                                class="mt-1 block w-min text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                                placeholder="" />
-                                            <input v-else disabled type="number" v-model="parallelThreads"
-                                                class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                                placeholder="" />
+                                            <input :disabled="!isParallel" type="number" v-model="parallelThreads"
+                                                class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" />
                                         </div>
                                     </div>
                                 </div>

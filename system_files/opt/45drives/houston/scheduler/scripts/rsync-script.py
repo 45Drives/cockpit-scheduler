@@ -260,7 +260,6 @@ def main():
     options = parse_arguments()
     execute_rsync(options)
     notifier.notify("STATUS=Finishing up…")
-    print("Rsync task execution completed.")
 
 
 if __name__ == '__main__':

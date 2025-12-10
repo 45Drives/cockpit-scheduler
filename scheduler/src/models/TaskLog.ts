@@ -151,20 +151,35 @@ export class TaskExecutionLog {
                 '';
 
             let output = '';
+            const baseLogCmd = [
+                'journalctl', '-q', '--output=cat',
+                '-u', `${unit}.service`,
+                '--no-pager', '--all',
+            ];
+
             if (startTime) {
-                const logCmd = [
-                    'journalctl', '-q', '--output=cat',
-                    '-u', `${unit}.service`,
-                    '--since', startTime,
-                    '--no-pager', '--all',
-                ];
+                const logCmd = [...baseLogCmd, '--since', startTime];
                 try {
                     const logRes = await runCommand(logCmd, { superuser: 'try' });
                     output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
                 } catch (e) {
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {
-                        console.warn('journalctl failed:', msg);
+                        console.warn('journalctl (since) failed:', msg);
+                    }
+                }
+            }
+
+            // Fallback: if we still have nothing, just grab the last 200 lines
+            if (!output) {
+                try {
+                    const fallbackCmd = [...baseLogCmd, '-n', '200'];
+                    const logRes = await runCommand(fallbackCmd, { superuser: 'try' });
+                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                } catch (e) {
+                    const msg = errorString(e);
+                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
+                        console.warn('journalctl (fallback) failed:', msg);
                     }
                 }
             }
@@ -183,19 +198,19 @@ export class TaskExecutionLog {
             return false;
         }
 
-        // Only treat it as "completed" if it exited successfully
         if (typeof latestEntry.exitCode === 'number' && latestEntry.exitCode !== 0) {
             return false;
         }
 
+        // If we can't get a timestamp, but the exit code was 0, treat it as completed.
         const tsSource = latestEntry.finishDate || latestEntry.startDate;
         if (!tsSource) {
-            return false;
+            return true;
         }
 
         const finishDate = new Date(tsSource).getTime();
         if (!Number.isFinite(finishDate)) {
-            return false;
+            return true;
         }
 
         const currentTime = Date.now();

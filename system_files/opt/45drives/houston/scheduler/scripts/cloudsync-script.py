@@ -420,18 +420,19 @@ def main():
     """
     Main execution entry point.
     """
-    notifier.notify("STATUS=Starting task…")
-    notifier.notify("READY=1")
-    notifier.notify("STATUS=Running task…")
-    print("Starting rclone script...")
-    # print('env:', os.environ)
     options = parse_arguments()
-    # print(f"Options: {options}")
-    execute_rclone(options)
-    notifier.notify("STATUS=Finishing up…")
-    print("Rclone task execution completed.")
-    
+    is_dry_run = options.get('dry_run_flag', False)
 
+    mode_label = "Dry-run" if is_dry_run else "Transfer"
+
+    notifier.notify(f"STATUS=Starting {mode_label}…")
+    notifier.notify("READY=1")
+    notifier.notify(f"STATUS=Running {mode_label}…")
+    print(f"Starting rclone script ({mode_label.lower()})...")
+
+    execute_rclone(options)
+
+    notifier.notify(f"STATUS={mode_label} completed successfully")
 
 if __name__ == '__main__':
     notifier.notify("STATUS=Starting task…")

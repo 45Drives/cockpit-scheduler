@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, defineExpose, computed } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import {
 	PlayIcon,
 	PencilIcon,
@@ -218,7 +218,7 @@ const statusText = computed(() => {
 
 		// While we're in the manual window, be explicit
 		if (manualWindowActive) {
-			if (running) return 'Running now (manual)';
+			if (running) return 'Running (manual)';
 			if (completed) return 'Completed (manual)';
 		}
 

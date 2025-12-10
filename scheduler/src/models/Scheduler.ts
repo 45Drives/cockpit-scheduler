@@ -1190,6 +1190,11 @@ export class Scheduler implements SchedulerType {
                 if (s.active === 'active' && s.sub === 'waiting') return 'Active (Pending)';
                 if (s.active === 'active' && s.sub === 'running') return 'Active (Running)';
                 if (s.active === 'inactive' && s.sub === 'dead') {
+                    // trust systemd's result first
+                    if (s.result === 'success') {
+                        return 'Completed';
+                    }
+
                     let recentlyCompleted = false;
                     try {
                         // IMPORTANT: the log helper must use system journal for system-scope units
