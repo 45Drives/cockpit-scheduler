@@ -45,73 +45,68 @@ export class RemoteManager implements RemoteManagerType {
     async getRemotes() {
         this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
         try {
-            this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);
-            try {
-                const cockpitUser = await (window as any).cockpit.user();
-                const username: string = cockpitUser?.name;
+            const cockpitUser = await (window as any).cockpit.user();
+            const username: string = cockpitUser?.name;
 
-                const args = ['/usr/bin/env', 'python3', '-c', get_cloud_sync_remotes_script];
-                if (username) { args.push('--user', username); }
+            const args = ['/usr/bin/env', 'python3', '-c', get_cloud_sync_remotes_script];
+            if (username) { args.push('--user', username); }
 
-                const { stdout: remotesOutput } = await runCommand(args, { superuser: 'try' });
+            const { stdout: remotesOutput } = await runCommand(args, { superuser: 'try' });
 
-                const remotesData = JSON.parse(remotesOutput);  // Parse the remotes
+            const remotesData = JSON.parse(remotesOutput);
 
-                if (!Array.isArray(remotesData)) {
-                    console.error("Unexpected remotes data format:", remotesData);
+            if (!Array.isArray(remotesData)) {
+                console.error("Unexpected remotes data format:", remotesData);
+                return;
+            }
+            
+            remotesData.forEach(remote => {
+                if (!remote || !remote.type || !remote.parameters) {
+                    console.error("Malformed remote object:", remote);
                     return;
                 }
 
-                remotesData.forEach(remote => {
-                    if (!remote || !remote.type || !remote.parameters) {
-                        console.error("Malformed remote object:", remote);
-                        return;
+                let provider = cloudSyncProviders[remote.type];
+
+                // Handle 's3' provider type, which has specific subtypes
+                if (remote.type === 's3' && remote.parameters.provider) {
+                    const providerKey = `s3-${remote.parameters.provider}`;
+                    provider = cloudSyncProviders[providerKey];
+                }
+
+                if (!provider) {
+                    console.error(`Unsupported remote type or provider: ${remote.type}`);
+                    return;
+                }
+
+                // Deep copy providerParams to authParams
+                const authParams = JSON.parse(JSON.stringify(provider.providerParams));
+
+                // Update authParams with actual values from remote.parameters
+                for (const [key, value] of Object.entries(remote.parameters)) {
+                    // Check if the parameter exists in the provider-defined parameters
+                    const param = authParams.parameters[key];
+
+                    if (param) {
+                        // Update the value based on the type
+                        param.value = value;
+                    } else {
+                        // Add dynamically if not predefined in provider
+                        authParams.parameters[key] = { value, type: typeof value };
                     }
+                }
 
-                    let provider = cloudSyncProviders[remote.type];
+                // Create a new CloudSyncRemote instance for each remote
+                const newRemote = new CloudSyncRemote(
+                    remote.name,
+                    remote.type,
+                    authParams,
+                    provider
+                );
 
-                    // Handle 's3' provider type, which has specific subtypes
-                    if (remote.type === 's3' && remote.parameters.provider) {
-                        const providerKey = `s3-${remote.parameters.provider}`;
-                        provider = cloudSyncProviders[providerKey];
-                    }
-
-                    if (!provider) {
-                        console.error(`Unsupported remote type or provider: ${remote.type}`);
-                        return;
-                    }
-
-                    // Deep copy providerParams to authParams
-                    const authParams = JSON.parse(JSON.stringify(provider.providerParams));
-
-                    // Update authParams with actual values from remote.parameters
-                    for (const [key, value] of Object.entries(remote.parameters)) {
-                        // Check if the parameter exists in the provider-defined parameters
-                        const param = authParams.parameters[key];
-
-                        if (param) {
-                            // Update the value based on the type
-                            param.value = value;
-                        } else {
-                            // Add dynamically if not predefined in provider
-                            authParams.parameters[key] = { value, type: typeof value };
-                        }
-                    }
-
-                    // Create a new CloudSyncRemote instance for each remote
-                    const newRemote = new CloudSyncRemote(
-                        remote.name,
-                        remote.type,
-                        authParams,
-                        provider
-                    );
-
-                    // Add the new remote to the list of cloud sync remotes
-                    this.cloudSyncRemotes.push(newRemote);
-                });
-            } catch (error) {
-                console.error("Error fetching remotes:", error);
-            }
+                // Add the new remote to the list of cloud sync remotes
+                this.cloudSyncRemotes.push(newRemote);
+            });
         } catch (e) {
             console.error("Error fetching remotes:", e);
         }

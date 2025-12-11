@@ -1187,21 +1187,28 @@ export class Scheduler implements SchedulerType {
             // Fast path: systemctl show
             if (output.includes('ActiveState=')) {
                 const s = this.parseShow(output);
+
                 if (s.active === 'active' && s.sub === 'waiting') return 'Active (Pending)';
                 if (s.active === 'active' && s.sub === 'running') return 'Active (Running)';
+
                 if (s.active === 'inactive' && s.sub === 'dead') {
-                    // trust systemd's result first
+                    const hasRun = !!s.serviceStartUSec; // non-zero only after the service has actually started
+
+                    // Brand-new / never-run units should *not* be considered completed
+                    if (!hasRun) {
+                        return 'Inactive (Disabled)';
+                    }
+
+                    // For units that *have* run at least once, trust systemd first
                     if (s.result === 'success') {
                         return 'Completed';
                     }
 
                     let recentlyCompleted = false;
                     try {
-                        // IMPORTANT: the log helper must use system journal for system-scope units
-                        // and user journal for user-scope units. If it doesn't, it will fail under root.
                         recentlyCompleted = await log.wasTaskRecentlyCompleted(ti);
                     } catch (_) {
-                        // swallow — don’t turn a harmless lookup into a UI error
+                        // swallow
                     }
                     return recentlyCompleted ? 'Completed' : 'Inactive (Disabled)';
                 }

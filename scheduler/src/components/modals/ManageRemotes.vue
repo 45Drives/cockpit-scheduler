@@ -414,16 +414,66 @@ function checkForChanges() {
 watch([loadedEditableRemoteName, loadedEditableRemoteProvider, loadedEditableRemoteParams], checkForChanges, { deep: true });
 
 async function saveEditedRemoteBtn() {
-    if (!hasChanges) {
-        pushNotification(new Notification('No Changes Detected', `No fields have been changed, save not completed.`, 'info', 6000));
-    } else {
-        saving.value = true;
-        // console.log("Final token being sent to the backend:", loadedEditableRemoteParams.value.parameters.token.value);
-        await myRemoteManager.editRemote(selectedRemote.value!.name, loadedEditableRemoteName.value!, loadedEditableRemoteProvider.value!.type, loadedEditableRemoteParams.value!);
-        pushNotification(new Notification('Remote Updated', `Remote changes have been saved successfully.`, 'success', 6000));
-        saving.value = false;
+    if (!hasChanges.value) {
+        pushNotification(
+            new Notification(
+                'No Changes Detected',
+                `No fields have been changed, save not completed.`,
+                'info',
+                6000
+            )
+        );
+        return;
+    }
+
+    saving.value = true;
+
+    try {
+        const oldName = selectedRemote.value!.name;
+        const newName = loadedEditableRemoteName.value!;
+        const newType = loadedEditableRemoteProvider.value!.type;
+
+        // Send exactly what you were sending before
+        await myRemoteManager.editRemote(
+            oldName,
+            newName,
+            newType,
+            loadedEditableRemoteParams.value!
+        );
+
+        // Reload remotes from rclone.conf (now containing merged client_id/secret)
+        await loadRemotes(); // <= important: await this
+
+        // Re-select the updated remote from the freshly loaded list
+        const updatedRemote = await myRemoteManager.getRemoteByName(newName);
+        if (updatedRemote) {
+            // This change triggers your watcher on `selectedRemote`
+            // which calls `populateValues(updatedRemote)`
+            selectedRemote.value = updatedRemote;
+        }
+
+        pushNotification(
+            new Notification(
+                'Remote Updated',
+                `Remote changes have been saved successfully.`,
+                'success',
+                6000
+            )
+        );
+
         editMode.value = false;
-        loadRemotes();
+    } catch (err) {
+        console.error('Error saving edited remote:', err);
+        pushNotification(
+            new Notification(
+                'Error',
+                `Failed to save remote changes.`,
+                'error',
+                6000
+            )
+        );
+    } finally {
+        saving.value = false;
     }
 }
 

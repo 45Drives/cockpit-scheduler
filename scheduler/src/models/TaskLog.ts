@@ -194,23 +194,21 @@ export class TaskExecutionLog {
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
         const latestEntry = await this.getLatestEntryFor(taskInstance);
 
-        if (!latestEntry) {
-            return false;
-        }
+        if (!latestEntry) return false;
 
         if (typeof latestEntry.exitCode === 'number' && latestEntry.exitCode !== 0) {
             return false;
         }
 
-        // If we can't get a timestamp, but the exit code was 0, treat it as completed.
+        // Require at least *some* timestamp to consider it a real run
         const tsSource = latestEntry.finishDate || latestEntry.startDate;
         if (!tsSource) {
-            return true;
+            return false;
         }
 
         const finishDate = new Date(tsSource).getTime();
         if (!Number.isFinite(finishDate)) {
-            return true;
+            return false;
         }
 
         const currentTime = Date.now();

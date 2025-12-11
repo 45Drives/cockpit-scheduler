@@ -21,6 +21,52 @@ def load_client_creds() -> Dict[str, Any]:
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
+
+def _normalize_param_value(v: Any) -> Any:
+    """
+    Normalize how auth param values are represented:
+    - If v is a dict with a 'value' key, return that.
+    - Otherwise return v unchanged.
+    """
+    if isinstance(v, dict) and "value" in v:
+        return v.get("value")
+    return v
+
+
+def _is_blank(v: Any) -> bool:
+    """
+    Return True if the value should be treated as 'not provided' by the user.
+    """
+    v = _normalize_param_value(v)
+
+    if v is None:
+        return True
+    if isinstance(v, str):
+        return v.strip() == ""
+    if isinstance(v, (list, dict)):
+        return len(v) == 0
+    return False
+
+
+def _merge_default_client_creds(
+    auth_params: Dict[str, Any],
+    remote_type: str,
+) -> None:
+    """
+    Merge in default client_id/client_secret from packaged creds
+    if the user did not supply a non-blank value.
+    """
+    client_creds = load_client_creds()
+    backend_key = str(remote_type).lower()
+    defaults = client_creds.get(backend_key) or {}
+
+    for field in ("client_id", "client_secret"):
+        if _is_blank(auth_params.get(field)):
+            default_value = defaults.get(field)
+            if not _is_blank(default_value):
+                auth_params[field] = default_value
+
+
 def _expand_user_config(
     user_arg: Optional[str],
     config_arg: Optional[str],
@@ -113,18 +159,11 @@ def edit_remote_in_conf(
             cfg.remove_option(new_name, k)
 
     # Merge in default client_id/client_secret if user did not provide values
-    client_creds = load_client_creds()
-    backend_key = str(remote_type).lower()
-    if backend_key in client_creds:
-        defaults = client_creds[backend_key] or {}
-        if not auth_params.get("client_id"):
-            auth_params["client_id"] = defaults.get("client_id")
-        if not auth_params.get("client_secret"):
-            auth_params["client_secret"] = defaults.get("client_secret")
+    # (handles dict-with-value and whitespace-only strings correctly)
+    _merge_default_client_creds(auth_params, remote_type)
 
     for k, v in auth_params.items():
-        if isinstance(v, dict):
-            v = v.get("value", v)
+        v = _normalize_param_value(v)
         if isinstance(v, (dict, list)):
             v = json.dumps(v)
         if v not in (None, "", []):
