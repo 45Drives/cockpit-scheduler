@@ -1,3 +1,3 @@
-## task scheduler 1.4.2-1
+## task scheduler 1.4.2-2
 
-* Updates cloudsync task to properly handle mututally exclusive rclone options + notify user, fixes dry-run tasks notifying errors, adds logic to handle verbosity flags in rsync/rclone commands
+* Updates rclone client id/secret support in create/update remote logic & fixes task status when unscheduled/not yet ran

@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.2-2bookworm) bookworm; urgency=medium
+
+  * Updates rclone client id/secret support in create/update remote logic & fixes
+    task status when unscheduled/not yet ran
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 11 Dec 2025 10:56:55 -0400
+
 cockpit-scheduler (1.4.2-1bookworm) bookworm; urgency=medium
 
   * Updates cloudsync task to properly handle mututally exclusive rclone options
