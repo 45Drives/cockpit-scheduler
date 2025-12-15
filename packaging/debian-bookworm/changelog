@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.3-1bookworm) bookworm; urgency=medium
+
+  * fixes zfs replication  breaking when datasets had spaces in name (from old module,
+    new one prevents spaces in dataset names)
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 15 Dec 2025 08:16:53 -0400
+
 cockpit-scheduler (1.4.2-2bookworm) bookworm; urgency=medium
 
   * Updates rclone client id/secret support in create/update remote logic & fixes

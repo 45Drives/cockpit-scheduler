@@ -1,3 +1,3 @@
-## task scheduler 1.4.2-2
+## task scheduler 1.4.3-1
 
-* Updates rclone client id/secret support in create/update remote logic & fixes task status when unscheduled/not yet ran
+* fixes zfs replication  breaking when datasets had spaces in name (from old module, new one prevents spaces in dataset names)
