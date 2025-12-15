@@ -824,22 +824,22 @@ function validateDestination() {
 }
 
 async function checkDestDatasetContents() {
-    // Only matters when using existing
     if (!useExistingDest.value) return;
-    // if (!hasDestDatasetChanged()) return;
 
     try {
-        const srcSnaps = await listSnapshots(sourceDataset.value);
+        const srcFs = `${sourcePool.value}/${sourceDataset.value}`;
+        const dstFs = `${destPool.value}/${destDataset.value}`;
+
+        const srcSnaps = await listSnapshots(srcFs);
         let dstSnaps: ZfsSnap[] = [];
 
         if (destHost.value) {
             const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
-            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
+            dstSnaps = await listSnapshots(dstFs, destUser.value, destHost.value, portToUse);
         } else {
-            dstSnaps = await listSnapshots(destDataset.value);
+            dstSnaps = await listSnapshots(dstFs);
         }
 
-        // Empty destination is always fine
         if (!dstSnaps.length) {
             destDatasetErrorTag.value = false;
             return;
@@ -848,9 +848,8 @@ async function checkDestDatasetContents() {
         const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
 
         if (!common) {
-            // No common base
             if (allowOverwrite.value) {
-                destDatasetErrorTag.value = false; // proceed with -F
+                destDatasetErrorTag.value = false;
                 return;
             }
             errorList.value.push("No common snapshot found. Enable 'Allow overwrite' or choose an empty/new destination.");
@@ -858,7 +857,6 @@ async function checkDestDatasetContents() {
             return;
         }
 
-        // Has common, but is dest ahead?
         const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
         if (diverged && !allowOverwrite.value) {
             errorList.value.push("Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
@@ -866,16 +864,13 @@ async function checkDestDatasetContents() {
             return;
         }
 
-        // Good to go
         destDatasetErrorTag.value = false;
-
     } catch (err) {
         console.error("checkDestDatasetContents:", err);
         errorList.value.push("Failed to verify destination snapshots.");
         destDatasetErrorTag.value = true;
     }
 }
-
 
 function isValidPoolName(poolName) {
     if (poolName === '') {

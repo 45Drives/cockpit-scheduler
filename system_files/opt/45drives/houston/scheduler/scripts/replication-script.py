@@ -4,6 +4,7 @@ import datetime
 import os
 import time
 import json
+import shlex
 from notify import get_notifier
 
 notifier = get_notifier()
@@ -194,36 +195,28 @@ def prune_snapshots_by_retention(
     return final_pct
 
 def get_local_snapshots(filesystem):
-    # cmd = ['zfs', 'list', '-H', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
     cmd = ['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem]
     p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if p.returncode == 0:
         snaps = []
         for line in (p.stdout or "").splitlines():
-            parts = line.split(maxsplit=2)
+            parts = split_zfs_list_line(line)
             if len(parts) >= 3:
+                name, guid, creation_raw = parts[0], parts[1], parts[2]
                 try:
-                    # created = datetime.datetime.strptime(parts[2], "%a %b %d %H:%M %Y")
-                    created = datetime.datetime.fromtimestamp(int(parts[2]))
+                    created = datetime.datetime.fromtimestamp(int(creation_raw))
                 except ValueError:
                     continue
-                snaps.append(Snapshot(parts[0], parts[1], created))
+                snaps.append(Snapshot(name, guid, created))
         return snaps
-    # Non-zero: detect “does not exist” and return None, else raise
+
     err = (p.stderr or p.stdout or "").lower()
     if "dataset does not exist" in err or "cannot open" in err:
         return None
     raise subprocess.CalledProcessError(p.returncode, cmd, output=p.stdout, stderr=p.stderr)
 
 
-def get_remote_snapshots(user, host, port, filesystem, transferMethod):
-	"""
-	Returns:
-	  - A list of Snapshot objects if the remote dataset exists.
-	  - An empty list [] if the dataset exists but has no snapshots.
-	  - None if the dataset does not exist at all.
-	"""
- 
+def get_remote_snapshots(user, host, port, filesystem, transferMethod): 
 	ssh_cmd = ssh_base_args(user, host, port)
 
 	ssh_cmd.extend(['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', filesystem])
@@ -232,14 +225,14 @@ def get_remote_snapshots(user, host, port, filesystem, transferMethod):
 		output = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT)
 		snapshots = []
 		for line in output.decode().splitlines():
-			parts = line.split(maxsplit=2)
+			parts = split_zfs_list_line(line)
 			if len(parts) >= 3:
 				snapshot_name = parts[0]
 				snapshot_guid = parts[1]
 				try:
 					snapshot_creation = datetime.datetime.fromtimestamp(int(parts[2]))
 				except ValueError:
-					continue  # Skip if parsing fails
+					continue
 				snapshots.append(Snapshot(snapshot_name, snapshot_guid, snapshot_creation))
 		return snapshots
 
@@ -392,14 +385,17 @@ def send_snapshot(
 
 		elif transferMethod == "netcat":
 			try:
-				notifier.notify(f"STATUS=Sending snapshot {sendName} via netcat to {recvHostUser}@{recvHost}:{recvPort}…")
-				print("Sending via netcat...")
-				
-				# Correct listener command
-				listen_cmd = f"nc -l {recvPort} | zfs recv {'-F ' + recvName if forceOverwrite else recvName}"
-				ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, recvPort)  # control-plane port
+				notifier.notify(
+					f"STATUS=Sending snapshot {sendName} via netcat to {recvHostUser}@{recvHost}:{recvName}…"
+				)
+
+				# Receiver-side: we must quote recvName because this string is executed by a shell on the remote host.
+				recv_q = shlex.quote(recvName)
+				listen_cmd = f"nc -l {shlex.quote(str(recvPort))} | zfs recv {'-F ' if forceOverwrite else ''}{recv_q}"
+
+				# IMPORTANT: This ssh is the control-plane connection to start the listener. It uses recvPort in your existing design.
+				ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, recvPort)
 				ssh_cmd_listener.append(listen_cmd)
-				print(f"[Receiver Side] Listener command: {' '.join(ssh_cmd_listener)}")
 
 				ssh_process_listener = subprocess.Popen(
 					ssh_cmd_listener,
@@ -408,38 +404,52 @@ def send_snapshot(
 					universal_newlines=True,
 				)
 
-				# Wait briefly to ensure listener readiness
-				time.sleep(5)
-    
+				# Give the listener a moment to come up.
+				time.sleep(2)
+
+				# Sender-side: build argv pipelines (no shell) so spaces are safe.
 				send_cmd_list = build_zfs_send_args(
 					sendName, sendName2,
 					recursive=recursive,
 					compressed=compressed,
 					raw=raw,
 				)
+				mbuffer_cmd = ['mbuffer', '-s', '256k', '-m', f'{mBufferSize}{mBufferUnit}']
+				nc_cmd = ['nc', recvHost, str(recvPort)]
 
-				print(f"[Sender Side] ZFS send command: {' '.join(send_cmd_list)}")
-
-				# Combine send -> mbuffer -> netcat pipeline
-				# nc_command = f"{' '.join(send_cmd_list)} | {' '.join(m_buff_cmd)} | nc {recvHost} {recvPort}"
-				nc_command = f"{' '.join(send_cmd_list)} | mbuffer -s 256k -m {mBufferSize}{mBufferUnit} | nc {recvHost} {recvPort}"
-				print(f"[Sender Side] Netcat command: {nc_command}")
-
-				nc_process = subprocess.Popen(
-					nc_command,
-					shell=True,
+				process_send = subprocess.Popen(
+					send_cmd_list,
 					stdout=subprocess.PIPE,
 					stderr=subprocess.PIPE,
 				)
-				nc_stdout, nc_stderr = nc_process.communicate()
+				process_mbuffer = subprocess.Popen(
+					mbuffer_cmd,
+					stdin=process_send.stdout,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+				)
+				process_nc = subprocess.Popen(
+					nc_cmd,
+					stdin=process_mbuffer.stdout,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+				)
 
-				if nc_process.returncode != 0:
+				_, nc_stderr = process_nc.communicate()
+
+				# Pull upstream stderr for better error reporting
+				send_stderr = process_send.stderr.read().decode(errors='replace') if process_send.stderr else ""
+				mbuf_stderr = process_mbuffer.stderr.read().decode(errors='replace') if process_mbuffer.stderr else ""
+
+				if process_nc.returncode != 0:
 					notifier.notify("STATUS=Netcat send failed.")
-					print(f"[Sender Side] nc error: {nc_stderr.decode()}")
+					print(f"[Sender Side] nc error: {nc_stderr.decode(errors='replace')}")
+					if mbuf_stderr:
+						print(f"[Sender Side] mbuffer error: {mbuf_stderr}")
+					if send_stderr:
+						print(f"[Sender Side] zfs send error: {send_stderr}")
 					ssh_process_listener.terminate()
 					sys.exit(1)
-
-				print("[Sender Side] Successfully sent data via netcat.")
 
 				# Ensure receiver completed successfully
 				ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
@@ -447,19 +457,26 @@ def send_snapshot(
 					notifier.notify("STATUS=Remote receive via netcat failed.")
 					print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
 					sys.exit(1)
-     
-				notifier.notify("STATUS=Netcat send/receive completed.")
-    
-				# Verify dataset on receiver
-				snapshot_check_cmd = ['ssh', f'{recvHostUser}@{recvHost}', f'zfs list {recvName}']
-				snapshot_process = subprocess.run(snapshot_check_cmd, universal_newlines=True, stdout=subprocess.PIPE)
 
+				notifier.notify("STATUS=Netcat send/receive completed.")
+
+				# Verify dataset on receiver (quote because remote command is shell-parsed)
+				snapshot_check_cmd = [
+					'ssh',
+					*(['-p', str(recvPort)] if str(recvPort) != '22' else []),
+					f'{recvHostUser}@{recvHost}',
+					f"zfs list {recv_q}",
+				]
+				snapshot_process = subprocess.run(
+					snapshot_check_cmd,
+					universal_newlines=True,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+				)
 				if snapshot_process.returncode != 0:
 					print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")
 					sys.exit(1)
 
-				print(f"[Receiver Side] Received dataset exists: {snapshot_process.stdout.strip()}")
-	
 			except subprocess.TimeoutExpired:
 				print("[Receiver Side] Receiver timed out.")
 				ssh_process_listener.terminate()
@@ -495,6 +512,12 @@ def join_zfs_path(pool: str, dataset: str) -> str:
 		return ds
 	return f"{pool}/{ds}"
 
+def split_zfs_list_line(line: str):
+    line = (line or "").rstrip("\n")
+    if "\t" in line:
+        return line.split("\t")
+    # fallback (should be rare): split on any whitespace
+    return line.split()
 
 def main():
 	try:
@@ -519,6 +542,19 @@ def main():
 		destinationRoot = os.environ.get('zfsRepConfig_destDataset_pool', '')
 		destinationPath = os.environ.get('zfsRepConfig_destDataset_dataset', '')
 		receivingFilesystem = join_zfs_path(destinationRoot, destinationPath)
+  
+		if not sourceFilesystem:
+			raise RuntimeError(
+				"Source dataset is empty (zfsRepConfig_sourceDataset_dataset). "
+				"If the dataset name contains spaces/special characters, ensure the caller passes it quoted "
+				"or via a config file, not whitespace-split shell args."
+			)
+
+		if not receivingFilesystem:
+			raise RuntimeError(
+				"Destination dataset is empty (zfsRepConfig_destDataset_pool/dataset). "
+				"Ensure the caller passes it correctly."
+			)
 
 		remoteUser = os.environ.get('zfsRepConfig_destDataset_user', 'root')
 		remoteHost = os.environ.get('zfsRepConfig_destDataset_host', '')
