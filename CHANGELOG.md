@@ -1,3 +1,3 @@
-## task scheduler 1.4.3-1
+## task scheduler 1.4.3-2
 
-* fixes zfs replication  breaking when datasets had spaces in name (from old module, new one prevents spaces in dataset names)
+* Updates replication-script snapshot detection/sorting logic to better handle discovering last common snapshot
