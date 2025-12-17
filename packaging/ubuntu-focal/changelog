@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.4-1focal) focal; urgency=medium
+
+  * Improves ZFS replication to properly handle common snapshots, destination data
+    divergence with F flag, adds Pull option (reverse replication)
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 17 Dec 2025 12:01:06 -0400
+
 cockpit-scheduler (1.4.3-2focal) focal; urgency=medium
 
   * Updates replication-script snapshot detection/sorting logic to better handle

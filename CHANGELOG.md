@@ -1,3 +1,3 @@
-## task scheduler 1.4.3-2
+## task scheduler 1.4.4-1
 
-* Updates replication-script snapshot detection/sorting logic to better handle discovering last common snapshot
+* Improves ZFS replication to properly handle common snapshots, destination data divergence with F flag, adds Pull option (reverse replication)
