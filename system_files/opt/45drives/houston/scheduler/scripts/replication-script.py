@@ -76,6 +76,43 @@ def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "")
         return True
     return False
 
+def dataset_of_snapshot(full_snap_name: str) -> str:
+    # "pool/ds@snap" -> "pool/ds"
+    return (full_snap_name or "").split("@", 1)[0]
+
+def filter_dataset_snapshots(snaps, dataset: str):
+    ds = (dataset or "").strip()
+    return [s for s in (snaps or []) if dataset_of_snapshot(s.name) == ds]
+
+def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port=22):
+    """
+    Returns integer bytes written on <dataset> since <snapshot_fullname>, or None if unsupported/error.
+
+    Uses: zfs get -H -p -o value written@<snapshot_fullname> <dataset>
+    """
+    prop = f"written@{snapshot_fullname}"
+    base_cmd = ['zfs', 'get', '-H', '-p', '-o', 'value', prop, dataset]
+
+    if remote_host:
+        cmd = ssh_base_args(remote_user, remote_host, remote_port) + base_cmd
+    else:
+        cmd = base_cmd
+
+    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if p.returncode != 0:
+        return None
+
+    out = (p.stdout or "").strip()
+    # Some versions may return "-" or empty if unsupported
+    if not out or out == "-":
+        return None
+
+    try:
+        return int(out)
+    except ValueError:
+        return None
+
+
 def send_houston_notification(payload):
     try:
         dbus_script = "/opt/45drives/houston/houston-notify"
@@ -691,6 +728,44 @@ def main():
 				elif destAhead and allowOverwrite:
 					print("Destination is ahead; Allow Overwrite enabled: will roll back with -F.")
 					forceOverwrite = True
+     
+				# Extra edge-case:
+				# If the destination has NO newer snapshots than the common base,
+				# but the destination dataset head has been modified since its most recent snapshot,
+				# incremental recv will fail unless we use -F to roll back.
+				if (not destAhead) and allowOverwrite:
+					dest_root_snaps = filter_dataset_snapshots(destinationSnapshots, receivingFilesystem)
+					if dest_root_snaps:
+						dest_root_snaps.sort(key=lambda s: s.order_key)
+						dest_latest = dest_root_snaps[-1]
+
+						# Find the most recent common snapshot on the destination *dataset itself*
+						common_root = [d for d in dest_root_snaps if d.guid in src_guids]
+						if common_root:
+							common_root.sort(key=lambda s: s.order_key, reverse=True)
+							most_recent_common_root = common_root[0]
+
+							# "no newer snapshot" on dest dataset means latest snapshot == common base
+							if dest_latest.guid == most_recent_common_root.guid:
+								written = get_written_since_snapshot(
+									receivingFilesystem,
+									dest_latest.name,
+									remote_user=remoteUser if remoteHost else None,
+									remote_host=remoteHost if remoteHost else None,
+									remote_port=sshPort,
+								)
+
+								if written is None:
+									print(
+										"Note: Could not determine whether destination was modified since its latest snapshot "
+										"(written@SNAP unsupported). Proceeding without forcing -F here."
+									)
+								elif written > 0:
+									print(
+										"Destination dataset has been modified since its most recent snapshot, "
+										"and Allow Overwrite is enabled: will receive with -F (rollback) to avoid failure."
+									)
+									forceOverwrite = True
 				# else: normal incremental is fine
 
 		notifier.notify("STATUS=Creating source snapshot…")	
@@ -755,6 +830,7 @@ def main():
 		newSnap = locals().get("newSnap", "unknown")
 		sourceFilesystem = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
 		receivingFilesystem = os.environ.get('zfsRepConfig_destDataset_dataset', '')
+  
 		notifier.notify("STATUS=ZFS replication task failed.")
 		email_error_message = (
 			f"ZFS replication failed while sending snapshot {newSnap} "
