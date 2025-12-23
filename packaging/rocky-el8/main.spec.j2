@@ -66,6 +66,9 @@ if [ "$1" -eq 0 ]; then
 fi
 
 %changelog
+* Tue Dec 23 2025 Jordan Keough <jkeough@45drives.com> 1.4.5-1
+- Fixes some dependency issues with older python version (3.6) and some zfs/rsync
+  task param UI issues
 * Wed Dec 17 2025 Jordan Keough <jkeough@45drives.com> 1.4.4-1
 - Improves ZFS replication to properly handle common snapshots, destination data
   divergence with F flag, adds Pull option (reverse replication)

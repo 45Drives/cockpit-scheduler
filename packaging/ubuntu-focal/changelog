@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.5-1focal) focal; urgency=medium
+
+  * Fixes some dependency issues with older python version (3.6) and some zfs/rsync
+    task param UI issues
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 23 Dec 2025 11:46:42 -0400
+
 cockpit-scheduler (1.4.4-1focal) focal; urgency=medium
 
   * Improves ZFS replication to properly handle common snapshots, destination data

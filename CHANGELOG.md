@@ -1,3 +1,3 @@
-## task scheduler 1.4.4-1
+## task scheduler 1.4.5-1
 
-* Improves ZFS replication to properly handle common snapshots, destination data divergence with F flag, adds Pull option (reverse replication)
+* Fixes some dependency issues with older python version (3.6) and some zfs/rsync task param UI issues
