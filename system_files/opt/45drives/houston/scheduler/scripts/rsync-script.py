@@ -8,6 +8,32 @@ from notify import get_notifier
 notifier = get_notifier()
 PROGRESS_RE = re.compile(r'(\d+)%')
 
+def shlex_join(argv):
+    import shlex
+    return " ".join(shlex.quote(str(a)) for a in argv)
+
+def normalize_local_source_path(p):
+    # If user/UI supplied a trailing slash but it's actually a file, strip it.
+    if p and p.endswith('/'):
+        probe = p.rstrip('/')
+        try:
+            if os.path.isfile(probe):
+                return probe
+        except OSError:
+            pass
+    return p
+
+def normalize_dest_path_for_file_copy(dest_path):
+    # Usually fine as-is; only sanitize accidental "file/" if it's a file on local filesystem.
+    if dest_path and dest_path.endswith('/'):
+        probe = dest_path.rstrip('/')
+        try:
+            if os.path.isfile(probe):
+                return probe
+        except OSError:
+            pass
+    return dest_path
+
 def build_rsync_command(options):
     # Base rsync options: human-readable, itemized, with progress
     command = ['rsync', '-h', '-i', '--progress', '--info=progress2']
@@ -132,6 +158,14 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
             log_fh = None
 
     if isParallel and int(parallelThreads) > 0:
+        # Parallel mode only supports local directory sources
+        if ':' in src:
+            print("Error: Parallel mode is not supported for remote sources.")
+            sys.exit(2)
+        if not os.path.isdir(src.rstrip('/')):
+            print("Error: Parallel mode requires the source to be a directory.")
+            sys.exit(2)
+            
         print(f'Transferring using {parallelThreads} parallel threads from {src} to {dest}')
         rsync_command = " ".join(command)
         parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {src} {dest}'
@@ -151,7 +185,7 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
 
         
         print("Executing rsync command:")
-        print("  " + shlex.join(command))
+        print("  " + shlex_join(command))
 
         process = subprocess.Popen(
             command,
@@ -277,6 +311,10 @@ def main():
     notifier.notify("STATUS=Running task…")
     print("Starting rsync script...")
     options = parse_arguments()
+    options['localPath'] = normalize_local_source_path(options.get('localPath', ''))
+    if not options.get('targetHost'):
+        options['targetPath'] = normalize_dest_path_for_file_copy(options.get('targetPath', ''))
+        
     execute_rsync(options)
     notifier.notify("STATUS=Finishing up…")
 

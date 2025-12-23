@@ -3,9 +3,12 @@
     <div v-if="props.simple" class="space-y-4 my-2">
 
         <!-- What to copy -->
-        <SimpleFormCard title="What do you want to copy?" description="Choose a folder stored on this server that was
-            created by a client backup. This is the backed-up copy of your files, not your live PC.">
-            <label class="block text-sm mt-1 text-default">From (Source)</label>
+        <SimpleFormCard title="What do you want to copy?"
+            description="Choose a folder stored on this server that was created by a client backup. This is the backed-up copy of your files, not your live PC.">
+            <label class="block text-sm mt-1 text-default">
+                From (Source)
+                <InfoTile class="ml-1" :title="tooltips.source" />
+            </label>
 
             <!-- loading -->
             <div v-if="loadingFolders" class="mt-2 flex items-center gap-2">
@@ -39,40 +42,28 @@
 
             <!-- manual input fallback -->
             <div v-else class="mt-1">
-                <input type="text" v-model="sourcePath" @blur="ensureTrailingSlash('source')" :class="[
+                <input type="text" v-model="sourcePath" :class="[
                     'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                     sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" placeholder="e.g. /mnt/backup/projects/" />
                 <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
                 <p class="text-[11px] text-muted mt-1">
-                    Tip: Source should end with a <code>/</code>. We’ll add it for you if missing.
+                    Note: In this mode, source must be a folder (end with <code>/</code>).
                 </p>
             </div>
 
+            <label class="block text-sm mt-3 text-default">
+                To (Target)
+                <InfoTile class="ml-1" :title="tooltips.target" />
+            </label>
 
-            <!-- <div class="w-full mt-3 flex items-center justify-between bg-plugin-header rounded-lg p-2">
-                <span class="text-default text-sm font-medium">
-                    Copy Direction — {{ directionSwitched ? 'Pull (Target ← Source)' : 'Push (Source → Target)' }}
-                </span>
-                <Switch v-model="directionSwitched" :class="[
-                    directionSwitched ? 'bg-secondary' : 'bg-well',
-                    'relative inline-flex h-6 w-11 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2'
-                ]">
-                    <span class="sr-only">Toggle copy direction</span>
-                    <span aria-hidden="true" :class="[
-                        directionSwitched ? 'translate-x-5' : 'translate-x-0',
-                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200'
-                    ]" />
-                </Switch>
-            </div> -->
-
-            <label class="block text-sm mt-3 text-default">To (Target)</label>
-            <input type="text" v-model="destPath" @blur="ensureTrailingSlash('dest')" :class="[
+            <input type="text" v-model="destPath" :class="[
                 'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                 destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-            ]" placeholder="e.g. /mnt/backup/projects/" />
+            ]" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
+
             <p class="text-[11px] text-muted mt-1">
-                Tip: Target should end with a <code>/</code>. We’ll add it for you if missing.
+                Tip: A trailing <code>/</code> changes how rsync copies folders; see tooltip.
             </p>
         </SimpleFormCard>
 
@@ -93,20 +84,15 @@
                         'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                         destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]" placeholder="e.g. backup.example.com or 10.0.0.5" />
-
                 </div>
+
                 <div>
                     <label class="block text-sm mt-3 text-default">User</label>
                     <input type="text" v-model="destUser"
                         class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
                         placeholder="root (default)" :disabled="!destHost" />
                 </div>
-                <!-- <div>
-                    <label class="block text-sm mt-3 text-default">Port</label>
-                    <input type="number" v-model="destPort" min="1" max="65535"
-                        class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
-                        placeholder="22 (default)" :disabled="!destHost" />
-                </div> -->
+
                 <div>
                     <label class="block text-sm mt-3 text-default" for="dest-pass">Password</label>
                     <div class="relative mt-1">
@@ -121,7 +107,6 @@
                         </button>
                     </div>
                 </div>
-
             </div>
 
             <template #footer>
@@ -140,18 +125,19 @@
                     :fillColor="'fill-gray-500'" />
             </div>
         </div>
+
         <div v-else class="grid grid-cols-2 my-2 gap-2 h-full" style="grid-template-rows: auto auto 1fr;">
             <!-- TOP LEFT -->
             <div name="paths-data"
                 class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent"
                 style="grid-row: 1 / span 1;">
                 <label class="mt-1 mb-2 col-span-1 block text-base leading-6 text-default">Transfer Details</label>
+
                 <div name="source-path">
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Source
-                            <InfoTile class="ml-1"
-                                title="Source directory must always have a trailing slash (If none is provided it will be added automatically.)" />
+                            <InfoTile class="ml-1" :title="tooltips.source" />
                         </label>
                         <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -159,15 +145,15 @@
                         <input type="text" v-model="sourcePath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify Source Path" />
+                            placeholder="Specify source path" />
                     </div>
                 </div>
+
                 <div name="destination-path">
                     <div class="flex flex-row justify-between items-center">
                         <label class="mt-1 block text-sm leading-6 text-default">
                             Target
-                            <InfoTile class="ml-1"
-                                title="Target directory must always have a trailing slash (If none is provided it will be added automatically.)" />
+                            <InfoTile class="ml-1" :title="tooltips.target" />
                         </label>
                         <ExclamationCircleIcon v-if="destPathErrorTag" class="mt-1 w-5 h-5 text-danger" />
                     </div>
@@ -175,21 +161,28 @@
                         <input type="text" v-model="destPath"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                             :class="[destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify Target Path" />
+                            placeholder="Specify target path" />
                     </div>
                 </div>
+
                 <div name="direction" class="">
                     <div
                         class="w-full mt-2 flex flex-row justify-between items-center text-center space-x-2 text-default">
-                        <span v-if="directionSwitched" class="">Direction - Pull</span>
-                        <span v-else class="">Direction - Push</span>
-                        <Switch v-model="directionSwitched"
-                            :class="[directionSwitched ? 'bg-secondary' : 'bg-well', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2']">
+                        <span v-if="directionSwitched">Direction - Pull</span>
+                        <span v-else>Direction - Push</span>
+
+                        <Switch v-model="directionSwitched" :class="[
+                            directionSwitched ? 'bg-secondary' : 'bg-well',
+                            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2'
+                        ]">
                             <span class="sr-only">Use setting</span>
-                            <span aria-hidden="true"
-                                :class="[directionSwitched ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out']" />
+                            <span aria-hidden="true" :class="[
+                                directionSwitched ? 'translate-x-5' : 'translate-x-0',
+                                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out'
+                            ]" />
                         </Switch>
                     </div>
+
                     <div class="w-full mt-2 justify-center items-center">
                         <div
                             class="flex flex-row justify-around text-center items-center space-x-1 bg-plugin-header rounded-lg p-2">
@@ -234,12 +227,14 @@
                             </svg>
                             Testing...
                         </button>
+
                         <button v-else @click="confirmTest(destHost, destUser)"
                             class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
                             Test SSH
                         </button>
                     </div>
                 </div>
+
                 <div name="destination-host" class="mt-1">
                     <div class="flex flex-row justify-between items-center">
                         <label class="block text-sm leading-6 text-default">Host</label>
@@ -250,21 +245,17 @@
                         :class="[destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
                         placeholder="Leave blank for local transfer." />
                 </div>
+
                 <div name="destination-user" class="mt-1">
                     <label class="block text-sm leading-6 text-default">User</label>
-                    <input v-if="destHost === ''" disabled type="text" v-model="destUser"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="'root' is default" />
-                    <input v-else type="text" v-model="destUser"
+                    <input :disabled="destHost === ''" type="text" v-model="destUser"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="'root' is default" />
                 </div>
+
                 <div name="destination-port" class="mt-1">
                     <label class="block text-sm leading-6 text-default">Port</label>
-                    <input v-if="destHost === ''" disabled type="number" v-model="destPort"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
-                        max="65535" placeholder="22 is default" />
-                    <input v-else type="number" v-model="destPort"
+                    <input :disabled="destHost === ''" type="number" v-model="destPort"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" min="0"
                         max="65535" placeholder="22 is default" />
                 </div>
@@ -275,55 +266,58 @@
                 class="border border-default rounded-md p-2 col-span-2 row-span-1 row-start-2 bg-accent"
                 style="grid-row: 2 / span 1;">
                 <label class="mt-1 block text-base leading-6 text-default">Rsync Options</label>
-                <!-- Basic options -->
+
                 <div class="grid grid-cols-4 gap-4">
                     <div class="col-span-1">
                         <div name="options-archive" class="flex flex-row justify-between items-center mt-1 col-span-1">
                             <label class="block text-sm leading-6 text-default mt-0.5">
                                 Archive
-                                <InfoTile class="ml-1"
-                                    title="Archive mode. Equivalent to Recursive + Preserve the following: Times, Symbolic Links, Permissions, Groups, Owner, Devices/Specials (cli flags: -rlptgoD)" />
+                                <InfoTile class="ml-1" :title="tooltips.archive" />
                             </label>
                             <input type="checkbox" v-model="isArchive" class="h-4 w-4 rounded"
                                 :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
                         </div>
+
                         <div name="options-recursive"
                             class="flex flex-row justify-between items-center mt-1 col-span-1">
                             <label class="block text-sm leading-6 text-default mt-0.5">
                                 Recursive
-                                <InfoTile class="ml-1" title="Recurse into directories." />
+                                <InfoTile class="ml-1" :title="tooltips.recursive" />
                             </label>
                             <input type="checkbox" v-model="isRecursive" class="h-4 w-4 rounded"
                                 :class="[isDeleteErrorTag ? 'rounded-md outline outline-1 outline-offset-1 outline-rose-500 dark:outline-rose-700' : '']" />
                         </div>
+
                         <div name="options-compressed"
                             class="flex flex-row justify-between items-center mt-1 col-span-1">
                             <label class="block text-sm leading-6 text-default mt-0.5">
                                 Compressed
-                                <InfoTile class="ml-1" title="Compress file data during the transfer." />
+                                <InfoTile class="ml-1" :title="tooltips.compressed" />
                             </label>
                             <input type="checkbox" v-model="isCompressed" class="h-4 w-4 rounded" />
                         </div>
+
                         <div name="options-preserve-times"
                             class="flex flex-row justify-between items-center mt-1 col-span-1">
                             <label class="block text-sm leading-6 text-default mt-0.5">
                                 Preserve Times
-                                <InfoTile class="ml-1" title="Preserve modification times." />
+                                <InfoTile class="ml-1" :title="tooltips.times" />
                             </label>
                             <input type="checkbox" v-model="preserveTimes" class="h-4 w-4 rounded" />
                         </div>
+
                         <div name="options-delete" class="flex flex-row justify-between items-center mt-1 col-span-1">
                             <label class="block text-sm leading-6 text-default mt-0.5">
                                 Delete Files
-                                <InfoTile class="ml-1"
-                                    title="Deletes files in target path that do not exist in source. (REQUIRES Archive or Recursive)" />
+                                <InfoTile class="ml-1" :title="tooltips.delete" />
                             </label>
                             <input type="checkbox" v-model="deleteFiles" class="h-4 w-4 rounded" />
                         </div>
+
                         <div name="options-quiet" class="flex flex-row justify-between items-center mt-1 col-span-1">
                             <label class="block text-sm leading-6 text-default mt-0.5">
                                 Quiet
-                                <InfoTile class="ml-1" title="Suppress non-error messages." />
+                                <InfoTile class="ml-1" :title="tooltips.quiet" />
                             </label>
                             <input type="checkbox" v-model="isQuiet" class="h-4 w-4 rounded" />
                         </div>
@@ -335,20 +329,19 @@
                                 <div class="flex flex-row justify-between items-center">
                                     <label class="mt-1 block text-sm leading-6 text-default">
                                         Include Pattern
-                                        <InfoTile class="ml-1"
-                                            title="Pattern applying to specific directories/files to include. Separate patterns with commas (,)." />
+                                        <InfoTile class="ml-1" :title="tooltips.include" />
                                     </label>
                                 </div>
                                 <input type="text" v-model="includePattern"
                                     class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                     placeholder="Eg. */, *.txt" />
                             </div>
+
                             <div name="options-exclude" class="col-span-1">
                                 <div class="flex flex-row justify-between items-center">
                                     <label class="mt-1 block text-sm leading-6 text-default">
                                         Exclude Pattern
-                                        <InfoTile class="ml-1"
-                                            title="Pattern applying to specific directories/files to exclude. Separate patterns with commas (,)." />
+                                        <InfoTile class="ml-1" :title="tooltips.exclude" />
                                     </label>
                                 </div>
                                 <input type="text" v-model="excludePattern"
@@ -356,26 +349,24 @@
                                     placeholder="Eg. temp*, *.py" />
                             </div>
                         </div>
+
                         <div name="options-log-file-path" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="block text-sm leading-6 text-default">
                                     Log File Path
-                                    <InfoTile class="ml-1"
-                                        :title="`Optional path to an rsync log file. If set, rsync will write logs to this file using --log-file=PATH.`" />
+                                    <InfoTile class="ml-1" :title="tooltips.logFile" />
                                 </label>
-
                             </div>
                             <input type="text" v-model="logFilePath"
                                 class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. /var/log/newtask.log"
-                                :title="`Optional path to an rsync log file. If set, rsync will write logs to this file using --log-file=PATH.`" />
+                                placeholder="Eg. /var/log/newtask.log" :title="tooltips.logFile" />
                         </div>
+
                         <div name="options-extra-params" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
                                 <label class="block text-sm leading-6 text-default">
                                     Extra Parameters
-                                    <InfoTile class="ml-1"
-                                        title="Separate any extra parameters, flags or options you wish to include with commas (,)." />
+                                    <InfoTile class="ml-1" :title="tooltips.extra" />
                                 </label>
                             </div>
                             <input type="text" v-model="extraUserParams"
@@ -390,12 +381,13 @@
                                 class="bg-default mt-2 w-full justify-start text-center rounded-md flex flex-row">
                                 <div class="m-1">
                                     <ChevronUpIcon class="h-7 w-7 text-default transition-all duration-200 transform"
-                                        :class="{ 'rotate-90': !open, 'rotate-180': open, }" />
+                                        :class="{ 'rotate-90': !open, 'rotate-180': open }" />
                                 </div>
                                 <div class="ml-3 mt-1.5">
                                     <span class="text-start text-base text-default">Advanced Options</span>
                                 </div>
                             </DisclosureButton>
+
                             <DisclosurePanel>
                                 <div class="w-full grid grid-cols-4 gap-4 bg-default p-4 -mt-1">
                                     <div class="col-span-2 grid grid-cols-2 gap-2">
@@ -403,32 +395,38 @@
                                             class="flex items-center gap-2 mt-1 col-span-1">
                                             <label class="text-sm leading-6 text-default">
                                                 Preserve Hard Links
+                                                <InfoTile class="ml-1" :title="tooltips.hardLinks" />
                                             </label>
                                             <input type="checkbox" v-model="preserveHardLinks"
                                                 class="h-4 w-4 rounded" />
                                         </div>
+
                                         <div name="options-preserve-extended-attributes"
                                             class="flex items-center gap-2 mt-1 col-span-1">
                                             <label class="text-sm leading-6 text-default">
                                                 Preserve Extended Attrs.
+                                                <InfoTile class="ml-1" :title="tooltips.xattr" />
                                             </label>
-                                             <input type="checkbox" v-model="preserveXattr" class="h-4 w-4 rounded" />
+                                            <input type="checkbox" v-model="preserveXattr" class="h-4 w-4 rounded" />
                                         </div>
+
                                         <div name="options-limit-bw" class="col-span-2">
                                             <label class="mt-1 block text-sm leading-6 text-default">
                                                 Limit Bandwidth (Kbps)
-                                                <InfoTile class="ml-1" title="Limit I/O bandwidth; KBytes per second" />
+                                                <InfoTile class="ml-1" :title="tooltips.bw" />
                                             </label>
                                             <input type="number" v-model="limitBandwidthKbps"
                                                 class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                                                 placeholder="0" />
                                         </div>
                                     </div>
+
                                     <div class="col-span-2 grid grid-cols-2 gap-2">
                                         <div name="options-preserve-permissions"
                                             class="flex items-center gap-2 mt-1 col-span-1">
                                             <label class="text-sm leading-6 text-default">
                                                 Preserve Permissions
+                                                <InfoTile class="ml-1" :title="tooltips.perms" />
                                             </label>
                                             <input type="checkbox" v-model="preservePerms" class="h-4 w-4 rounded" />
                                         </div>
@@ -436,19 +434,28 @@
                                         <div name="options-parallel" class="flex items-center gap-2 mt-1 col-span-1">
                                             <label class="text-sm leading-6 text-default flex items-center">
                                                 Use Parallel Threads
-                                                <InfoTile class="ml-1"
-                                                    title="Increase transfer speeds by starting simulaneous transfers. Keep in mind system resources." />
+                                                <InfoTile class="ml-1" :title="tooltips.parallel" />
                                             </label>
-                                             <input type="checkbox" v-model="isParallel" class="h-4 w-4 rounded" />
+                                            <input type="checkbox" v-model="isParallel" class="h-4 w-4 rounded"
+                                                :disabled="parallelDisabled"
+                                                :title="parallelDisabled ? tooltips.parallelDisabled : tooltips.parallel" />
                                         </div>
+
                                         <div name="options-parallel-threads" class="col-span-1">
                                             <label class="mt-1 block text-sm leading-6 text-default">
                                                 # of Threads
-                                                <InfoTile class="ml-1"
-                                                    title="Choosing the amount of threads depends on the system/load on the system. Keep in mind system resources." />
+                                                <InfoTile class="ml-1" :title="tooltips.parallelThreads" />
                                             </label>
-                                            <input :disabled="!isParallel" type="number" v-model="parallelThreads"
+                                            <input :disabled="!isParallel || parallelDisabled" type="number"
+                                                v-model="parallelThreads"
                                                 class="mt-1 block w-fit text-default input-textlike sm:text-sm sm:leading-6 bg-default" />
+                                        </div>
+
+                                        <div v-if="parallelDisabled" class="col-span-2 -mt-1">
+                                            <p class="text-[11px] text-muted">
+                                                Parallel mode requires a directory-style source (ending with
+                                                <code>/</code>).
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -462,7 +469,6 @@
 </template>
 
 <script setup lang="ts">
-
 import { ref, Ref, onMounted, inject, watch, computed, watchEffect } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel, Switch } from '@headlessui/vue';
 import { ExclamationCircleIcon, ChevronDoubleRightIcon, ChevronUpIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
@@ -506,7 +512,7 @@ const destUser = ref('root');
 const destUserPass = ref('');
 const showPassword = ref(false);
 
-const directionSwitched = ref(false)
+const directionSwitched = ref(false);
 
 const isArchive = ref(true);
 const isRecursive = ref(false);
@@ -537,6 +543,69 @@ const errorList = inject<Ref<string[]>>('errors')!;
 
 const sshReady = ref(false);
 
+const tooltips = {
+    source:
+        "For folders, a trailing slash changes what rsync copies: " +
+        "source/ copies the folder contents, while source copies the folder itself into the target. ",
+    target:
+        "Target can be a folder or a full file path. " +
+        "For folder-to-folder copies, trailing slashes have the same meaning as the source: " +
+        "target/ means ‘copy into this folder’, while target without / may create or rename the top-level folder. " +
+        "If you set a file path, rsync writes to that filename (when copying a file).",
+
+    archive:
+        "Archive mode: preserves permissions, ownership, timestamps, symlinks, devices, and recurses. Equivalent to -rlptgoD.",
+
+    recursive:
+        "Recurse into directories (-r). If you only want to copy a single file, leave this off.",
+
+    compressed:
+        "Compress file data during transfer (-z). Helps on slow links; can hurt on CPU-bound systems.",
+
+    times:
+        "Preserve modification times (-t).",
+
+    delete:
+        "Delete files on the target that do not exist on the source (--delete). Requires Archive or Recursive. Use with care.",
+
+    quiet:
+        "Suppress non-error messages (-q).",
+
+    include:
+        "Patterns to include. Separate patterns with commas. Example: */ , *.txt",
+
+    exclude:
+        "Patterns to exclude. Separate patterns with commas. Example: temp* , *.py",
+
+    logFile:
+        "Optional path to an rsync log file. If set, rsync writes logs using --log-file=PATH.",
+
+    extra:
+        "Additional rsync arguments. Separate with commas. Example: --partial, --checksum, --inplace",
+
+    hardLinks:
+        "Preserve hard links (-H). Can increase memory usage on large trees.",
+
+    xattr:
+        "Preserve extended attributes (-X). Useful for ACLs/metadata when supported.",
+
+    perms:
+        "Preserve permissions (-p).",
+
+    bw:
+        "Limit bandwidth in KBytes per second (--bwlimit). Use 0 for unlimited.",
+
+    parallel:
+        "Splits directory work across multiple rsync processes to improve throughput. " +
+        "Only valid when the source is a directory-style path (ends with /).",
+
+    parallelDisabled:
+        "Parallel mode requires a directory source path ending with /. Disable or add a trailing slash.",
+
+    parallelThreads:
+        "Number of parallel workers. Higher can be faster but uses more CPU, disk, and network."
+} as const;
+
 async function handleTestSSH() {
     testingSSH.value = true;
     try {
@@ -544,31 +613,18 @@ async function handleTestSSH() {
             host: destHost.value,
             user: destUser.value || 'root',
             port: destPort.value || 22,
-            passwordRef: destUserPass, // will be scrubbed by utility
+            passwordRef: destUserPass,
             onEvent: ({ type, title, message }) => {
-                // notifications stay in the UI layer
                 pushNotification(new Notification(title, message, type, type === 'info' ? 6000 : 6000));
             }
         });
-        sshReady.value = res.success; // optional: track local state
+        sshReady.value = res.success;
     } finally {
         testingSSH.value = false;
     }
 }
 
-/**
- * Simple-mode QoL: ensure trailing slash on blur
- */
-function ensureTrailingSlash(which: 'source' | 'dest') {
-    if (which === 'source') {
-        if (sourcePath.value && !sourcePath.value.endsWith('/')) sourcePath.value += '/'
-    } else {
-        if (destPath.value && !destPath.value.endsWith('/')) destPath.value += '/'
-    }
-}
-
 const ctx = useClientContextStore();
-
 const allowContextFallback = ref(false);
 
 function parseFromHash(): string {
@@ -581,15 +637,8 @@ const installId = computed(() => {
     return fromHash || (allowContextFallback.value ? (ctx.clientId || '') : '');
 });
 
-
-console.log('[RsyncTaskParams] client_id =', installId.value)
-
-// drive the server-side discovery
 const folderList = useUserScopedFolderListByInstall(installId, 2);
-console.log('[RsyncTaskParams] folderList created');
 
-
-// stream state to console
 watchEffect(() => {
     console.log('[folderList state]',
         'loading=', folderList.loading.value,
@@ -601,24 +650,20 @@ watchEffect(() => {
     );
 });
 
-// derived values for template
-const loadingFolders = folderList.loading
-const discoveryError = folderList.error
-const shareRoot = computed(() => folderList.shareRoot.value)
-const smbUser = computed(() => folderList.smbUser.value)
+const loadingFolders = folderList.loading;
+const discoveryError = folderList.error;
+const shareRoot = computed(() => folderList.shareRoot.value);
+const smbUser = computed(() => folderList.smbUser.value);
 const isEditMode = computed(() => !!props.task);
 
-// helper that builds a nice label from an absolute path
 function prettyLabelFromAbs(abs: string) {
     const root = shareRoot.value || '';
     if (!abs.startsWith(root)) return abs;
     const rel = abs.slice(root.length).replace(/^\/+/, '');
     const parts = rel.split('/').filter(Boolean);
-    // drop UUID segment
     return parts.length >= 2 ? parts.slice(1).join('/') + '/' : rel + '/';
 }
 
-// strong typing helps intellisense
 const opts = computed<Array<{ value: string; label: string }>>(() =>
     (folderList.absDirs.value ?? []).map(abs => ({
         value: abs,
@@ -627,7 +672,7 @@ const opts = computed<Array<{ value: string; label: string }>>(() =>
 );
 
 watch(opts, (list) => {
-    if (!props.simple || isEditMode.value) return;             //  ⟵ only in Simple mode
+    if (!props.simple || isEditMode.value) return;
     if (!list.length) return;
     if (!sourcePath.value || !folderList.underRoot(sourcePath.value)) {
         sourcePath.value = list[0].value;
@@ -635,7 +680,7 @@ watch(opts, (list) => {
 }, { immediate: true });
 
 watch([() => folderList.absDirs.value, () => folderList.shareRoot.value], ([abs]) => {
-    if (!props.simple || isEditMode.value) return;             //  ⟵ only in Simple mode
+    if (!props.simple || isEditMode.value) return;
     const list = abs || [];
     if (!list.length) return;
     if (!sourcePath.value || !folderList.underRoot(sourcePath.value)) {
@@ -643,10 +688,22 @@ watch([() => folderList.absDirs.value, () => folderList.shareRoot.value], ([abs]
     }
 }, { immediate: true });
 
-
 const togglePassword = () => {
     showPassword.value = !showPassword.value;
 };
+
+const parallelDisabled = computed(() => {
+    if (!isParallel.value) return false;
+    return !sourcePath.value || !sourcePath.value.endsWith('/');
+});
+
+watch(parallelDisabled, (disabled) => {
+    if (disabled) {
+        isParallel.value = false;
+        parallelThreads.value = 0;
+        errorList.value.push('Parallel mode requires the source to be a directory path ending with /.');
+    }
+});
 
 async function initializeData() {
     if (props.task) {
@@ -666,7 +723,7 @@ async function initializeData() {
         directionSwitched.value = transferDirection === 'pull';
 
         const rsyncOptions = params.find(p => p.key === 'rsyncOptions')!.children;
-        
+
         const logFileParam = rsyncOptions.find(p => p.key === 'log_file_path');
         logFilePath.value = logFileParam ? logFileParam.value : '';
 
@@ -773,8 +830,10 @@ function validatePath(path: string): boolean {
 
 function validateSourcePath() {
     if (validatePath(sourcePath.value)) {
-        if (!sourcePath.value.endsWith('/')) {
-            sourcePath.value += '/';
+        if (props.simple && sourcePath.value && !sourcePath.value.endsWith('/')) {
+            errorList.value.push("In Simple mode, source must be a folder path ending with '/'.");
+            sourcePathErrorTag.value = true;
+            return false;
         }
         return true;
     } else {
@@ -786,10 +845,7 @@ function validateSourcePath() {
 
 function validateDestinationPath() {
     if (validatePath(destPath.value)) {
-        if (!destPath.value.endsWith('/')) {
-            destPath.value += '/';
-        }
-        return destPath.value;
+        return true;
     } else {
         errorList.value.push("Target path is invalid.");
         destPathErrorTag.value = true;
@@ -804,6 +860,12 @@ function validateDependantParams() {
         return false;
     }
     isDeleteErrorTag.value = false;
+
+    if (isParallel.value && (!sourcePath.value || !sourcePath.value.endsWith('/'))) {
+        errorList.value.push("Parallel mode requires the source to be a directory path ending with '/'.");
+        return false;
+    }
+
     return true;
 }
 
@@ -823,8 +885,7 @@ function clearErrorTags() {
 }
 
 async function validateParams() {
-    // parent may call clearErrorTags() before this; leave it commented here
-    // clearErrorTags();
+    clearErrorTags();
 
     validateSourcePath();
     validateHost();
@@ -908,7 +969,7 @@ async function confirmTest(destHostVal: string, destUserVal: string) {
         pushNotification(
             new Notification(
                 'Connection Failed',
-                `Could not resolve hostname "${destHostVal}": 
+                `Could not resolve hostname "${destHostVal}":
 Name or service not known.
 Make sure passwordless SSH connection has been configured for target system.`,
                 'error',

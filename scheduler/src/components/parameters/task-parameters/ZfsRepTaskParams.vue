@@ -241,7 +241,7 @@
         <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
             <div class="grid grid-cols-2">
                 <label class="mt-1 col-span-1 block text-base leading-6 text-default">Select Transfer Method</label>
-                <select v-model="transferMethod" :disabled="isPull"
+                <select v-model="transferMethod" :disabled="!hasRemoteEndpoint"
                     class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"
                     id="method">
                     <option value="ssh">SSH</option>
@@ -435,15 +435,22 @@ const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
-const sourcePoolDisabled = computed(() => isPull.value && remoteHostMissing.value);
-const destPoolDisabled = computed(() => !isPull.value && remoteHostMissing.value);
+const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);
+
+const destPoolDisabled = computed(() => targetIsRemote.value && remoteHostMissing.value);
 
 const sourcePoolPlaceholder = computed(() =>
-    sourcePoolDisabled.value ? 'Enter a Host first' : 'Select a Pool'
+    sourceIsRemote.value
+        ? (remoteHostMissing.value ? 'Enter a Host first' : 'Select a Pool')
+        : 'Select a Pool'
 );
+
 const destPoolPlaceholder = computed(() =>
-    destPoolDisabled.value ? 'Enter a Host first' : 'Select a Pool'
+    targetIsRemote.value
+        ? (remoteHostMissing.value ? 'Enter a Host first' : 'Select a Pool')
+        : 'Select a Pool'
 );
+const hasRemoteEndpoint = computed(() => isPull.value || destHost.value.trim() !== '');
 
 const sendRaw = ref(false);
 const sendCompressed = ref(false);
