@@ -1,3 +1,3 @@
-## task scheduler 1.4.2-1
+## task scheduler 1.4.5-1
 
-* Updates cloudsync task to properly handle mututally exclusive rclone options + notify user, fixes dry-run tasks notifying errors, adds logic to handle verbosity flags in rsync/rclone commands
+* Fixes some dependency issues with older python version (3.6) and some zfs/rsync task param UI issues

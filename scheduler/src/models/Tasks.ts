@@ -57,9 +57,14 @@ export class TaskTemplate implements TaskTemplateType {
 export class ZFSReplicationTaskTemplate extends TaskTemplate {
     constructor() {
         const name = "ZFS Replication Task";
+        const directionSelection = [
+            new SelectionOption('push', 'Push'),
+            new SelectionOption('pull', 'Pull')
+        ];
         const parameterSchema = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
             .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', '', ''))
             .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
+            .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new ParameterNode('Send Options', 'sendOptions')
                 .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
                 .addChild(new BoolParameter('Raw', 'raw_flag', false))

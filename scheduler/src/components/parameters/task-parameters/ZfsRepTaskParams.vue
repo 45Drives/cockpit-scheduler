@@ -11,34 +11,40 @@
         <div name="source-data"
             class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
             <div class="flex flex-row justify-between items-center text-center">
-                <label class="-mt-1 block text-base leading-6 text-default">Source Location</label>
+                <label class="-mt-1 block text-base leading-6 text-default">{{ sourceCardLabel }}</label>
                 <div class="mt-1 flex flex-col items-center text-center">
                     <label class="block text-xs text-default">Custom</label>
                     <input type="checkbox" v-model="useCustomSource" class="h-4 w-4 rounded" />
                 </div>
             </div>
+
             <div name="source-pool">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                     <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
+
                 <div v-if="useCustomSource">
-                    <input type="text" v-model="sourcePool" :class="[
+                    <input type="text" v-model="sourcePool" :disabled="sourcePoolDisabled" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customSrcPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" placeholder="Specify Pool" />
+                    ]" :placeholder="sourcePoolPlaceholder" />
                 </div>
+
                 <div v-else>
-                    <select v-model="sourcePool" :class="[
+                    <select v-model="sourcePool" :disabled="sourcePoolDisabled" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                        <option value="">Select a Pool</option>
-                        <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :value="pool">{{ pool }}</option>
+                        <option value="">{{ sourcePoolPlaceholder }}</option>
+                        <option v-if="!loadingSourcePools" v-for="pool in sourcePools" :key="pool" :value="pool">
+                            {{ pool }}
+                        </option>
                         <option v-if="loadingSourcePools">Loading...</option>
                     </select>
                 </div>
+
             </div>
             <div name="source-dataset">
                 <div class="flex flex-row justify-between items-center">
@@ -46,38 +52,40 @@
                     <ExclamationCircleIcon v-if="sourceDatasetErrorTag || customSrcDatasetErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
+
                 <div v-if="useCustomSource">
-                    <div v-if="useCustomSource">
-                        <input type="text" v-model="sourceDataset" :class="[
-                            'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
-                            customSrcDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]" placeholder="Specify Dataset" />
-                    </div>
+                    <input type="text" v-model="sourceDataset" :disabled="!sourcePool || sourcePoolDisabled" :class="[
+                        'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                        customSrcDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]" :placeholder="sourcePool ? 'Specify Dataset' : 'Select a Pool first'" />
                 </div>
+
                 <div v-else>
-                    <select v-model="sourceDataset" :class="[
+                    <select v-model="sourceDataset" :disabled="!sourcePool || sourcePoolDisabled" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         sourceDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]">
-                        <option value="">Select a Dataset</option>
-                        <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :value="dataset">{{
-                            dataset }}</option>
+                        <option value="">{{ sourcePool ? 'Select a Dataset' : 'Select a Pool first' }}</option>
+                        <option v-if="!loadingSourceDatasets" v-for="dataset in sourceDatasets" :key="dataset"
+                            :value="dataset">
+                            {{ dataset }}
+                        </option>
                         <option v-if="loadingSourceDatasets">Loading...</option>
                     </select>
                 </div>
             </div>
-            <div name="source-snapshot-retention" class="">
+
+            <div name="source-snapshot-retention">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                        Source Retention Policy
+                        {{ retentionSourceLabel }}
                         <InfoTile class="ml-1"
                             :title="`How long to keep source snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
                     </label>
                 </div>
                 <div class="flex flex-row gap-2 w-full items-center justify-between">
                     <input type="number" min="0" v-model="srcRetentionTime"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" />
                     <select v-model="srcRetentionUnit"
                         class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                         <option value="">Select an Interval</option>
@@ -87,34 +95,76 @@
                     </select>
                 </div>
             </div>
+
+            <div name="direction" class="col-span-1">
+                <div class="w-full mt-2 flex flex-row justify-between items-center text-center space-x-2 text-default">
+                    <label v-if="directionSwitched" class="block text-sm leading-6 text-default">
+                        Direction - Pull (From Remote)
+                    </label>
+                    <label v-else class="block text-sm leading-6 text-default">
+                        Direction - Push
+                    </label>
+                    <Switch v-model="directionSwitched"
+                        :class="[directionSwitched ? 'bg-secondary' : 'bg-well', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2']">
+                        <span class="sr-only">Use setting</span>
+                        <span aria-hidden="true"
+                            :class="[directionSwitched ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-default shadow ring-0 transition duration-200 ease-in-out']" />
+                    </Switch>
+                </div>
+
+                <div class="w-full mt-1.5 justify-center items-center">
+                    <div @click="directionSwitched = !directionSwitched"
+                        class="flex flex-row justify-around text-center items-center space-x-1 bg-plugin-header rounded-lg p-2">
+                        <span class="text-default">{{ sourceCardLabel }}</span>
+                        <div class="relative flex items-center justify-around">
+                            <span
+                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
+                            </span>
+                            <span
+                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
+                            </span>
+                            <span
+                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
+                            </span>
+                        </div>
+                        <span class="text-default">{{ targetCardLabel }}</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- BOTTOM LEFT -->
         <div name="destination-data"
             class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
             <div class="flex flex-row justify-between items-center">
-                <label class="-mt-1 block text-base leading-6 text-default">Target Location</label>
+                <label class="-mt-1 block text-base leading-6 text-default">{{ targetCardLabel }}</label>
                 <div class="mt-1 flex items-center gap-4">
                     <label class="block text-xs text-default">Existing Dataset</label>
                     <input type="checkbox" v-model="useExistingDest" class="h-4 w-4 rounded" />
                 </div>
             </div>
+
             <div name="destination-pool">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
                     <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <select v-model="destPool" :class="[
+                <select v-model="destPool" :disabled="destPoolDisabled" :class="[
                     'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                     destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]">
-                    <option value="">Select a Pool</option>
-                    <option v-if="!loadingDestPools" v-for="pool in destPools" :value="pool">{{ pool }}</option>
+                    <option value="">{{ destPoolPlaceholder }}</option>
+                    <option v-if="!loadingDestPools" v-for="pool in destPools" :key="pool" :value="pool">
+                        {{ pool }}
+                    </option>
                     <option v-if="loadingDestPools">Loading...</option>
                 </select>
-                <!-- </div> -->
             </div>
+
             <div name="destination-dataset">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default">Dataset</label>
@@ -122,12 +172,11 @@
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
 
-                <!-- EXISTING DATASET: use a SELECT -->
                 <div v-if="useExistingDest">
                     <select v-model="destDataset" :class="[
                         'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                         destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" :disabled="!destPool">
+                    ]" :disabled="!destPool || destPoolDisabled">
                         <option value="">{{ destPool ? 'Select a Dataset' : 'Select a Pool first' }}</option>
                         <option v-if="!loadingDestDatasets" v-for="dataset in destDatasets" :key="dataset"
                             :value="dataset">
@@ -137,14 +186,15 @@
                     </select>
                 </div>
 
-                <!-- NEW DATASET: use a TEXT INPUT (Create flag enabled locally) -->
                 <div v-else>
                     <div class="flex flex-row justify-between items-center w-full flex-grow">
                         <input type="text" v-model="destDataset" :class="[
                             'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                             customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                         ]" placeholder="Specify new dataset path to create on first run" />
-                        <div v-if="!destHost" class="m-1 flex flex-col items-center text-center flex-shrink">
+
+                        <div v-if="showCreateTargetDataset"
+                            class="m-1 flex flex-col items-center text-center flex-shrink">
                             <label class="block text-xs text-default">Create</label>
                             <input type="checkbox" v-model="makeNewDestDataset" class="h-4 w-4 rounded" />
                         </div>
@@ -152,18 +202,17 @@
                 </div>
             </div>
 
-            <div name="destination-snapshot-retention" class="">
+            <div name="destination-snapshot-retention">
                 <div class="flex flex-row justify-between items-center">
                     <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                        Destination Retention Policy
+                        {{ retentionDestLabel }}
                         <InfoTile class="ml-1"
                             :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
                     </label>
                 </div>
                 <div class="flex flex-row gap-2 w-full items-center justify-between">
                     <input type="number" min="0" v-model="destRetentionTime"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="" />
+                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" />
                     <select v-model="destRetentionUnit"
                         class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
                         <option value="">Select an Interval</option>
@@ -173,6 +222,7 @@
                     </select>
                 </div>
             </div>
+
             <div v-if="useExistingDest" name="migration-overwrite" class="mt-2 border-t border-default pt-2">
                 <div class="flex items-center justify-between">
                     <label class="block text-sm leading-6 text-default">
@@ -191,16 +241,16 @@
         <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
             <div class="grid grid-cols-2">
                 <label class="mt-1 col-span-1 block text-base leading-6 text-default">Select Transfer Method</label>
-                <select v-model="transferMethod"
+                <select v-model="transferMethod" :disabled="!hasRemoteEndpoint"
                     class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"
                     id="method">
                     <option value="ssh">SSH</option>
-                    <option value="netcat">Netcat</option>
+                    <option value="netcat" :disabled="isPull">Netcat</option>
                 </select>
-
             </div>
+
             <div class="grid grid-cols-2 mt-2">
-                <label class="mt-1 col-span-1 block text-base leading-6 text-default">Remote Target</label>
+                <label class="mt-1 col-span-1 block text-base leading-6 text-default">{{ remoteEndpointLabel }}</label>
                 <div class="col-span-1 items-end text-end justify-end">
                     <button disabled v-if="testingNetcat || testingSSH"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
@@ -222,6 +272,7 @@
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
                 </div>
             </div>
+
             <div name="destination-host" class="mt-1">
                 <div class="flex flex-row justify-between items-center">
                     <label class="block text-sm leading-6 text-default">Host</label>
@@ -230,28 +281,26 @@
                 <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
                     'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                     destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                ]" placeholder="Leave blank for local replication." />
+                ]" :placeholder="hostPlaceholder" />
             </div>
+
             <div name="destination-user" class="mt-1">
                 <label class="block text-sm leading-6 text-default">User</label>
-                <input v-if="destHost === ''" disabled type="text" v-model="destUser"
-                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                    placeholder="'root' is default" />
-                <input v-else type="text" v-model="destUser"
+                <input :disabled="remoteFieldsDisabled" type="text" v-model="destUser"
                     class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                     placeholder="'root' is default" />
             </div>
+
             <div name="destination-port" class="mt-1">
-                <div class="flex flex-row justify-between items-center"><label
-                        class="block text-sm leading-6 text-default">Port</label>
+                <div class="flex flex-row justify-between items-center">
+                    <label class="block text-sm leading-6 text-default">Port</label>
                     <ExclamationCircleIcon v-if="netCatPortError" class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <input v-if="destHost === ''" disabled type="number"
-                    class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6"
-                    v-model="destPort" min="0" max="65535" placeholder="22 is default" />
-                <input v-else type="number" v-model="destPort" :class="[netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
+
+                <input :disabled="remoteFieldsDisabled" type="number" v-model="destPort" :class="[
+                    netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
                     'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
-                ]" max="65535"
+                ]" min="0" max="65535"
                     :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default'"
                     @input="validatePort" />
             </div>
@@ -298,23 +347,14 @@
             <div class="grid grid-cols-2 mt-2">
                 <div name="send-opt-mbuffer" class="col-span-1">
                     <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
-                    <input v-if="destHost === ''" disabled type="number" v-model="mbufferSize" min="1"
-                        class="mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="1" />
-                    <input v-else type="number" v-model="mbufferSize" min="1"
+                    <input :disabled="remoteFieldsDisabled" type="number" v-model="mbufferSize" min="1"
                         class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="1" />
                 </div>
                 <div name="send-opt-mbuffer" class="col-span-1">
                     <div name="send-opt-mbuffer-unit">
                         <label class="block text-sm leading-6 text-default">mBuffer Unit (Remote)</label>
-                        <select v-if="destHost === ''" disabled v-model="mbufferUnit"
-                            class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
-                            <option value="b">b</option>
-                            <option value="k">k</option>
-                            <option value="M">M</option>
-                            <option value="G">G</option>
-                        </select>
-                        <select v-else v-model="mbufferUnit"
+                        <select :disabled="remoteFieldsDisabled" v-model="mbufferUnit"
                             class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
                             <option value="b">b</option>
                             <option value="k">k</option>
@@ -329,13 +369,31 @@
 </template>
 
 <script setup lang="ts">
-
-import { ref, Ref, onMounted, watch, inject } from 'vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
+import { ExclamationCircleIcon, ChevronDoubleRightIcon } from '@heroicons/vue/24/outline';
+import { Switch } from '@headlessui/vue';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
-import { getPoolData, getDatasetData, testSSH, testNetcat, mostRecentCommonSnapshot, listSnapshots, ZfsSnap, destAheadOfCommon } from '../../../composables/utility';
+import {
+    ParameterNode,
+    ZfsDatasetParameter,
+    IntParameter,
+    StringParameter,
+    BoolParameter,
+    SnapshotRetentionParameter,
+    SelectionOption,
+    SelectionParameter
+} from '../../../models/Parameters';
+import {
+    getPoolData,
+    getDatasetData,
+    testSSH,
+    testNetcat,
+    mostRecentCommonSnapshot,
+    listSnapshots,
+    ZfsSnap,
+    destAheadOfCommon
+} from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -373,7 +431,26 @@ const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
 
+const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
+const remoteHostMissing = computed(() => destHost.value.trim() === '');
+
+const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);
+
+const destPoolDisabled = computed(() => targetIsRemote.value && remoteHostMissing.value);
+
+const sourcePoolPlaceholder = computed(() =>
+    sourceIsRemote.value
+        ? (remoteHostMissing.value ? 'Enter a Host first' : 'Select a Pool')
+        : 'Select a Pool'
+);
+
+const destPoolPlaceholder = computed(() =>
+    targetIsRemote.value
+        ? (remoteHostMissing.value ? 'Enter a Host first' : 'Select a Pool')
+        : 'Select a Pool'
+);
+const hasRemoteEndpoint = computed(() => isPull.value || destHost.value.trim() !== '');
 
 const sendRaw = ref(false);
 const sendCompressed = ref(false);
@@ -388,7 +465,7 @@ const srcRetentionTime = ref(0);
 const srcRetentionUnit = ref('');
 const destRetentionTime = ref(0);
 const destRetentionUnit = ref('');
-const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
+const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years']);
 
 const useCustomTarget = ref(true);
 const useCustomSource = ref(false);
@@ -406,20 +483,48 @@ const sshTestResult = ref(false);
 const testingNetcat = ref(false);
 const netCatTestResult = ref(false);
 
-const transferMethod = ref('ssh')
+const transferMethod = ref('ssh');
 const netCatPortError = ref(false);
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
+/* ---------------- Direction-aware labels + behavior ---------------- */
+
+const isPull = computed(() => directionSwitched.value);
+
+const remoteEndpointLabel = computed(() => (isPull.value ? 'Remote Source' : 'Remote Target'));
+const sourceCardLabel = computed(() => (isPull.value ? 'Remote Source Location' : 'Source Location'));
+const targetCardLabel = computed(() => (isPull.value ? 'Local Target Location' : 'Target Location'));
+
+const retentionSourceLabel = computed(() =>
+    isPull.value ? 'Remote Source Retention Policy' : 'Source Retention Policy'
+);
+const retentionDestLabel = computed(() =>
+    isPull.value ? 'Local Target Retention Policy' : 'Destination Retention Policy'
+);
+
+const hostPlaceholder = computed(() =>
+    isPull.value ? 'Required for pull replication.' : 'Leave blank for local replication.'
+);
+
+// Remote endpoint is always destHost/user/port.
+// In pull: source side is remote.
+// In push: target side is remote iff destHost provided.
+const sourceIsRemote = computed(() => isPull.value);
+const targetIsRemote = computed(() => !isPull.value && destHost.value !== '');
+const targetIsLocal = computed(() => isPull.value || destHost.value === '');
+
+const showCreateTargetDataset = computed(() => !useExistingDest.value && targetIsLocal.value);
+
+// Disable remote fields only when they are irrelevant (push + local)
+const remoteFieldsDisabled = computed(() => !isPull.value && destHost.value === '');
+
+/* ---------------- Existing watchers (adjusted) ---------------- */
+
 watch(useExistingDest, async (on) => {
-    makeNewDestDataset.value = !on;        // new dataset => Create
+    makeNewDestDataset.value = !on;
     if (on) {
-        // ensure dataset list is fresh
-        if (destPool.value) {
-            if (destHost.value) await getRemoteDestinationDatasets();
-            else await getLocalDestinationDatasets();
-        }
-        // run preflight checks (common snap / divergence)
+        if (destPool.value) await getTargetDatasets();
         void checkDestDatasetContents();
     } else {
         allowOverwrite.value = false;
@@ -433,53 +538,96 @@ watch([useExistingDest, destDatasets], () => {
     }
 });
 
+watch(sourcePool, (v) => {
+    if (!v) sourceDataset.value = '';
+});
+
+watch(destHost, (v) => {
+    if (v.trim() !== '') return;
+
+    if (isPull.value) {
+        sourcePool.value = '';
+        sourceDataset.value = '';
+    } else {
+        destPool.value = '';
+        destDataset.value = '';
+    }
+});
+
+
+// If direction flips, refresh lists from the correct endpoints and clear selections
+watch(directionSwitched, async () => {
+    clearErrorTags();
+    sourcePool.value = '';
+    sourceDataset.value = '';
+    destPool.value = '';
+    destDataset.value = '';
+    await getSourcePools();
+    await getTargetPools();
+});
+
+watch(isPull, (on) => {
+    if (on) {
+        if (transferMethod.value === 'netcat') {
+            transferMethod.value = 'ssh';
+        }
+        pushNotification(
+            new Notification(
+                'Netcat Disabled',
+                'Netcat is not available in Pull mode. Pull replication uses SSH only.',
+                'info',
+                6000
+            )
+        );
+    }
+});
+
+watch(transferMethod, (newValue) => {
+    if (isPull.value && newValue === 'netcat') {
+        transferMethod.value = 'ssh';
+        pushNotification(
+            new Notification(
+                'Netcat Disabled',
+                'Netcat is not available in Pull mode. Pull replication uses SSH only.',
+                'info',
+                6000
+            )
+        );
+        return;
+    }
+
+    if (newValue === 'netcat' && destPort.value === 22) {
+        destPort.value = 31337;
+    }
+});
+
+
+/* ---------------- Initialization ---------------- */
 
 async function initializeData() {
-    // if props.task, then edit mode active (retrieve data)
     if (props.task) {
         loading.value = true;
-        await getSourcePools();
-        const isRemoteAccessible = ref(false);
+
         const params = props.task.parameters.children;
 
-        const sourceDatasetParams = params.find(p => p.key === 'sourceDataset')!.children;
-        sourcePool.value = sourceDatasetParams.find(p => p.key === 'pool')!.value;
-        await getSourceDatasets();
-        sourceDataset.value = sourceDatasetParams.find(p => p.key === 'dataset')!.value;
-        if (!doesItExist(sourcePool.value, sourcePools.value) || !doesItExist(sourceDataset.value, sourceDatasets.value)) {
-            useCustomSource.value = true;
-        }
+        const transferDirection = params.find(p => p.key === 'direction')?.value;
+        directionSwitched.value = transferDirection === 'pull';
+
         const destDatasetParams = params.find(p => p.key === 'destDataset')!.children;
         destHost.value = destDatasetParams.find(p => p.key === 'host')!.value;
         destPort.value = destDatasetParams.find(p => p.key === 'port')!.value;
         destUser.value = destDatasetParams.find(p => p.key === 'user')!.value;
-        if (destHost.value !== '') {
-            const sshTarget = destUser.value + '@' + destHost.value;
-            isRemoteAccessible.value = await testSSH(sshTarget);
-            if (isRemoteAccessible.value) {
-                pushNotification(new Notification('SSH Connection Available', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 6000))
-                await getRemoteDestinationPools();
-                destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
-                await getRemoteDestinationDatasets();
-                destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
-            } else {
-                pushNotification(new Notification('SSH Connection Failed', `Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.`, 'error', 6000));
-                await getLocalDestinationPools();
-                destPool.value = '';
-                await getLocalDestinationDatasets();
-                destDataset.value = '';
-            }
-        } else {
-            await getLocalDestinationPools();
-            destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
-            await getLocalDestinationDatasets();
-            destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
-        }
 
-        if (!doesItExist(destPool.value, destPools.value) || !doesItExist(destDataset.value, destDatasets.value)) {
-            useCustomTarget.value = true;
-        }
         const sendOptionsParams = params.find(p => p.key === 'sendOptions')!.children;
+        transferMethod.value = sendOptionsParams.find(p => p.key === 'transferMethod')!.value || 'ssh';
+        if (transferMethod.value === 'local') transferMethod.value = 'ssh';
+
+        const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
+        allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
+
+        const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
+        useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
+
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
         sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
@@ -487,29 +635,59 @@ async function initializeData() {
         mbufferUnit.value = sendOptionsParams.find(p => p.key === 'mbufferUnit')!.value;
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
         customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
-        const snapshotRetentionParams = params.find(p => p.key === 'snapshotRetention')!.children;
-        transferMethod.value = sendOptionsParams.find(p => p.key === 'transferMethod')!.value;
-        if (transferMethod.value == 'local' || transferMethod.value == '') {
-            transferMethod.value = 'ssh'
-        }
-        const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
-        allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
 
-        // Check for source retention
+        const snapshotRetentionParams = params.find(p => p.key === 'snapshotRetention')!.children;
         const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
         if (sourceRetention) {
             srcRetentionTime.value = sourceRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             srcRetentionUnit.value = sourceRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
         }
-
-        // Check for destination retention
         const destinationRetention = snapshotRetentionParams.find(c => c.key === 'destination');
         if (destinationRetention) {
             destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
             destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
         }
-        const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
-        useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
+
+        // Optional connectivity check if remote endpoint exists
+        if (destHost.value) {
+            const sshTarget = `${destUser.value}@${destHost.value}`;
+            const ok = await testSSH(sshTarget);
+            if (ok) {
+                pushNotification(new Notification(
+                    'SSH Connection Available',
+                    'Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).',
+                    'success',
+                    6000
+                ));
+            } else {
+                pushNotification(new Notification(
+                    'SSH Connection Failed',
+                    'Passwordless SSH connection refused with this user/host/port. Please confirm SSH configuration or choose a new target.',
+                    'error',
+                    6000
+                ));
+            }
+        }
+
+        // Load lists from correct endpoints for current direction
+        await getSourcePools();
+        await getTargetPools();
+
+        const sourceDatasetParams = params.find(p => p.key === 'sourceDataset')!.children;
+        sourcePool.value = sourceDatasetParams.find(p => p.key === 'pool')!.value;
+        await getSourceDatasets();
+        sourceDataset.value = sourceDatasetParams.find(p => p.key === 'dataset')!.value;
+
+        destPool.value = destDatasetParams.find(p => p.key === 'pool')!.value;
+        await getTargetDatasets();
+        destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
+
+        if (!doesItExist(sourcePool.value, sourcePools.value) || !doesItExist(sourceDataset.value, sourceDatasets.value)) {
+            useCustomSource.value = true;
+        }
+        if (!doesItExist(destPool.value, destPools.value) || !doesItExist(destDataset.value, destDatasets.value)) {
+            useCustomTarget.value = true;
+        }
 
         initialParameters.value = JSON.parse(JSON.stringify({
             sourcePool: sourcePool.value,
@@ -521,6 +699,7 @@ async function initializeData() {
             destPool: destPool.value,
             destDataset: destDataset.value,
             useCustomTarget: useCustomTarget.value,
+            directionSwitched: directionSwitched.value,
             sendCompressed: sendCompressed.value,
             sendRaw: sendRaw.value,
             sendRecursive: sendRecursive.value,
@@ -539,17 +718,19 @@ async function initializeData() {
 
         loading.value = false;
     } else {
-        //if no props.task, new task configuration (default values)
         await getSourcePools();
-        await getLocalDestinationPools();
+        await getTargetPools();
     }
 }
+
+/* ---------------- Change detection ---------------- */
 
 function hasChanges() {
     const currentParams = {
         sourcePool: sourcePool.value,
         sourceDataset: sourceDataset.value,
         useCustomSource: useCustomSource.value,
+        directionSwitched: directionSwitched.value,
         destHost: destHost.value,
         destPort: destPort.value,
         destUser: destUser.value,
@@ -570,20 +751,12 @@ function hasChanges() {
         allowOverwrite: allowOverwrite.value,
         useExistingDest: useExistingDest.value,
     };
-
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
 
-function hasDestDatasetChanged() {
-    // For new tasks, treat any non-empty destDataset as "changed"
-    if (!('destDataset' in initialParameters.value)) {
-        return !!destDataset.value;
-    }
-    return destDataset.value !== initialParameters.value.destDataset;
-}
+/* ---------------- UI logic ---------------- */
 
-function handleCheckboxChange(checkbox) {
-    // Ensure only one checkbox (raw, compressed) is selected at a time
+function handleCheckboxChange(checkbox: string) {
     if (checkbox === 'sendCompressed' && sendCompressed.value) {
         sendRaw.value = false;
     } else if (checkbox === 'sendRaw' && sendRaw.value) {
@@ -591,112 +764,130 @@ function handleCheckboxChange(checkbox) {
     }
 }
 
-const handleDestHostChange = async (newVal) => {
-    //  console.log("Handling destination host change:", newVal);
-    if (newVal !== "") {
-        await getRemoteDestinationPools();
-    } else {
-        await getLocalDestinationPools();
-    }
-}
-
-function debounce(func, delay) {
-    let timerId;
-    return function (newVal) {
+function debounce(func: any, delay: number) {
+    let timerId: any;
+    return function (...args: any[]) {
         if (timerId) clearTimeout(timerId);
-        timerId = setTimeout(() => func(newVal), delay);
+        timerId = setTimeout(() => func(...args), delay);
     };
 }
 
+const handleDestHostChange = async () => {
+    await getSourcePools();
+    await getTargetPools();
+    sourcePool.value = '';
+    sourceDataset.value = '';
+    destPool.value = '';
+    destDataset.value = '';
+};
+
 const debouncedDestHostChange = debounce(handleDestHostChange, 500);
 
-const handleSourcePoolChange = async (newVal) => {
-    if (newVal) {
-        await getSourceDatasets();
-    }
-}
-
-const handleDestPoolChange = async (newVal) => {
-    if (destHost.value != '') {
-        if (newVal) {
-            await getRemoteDestinationDatasets();
-        }
-    } else {
-        if (newVal) {
-            await getLocalDestinationDatasets();
-        }
-    }
-}
-
+/* ---------------- Direction-aware list loading ---------------- */
 
 const getSourcePools = async () => {
     loadingSourcePools.value = true;
-    sourcePools.value = await getPoolData();
-    loadingSourcePools.value = false;
-    //  console.log('sourcePools:', sourcePools.value);
-}
+    try {
+        if (sourceIsRemote.value) {
+            if (!destHost.value) {
+                sourcePools.value = [];
+                return;
+            }
+            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            sourcePools.value = await getPoolData(destHost.value, portToUse, destUser.value);
+        } else {
+            sourcePools.value = await getPoolData();
+        }
+    } finally {
+        loadingSourcePools.value = false;
+    }
+};
 
 const getSourceDatasets = async () => {
     loadingSourceDatasets.value = true;
-    sourceDatasets.value = await getDatasetData(sourcePool.value);
-    loadingSourceDatasets.value = false;
-    //  console.log('sourceDatasets:', sourceDatasets.value);
-}
-
-const getLocalDestinationPools = async () => {
-    loadingDestPools.value = true;
-    destPools.value = await getPoolData();
-    loadingDestPools.value = false;
-    //  console.log('Local destPools:', destPools.value);
-}
-
-const getLocalDestinationDatasets = async () => {
-    loadingDestDatasets.value = true;
-    destDatasets.value = await getDatasetData(destPool.value);
-    loadingDestDatasets.value = false;
-    //  console.log('Local destDatasets:', destDatasets.value);
-}
-
-const getRemoteDestinationPools = async () => {
-    loadingDestPools.value = true;
-    if (transferMethod.value == 'netcat') {
-        destPools.value = await getPoolData(destHost.value, "22", destUser.value);
-    } else {
-        destPools.value = await getPoolData(destHost.value, destPort.value, destUser.value);
+    try {
+        if (sourceIsRemote.value) {
+            if (!destHost.value) {
+                sourceDatasets.value = [];
+                return;
+            }
+            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            sourceDatasets.value = await getDatasetData(sourcePool.value, destHost.value, portToUse, destUser.value);
+        } else {
+            sourceDatasets.value = await getDatasetData(sourcePool.value);
+        }
+    } finally {
+        loadingSourceDatasets.value = false;
     }
-    loadingDestPools.value = false;
-    //  console.log('Remote destPools:', destPools.value);
+};
 
-}
-
-
-const getRemoteDestinationDatasets = async () => {
-    loadingDestDatasets.value = true;
-    if (transferMethod.value == 'netcat') {
-        destDatasets.value = await getDatasetData(destPool.value, destHost.value, "22", destUser.value);
-    } else {
-        destDatasets.value = await getDatasetData(destPool.value, destHost.value, destPort.value, destUser.value);
+const getTargetPools = async () => {
+    loadingDestPools.value = true;
+    try {
+        if (targetIsRemote.value) {
+            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            destPools.value = await getPoolData(destHost.value, portToUse, destUser.value);
+        } else {
+            destPools.value = await getPoolData();
+        }
+    } finally {
+        loadingDestPools.value = false;
     }
-    loadingDestDatasets.value = false;
-    //  console.log('Remote destDataset:', destDatasets.value);
-}
+};
 
+const getTargetDatasets = async () => {
+    loadingDestDatasets.value = true;
+    try {
+        if (targetIsRemote.value) {
+            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            destDatasets.value = await getDatasetData(destPool.value, destHost.value, portToUse, destUser.value);
+        } else {
+            destDatasets.value = await getDatasetData(destPool.value);
+        }
+    } finally {
+        loadingDestDatasets.value = false;
+    }
+};
+
+const handleSourcePoolChange = async (newVal: string) => {
+    if (newVal) await getSourceDatasets();
+};
+
+const handleDestPoolChange = async (newVal: string) => {
+    if (newVal) await getTargetDatasets();
+};
+
+watch(sourcePool, handleSourcePoolChange);
+watch(destPool, handleDestPoolChange);
+
+// If transfer method changes, remote queries may need different control-plane port assumptions
+watch(transferMethod, async (newValue) => {
+    if (newValue === 'netcat' && destPort.value === 22) {
+        destPort.value = 31337;
+    }
+    await getSourcePools();
+    await getTargetPools();
+});
+
+/* ---------------- Validation ---------------- */
 
 function validateHost() {
+    if (isPull.value && destHost.value === "") {
+        errorList.value.push("Host is required for pull replication.");
+        destHostErrorTag.value = true;
+        return;
+    }
+
     if (destHost.value !== "") {
-        // Check overall length constraints
         if (destHost.value.length < 1 || destHost.value.length > 253) {
             errorList.value.push("Hostname must be between 1 and 253 characters in length.");
             destHostErrorTag.value = true;
         }
-
-        // Regular expression to validate the hostname structure and characters
         const hostRegex = /^(?!-)(?:(?:[a-zA-Z0-9]-*)*[a-zA-Z0-9]\.?)+$/;
         if (!hostRegex.test(destHost.value)) {
             errorList.value.push("Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.");
             destHostErrorTag.value = true;
         }
-
     }
 }
 
@@ -709,22 +900,7 @@ function validatePort() {
     }
 }
 
-
-watch(destHost, (newValue) => {
-    if (newValue === '') {
-        validatePort(); // Call validatePort() when destHost is empty
-    }
-});
-
 watch(destPort, validatePort);
-
-watch(transferMethod, (newValue) => {
-    if (newValue === 'netcat' && destPort.value === 22) {
-        destPort.value = 31337;
-    }
-});
-
-
 
 function validateCustomName() {
     if (useCustomName.value) {
@@ -738,7 +914,6 @@ function validateCustomName() {
             errorList.value.push("Custom name is required if box is checked.");
             customNameErrorTag.value = true;
         }
-
     }
 }
 
@@ -764,28 +939,22 @@ function validateSource() {
         if (sourcePool.value === '') {
             errorList.value.push("Source pool is needed.");
             sourcePoolErrorTag.value = true;
-        } else {
-            if (!doesItExist(sourcePool.value, sourcePools.value)) {
-                errorList.value.push("Source pool does not exist.");
-                customSrcPoolErrorTag.value = true;
-            }
+        } else if (!doesItExist(sourcePool.value, sourcePools.value)) {
+            errorList.value.push("Source pool does not exist.");
+            customSrcPoolErrorTag.value = true;
         }
+
         if (sourceDataset.value === '') {
             errorList.value.push("Source dataset is needed.");
             sourceDatasetErrorTag.value = true;
-        } else {
-            if (!doesItExist(sourceDataset.value, sourceDatasets.value)) {
-                errorList.value.push("Source dataset does not exist.");
-                customSrcDatasetErrorTag.value = true;
-            }
+        } else if (!doesItExist(sourceDataset.value, sourceDatasets.value)) {
+            errorList.value.push("Source dataset does not exist.");
+            customSrcDatasetErrorTag.value = true;
         }
     }
 }
 
 function validateDestination() {
-    // if (!hasDestDatasetChanged()) return;
-
-    // Common checks
     if (destPool.value === '') {
         errorList.value.push("Destination pool is needed.");
         destPoolErrorTag.value = true;
@@ -794,7 +963,6 @@ function validateDestination() {
         customDestPoolErrorTag.value = true;
     }
 
-    // EXISTING DATASET: must pick one that exists in the list
     if (useExistingDest.value) {
         if (destDataset.value === '') {
             errorList.value.push("Destination dataset is needed.");
@@ -806,11 +974,9 @@ function validateDestination() {
             destDatasetErrorTag.value = true;
             return;
         }
-        // Snapshot/common-base checks happen in checkDestDatasetContents()
         return;
     }
 
-    // NEW DATASET: validate name + make sure it doesn't already exist
     if (!isValidDatasetName(destDataset.value)) {
         errorList.value.push("Destination dataset name is invalid.");
         customDestDatasetErrorTag.value = true;
@@ -823,23 +989,36 @@ function validateDestination() {
     }
 }
 
+/* ---------------- Direction-aware preflight check ---------------- */
+
 async function checkDestDatasetContents() {
-    // Only matters when using existing
     if (!useExistingDest.value) return;
-    // if (!hasDestDatasetChanged()) return;
 
     try {
-        const srcSnaps = await listSnapshots(sourceDataset.value);
+        const srcFs = `${sourcePool.value}/${sourceDataset.value}`;
+        const dstFs = `${destPool.value}/${destDataset.value}`;
+
+        const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
+
+        let srcSnaps: ZfsSnap[] = [];
         let dstSnaps: ZfsSnap[] = [];
 
-        if (destHost.value) {
-            const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
-            dstSnaps = await listSnapshots(destDataset.value, destUser.value, destHost.value, portToUse);
+        if (isPull.value) {
+            if (!destHost.value) {
+                errorList.value.push("Host is required for pull replication.");
+                destHostErrorTag.value = true;
+                destDatasetErrorTag.value = true;
+                return;
+            }
+            srcSnaps = await listSnapshots(srcFs, destUser.value, destHost.value, portToUse);
+            dstSnaps = await listSnapshots(dstFs);
         } else {
-            dstSnaps = await listSnapshots(destDataset.value);
+            srcSnaps = await listSnapshots(srcFs);
+            dstSnaps = destHost.value
+                ? await listSnapshots(dstFs, destUser.value, destHost.value, portToUse)
+                : await listSnapshots(dstFs);
         }
 
-        // Empty destination is always fine
         if (!dstSnaps.length) {
             destDatasetErrorTag.value = false;
             return;
@@ -848,9 +1027,8 @@ async function checkDestDatasetContents() {
         const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
 
         if (!common) {
-            // No common base
             if (allowOverwrite.value) {
-                destDatasetErrorTag.value = false; // proceed with -F
+                destDatasetErrorTag.value = false;
                 return;
             }
             errorList.value.push("No common snapshot found. Enable 'Allow overwrite' or choose an empty/new destination.");
@@ -858,7 +1036,6 @@ async function checkDestDatasetContents() {
             return;
         }
 
-        // Has common, but is dest ahead?
         const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
         if (diverged && !allowOverwrite.value) {
             errorList.value.push("Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
@@ -866,9 +1043,7 @@ async function checkDestDatasetContents() {
             return;
         }
 
-        // Good to go
         destDatasetErrorTag.value = false;
-
     } catch (err) {
         console.error("checkDestDatasetContents:", err);
         errorList.value.push("Failed to verify destination snapshots.");
@@ -876,51 +1051,26 @@ async function checkDestDatasetContents() {
     }
 }
 
+/* ---------------- Helpers ---------------- */
 
-function isValidPoolName(poolName) {
-    if (poolName === '') {
-        return false;
-    }
-    if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(poolName)) {
-        return false;
-    }
-    if (/^[0-9._: -]/.test(poolName)) {
-        return false;
-    }
-    if (!/^[a-zA-Z0-9_.:-]*$/.test(poolName)) {
-        return false;
-    }
-    if (poolName.match(/[ ]$/)) {
-        return false;
-    }
+function isValidPoolName(poolName: string) {
+    if (poolName === '') return false;
+    if (/^(c[0-9]|log|mirror|raidz[123]?|spare)/.test(poolName)) return false;
+    if (/^[0-9._: -]/.test(poolName)) return false;
+    if (!/^[a-zA-Z0-9_.:-]*$/.test(poolName)) return false;
+    if (poolName.match(/[ ]$/)) return false;
     return true;
 }
 
 function doesItExist(thisName: string, list: string[]) {
-    if (list.includes(thisName)) {
-        return true;
-    } else {
-        return false;
-    }
+    return list.includes(thisName);
 }
 
-
-function isValidDatasetName(datasetName) {
-    if (datasetName === '') {
-        return false;
-    }
-    // Check if it starts with alphanumeric characters (not a slash)
-    if (!/^[a-zA-Z0-9]/.test(datasetName)) {
-        return false;
-    }
-    // Check if it ends with whitespace or a slash
-    if (/[ \/]$/.test(datasetName)) {
-        return false;
-    }
-    // Check for valid characters throughout the string, allowing internal slashes
-    if (!/^[a-zA-Z0-9_.:\/-]*$/.test(datasetName)) {
-        return false;
-    }
+function isValidDatasetName(datasetName: string) {
+    if (datasetName === '') return false;
+    if (!/^[a-zA-Z0-9]/.test(datasetName)) return false;
+    if (/[ \/]$/.test(datasetName)) return false;
+    if (!/^[a-zA-Z0-9_.:\/-]*$/.test(datasetName)) return false;
     return true;
 }
 
@@ -940,7 +1090,6 @@ function clearErrorTags() {
 }
 
 async function validateParams() {
-    // clearErrorTags();
     validateSource();
     validateHost();
     validateDestination();
@@ -954,16 +1103,18 @@ async function validateParams() {
 }
 
 function setParams() {
-    if (transferMethod.value == 'ssh' && destHost.value == '') {
-        transferMethod.value = "local"
-    }
-    else if (transferMethod.value == "netcat") {
-        transferMethod.value = "netcat"
+    const directionPUSH = new SelectionOption('push', 'Push');
+    const directionPULL = new SelectionOption('pull', 'Pull');
+    const transferDirection = directionSwitched.value ? directionPULL : directionPUSH;
 
-    }
+    let tm = transferMethod.value;
+    if (tm === 'ssh' && !isPull.value && destHost.value === '') tm = 'local';
+    if (tm !== 'netcat' && tm !== 'ssh' && tm !== 'local') tm = 'ssh';
+
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
         .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', destHost.value, destPort.value, destUser.value, destPool.value, destDataset.value))
+        .addChild(new SelectionParameter('Direction', 'direction', transferDirection.value))
         .addChild(new ParameterNode('Send Options', 'sendOptions')
             .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
             .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
@@ -972,62 +1123,44 @@ function setParams() {
             .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
-            .addChild(new StringParameter('Transfer Method', 'transferMethod', transferMethod.value))
+            .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
-
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
             .addChild(new SnapshotRetentionParameter('Source', 'source', srcRetentionTime.value, srcRetentionUnit.value))
             .addChild(new SnapshotRetentionParameter('Destination', 'destination', destRetentionTime.value, destRetentionUnit.value))
-
         );
+
     parameters.value = newParams;
-    //  console.log('newParams:', newParams);
 }
 
-async function confirmSSHTest(destHost, destUser) {
-    testingSSH.value = true;
+/* ---------------- Test buttons ---------------- */
 
-    const sshTarget = destUser + '@' + destHost;
+async function confirmSSHTest(destHostVal: string, destUserVal: string) {
+    testingSSH.value = true;
+    const sshTarget = destUserVal + '@' + destHostVal;
     sshTestResult.value = await testSSH(sshTarget);
 
     if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', `Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).`, 'success', 6000));
+        pushNotification(new Notification('Connection Successful!', 'Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).', 'success', 6000));
     } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHost}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
+        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHostVal}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
     }
     testingSSH.value = false;
 }
 
-async function confirmNetcatTest(destHost2, destPort2) {
+async function confirmNetcatTest(destHost2: string, destPort2: number) {
     testingNetcat.value = true;
-    const netcatHost = destHost2;
-    const netcatdestPort = destPort2;
-
-    netCatTestResult.value = await testNetcat(destUser.value, netcatHost, netcatdestPort);
+    netCatTestResult.value = await testNetcat(destUser.value, destHost2, destPort2);
 
     if (netCatTestResult.value) {
-        pushNotification(new Notification(
-            "Connection Successful!",
-            `Netcat connection established. This host can be used for remote transfers.`,
-            "success",
-            6000
-        ));
+        pushNotification(new Notification("Connection Successful!", "Netcat connection established. This host can be used for remote transfers.", "success", 6000));
     } else {
-        pushNotification(new Notification(
-            "Connection Failed",
-            `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`,
-            "error",
-            6000
-        ));
+        pushNotification(new Notification("Connection Failed", `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`, "error", 6000));
     }
     testingNetcat.value = false;
 }
-
-
-watch(destPool, handleDestPoolChange);
-watch(sourcePool, handleSourcePoolChange);
 
 onMounted(async () => {
     await initializeData();

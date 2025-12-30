@@ -1,3 +1,38 @@
+cockpit-scheduler (1.4.5-1jammy) jammy; urgency=medium
+
+  * Fixes some dependency issues with older python version (3.6) and some zfs/rsync
+    task param UI issues
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 23 Dec 2025 11:46:42 -0400
+
+cockpit-scheduler (1.4.4-1jammy) jammy; urgency=medium
+
+  * Improves ZFS replication to properly handle common snapshots, destination data
+    divergence with F flag, adds Pull option (reverse replication)
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 17 Dec 2025 12:01:06 -0400
+
+cockpit-scheduler (1.4.3-2jammy) jammy; urgency=medium
+
+  * Updates replication-script snapshot detection/sorting logic to better handle
+    discovering last common snapshot
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 16 Dec 2025 05:57:54 -0400
+
+cockpit-scheduler (1.4.3-1jammy) jammy; urgency=medium
+
+  * fixes zfs replication  breaking when datasets had spaces in name (from old module,
+    new one prevents spaces in dataset names)
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 15 Dec 2025 08:16:53 -0400
+
+cockpit-scheduler (1.4.2-2jammy) jammy; urgency=medium
+
+  * Updates rclone client id/secret support in create/update remote logic & fixes
+    task status when unscheduled/not yet ran
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 11 Dec 2025 10:56:55 -0400
+
 cockpit-scheduler (1.4.2-1jammy) jammy; urgency=medium
 
   * Updates cloudsync task to properly handle mututally exclusive rclone options
