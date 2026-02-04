@@ -5,7 +5,7 @@
     "description": "task scheduler for automating server tasks",
     "version": "1.4.5",
     "build_number": "1",
-    "stable": true,
+    "stable": false,
     "author": "Jordan Keough <jkeough@45drives.com>",
     "git_url": "https://github.com/45Drives/cockpit-scheduler",
     "license": "GPL-3.0+",
