@@ -60,14 +60,16 @@
 		</td>
 
 		<!-- Progress bar (full width row) -->
-		<td v-if="progress !== null && isRunning" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
+		<td v-if="showProgressBar" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
-				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded">
-					<div class="h-2 rounded" :class="progressBarClass"
-						:style="{ width: Math.min(progress, 100) + '%' }"></div>
+				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded overflow-hidden">
+					<div v-if="!isIndeterminate" class="h-2 rounded" :class="progressBarClass"
+						:style="{ width: Math.min(progress ?? 0, 100) + '%' }"></div>
+					<div v-else class="h-2 rounded w-full animate-pulse bg-slate-400 dark:bg-slate-500"></div>
 				</div>
 				<div class="text-xs mt-1">
-					{{ Math.round(progress) }}%
+					<span v-if="!isIndeterminate">{{ Math.round(progress ?? 0) }}%</span>
+					<span v-else>Running…</span>
 				</div>
 			</div>
 		</td>
@@ -255,6 +257,8 @@ const isInactive = computed(() => liveIsInactive(taskInstance.value));
 
 // Progress tracking (separate from status)
 const progress = ref<number | null>(null);
+const showProgressBar = computed(() => isRunning.value);
+const isIndeterminate = computed(() => isRunning.value && progress.value === null);
 
 async function updateProgress(task: TaskInstanceType) {
 	try {
