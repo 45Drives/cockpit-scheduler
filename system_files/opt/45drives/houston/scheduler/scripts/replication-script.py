@@ -5,6 +5,7 @@ import os
 import time
 import json
 import shlex
+import getpass
 from notify import get_notifier
 
 notifier = get_notifier()
@@ -728,6 +729,21 @@ def main():
             if transferMethod == "local" or not transferMethod:
                 transferMethod = "ssh"
 
+            print("EUID:", os.geteuid(), "USER:", getpass.getuser(), "HOME:", os.environ.get("HOME"))
+            subprocess.run(["ssh", "-V"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            cmd = [
+                "ssh",
+                "-o", "BatchMode=yes",
+                "-o", "IdentitiesOnly=yes",
+                "-o", "ConnectTimeout=10",
+                "-vv",
+                f"{remoteUser}@{remoteHost}",
+                "true",
+            ]
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            print(p.stdout)
+            
             # ----- snapshot inventory -----
             sourceSnapshots = get_remote_snapshots(remoteUser, remoteHost, sshPort, remote_source_fs) or []
             sourceSnapshots.sort(key=lambda x: x.order_key)
