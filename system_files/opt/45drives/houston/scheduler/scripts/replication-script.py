@@ -482,11 +482,11 @@ def send_snapshot_push(
         ssh_cmd = ["ssh"]
         if str(recvSshPort) != "22":
             ssh_cmd.extend(["-p", str(recvSshPort)])
-        ssh_cmd.append(recvHostUser + "@" + recvHost)
-        ssh_cmd.extend(["zfs", "recv"])
-        if forceOverwrite:
-            ssh_cmd.append("-F")
-        ssh_cmd.append(recvName)
+        ssh_cmd.append(f"{recvHostUser}@{recvHost}")
+
+        recv_q = shlex.quote(recvName)
+        flags = "-F" if forceOverwrite else ""
+        ssh_cmd.append(f"zfs recv {flags} {recv_q}")
 
         process_remote_recv = subprocess.Popen(
             ssh_cmd,
@@ -667,7 +667,10 @@ def send_snapshot_pull(
     if stdout:
         print(stdout)
 
-
+def dbg(msg):
+    with open("/tmp/zfs_rep_debug.log", "a") as f:
+        f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
+        
 def main():
     try:
         notifier.notify("STATUS=Starting ZFS replication task…")
@@ -729,20 +732,31 @@ def main():
             if transferMethod == "local" or not transferMethod:
                 transferMethod = "ssh"
 
-            print("EUID:", os.geteuid(), "USER:", getpass.getuser(), "HOME:", os.environ.get("HOME"))
-            subprocess.run(["ssh", "-V"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            # print("EUID:", os.geteuid(), "USER:", getpass.getuser(), "HOME:", os.environ.get("HOME"))
+            # subprocess.run(["ssh", "-V"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
-            cmd = [
-                "ssh",
-                "-o", "BatchMode=yes",
-                "-o", "IdentitiesOnly=yes",
-                "-o", "ConnectTimeout=10",
-                "-vv",
-                f"{remoteUser}@{remoteHost}",
-                "true",
-            ]
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-            print(p.stdout)
+            # cmd = [
+            #     "ssh",
+            #     "-o", "BatchMode=yes",
+            #     "-o", "IdentitiesOnly=yes",
+            #     "-o", "ConnectTimeout=10",
+            #     "-vv",
+            #     f"{remoteUser}@{remoteHost}",
+            #     "true",
+            # ]
+            # p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            # print(p.stdout)
+            dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
+            dbg(f"remoteUser={remoteUser} remoteHost={remoteHost} sshPort={sshPort}")
+
+            p = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-vv", f"{remoteUser}@{remoteHost}", "true"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+            )
+            dbg("ssh -vv output:\n" + p.stdout)
+            dbg(f"ssh returncode={p.returncode}")
             
             # ----- snapshot inventory -----
             sourceSnapshots = get_remote_snapshots(remoteUser, remoteHost, sshPort, remote_source_fs) or []

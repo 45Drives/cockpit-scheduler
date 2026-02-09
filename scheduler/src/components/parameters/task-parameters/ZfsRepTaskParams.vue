@@ -20,7 +20,17 @@
 
             <div name="source-pool">
                 <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                    <div class="flex items-center gap-2">
+                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+
+                        <button v-if="showSourcePoolRefresh" type="button"
+                            class="mt-1 inline-flex items-center justify-center rounded p-1 text-muted hover:text-default disabled:opacity-50"
+                            :disabled="remoteHostMissing || loadingSourcePools" @click="refreshSourcePoolData"
+                            title="Refresh remote pools" aria-label="Refresh remote pools">
+                            <ArrowPathIcon class="h-4 w-4" :class="loadingSourcePools ? 'animate-spin' : ''" />
+                        </button>
+                    </div>
+
                     <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
@@ -149,10 +159,21 @@
 
             <div name="destination-pool">
                 <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                    <div class="flex items-center gap-2">
+                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+
+                        <button v-if="showDestPoolRefresh" type="button"
+                            class="mt-1 inline-flex items-center justify-center rounded p-1 text-muted hover:text-default disabled:opacity-50"
+                            :disabled="remoteHostMissing || loadingDestPools" @click="refreshDestPoolData"
+                            title="Refresh remote pools" aria-label="Refresh remote pools">
+                            <ArrowPathIcon class="h-4 w-4" :class="loadingDestPools ? 'animate-spin' : ''" />
+                        </button>
+                    </div>
+
                     <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
+
                 <select v-model="destPool" :disabled="destPoolDisabled" :class="[
                     'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                     destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
@@ -370,7 +391,7 @@
 
 <script setup lang="ts">
 import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
-import { ExclamationCircleIcon, ChevronDoubleRightIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 import { Switch } from '@headlessui/vue';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
@@ -518,6 +539,31 @@ const showCreateTargetDataset = computed(() => !useExistingDest.value && targetI
 
 // Disable remote fields only when they are irrelevant (push + local)
 const remoteFieldsDisabled = computed(() => !isPull.value && destHost.value === '');
+
+const showSourcePoolRefresh = computed(() => sourceIsRemote.value && !useCustomSource.value);
+const showDestPoolRefresh = computed(() => targetIsRemote.value); // dest pool is always a select in your UI
+
+async function refreshSourcePoolData() {
+    if (remoteHostMissing.value) return;
+
+    await getSourcePools();
+
+    // If a pool is selected, refresh datasets too (optional but usually desired)
+    if (sourcePool.value) {
+        await getSourceDatasets();
+    }
+}
+
+async function refreshDestPoolData() {
+    if (remoteHostMissing.value) return;
+
+    await getTargetPools();
+
+    // If a pool is selected, refresh datasets too (optional)
+    if (destPool.value) {
+        await getTargetDatasets();
+    }
+}
 
 /* ---------------- Existing watchers (adjusted) ---------------- */
 

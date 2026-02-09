@@ -1,7 +1,8 @@
 <template>
     <!-- Details for ZFS Replication Task -->
-    <div v-if="taskInstance.template.name === 'ZFS Replication Task'" class="grid grid-cols-4 items-left text-left">
-        <div class="col-span-1">
+    <div v-if="taskInstance.template.name === 'ZFS Replication Task'"
+        class="grid w-full grid-cols-4 gap-x-8 items-start text-left">
+        <div class="col-span-1 min-w-0">
             <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
                 Task Type: <b>ZFS Replication Task</b>
             </p>
@@ -31,21 +32,20 @@
                 <b>No Snapshot Retention Policy Configured</b>
             </p>
 
-            <p class="my-2" v-if="remoteHost !== ''">
-                <span class="truncate" :title="`${remoteLabel} ${remoteProtoLabel} Host: ${remoteHost}`">
-                    {{ remoteLabel }} {{ remoteProtoLabel }} Host:
-                    <b>{{ remoteHost }}</b>
-                </span>
+            <div v-if="remoteHost !== ''" class="my-2 flex flex-col gap-1 min-w-0">
+                <div class="truncate" :title="`${remoteLabel} ${remoteProtoLabel} Host: ${remoteHost}`">
+                    {{ remoteLabel }} {{ remoteProtoLabel }} Host: <b>{{ remoteHost }}</b>
+                </div>
 
-                <span class="truncate"
+                <div class="truncate"
                     :title="`${remoteLabel} ${remoteProtoLabel} Port: ${findValue(taskInstance.parameters, 'destDataset', 'port')}`">
                     {{ remoteLabel }} {{ remoteProtoLabel }} Port:
                     <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
-                </span>
-            </p>
+                </div>
+            </div>
         </div>
 
-        <div class="col-span-1">
+        <div class="col-span-1 min-w-0">
             <p class="my-2 truncate"
                 :title="`Compression: ${findValue(taskInstance.parameters, 'sendOptions', 'raw_flag') ? 'Raw' : findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag') ? 'Compressed' : 'None'}`">
                 Compression: <b>{{
@@ -83,7 +83,7 @@
             </p>
         </div>
 
-        <div class="col-span-2 row-span-2">
+        <div class="col-span-2 row-span-2 min-w-0">
             <p class="my-2 font-bold">Current Schedules:</p>
             <div v-if="taskInstance.schedule.intervals.length > 0"
                 v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
