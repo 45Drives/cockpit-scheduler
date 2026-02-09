@@ -222,10 +222,10 @@ export class TaskExecutionLog {
 export class TaskExecutionResult {
     exitCode: number;
     output: string;
-    startDate: string;
-    finishDate: string;
+    startDate: string | number;
+    finishDate: string | number;
 
-    constructor(exitCode: number, output: string, startDate: string, finishDate: string) {
+    constructor(exitCode: number, output: string, startDate: string | number, finishDate: string | number) {
         this.exitCode = exitCode;
         this.output = output;
         this.startDate = startDate;

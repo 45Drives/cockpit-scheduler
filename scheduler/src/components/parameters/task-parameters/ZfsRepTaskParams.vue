@@ -255,6 +255,19 @@
                     If destination has diverged from the source, enabling this permits rollback with
                     <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
                 </p>
+                <div class="flex items-center justify-between mt-2">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        On resume failure, clear token and continue
+                        <InfoTile class="ml-1"
+                            :title="`If a resume token exists but the destination changed, this will discard the token and proceed with normal replication. This can trigger a rollback on the destination when overwrite is enabled, which may discard newer snapshots or changes.`" />
+                    </label>
+                    <input type="checkbox" v-model="resumeFailAllowOverwrite" class="h-4 w-4 rounded" />
+                </div>
+                <p class="mt-1 text-xs text-default/70">
+                    If a resume token exists but the destination was modified, clear the token and
+                    continue with normal replication. If overwrite is allowed, the task may roll back with
+                    <code>zfs receive -F</code>.
+                </p>
             </div>
         </div>
 
@@ -454,6 +467,7 @@ const destUser = ref('root');
 
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
+const resumeFailAllowOverwrite = ref(false);
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
 const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);
@@ -574,6 +588,7 @@ watch(useExistingDest, async (on) => {
         void checkDestDatasetContents();
     } else {
         allowOverwrite.value = false;
+        resumeFailAllowOverwrite.value = false;
         destDatasetErrorTag.value = false;
     }
 });
@@ -670,6 +685,8 @@ async function initializeData() {
 
         const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
         allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
+        const resumeFailAllowOverwriteParam = sendOptionsParams.find(p => p.key === 'resumeFailAllowOverwrite');
+        resumeFailAllowOverwrite.value = resumeFailAllowOverwriteParam ? !!resumeFailAllowOverwriteParam.value : false;
 
         const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
         useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
@@ -759,6 +776,7 @@ async function initializeData() {
             destRetentionUnit: destRetentionUnit.value,
             transferMethod: transferMethod.value,
             allowOverwrite: allowOverwrite.value,
+            resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
             useExistingDest: useExistingDest.value,
         }));
 
@@ -795,6 +813,7 @@ function hasChanges() {
         destRetentionTime: destRetentionTime.value,
         destRetentionUnit: destRetentionUnit.value,
         allowOverwrite: allowOverwrite.value,
+        resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
         useExistingDest: useExistingDest.value,
     };
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -1171,6 +1190,7 @@ function setParams() {
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
             .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
+            .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')

@@ -62,6 +62,13 @@
             </p>
 
             <p class="my-2 truncate"
+                :title="`Resume Failure Continue: ${boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))}`">
+                Resume Failure Continue: <b>{{
+                    boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))
+                    }}</b>
+            </p>
+
+            <p class="my-2 truncate"
                 :title="`Destination: ${findValue(taskInstance.parameters, 'destDataset', 'dataset')}`">
                 Destination: <b>
                     {{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}

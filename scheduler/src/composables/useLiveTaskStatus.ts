@@ -26,6 +26,56 @@ export function useLiveTaskStatus(
         const id = taskId(t);
         const completedWindowMs = opts?.completedWindowMs ?? 15_000; // 15s default
 
+        const parseTs = (raw: string | number | undefined | null): number => {
+            if (!raw) return 0;
+            if (typeof raw === 'number') {
+                return raw.toString().length === 10 ? raw * 1000 : raw;
+            }
+
+            const s = String(raw).trim();
+            if (!s) return 0;
+
+            // Try native parse first
+            const native = Date.parse(s);
+            if (Number.isFinite(native)) return native;
+
+            // Fallback for "Wed 2026-02-04 16:35:01 AST"
+            const m = s.match(/^(?:\w{3})\s+(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\s+([A-Z]{2,4})$/);
+            if (!m) return 0;
+
+            const year = Number(m[1]);
+            const month = Number(m[2]);
+            const day = Number(m[3]);
+            const hour = Number(m[4]);
+            const minute = Number(m[5]);
+            const second = Number(m[6]);
+            const tz = m[7];
+
+            const tzOffsets: Record<string, number> = {
+                UTC: 0,
+                GMT: 0,
+                EST: -5,
+                EDT: -4,
+                CST: -6,
+                CDT: -5,
+                MST: -7,
+                MDT: -6,
+                PST: -8,
+                PDT: -7,
+                AST: -4,
+                ADT: -3,
+                NST: -3.5,
+                NDT: -2.5,
+            };
+
+            const offsetHours = tzOffsets[tz];
+            if (typeof offsetHours !== 'number') return 0;
+
+            const offsetMinutes = Math.round(offsetHours * 60);
+            const utcMs = Date.UTC(year, month - 1, day, hour, minute, second) - offsetMinutes * 60 * 1000;
+            return Number.isFinite(utcMs) ? utcMs : 0;
+        };
+
         const fmtMs = (ms: number) => {
             if (!ms) return "Task hasn't run yet.";
             if (opts?.formatMs) return opts.formatMs(ms);
@@ -82,27 +132,32 @@ export function useLiveTaskStatus(
                     const latest = await log.getLatestEntryFor(t);
                     const raw = latest?.finishDate ?? latest?.startDate;
                     if (raw) {
-                        let ms = 0;
-                        if (typeof raw === 'number') {
-                            ms = raw.toString().length === 10 ? raw * 1000 : raw;
-                        } else {
-                            const parsed = Date.parse(String(raw));
-                            if (Number.isFinite(parsed)) ms = parsed;
-                        }
+                        const ms = parseTs(raw);
 
-                        if (ms) {
-                            if (typeof latest?.exitCode === 'number') {
-                                const tsLabel = fmtMs(ms);
+                        if (typeof latest?.exitCode === 'number') {
+                            const tsMs = ms || lastRunMs || 0;
+                            if (tsMs) {
+                                const tsLabel = fmtMs(tsMs);
                                 if (latest.exitCode === 0) {
-                                    lastCompletedMs = ms;
-                                    lastCompletedAtMap.value[id] = ms;
+                                    lastCompletedMs = tsMs;
+                                    lastCompletedAtMap.value[id] = tsMs;
                                     label = `Completed at ${tsLabel}`;
                                 } else {
                                     label = `Failed at ${tsLabel}`;
                                 }
                             } else {
-                                label = buildLastRunLabel(schedulerStatusText, ms) || `${fmtMs(ms)}`;
+                                // Exit code known but timestamp missing: still show a meaningful label
+                                if (latest.exitCode === 0) {
+                                    const now = Date.now();
+                                    lastCompletedMs = now;
+                                    lastCompletedAtMap.value[id] = now;
+                                    label = 'Completed';
+                                } else {
+                                    label = 'Failed';
+                                }
                             }
+                        } else if (ms) {
+                            label = buildLastRunLabel(schedulerStatusText, ms) || `${fmtMs(ms)}`;
                         }
                     }
                 } catch {
@@ -111,6 +166,8 @@ export function useLiveTaskStatus(
             }
 
             if (!label && lastRunMap.value[id] === 'Running now...') {
+                // Avoid "Stopped at" if we can't prove a stop/fail; prefer neutral
+                // label = 'Completed';
                 label = `Stopped at ${fmtMs(Date.now())}`;
             }
 
@@ -122,10 +179,16 @@ export function useLiveTaskStatus(
             if (
                 latestCompleted &&
                 now - latestCompleted < completedWindowMs &&
+                // !lowerScheduler.includes('failed')
                 !lowerScheduler.includes('failed') &&
                 !lowerScheduler.includes('inactive')
             ) {
                 finalStatusText = 'Completed';
+            }
+
+            if ((label === 'Completed' || label === 'Failed') && lastRunMs) {
+                const tsLabel = fmtMs(lastRunMs);
+                label = label === 'Completed' ? `Completed at ${tsLabel}` : `Failed at ${tsLabel}`;
             }
 
             statusMap.value[id] = finalStatusText;
@@ -175,16 +238,10 @@ export function useLiveTaskStatus(
             let lastCompletedMs = 0;
 
             if (raw) {
-                let ms = 0;
-                if (typeof raw === 'number') {
-                    ms = raw.toString().length === 10 ? raw * 1000 : raw;
-                } else {
-                    const parsed = Date.parse(String(raw));
-                    if (Number.isFinite(parsed)) ms = parsed;
-                }
+                const ms = parseTs(raw);
 
                 if (ms) {
-                    const label = (() => {
+                    let label = (() => {
                         if (typeof latest?.exitCode === 'number') {
                             const tsLabel = fmtMs(ms);
                             if (latest.exitCode === 0) {
@@ -208,12 +265,17 @@ export function useLiveTaskStatus(
                     if (
                         latestCompleted &&
                         now - latestCompleted < completedWindowMs &&
+                        // !lower.includes('failed')
                         !lower.includes('failed') &&
                         !lower.includes('inactive')
                     ) {
                         finalStatusText = 'Completed';
                     }
 
+                    if ((label === 'Completed' || label === 'Failed') && ms) {
+                        const tsLabel = fmtMs(ms);
+                        label = label === 'Completed' ? `Completed at ${tsLabel}` : `Failed at ${tsLabel}`;
+                    }
                     statusMap.value[id] = finalStatusText;
                     lastRunMap.value[id] = label;
                     return;
@@ -221,12 +283,14 @@ export function useLiveTaskStatus(
             }
 
             if (lastRunMap.value[id] === 'Running now...') {
+                // lastRunMap.value[id] = 'Completed';
                 lastRunMap.value[id] = `Stopped at ${fmtMs(Date.now())}`;
             } else {
                 lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";
             }
         } catch {
             if (lastRunMap.value[id] === 'Running now...') {
+                // lastRunMap.value[id] = 'Completed';
                 lastRunMap.value[id] = `Stopped at ${fmtMs(Date.now())}`;
             } else {
                 lastRunMap.value[id] = lastRunMap.value[id] ?? "Task hasn't run yet.";

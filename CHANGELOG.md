@@ -1,3 +1,3 @@
-## task scheduler 1.4.5-1
+## task scheduler 1.4.6-1
 
-* Fixes some dependency issues with older python version (3.6) and some zfs/rsync task param UI issues
+* Adds support for zfs replication resume tokens when transfers fail
