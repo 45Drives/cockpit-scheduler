@@ -131,6 +131,43 @@ def ssh_base_args(user, host, port):
     return args
 
 
+def ssh_run_args(user, host, port, args, *, capture_output=True, check=False, text=False, timeout=None):
+    ssh_cmd = ["ssh"]
+    if str(port) != "22":
+        ssh_cmd += ["-p", str(port)]
+    ssh_cmd.append(f"{user}@{host}")
+
+    remote_cmd = " ".join(shlex.quote(str(a)) for a in args)
+    ssh_cmd.append(remote_cmd)
+
+    return subprocess.run(
+        ssh_cmd,
+        stdout=subprocess.PIPE if capture_output else None,
+        stderr=subprocess.PIPE if capture_output else None,
+        universal_newlines=text,
+        check=check,
+        timeout=timeout,
+    )
+
+
+def ssh_popen_args(user, host, port, args, *, stdin=None, stdout=None, stderr=None, universal_newlines=False):
+    ssh_cmd = ["ssh"]
+    if str(port) != "22":
+        ssh_cmd += ["-p", str(port)]
+    ssh_cmd.append(f"{user}@{host}")
+
+    remote_cmd = " ".join(shlex.quote(str(a)) for a in args)
+    ssh_cmd.append(remote_cmd)
+
+    return subprocess.Popen(
+        ssh_cmd,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        universal_newlines=universal_newlines,
+    )
+
+
 def join_zfs_path(pool: str, dataset: str) -> str:
     pool = (pool or "").strip()
     ds = (dataset or "").strip()
@@ -229,37 +266,45 @@ def get_local_snapshots(filesystem):
 
 
 def get_remote_snapshots(user, host, ssh_port, filesystem):
-    ssh_cmd = ssh_base_args(user, host, ssh_port)
-    ssh_cmd.extend(
-        [
-            "zfs",
-            "list",
-            "-H",
-            "-p",
-            "-o",
-            "name,guid,creation,createtxg",
-            "-t",
-            "snapshot",
-            "-r",
-            filesystem,
-        ]
-    )
+    args = [
+        "zfs",
+        "list",
+        "-H",
+        "-p",
+        "-o",
+        "name,guid,creation,createtxg",
+        "-t",
+        "snapshot",
+        "-r",
+        filesystem,
+    ]
 
-    try:
-        output = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT)
+    p = ssh_run_args(user, host, ssh_port, args, capture_output=True, check=False, text=False)
+
+    if p.returncode == 0:
         snapshots = []
-        for line in output.decode(errors="replace").splitlines():
+        out = (p.stdout or b"")
+        if isinstance(out, str):
+            out = out.encode()
+        for line in out.decode(errors="replace").splitlines():
             snap = parse_snapshot_line(line)
             if snap:
                 snapshots.append(snap)
         return snapshots
 
-    except subprocess.CalledProcessError as e:
-        err_output = e.output.decode(errors="replace").lower()
-        if "dataset does not exist" in err_output or "cannot open" in err_output:
-            return None
-        print(f"ERROR: Failed to fetch remote snapshots for {filesystem}: {e}\nOutput:\n{err_output}")
-        sys.exit(1)
+    errb = (p.stderr or b"")
+    outb = (p.stdout or b"")
+    if isinstance(errb, str):
+        errb = errb.encode()
+    if isinstance(outb, str):
+        outb = outb.encode()
+    err_output = errb.decode(errors="replace").lower() + outb.decode(errors="replace").lower()
+
+    if "dataset does not exist" in err_output or "cannot open" in err_output:
+        return None
+
+    print(f"ERROR: Failed to fetch remote snapshots for {filesystem}:\n{err_output}")
+    sys.exit(1)
 
 
 def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw):
@@ -299,10 +344,6 @@ class StreamCapture:
 
 
 def estimate_send_size(send_cmd):
-    """
-    Best-effort size estimate via `zfs send -nP`.
-    Returns total bytes or None on failure/unknown output.
-    """
     try:
         cmd = list(send_cmd)
         if len(cmd) < 2 or cmd[0] != "zfs" or cmd[1] != "send":
@@ -332,12 +373,21 @@ def estimate_send_size_remote(remote_user, remote_host, remote_port, send_cmd):
         if len(cmd) < 2 or cmd[0] != "zfs" or cmd[1] != "send":
             return None
         cmd.insert(2, "-nP")
-        ssh_cmd = ssh_base_args(remote_user, remote_host, remote_port) + cmd
-        p = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        p = ssh_run_args(remote_user, remote_host, remote_port, cmd, capture_output=True, check=False, text=False)
+
         if p.returncode != 0:
             return None
-        text = (p.stdout or b"") + (p.stderr or b"")
-        out = text.decode(errors="replace")
+
+        outb = (p.stdout or b"")
+        errb = (p.stderr or b"")
+        if isinstance(outb, str):
+            outb = outb.encode()
+        if isinstance(errb, str):
+            errb = errb.encode()
+
+        out = (outb + errb).decode(errors="replace")
+
         for line in out.splitlines():
             if "size" in line.lower():
                 m = re.search(r"\bsize\b\s*=?\s*(\d+)", line, re.IGNORECASE)
@@ -376,7 +426,6 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
             if pct > last_pct and (now - last_emit) >= min_interval:
                 pct = min(pct, 99)
                 notifier.notify(f"STATUS={label}… {pct}% complete")
-                # safe_print(f"{label}… {pct}% complete")
                 last_pct = pct
                 last_emit = now
         else:
@@ -399,15 +448,16 @@ def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, rem
     base_cmd = ["zfs", "get", "-H", "-p", "-o", "value", prop, dataset]
 
     if remote_host:
-        cmd = ssh_base_args(remote_user, remote_host, remote_port) + base_cmd
+        p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
+        if p.returncode != 0:
+            return None
+        out = (p.stdout or "").strip()
     else:
-        cmd = base_cmd
+        p = subprocess.run(base_cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode != 0:
+            return None
+        out = (p.stdout or "").strip()
 
-    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if p.returncode != 0:
-        return None
-
-    out = (p.stdout or "").strip()
     if not out or out == "-":
         return None
 
@@ -419,18 +469,21 @@ def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, rem
 
 def get_available_bytes(dataset, remote_user=None, remote_host=None, remote_port=22):
     base_cmd = ["zfs", "get", "-H", "-p", "-o", "value", "available", dataset]
+
     if remote_host:
-        cmd = ssh_base_args(remote_user, remote_host, remote_port) + base_cmd
+        p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
+        if p.returncode != 0:
+            return None
+        out = (p.stdout or "").strip()
     else:
-        cmd = base_cmd
+        p = subprocess.run(base_cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode != 0:
+            return None
+        out = (p.stdout or "").strip()
 
-    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if p.returncode != 0:
-        return None
-
-    out = (p.stdout or "").strip()
     if not out or out == "-":
         return None
+
     try:
         return int(out)
     except ValueError:
@@ -444,13 +497,13 @@ def format_bytes(n):
         return str(n)
     if n < 1024:
         return f"{n} B"
-    if n < 1024 ** 2:
+    if n < 1024**2:
         return f"{n / 1024:.1f} KiB"
-    if n < 1024 ** 3:
-        return f"{n / (1024 ** 2):.1f} MiB"
-    if n < 1024 ** 4:
-        return f"{n / (1024 ** 3):.1f} GiB"
-    return f"{n / (1024 ** 4):.1f} TiB"
+    if n < 1024**3:
+        return f"{n / (1024**2):.1f} MiB"
+    if n < 1024**4:
+        return f"{n / (1024**3):.1f} GiB"
+    return f"{n / (1024**4):.1f} TiB"
 
 
 def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None):
@@ -471,7 +524,11 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None)
     try:
         subprocess.run(command, check=True, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
-        raw = (e.stderr or "") + ("\n" + (e.stdout or "") if (e.stderr or "") and (e.stdout or "") else (e.stdout or ""))
+        raw = (e.stderr or "") + (
+            "\n" + (e.stdout or "")
+            if (e.stderr or "") and (e.stdout or "")
+            else (e.stdout or "")
+        )
         msg = raw.lower()
         if "snapshot already exists" in msg or "dataset already exists" in msg:
             print(f"Snapshot already exists ({new_snap}) — likely a queued duplicate start; exiting successfully.")
@@ -510,8 +567,7 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
         notifier.notify(f"STATUS={msg}")
         sys.exit(1)
 
-    ssh_cmd = ssh_base_args(remote_user, remote_host, ssh_port) + cmd
-    p = subprocess.run(ssh_cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = ssh_run_args(remote_user, remote_host, ssh_port, cmd, capture_output=True, check=False, text=True)
 
     if p.returncode != 0:
         raw = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
@@ -523,7 +579,7 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
         detail = (raw or msg).strip()
         print(f"Remote snapshot creation failed (rc={p.returncode}): {detail}")
         notifier.notify(f"STATUS=Remote snapshot creation failed: {detail}")
-        raise subprocess.CalledProcessError(p.returncode, ssh_cmd, output=p.stdout, stderr=p.stderr)
+        raise subprocess.CalledProcessError(p.returncode, ["ssh", f"{remote_user}@{remote_host}", "<quoted>"], output=p.stdout, stderr=p.stderr)
 
     print(f"new remote snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Remote snapshot created: {new_snap}")
@@ -616,21 +672,30 @@ def prune_snapshots_by_retention(
 
     for idx, snapshot in enumerate(snapshots_to_delete, start=1):
         if remote_host:
-            ssh_cmd = ["ssh"]
-            if transferMethod == "ssh" and str(remote_port) != "22":
-                ssh_cmd.extend(["-p", str(remote_port)])
-            ssh_cmd.append(f"{remote_user}@{remote_host}")
-            delete_command = ssh_cmd + ["zfs", "destroy", snapshot.name]
+            p = ssh_run_args(
+                remote_user,
+                remote_host,
+                remote_port,
+                ["zfs", "destroy", snapshot.name],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            if p.returncode != 0:
+                err = (p.stderr or p.stdout or "").strip()
+                print(f"Failed to delete snapshot {snapshot.name}: {err}")
+                notifier.notify(f"STATUS=Failed to delete snapshot {snapshot.name}")
+                sys.exit(1)
+            print(f"Deleted snapshot: {snapshot.name}")
         else:
             delete_command = ["zfs", "destroy", snapshot.name]
-
-        try:
-            subprocess.run(delete_command, check=True)
-            print(f"Deleted snapshot: {snapshot.name}")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to delete snapshot {snapshot.name}: {e}")
-            notifier.notify(f"STATUS=Failed to delete snapshot {snapshot.name}")
-            sys.exit(1)
+            try:
+                subprocess.run(delete_command, check=True)
+                print(f"Deleted snapshot: {snapshot.name}")
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to delete snapshot {snapshot.name}: {e}")
+                notifier.notify(f"STATUS=Failed to delete snapshot {snapshot.name}")
+                sys.exit(1)
 
         pct = start + int(idx * span / total)
         notifier.notify(f"STATUS=Pruning {total} {prefix}snapshot(s)… {pct}% complete")
@@ -736,20 +801,20 @@ def send_snapshot_push(
         )
         mbuf_capture = StreamCapture(process_m_buff.stderr)
 
-        ssh_cmd = ["ssh"]
-        if str(recvSshPort) != "22":
-            ssh_cmd.extend(["-p", str(recvSshPort)])
-        ssh_cmd.append(f"{recvHostUser}@{recvHost}")
+        flags = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            flags.append("-F")
+        flags.append(recvName)
 
-        recv_q = shlex.quote(recvName)
-        flags = "-s -F" if forceOverwrite else "-s"
-        ssh_cmd.append(f"zfs recv {flags} {recv_q}")
-
-        process_remote_recv = subprocess.Popen(
-            ssh_cmd,
+        process_remote_recv = ssh_popen_args(
+            recvHostUser,
+            recvHost,
+            recvSshPort,
+            flags,
             stdin=process_m_buff.stdout,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            universal_newlines=False,
         )
 
         if process_send.stdout is None or process_m_buff.stdin is None:
@@ -875,23 +940,24 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Netcat send/receive completed.")
 
-        snapshot_check_cmd = ssh_base_args(recvHostUser, recvHost, ssh_port)
-        snapshot_check_cmd.extend(["zfs", "list", recvName])
-        snapshot_process = subprocess.run(
-            snapshot_check_cmd,
-            universal_newlines=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        snapshot_process = ssh_run_args(
+            recvHostUser,
+            recvHost,
+            ssh_port,
+            ["zfs", "list", recvName],
+            capture_output=True,
+            check=False,
+            text=True,
         )
         if snapshot_process.returncode != 0:
-            print(f"[Receiver Side] Error checking dataset: {snapshot_process.stderr.strip()}")
+            err = (snapshot_process.stderr or snapshot_process.stdout or "").strip()
+            print(f"[Receiver Side] Error checking dataset: {err}")
             sys.exit(1)
 
         return
 
     print("ERROR: Invalid transferMethod specified. Must be 'local', 'ssh', or 'netcat'.")
     sys.exit(1)
-
 
 def send_snapshot_pull(
     remoteSnapName,
@@ -907,10 +973,6 @@ def send_snapshot_pull(
     forceOverwrite=False,
     recursive=False,
 ):
-    """
-    Pull mode: run zfs send on remote source, stream to local zfs recv.
-    Note: if transferMethod was 'netcat', this test implementation still uses SSH for the data path.
-    """
     notifier.notify("STATUS=Preparing ZFS pull pipeline…")
 
     if not remoteHost:
@@ -923,7 +985,7 @@ def send_snapshot_pull(
         compressed=compressed,
         raw=raw,
     )
-    ssh_send_cmd = ssh_base_args(remoteUser, remoteHost, remoteSshPort) + remote_send_args
+
     total_bytes = estimate_send_size_remote(remoteUser, remoteHost, remoteSshPort, remote_send_args)
     if total_bytes is None:
         print("Note: Could not estimate send size; progress will be indeterminate.")
@@ -933,10 +995,15 @@ def send_snapshot_pull(
     else:
         print(f"pulling {remoteSnapName} into {localRecvFs}")
 
-    process_remote_send = subprocess.Popen(
-        ssh_send_cmd,
+    process_remote_send = ssh_popen_args(
+        remoteUser,
+        remoteHost,
+        remoteSshPort,
+        remote_send_args,
+        stdin=None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        universal_newlines=False,
     )
 
     m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
@@ -969,8 +1036,9 @@ def send_snapshot_pull(
     except Exception:
         pass
 
-    remote_err = process_remote_send.stderr.read().decode(errors="replace") if process_remote_send.stderr else ""
-    process_remote_send.wait()
+    # Wait for send -> mbuffer -> recv chain to settle
+    remote_out, remote_err = process_remote_send.communicate()
+    remote_err = remote_err.decode(errors="replace") if remote_err else ""
     process_m_buff.wait()
 
     stdout, stderr = process_local_recv.communicate()
@@ -992,6 +1060,8 @@ def send_snapshot_pull(
 
     if process_local_recv.returncode != 0:
         notifier.notify("STATUS=Local receive (pull) failed.")
+        if remote_err:
+            print(f"[Remote zfs send stderr]\n{remote_err}")
         print(f"ERROR: local recv error: {stderr}")
         sys.exit(1)
 
@@ -1001,34 +1071,35 @@ def send_snapshot_pull(
 
 
 def get_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None, remote_port=22):
-    base_cmd = ["zfs", "get", "-H", "-o", "value", "receive_resume_token", dest_filesystem]
+    base_args = ["zfs", "get", "-H", "-o", "value", "receive_resume_token", dest_filesystem]
     if remote_host:
-        cmd = ssh_base_args(remote_user, remote_host, remote_port) + base_cmd
+        p = ssh_run_args(remote_user, remote_host, remote_port, base_args, capture_output=True, check=False, text=True)
+        if p.returncode != 0:
+            return ""
+        token = (p.stdout or "").strip()
     else:
-        cmd = base_cmd
+        p = subprocess.run(base_args, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode != 0:
+            return ""
+        token = (p.stdout or "").strip()
 
-    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if p.returncode != 0:
-        return ""
-
-    token = (p.stdout or "").strip()
-    if token and token != "-":
-        return token
-    return ""
+    return "" if token in ("", "-") else token
 
 
 def clear_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None, remote_port=22):
     base_cmd = ["zfs", "receive", "-A", dest_filesystem]
     if remote_host:
-        cmd = ssh_base_args(remote_user, remote_host, remote_port) + base_cmd
+        p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
+        if p.returncode != 0:
+            err = (p.stderr or p.stdout or "").strip()
+            return False, err
+        return True, ""
     else:
-        cmd = base_cmd
-
-    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if p.returncode != 0:
-        err = (p.stderr or p.stdout or "").strip()
-        return False, err
-    return True, ""
+        p = subprocess.run(base_cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode != 0:
+            err = (p.stderr or p.stdout or "").strip()
+            return False, err
+        return True, ""
 
 
 def resume_receive_push(
@@ -1045,7 +1116,6 @@ def resume_receive_push(
     notifier.notify("STATUS=Resuming ZFS send/recv pipeline from resume token…")
 
     send_cmd = ["zfs", "send", "-t", resume_token]
-
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if transferMethod == "local" or not recvHost:
@@ -1143,19 +1213,17 @@ def resume_receive_push(
         universal_newlines=True,
     )
 
-    ssh_cmd = ["ssh"]
-    if str(recvSshPort) != "22":
-        ssh_cmd.extend(["-p", str(recvSshPort)])
-    ssh_cmd.append(recvHostUser + "@" + recvHost)
-    ssh_cmd.extend(["zfs", "recv", "-s", recvName])
-
-    process_remote_recv = subprocess.Popen(
-        ssh_cmd,
+    process_remote_recv = ssh_popen_args(
+        recvHostUser,
+        recvHost,
+        recvSshPort,
+        ["zfs", "recv", "-s", recvName],
         stdin=process_m_buff.stdout,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+
     stdout, stderr = process_remote_recv.communicate()
     if process_remote_recv.returncode != 0:
         notifier.notify("STATUS=Remote resume receive failed.")
@@ -1182,12 +1250,15 @@ def resume_receive_pull(
     if not remoteHost:
         raise RuntimeError("Pull replication requires a remote host.")
 
-    ssh_send_cmd = ssh_base_args(remoteUser, remoteHost, remoteSshPort) + ["zfs", "send", "-t", resume_token]
-
-    process_remote_send = subprocess.Popen(
-        ssh_send_cmd,
+    process_remote_send = ssh_popen_args(
+        remoteUser,
+        remoteHost,
+        remoteSshPort,
+        ["zfs", "send", "-t", resume_token],
+        stdin=None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        universal_newlines=False,
     )
 
     m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
@@ -1251,7 +1322,8 @@ def snapshot_exists_on_destination(
 def dbg(msg):
     with open("/tmp/zfs_rep_debug.log", "a") as f:
         f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
-        
+
+
 def main():
     try:
         notifier.notify("STATUS=Starting ZFS replication task…")
@@ -1317,20 +1389,6 @@ def main():
             if transferMethod == "local" or not transferMethod:
                 transferMethod = "ssh"
 
-            # print("EUID:", os.geteuid(), "USER:", getpass.getuser(), "HOME:", os.environ.get("HOME"))
-            # subprocess.run(["ssh", "-V"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-            # cmd = [
-            #     "ssh",
-            #     "-o", "BatchMode=yes",
-            #     "-o", "IdentitiesOnly=yes",
-            #     "-o", "ConnectTimeout=10",
-            #     "-vv",
-            #     f"{remoteUser}@{remoteHost}",
-            #     "true",
-            # ]
-            # p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-            # print(p.stdout)
             dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
             dbg(f"remoteUser={remoteUser} remoteHost={remoteHost} sshPort={sshPort}")
 

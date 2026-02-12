@@ -300,7 +300,7 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
+                    <button v-else-if="transferMethod === 'ssh'" @click="handleTestSSH"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
                     <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
@@ -422,6 +422,7 @@ import {
     getPoolData,
     getDatasetData,
     testSSH,
+    testOrSetupSSH,
     testNetcat,
     mostRecentCommonSnapshot,
     listSnapshots,
@@ -522,6 +523,8 @@ const transferMethod = ref('ssh');
 const netCatPortError = ref(false);
 
 const errorList = inject<Ref<string[]>>('errors')!;
+
+const sshReady = ref(false);
 
 /* ---------------- Direction-aware labels + behavior ---------------- */
 
@@ -1203,17 +1206,40 @@ function setParams() {
 
 /* ---------------- Test buttons ---------------- */
 
-async function confirmSSHTest(destHostVal: string, destUserVal: string) {
-    testingSSH.value = true;
-    const sshTarget = destUserVal + '@' + destHostVal;
-    sshTestResult.value = await testSSH(sshTarget);
+async function handleTestSSH() {
+    if (transferMethod.value !== 'ssh') return;
 
-    if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', 'Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).', 'success', 6000));
-    } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHostVal}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
+    testingSSH.value = true;
+    try {
+        const host = destHost.value.trim();
+        const user = (destUser.value || 'root').trim();
+        const port = destPort.value || 22;
+
+        // In pull mode host is required; in push mode blank host is allowed (local).
+        if (isPull.value && !host) {
+            pushNotification(new Notification(
+                'Host Required',
+                'Host is required for pull replication.',
+                'error',
+                6000
+            ));
+            sshReady.value = false;
+            return;
+        }
+
+        const res = await testOrSetupSSH({
+            host,
+            user,
+            port,
+            onEvent: ({ type, title, message }) => {
+                pushNotification(new Notification(title, message, type, 6000));
+            }
+        });
+
+        sshReady.value = res.success;
+    } finally {
+        testingSSH.value = false;
     }
-    testingSSH.value = false;
 }
 
 async function confirmNetcatTest(destHost2: string, destPort2: number) {
