@@ -1,3 +1,3 @@
-## task scheduler 1.4.6-1
+## task scheduler 1.4.7-1
 
-* Adds support for zfs replication resume tokens when transfers fail
+* Adds refresh button to replication remote dest in UI and adjusts replication script logic to properly handle refresh token and arguments over ssh

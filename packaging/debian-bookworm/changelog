@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.7-1bookworm) bookworm; urgency=medium
+
+  * Adds refresh button to replication remote dest in UI and adjusts replication
+    script logic to properly handle refresh token and arguments over ssh
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 12 Feb 2026 11:30:01 -0400
+
 cockpit-scheduler (1.4.6-1bookworm) bookworm; urgency=medium
 
   * Adds support for zfs replication resume tokens when transfers fail
