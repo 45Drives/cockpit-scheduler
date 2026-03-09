@@ -1,3 +1,3 @@
-## task scheduler 1.4.6-1
+## task scheduler 1.4.8-1
 
-* Adds support for zfs replication resume tokens when transfers fail
+* Updates ssh permission bugfix in replication script

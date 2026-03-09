@@ -124,48 +124,12 @@ def send_houston_notification(payload):
 
 
 def ssh_base_args(user, host, port):
-    args = ["ssh"]
+    """Build a base SSH argv list (for Popen). Used by netcat listener setup."""
+    args = ["ssh"] + SSH_BASE_OPTS
     if str(port) != "22":
         args.extend(["-p", str(port)])
     args.append(f"{user}@{host}")
     return args
-
-
-def ssh_run_args(user, host, port, args, *, capture_output=True, check=False, text=False, timeout=None):
-    ssh_cmd = ["ssh"]
-    if str(port) != "22":
-        ssh_cmd += ["-p", str(port)]
-    ssh_cmd.append(f"{user}@{host}")
-
-    remote_cmd = " ".join(shlex.quote(str(a)) for a in args)
-    ssh_cmd.append(remote_cmd)
-
-    return subprocess.run(
-        ssh_cmd,
-        stdout=subprocess.PIPE if capture_output else None,
-        stderr=subprocess.PIPE if capture_output else None,
-        universal_newlines=text,
-        check=check,
-        timeout=timeout,
-    )
-
-
-def ssh_popen_args(user, host, port, args, *, stdin=None, stdout=None, stderr=None, universal_newlines=False):
-    ssh_cmd = ["ssh"]
-    if str(port) != "22":
-        ssh_cmd += ["-p", str(port)]
-    ssh_cmd.append(f"{user}@{host}")
-
-    remote_cmd = " ".join(shlex.quote(str(a)) for a in args)
-    ssh_cmd.append(remote_cmd)
-
-    return subprocess.Popen(
-        ssh_cmd,
-        stdin=stdin,
-        stdout=stdout,
-        stderr=stderr,
-        universal_newlines=universal_newlines,
-    )
 
 
 def join_zfs_path(pool: str, dataset: str) -> str:
@@ -249,8 +213,9 @@ def get_local_snapshots(filesystem):
         "-r",
         filesystem,
     ]
-    p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
+    # p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = run_logged(cmd, text=True)
+    
     if p.returncode == 0:
         snaps = []
         for line in (p.stdout or "").splitlines():
@@ -349,7 +314,9 @@ def estimate_send_size(send_cmd):
         if len(cmd) < 2 or cmd[0] != "zfs" or cmd[1] != "send":
             return None
         cmd.insert(2, "-nP")
-        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = run_logged(cmd, text=False)
+        
         if p.returncode != 0:
             return None
         text = (p.stdout or b"") + (p.stderr or b"")
@@ -405,6 +372,7 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
     bytes_sent = 0
     last_pct = -1
     last_emit = 0.0
+    last_dbg = 0.0
 
     if total_bytes:
         notifier.notify(f"STATUS={label}… 0% complete")
@@ -421,6 +389,7 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
             break
         bytes_sent += len(chunk)
         now = time.time()
+
         if total_bytes:
             pct = int(bytes_sent * 100 / total_bytes)
             if pct > last_pct and (now - last_emit) >= min_interval:
@@ -435,11 +404,17 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
                 safe_print(f"{label}… {mib:.1f} MiB sent")
                 last_emit = now
 
+        # debug heartbeat every 10s regardless of size estimation
+        if (now - last_dbg) >= 10.0:
+            dbg(f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
+            last_dbg = now
+
     try:
         dst.flush()
     except Exception:
         pass
 
+    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
     return bytes_sent
 
 
@@ -522,7 +497,8 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None)
         notifier.notify(f"STATUS={msg}")
         sys.exit(1)
     try:
-        subprocess.run(command, check=True, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # subprocess.run(command, check=True, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        run_logged(command, check=True, text=True)
     except subprocess.CalledProcessError as e:
         raw = (e.stderr or "") + (
             "\n" + (e.stdout or "")
@@ -742,7 +718,8 @@ def send_snapshot_push(
         print("Note: Could not estimate send size; progress will be indeterminate.")
 
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
+    dbg(f"PIPE send pid={process_send.pid} cmd={_fmt_cmd(send_cmd)}")
+    
     if transferMethod == "local" or not recvHost:
         recv_cmd = ["zfs", "recv", "-s"]
         if forceOverwrite:
@@ -816,6 +793,8 @@ def send_snapshot_push(
             stderr=subprocess.PIPE,
             universal_newlines=False,
         )
+        dbg(f"PIPE mbuffer pid={process_m_buff.pid} cmd={_fmt_cmd(m_buff_cmd)}")
+        dbg(f"PIPE remote_recv pid={process_remote_recv.pid} recv={recvHostUser}@{recvHost}:{recvName} port={recvSshPort}")
 
         if process_send.stdout is None or process_m_buff.stdin is None:
             raise RuntimeError("Failed to initialize send/mbuffer pipes.")
@@ -1319,15 +1298,180 @@ def snapshot_exists_on_destination(
 
     return False, target_name
 
-def dbg(msg):
-    with open("/tmp/zfs_rep_debug.log", "a") as f:
-        f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
+# --- Debugging helpers -------------------------------------------------------
 
+DEBUG_LOG = os.environ.get("ZFS_REP_DEBUG_LOG", "/tmp/zfs_rep_debug.log")
+DEBUG_ENABLED = os.environ.get("ZFS_REP_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
+DEBUG_MAX_TEXT = int(os.environ.get("ZFS_REP_DEBUG_MAX_TEXT", "4000"))
+
+def _truncate(s: str, limit: int = DEBUG_MAX_TEXT) -> str:
+    if s is None:
+        return ""
+    s = str(s)
+    if len(s) <= limit:
+        return s
+    return s[:limit] + f"\n...[truncated {len(s) - limit} chars]"
+
+def dbg(msg: str):
+    if not DEBUG_ENABLED:
+        return
+    try:
+        line = f"{datetime.datetime.now().isoformat()} {msg}\n"
+        with open(DEBUG_LOG, "a") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+def dbg_kv(title: str, kv: dict):
+    if not DEBUG_ENABLED:
+        return
+    dbg(f"{title}: " + ", ".join(f"{k}={v}" for k, v in kv.items()))
+
+def dbg_env():
+    keys = [
+        "taskName",
+        "zfsRepConfig_direction",
+        "zfsRepConfig_sendOptions_transferMethod",
+        "zfsRepConfig_sendOptions_recursive_flag",
+        "zfsRepConfig_sendOptions_compressed_flag",
+        "zfsRepConfig_sendOptions_raw_flag",
+        "zfsRepConfig_sendOptions_allowOverwrite",
+        "zfsRepConfig_sendOptions_useExistingDest",
+        "zfsRepConfig_destDataset_user",
+        "zfsRepConfig_destDataset_host",
+        "zfsRepConfig_destDataset_port",
+        "zfsRepConfig_destDataset_sshPort",
+        "zfsRepConfig_sourceDataset_pool",
+        "zfsRepConfig_sourceDataset_dataset",
+        "zfsRepConfig_destDataset_pool",
+        "zfsRepConfig_destDataset_dataset",
+        "HOME",
+        "PATH",
+    ]
+    snap = {}
+    for k in keys:
+        v = os.environ.get(k)
+        if v is None:
+            continue
+        snap[k] = v
+    dbg_kv("env", snap)
+
+def _fmt_cmd(cmd):
+    if isinstance(cmd, (list, tuple)):
+        return " ".join(shlex.quote(str(c)) for c in cmd)
+    return str(cmd)
+
+def run_logged(cmd, *, check=False, text=True, timeout=None, env=None):
+    """
+    Local subprocess.run with debug logging.
+    """
+    dbg(f"RUN local: {_fmt_cmd(cmd)}")
+    start = time.time()
+    p = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=text,
+        check=False,
+        timeout=timeout,
+        env=env,
+    )
+    dur = time.time() - start
+    out = p.stdout if p.stdout is not None else ""
+    err = p.stderr if p.stderr is not None else ""
+    dbg(f"RC local={p.returncode} dur={dur:.2f}s stdout:\n{_truncate(out)}")
+    dbg(f"RC local={p.returncode} dur={dur:.2f}s stderr:\n{_truncate(err)}")
+    if check and p.returncode != 0:
+        raise subprocess.CalledProcessError(p.returncode, cmd, output=p.stdout, stderr=p.stderr)
+    return p
+
+# Optional: make ssh non-interactive and less hang-prone; also logs the actual ssh command.
+SSH_BASE_OPTS = [
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=10",
+    "-o", "ServerAliveInterval=30",
+    "-o", "ServerAliveCountMax=3",
+    "-o", "StrictHostKeyChecking=accept-new",
+]
+
+def ssh_run_args(user, host, port, args, *, capture_output=True, check=False, text=False, timeout=None):
+    ssh_cmd = ["ssh"] + SSH_BASE_OPTS
+    if str(port) != "22":
+        ssh_cmd += ["-p", str(port)]
+    ssh_cmd.append(f"{user}@{host}")
+
+    remote_cmd = " ".join(shlex.quote(str(a)) for a in args)
+    ssh_cmd.append(remote_cmd)
+
+    dbg(f"RUN ssh: {_fmt_cmd(ssh_cmd)}")
+    start = time.time()
+    p = subprocess.run(
+        ssh_cmd,
+        stdout=subprocess.PIPE if capture_output else None,
+        stderr=subprocess.PIPE if capture_output else None,
+        universal_newlines=text,
+        check=False,
+        timeout=timeout,
+    )
+    dur = time.time() - start
+
+    out = p.stdout if capture_output else ""
+    err = p.stderr if capture_output else ""
+    if isinstance(out, bytes):
+        out = out.decode(errors="replace")
+    if isinstance(err, bytes):
+        err = err.decode(errors="replace")
+
+    dbg(f"RC ssh={p.returncode} dur={dur:.2f}s stdout:\n{_truncate(out)}")
+    dbg(f"RC ssh={p.returncode} dur={dur:.2f}s stderr:\n{_truncate(err)}")
+
+    if check and p.returncode != 0:
+        raise subprocess.CalledProcessError(p.returncode, ssh_cmd, output=p.stdout, stderr=p.stderr)
+    return p
+
+def ssh_popen_args(user, host, port, args, *, stdin=None, stdout=None, stderr=None, universal_newlines=False):
+    ssh_cmd = ["ssh"] + SSH_BASE_OPTS
+    if str(port) != "22":
+        ssh_cmd += ["-p", str(port)]
+    ssh_cmd.append(f"{user}@{host}")
+
+    remote_cmd = " ".join(shlex.quote(str(a)) for a in args)
+    ssh_cmd.append(remote_cmd)
+
+    dbg(f"POPEN ssh: {_fmt_cmd(ssh_cmd)}")
+    p = subprocess.Popen(
+        ssh_cmd,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        universal_newlines=universal_newlines,
+    )
+    dbg(f"POPEN ssh pid={p.pid}")
+    return p
 
 def main():
     try:
         notifier.notify("STATUS=Starting ZFS replication task…")
         notifier.notify("READY=1")
+
+        # Ensure HOME is set so SSH can find keys under ~/.ssh.
+        # systemd services may not inherit a login environment.
+        if not os.environ.get("HOME"):
+            import pwd
+            try:
+                os.environ["HOME"] = pwd.getpwuid(os.geteuid()).pw_dir
+            except KeyError:
+                os.environ["HOME"] = "/root"
+
+        dbg("=== task start ===")
+        dbg_kv("identity", {
+            "euid": os.geteuid(),
+            "user": getpass.getuser(),
+            "cwd": os.getcwd(),
+            "home": os.environ.get("HOME", ""),
+            "shell": os.environ.get("SHELL", ""),
+        })
+        dbg_env()
         notifier.notify("STATUS=Planning replication…")
 
         taskName = os.environ.get("taskName", "")
@@ -1357,6 +1501,20 @@ def main():
 
         mBufferSize = os.environ.get("zfsRepConfig_sendOptions_mbufferSize", "1")
         mBufferUnit = os.environ.get("zfsRepConfig_sendOptions_mbufferUnit", "G")
+        
+        def clamp_mbuffer(size_str, unit_str):
+            try:
+                size = int(str(size_str).strip() or "0")
+            except Exception:
+                size = 0
+            unit = (unit_str or "G").strip().upper()
+            if unit not in ("M", "G", "K"):
+                unit = "G"
+            if size <= 0:
+                size = 1
+            return str(size), unit
+        
+        mBufferSize, mBufferUnit = clamp_mbuffer(mBufferSize, mBufferUnit)
 
         sourceRetentionTime = os.environ.get("zfsRepConfig_snapshotRetention_source_retentionTime", 0)
         sourceRetentionUnit = os.environ.get("zfsRepConfig_snapshotRetention_source_retentionUnit", "")
@@ -1371,6 +1529,22 @@ def main():
 
         sourceFilesystem = join_zfs_path(srcPool, srcDs)
         destFilesystem = join_zfs_path(dstPool, dstDs)
+        dbg_kv("config", {
+            "direction": direction,
+            "transferMethod": transferMethod,
+            "sshPort": sshPort,
+            "dataPort": dataPort,
+            "remoteUser": remoteUser,
+            "remoteHost": remoteHost,
+            "sourceFilesystem": sourceFilesystem,
+            "destFilesystem": destFilesystem,
+            "recursive": isRecursiveSnap,
+            "compressed": isCompressed,
+            "raw": isRaw,
+            "allowOverwrite": allowOverwrite,
+            "useExistingDest": useExistingDest,
+            "mbuffer": f"{mBufferSize}{mBufferUnit}",
+        })
 
         if not sourceFilesystem:
             raise RuntimeError("Source dataset is empty (zfsRepConfig_sourceDataset_pool/dataset).")
@@ -1406,6 +1580,12 @@ def main():
             sourceSnapshots.sort(key=lambda x: x.order_key)
 
             destinationSnapshots = get_local_snapshots(local_target_fs)
+            dbg(f"sourceSnapshots count={len(sourceSnapshots) if sourceSnapshots is not None else 'None'}")
+            dbg(f"destSnapshots state={'None' if destinationSnapshots is None else len(destinationSnapshots)}")
+            if sourceSnapshots:
+                dbg(f"sourceSnapshots newest={sourceSnapshots[-1].name} oldest={sourceSnapshots[0].name}")
+            if destinationSnapshots:
+                dbg(f"destSnapshots newest={destinationSnapshots[-1].name} oldest={destinationSnapshots[0].name}")
         else:
             # push mode: local source -> (remote target if host else local)
             local_source_fs = sourceFilesystem
@@ -1413,6 +1593,19 @@ def main():
 
             if transferMethod == "ssh" and not remoteHost:
                 transferMethod = "local"
+
+            if remoteHost:
+                dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
+                dbg(f"remoteUser={remoteUser} remoteHost={remoteHost} sshPort={sshPort}")
+
+                p = subprocess.run(
+                    ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-vv", f"{remoteUser}@{remoteHost}", "true"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
+                )
+                dbg("ssh -vv output:\n" + p.stdout)
+                dbg(f"ssh returncode={p.returncode}")
 
             sourceSnapshots = get_local_snapshots(local_source_fs) or []
             sourceSnapshots.sort(key=lambda x: x.order_key)
@@ -1598,27 +1791,59 @@ def main():
                 forceOverwrite = False
 
         else:
-            src_guids = {s.guid for s in sourceSnapshots}
-            common_candidates = [d for d in destinationSnapshots if d.guid in src_guids]
+            # src_guids = {s.guid for s in sourceSnapshots}
+            # common_candidates = [d for d in destinationSnapshots if d.guid in src_guids]
+
+            # if not common_candidates:
+            #     print("No common snapshots found on the destination.")
+            #     if allowOverwrite:
+            #         print("ALLOW OVERWRITE enabled: proceeding with full send and -F (will roll back dest).")
+            #         forceOverwrite = True
+            #     else:
+            #         print("Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.")
+            #         sys.exit(2)
+            # else:
+            #     # Most recent common by destination ordering
+            #     destinationSnapshots.sort(key=lambda s: s.creation_epoch)
+            #     common_candidates.sort(key=lambda s: s.creation_epoch, reverse=True)
+            #     mostRecentCommonSnap = common_candidates[0]
+
+            #     src_guid_to_name = {s.guid: s.name for s in sourceSnapshots}
+            #     incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
+            #     print(f"Most recent common snapshot: {incrementalSnapName}")
+            
+            
+            # Choose common base snapshot.
+            # IMPORTANT: if recursive (-R) is enabled, the base snapshot must be from the ROOT dataset
+            # (e.g. tank@...), not a child (tank/child@...), otherwise zfs send -R -I can become invalid/no-op.
+            if isRecursiveSnap:
+                src_root_snaps = filter_dataset_snapshots(sourceSnapshots, sourceFilesystem)
+                dst_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
+            else:
+                src_root_snaps = sourceSnapshots
+                dst_root_snaps = destinationSnapshots
+
+            src_guids = {s.guid for s in src_root_snaps}
+            common_candidates = [d for d in dst_root_snaps if d.guid in src_guids]
 
             if not common_candidates:
-                print("No common snapshots found on the destination.")
+                print("No common snapshots found on the destination (root dataset).")
                 if allowOverwrite:
                     print("ALLOW OVERWRITE enabled: proceeding with full send and -F (will roll back dest).")
                     forceOverwrite = True
+                    incrementalSnapName = ""
                 else:
                     print("Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.")
                     sys.exit(2)
             else:
-                # Most recent common by destination ordering
-                destinationSnapshots.sort(key=lambda s: s.creation_epoch)
+                # Most recent common snapshot by creation time
                 common_candidates.sort(key=lambda s: s.creation_epoch, reverse=True)
                 mostRecentCommonSnap = common_candidates[0]
 
-                src_guid_to_name = {s.guid: s.name for s in sourceSnapshots}
+                src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
                 incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
                 print(f"Most recent common snapshot: {incrementalSnapName}")
-
+                
                 # Determine if destination is ahead of common base
                 destinationSnapshots.sort(key=lambda s: s.creation_epoch)
                 common_idx = -1
@@ -1734,6 +1959,7 @@ def main():
                 print(msg)
                 sys.exit(2)
             notifier.notify("STATUS=Sending snapshot to destination…")
+            dbg(f"baseSnap={incrementalSnapName} baseDs={dataset_of_snapshot(incrementalSnapName) if incrementalSnapName else ''} newSnap={newSnap} newDs={dataset_of_snapshot(newSnap)} recursive={isRecursiveSnap}")
             send_snapshot_push(
                 newSnap,
                 destFilesystem,
