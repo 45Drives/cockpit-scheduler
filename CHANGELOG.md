@@ -1,3 +1,3 @@
-## task scheduler 1.4.7-2
+## task scheduler 1.4.8-1
 
-* Trying to fix github permissions issue
+* Updates ssh permission bugfix in replication script

@@ -1,3 +1,9 @@
+cockpit-scheduler (1.4.8-1bookworm) bookworm; urgency=medium
+
+  * Updates ssh permission bugfix in replication script
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 09 Mar 2026 07:16:22 -0300
+
 cockpit-scheduler (1.4.7-2bookworm) bookworm; urgency=medium
 
   * Trying to fix github permissions issue
