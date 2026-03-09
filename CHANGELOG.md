@@ -1,3 +1,3 @@
-## task scheduler 1.4.8-1
+## task scheduler 1.4.8-2
 
-* Updates ssh permission bugfix in replication script
+* Updating package to stable

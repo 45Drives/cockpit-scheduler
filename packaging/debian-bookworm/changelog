@@ -1,3 +1,9 @@
+cockpit-scheduler (1.4.8-2bookworm) bookworm; urgency=medium
+
+  * Updating package to stable
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 09 Mar 2026 07:24:52 -0300
+
 cockpit-scheduler (1.4.8-1bookworm) bookworm; urgency=medium
 
   * Updates ssh permission bugfix in replication script
