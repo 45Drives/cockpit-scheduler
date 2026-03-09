@@ -35,7 +35,7 @@ def parse_env_file(parameter_env_file_path):
     return parameters
 
 def generate_exec_start(templateName, parameters, scriptPath):
-    base_python_command = f"python3 {scriptPath}"
+    base_python_command = f"python3 -u {scriptPath}"
     
     # if templateName == 'ScrubTask':
     #     return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
@@ -45,7 +45,7 @@ def generate_exec_start(templateName, parameters, scriptPath):
         if not file_path:
             return parameters.get('customTaskConfig_command', 'No command provided')  # Return command or a message if not provided
         if file_path.endswith('.py'):
-            return f"python3 {file_path}"  # For Python scripts
+            return f"python3 -u {file_path}"  # For Python scripts
         elif file_path.endswith('.sh'):
             return f"bash {file_path}"  # For Bash scripts
         elif file_path.endswith('.bash'):

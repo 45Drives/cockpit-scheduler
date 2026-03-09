@@ -149,6 +149,7 @@ import { computed, ref, provide } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
+import { TaskExecutionLog } from '../models/TaskLog';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
@@ -156,6 +157,7 @@ import { injectWithCheck } from '../composables/utility'
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+const myTaskLog = new TaskExecutionLog([]);
 const selectedTask = ref<TaskInstanceType>();
 const selectedRowIndex = ref<number | null>(null);
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
@@ -282,34 +284,19 @@ const runNowYes: ConfirmationCallback = async () => {
 
     try {
         const finalStatus = await myScheduler.runTaskNow(task);
-        const lower = (finalStatus || '').toLowerCase();
 
-        if (lower.includes('failed')) {
-            // Explicit failure
-            pushNotification(
-                new Notification(
-                    'Task Failed',
-                    `Task ${task.name} failed to complete.`,
-                    'error',
-                    6000
-                )
-            );
-        } else if (
-            lower.includes('inactive') ||
-            lower.includes('disabled') ||
-            lower.includes('stopped')
-        ) {
-            // Treat as stopped/cancelled
-            pushNotification(
-                new Notification(
-                    'Task Stopped',
-                    `Task ${task.name} was stopped before completion.`,
-                    'error',
-                    6000
-                )
-            );
-        } else {
-            // Only here do we report success
+        // Prefer the actual exit code if we can fetch it
+        let exitCode: number | null = null;
+        try {
+            const latest = await myTaskLog.getLatestEntryFor(task);
+            if (latest && typeof latest.exitCode === 'number') {
+                exitCode = latest.exitCode;
+            }
+        } catch {
+            // fall back to status string below
+        }
+
+        if (exitCode === 0) {
             pushNotification(
                 new Notification(
                     'Task Successful',
@@ -318,6 +305,52 @@ const runNowYes: ConfirmationCallback = async () => {
                     6000
                 )
             );
+        } else if (exitCode !== null) {
+            pushNotification(
+                new Notification(
+                    'Task Failed',
+                    `Task ${task.name} failed to complete.`,
+                    'error',
+                    6000
+                )
+            );
+        } else {
+            const lower = (finalStatus || '').toLowerCase();
+            if (lower.includes('failed')) {
+                // Explicit failure
+                pushNotification(
+                    new Notification(
+                        'Task Failed',
+                        `Task ${task.name} failed to complete.`,
+                        'error',
+                        6000
+                    )
+                );
+            } else if (
+                lower.includes('inactive') ||
+                lower.includes('disabled') ||
+                lower.includes('stopped')
+            ) {
+                // Treat as stopped/cancelled
+                pushNotification(
+                    new Notification(
+                        'Task Stopped',
+                        `Task ${task.name} was stopped before completion.`,
+                        'error',
+                        6000
+                    )
+                );
+            } else {
+                // Only here do we report success
+                pushNotification(
+                    new Notification(
+                        'Task Successful',
+                        `Task ${task.name} has successfully completed.`,
+                        'success',
+                        6000
+                    )
+                );
+            }
         }
     } catch (error) {
         pushNotification(

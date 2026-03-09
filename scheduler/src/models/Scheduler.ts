@@ -200,7 +200,7 @@ export class Scheduler implements SchedulerType {
                 const source = pickStatusSource(t, s);
                 const statusText = await this.parseTaskStatus(source, u, log, ti);
 
-                const lastRunUs = t.lastTriggerUSec || s.serviceStartUSec || 0;
+                const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
                 const nextRunUs = t.nextElapseUSec || 0;
 
                 return {
@@ -239,7 +239,7 @@ export class Scheduler implements SchedulerType {
             const { stdout, stderr, exitStatus } = await runCommand(
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,MergedUnit',
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,MergedUnit',
                 ],
                 { superuser: 'try' }
             );
@@ -256,7 +256,7 @@ export class Scheduler implements SchedulerType {
             const source = pickStatusSource(t, s);
             const statusText = await this.parseTaskStatus(source, unit, log, ti);
 
-            const lastRunUs = t.lastTriggerUSec || s.serviceStartUSec || 0;
+            const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
             const nextRunUs = t.nextElapseUSec || 0;
 
             return {
@@ -1019,6 +1019,11 @@ export class Scheduler implements SchedulerType {
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
 
         console.log(`Running ${fullTaskName}...`);
+        try {
+            await runCommand(['systemctl', 'reset-failed', `${fullTaskName}.service`], { superuser: 'try' });
+        } catch {
+            // best-effort; ignore if it fails
+        }
         await runTask(fullTaskName);
 
         const finalStatus = await waitForFinalStatus();
@@ -1174,6 +1179,10 @@ export class Scheduler implements SchedulerType {
             serviceStartUSec:
                 ts('ExecMainStartTimestampUSec', 'ExecMainStartTimestamp') ||
                 ts('ActiveEnterTimestampUSec', 'ActiveEnterTimestamp'),
+            // services (exit time if available)
+            serviceExitUSec:
+                ts('ExecMainExitTimestampUSec', 'ExecMainExitTimestamp') ||
+                ts('InactiveEnterTimestampUSec', 'InactiveEnterTimestamp'),
         };
     }
 

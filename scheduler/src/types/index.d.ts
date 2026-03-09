@@ -110,8 +110,8 @@ interface TaskExecutionLogType {
 interface TaskExecutionResultType {
 	exitCode: number;
 	output: string;
-	startDate: string;
-	finishDate: string;
+	startDate: string | number;
+	finishDate: string | number;
 }
 
 type ConfirmationCallback = (param?: any) => void;
@@ -164,4 +164,3 @@ interface RemoteManagerType {
 	editRemote(key: string, newLabel: string, oldName: string, newType: string, parameters: any): CloudSyncRemote
 	deleteRemote(key: string): Promise<boolean>;
 }
-

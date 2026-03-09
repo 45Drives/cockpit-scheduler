@@ -20,7 +20,17 @@
 
             <div name="source-pool">
                 <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                    <div class="flex items-center gap-2">
+                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+
+                        <button v-if="showSourcePoolRefresh" type="button"
+                            class="mt-1 inline-flex items-center justify-center rounded p-1 text-muted hover:text-default disabled:opacity-50"
+                            :disabled="remoteHostMissing || loadingSourcePools" @click="refreshSourcePoolData"
+                            title="Refresh remote pools" aria-label="Refresh remote pools">
+                            <ArrowPathIcon class="h-4 w-4" :class="loadingSourcePools ? 'animate-spin' : ''" />
+                        </button>
+                    </div>
+
                     <ExclamationCircleIcon v-if="sourcePoolErrorTag || customDestPoolErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
@@ -149,10 +159,21 @@
 
             <div name="destination-pool">
                 <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+                    <div class="flex items-center gap-2">
+                        <label class="mt-1 block text-sm leading-6 text-default">Pool</label>
+
+                        <button v-if="showDestPoolRefresh" type="button"
+                            class="mt-1 inline-flex items-center justify-center rounded p-1 text-muted hover:text-default disabled:opacity-50"
+                            :disabled="remoteHostMissing || loadingDestPools" @click="refreshDestPoolData"
+                            title="Refresh remote pools" aria-label="Refresh remote pools">
+                            <ArrowPathIcon class="h-4 w-4" :class="loadingDestPools ? 'animate-spin' : ''" />
+                        </button>
+                    </div>
+
                     <ExclamationCircleIcon v-if="destPoolErrorTag || customDestPoolErrorTag"
                         class="mt-1 w-5 h-5 text-danger" />
                 </div>
+
                 <select v-model="destPool" :disabled="destPoolDisabled" :class="[
                     'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
                     destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
@@ -234,6 +255,19 @@
                     If destination has diverged from the source, enabling this permits rollback with
                     <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
                 </p>
+                <div class="flex items-center justify-between mt-2">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        On resume failure, clear token and continue
+                        <InfoTile class="ml-1"
+                            :title="`If a resume token exists but the destination changed, this will discard the token and proceed with normal replication. This can trigger a rollback on the destination when overwrite is enabled, which may discard newer snapshots or changes.`" />
+                    </label>
+                    <input type="checkbox" v-model="resumeFailAllowOverwrite" class="h-4 w-4 rounded" />
+                </div>
+                <p class="mt-1 text-xs text-default/70">
+                    If a resume token exists but the destination was modified, clear the token and
+                    continue with normal replication. If overwrite is allowed, the task may roll back with
+                    <code>zfs receive -F</code>.
+                </p>
             </div>
         </div>
 
@@ -266,7 +300,7 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else-if="transferMethod === 'ssh'" @click="confirmSSHTest(destHost, destUser)"
+                    <button v-else-if="transferMethod === 'ssh'" @click="handleTestSSH"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
                     <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
@@ -370,7 +404,7 @@
 
 <script setup lang="ts">
 import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
-import { ExclamationCircleIcon, ChevronDoubleRightIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 import { Switch } from '@headlessui/vue';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
@@ -388,6 +422,7 @@ import {
     getPoolData,
     getDatasetData,
     testSSH,
+    testOrSetupSSH,
     testNetcat,
     mostRecentCommonSnapshot,
     listSnapshots,
@@ -433,6 +468,7 @@ const destUser = ref('root');
 
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
+const resumeFailAllowOverwrite = ref(false);
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
 const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);
@@ -488,6 +524,8 @@ const netCatPortError = ref(false);
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
+const sshReady = ref(false);
+
 /* ---------------- Direction-aware labels + behavior ---------------- */
 
 const isPull = computed(() => directionSwitched.value);
@@ -519,6 +557,31 @@ const showCreateTargetDataset = computed(() => !useExistingDest.value && targetI
 // Disable remote fields only when they are irrelevant (push + local)
 const remoteFieldsDisabled = computed(() => !isPull.value && destHost.value === '');
 
+const showSourcePoolRefresh = computed(() => sourceIsRemote.value && !useCustomSource.value);
+const showDestPoolRefresh = computed(() => targetIsRemote.value); // dest pool is always a select in your UI
+
+async function refreshSourcePoolData() {
+    if (remoteHostMissing.value) return;
+
+    await getSourcePools();
+
+    // If a pool is selected, refresh datasets too (optional but usually desired)
+    if (sourcePool.value) {
+        await getSourceDatasets();
+    }
+}
+
+async function refreshDestPoolData() {
+    if (remoteHostMissing.value) return;
+
+    await getTargetPools();
+
+    // If a pool is selected, refresh datasets too (optional)
+    if (destPool.value) {
+        await getTargetDatasets();
+    }
+}
+
 /* ---------------- Existing watchers (adjusted) ---------------- */
 
 watch(useExistingDest, async (on) => {
@@ -528,6 +591,7 @@ watch(useExistingDest, async (on) => {
         void checkDestDatasetContents();
     } else {
         allowOverwrite.value = false;
+        resumeFailAllowOverwrite.value = false;
         destDatasetErrorTag.value = false;
     }
 });
@@ -624,6 +688,8 @@ async function initializeData() {
 
         const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
         allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
+        const resumeFailAllowOverwriteParam = sendOptionsParams.find(p => p.key === 'resumeFailAllowOverwrite');
+        resumeFailAllowOverwrite.value = resumeFailAllowOverwriteParam ? !!resumeFailAllowOverwriteParam.value : false;
 
         const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
         useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
@@ -713,6 +779,7 @@ async function initializeData() {
             destRetentionUnit: destRetentionUnit.value,
             transferMethod: transferMethod.value,
             allowOverwrite: allowOverwrite.value,
+            resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
             useExistingDest: useExistingDest.value,
         }));
 
@@ -749,6 +816,7 @@ function hasChanges() {
         destRetentionTime: destRetentionTime.value,
         destRetentionUnit: destRetentionUnit.value,
         allowOverwrite: allowOverwrite.value,
+        resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
         useExistingDest: useExistingDest.value,
     };
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -1125,6 +1193,7 @@ function setParams() {
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
             .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
+            .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
         )
         .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
@@ -1137,17 +1206,40 @@ function setParams() {
 
 /* ---------------- Test buttons ---------------- */
 
-async function confirmSSHTest(destHostVal: string, destUserVal: string) {
-    testingSSH.value = true;
-    const sshTarget = destUserVal + '@' + destHostVal;
-    sshTestResult.value = await testSSH(sshTarget);
+async function handleTestSSH() {
+    if (transferMethod.value !== 'ssh') return;
 
-    if (sshTestResult.value) {
-        pushNotification(new Notification('Connection Successful!', 'Passwordless SSH connection established. This host can be used for replication (Assuming ZFS exists on target).', 'success', 6000));
-    } else {
-        pushNotification(new Notification('Connection Failed', `Could not resolve hostname "${destHostVal}": \nName or service not known.\nMake sure passwordless SSH connection has been configured for target system.`, 'error', 6000));
+    testingSSH.value = true;
+    try {
+        const host = destHost.value.trim();
+        const user = (destUser.value || 'root').trim();
+        const port = destPort.value || 22;
+
+        // In pull mode host is required; in push mode blank host is allowed (local).
+        if (isPull.value && !host) {
+            pushNotification(new Notification(
+                'Host Required',
+                'Host is required for pull replication.',
+                'error',
+                6000
+            ));
+            sshReady.value = false;
+            return;
+        }
+
+        const res = await testOrSetupSSH({
+            host,
+            user,
+            port,
+            onEvent: ({ type, title, message }) => {
+                pushNotification(new Notification(title, message, type, 6000));
+            }
+        });
+
+        sshReady.value = res.success;
+    } finally {
+        testingSSH.value = false;
     }
-    testingSSH.value = false;
 }
 
 async function confirmNetcatTest(destHost2: string, destPort2: number) {
