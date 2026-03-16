@@ -1,10 +1,12 @@
 <template>
 	<!-- <SimplifiedView v-if="isSimple" /> -->
-	<router-view v-if="isSimple" v-slot="{ Component, route }">
-		<keep-alive include="SimpleTaskForm">
-			<component :is="Component" :key="(route.query.session as string) || (route.name as string)" />
-		</keep-alive>
-	</router-view>
+	<div v-if="isSimple" class="h-screen w-full overflow-auto bg-well">
+		<router-view v-slot="{ Component, route }">
+			<keep-alive include="SimpleTaskForm">
+				<component :is="Component" :key="(route.query.session as string) || (route.name as string)" />
+			</keep-alive>
+		</router-view>
+	</div>
 
 	<NotificationView v-if="isSimple" />
 

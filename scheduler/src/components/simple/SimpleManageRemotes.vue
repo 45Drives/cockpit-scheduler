@@ -26,7 +26,7 @@
 
                     <ul role="list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
                         <li v-for="r in filteredRemotes" :key="r.name">
-                            <button class="btn w-full flex items-center justify-between"
+                            <button class="btn text-gray-50 w-full flex items-center justify-between"
                                 :style="getButtonStyles(false, undefined, r)" @click="openEdit(r)" :title="r.name">
                                 <div class="flex items-center gap-2">
                                     <span class="rounded-full bg-white w-5 h-5 grid place-items-center">
@@ -56,8 +56,8 @@
                             class="p-3 rounded-md border border-default">
                             <div class="grid sm:grid-cols-3 gap-2">
                                 <button v-for="p in oauthProviders" :key="p.type"
-                                    class="btn w-full flex items-center justify-center gap-2"
-                                    :class="selectedProvider?.type === p.type ? 'btn-primary' : 'btn-secondary'"
+                                    class="btn text-gray-50 w-full flex items-center justify-center gap-2"
+                                    :class="selectedProvider?.type === p.type ? 'ring-2 ring-offset-1 ring-white' : ''"
                                     :style="getButtonStyles(false, p)" @click="selectProvider(p)">
                                     <span class="rounded-full bg-white w-5 h-5 grid place-items-center">
                                         <img :src="getProviderLogo(p, undefined)" class="w-4 h-4" />
@@ -70,8 +70,8 @@
                                 <summary class="text-sm cursor-pointer">Advanced: more providers</summary>
                                 <div class="grid sm:grid-cols-3 gap-2 mt-2">
                                     <button v-for="p in nonOauthProviders" :key="p.type"
-                                        class="btn w-full flex items-center justify-center gap-2"
-                                        :class="selectedProvider?.type === p.type ? 'btn-primary' : 'btn-secondary'"
+                                        class="btn text-gray-50 w-full flex items-center justify-center gap-2"
+                                        :class="selectedProvider?.type === p.type ? 'ring-2 ring-offset-1 ring-white' : ''"
                                         :style="getButtonStyles(false, p)" @click="selectProvider(p)">
                                         <span class="rounded-full bg-white w-5 h-5 grid place-items-center">
                                             <img :src="getProviderLogo(p, undefined)" class="w-4 h-4" />
@@ -203,6 +203,7 @@
                                 <a href="https://cloud-sync.45d.io/tos" target="_blank" rel="noopener noreferrer"
                                     class="underline hover:opacity-80">Terms of Service</a>
                             </div>
+
                             <details>
                                 <summary class="text-sm cursor-pointer">Show parameters</summary>
                                 <div class="grid sm:grid-cols-2 gap-2 mt-2">
@@ -340,6 +341,8 @@ const remoteName = ref('')
 const creating = ref(false)
 const oAuthenticated = ref(false)
 const editingRemote = ref<any>()
+const oauthFallbackUrl = ref('')
+let activeOAuthHandler: ((evt: MessageEvent) => void) | null = null
 
 const providerParameters = computed(() =>
     selectedProvider.value ? Object.entries(selectedProvider.value.providerParams.parameters) : []
@@ -347,6 +350,7 @@ const providerParameters = computed(() =>
 
 watch(selectedProvider, (p) => {
     Object.keys(providerValues).forEach(k => delete providerValues[k])
+    oauthFallbackUrl.value = ''
     if (p) {
         for (const [k, param] of Object.entries(p.providerParams.parameters)) {
             providerValues[k] = (param as any).value ?? (param as any).defaultValue
@@ -456,6 +460,7 @@ const oauthBlurb = computed(() => selectedProvider.value?.providerParams.oAuthSu
 function clearOAuth() {
     oAuthenticated.value = false
     providerValues.token = ''
+    oauthFallbackUrl.value = ''
 }
 
 const canCreate = computed(() =>
@@ -465,32 +470,62 @@ const canCreate = computed(() =>
 
 /** OAuth */
 function oAuthBtn(p: CloudSyncProvider) {
-    try {
-        let suffix = ''
-        if (p.type === 'dropbox') suffix = 'dropbox'
-        else if (p.type === 'drive') suffix = 'drive'
-        else if (p.type === 'google cloud storage') suffix = 'cloud'
+    let suffix = ''
+    if (p.type === 'dropbox') suffix = 'dropbox'
+    else if (p.type === 'drive') suffix = 'drive'
+    else if (p.type === 'google cloud storage') suffix = 'cloud'
 
-        const url = `https://cloud-sync.45d.io/auth/${suffix}`
-        const w = window.open(url, '_blank', 'width=500,height=900')
-        if (!w) throw new Error('Popup blocked. Allow popups and try again.')
+    const url = `https://cloud-sync.45d.io/auth/${suffix}`
 
-        const handler = async (evt: MessageEvent) => {
-            if (evt.origin !== 'https://cloud-sync.45d.io') return
-            const { accessToken, refreshToken, expiry, userId } = evt.data || {}
-            if (accessToken && refreshToken && userId) {
-                const token = { access_token: accessToken, refresh_token: refreshToken, expiry }
-                providerValues.token = JSON.stringify(token)
-                oAuthenticated.value = true
-                pushNotification(new Notification('Authenticated', `Connected to ${p.name}`, 'success', 6000))
-                window.removeEventListener('message', handler)
-            } else {
-                pushNotification(new Notification('Auth failed', 'Token data missing', 'error', 6000))
-            }
+    // Clean up any previous listener
+    if (activeOAuthHandler) {
+        window.removeEventListener('message', activeOAuthHandler)
+        activeOAuthHandler = null
+    }
+
+    // Listen for the token — works for both direct popup and Electron relay
+    const handler = (evt: MessageEvent) => {
+        const data = evt.data || {}
+        // Accept typed envelope from Electron relay
+        if (data.type === '45d-oauth-response' && data.accessToken) {
+            const token = { access_token: data.accessToken, refresh_token: data.refreshToken, expiry: data.expiry }
+            providerValues.token = JSON.stringify(token)
+            oAuthenticated.value = true
+            oauthFallbackUrl.value = ''
+            pushNotification(new Notification('Authenticated', `Connected to ${p.name}`, 'success', 6000))
+            window.removeEventListener('message', handler)
+            activeOAuthHandler = null
+            return
         }
-        window.addEventListener('message', handler)
-    } catch (e: any) {
-        pushNotification(new Notification('Authentication Error', e.message, 'error', 6000))
+        // Accept direct postMessage from popup (standalone Cockpit in browser)
+        const { accessToken, refreshToken, expiry, userId } = data
+        if (accessToken && refreshToken && userId) {
+            const token = { access_token: accessToken, refresh_token: refreshToken, expiry }
+            providerValues.token = JSON.stringify(token)
+            oAuthenticated.value = true
+            oauthFallbackUrl.value = ''
+            pushNotification(new Notification('Authenticated', `Connected to ${p.name}`, 'success', 6000))
+            window.removeEventListener('message', handler)
+            activeOAuthHandler = null
+        }
+    }
+    window.addEventListener('message', handler)
+    activeOAuthHandler = handler
+
+    // Try opening directly (works in standalone browser Cockpit)
+    const w = window.open(url, '_blank')
+    if (!w) {
+        // Popup blocked — ask parent frame chain to open it (Electron relay).
+        // Send to both parent and top to ensure the Cockpit shell receives it.
+        const msg = { type: '45d-oauth-request', url }
+        try { window.parent?.postMessage(msg, '*') } catch { /* ignore */ }
+        try { if (window.top !== window.parent) window.top?.postMessage(msg, '*') } catch { /* ignore */ }
+        pushNotification(new Notification(
+            'Authenticating…',
+            'A sign-in window should open shortly.',
+            'info',
+            6000
+        ))
     }
 }
 
