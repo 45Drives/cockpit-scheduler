@@ -103,25 +103,29 @@ async function readInstallMeta(pathAbs: string, installId: string): Promise<{
       CJ="$U/.houston/client.json"
       [ -f "$CJ" ] || continue
 
+      # Try jq first, fall back to awk if jq fails (e.g. invalid JSON from Windows backslashes)
+      iid=""
       if command -v jq >/dev/null 2>&1; then
         iid="$(jq -r '.install_id // empty' "$CJ" 2>/dev/null || true)"
-        if [ "$iid" = "${ID}" ]; then
+      fi
+      if [ -z "$iid" ]; then
+        iid="$(awk -v RS=',' -F'"' '$2=="install_id"{print $4; exit}' "$CJ" 2>/dev/null || true)"
+      fi
+
+      if [ "$iid" = "${ID}" ]; then
+        su=""; hn=""; src=""
+        if command -v jq >/dev/null 2>&1; then
           su="$(jq -r '.smb_user // empty' "$CJ" 2>/dev/null || true)"
           hn="$(jq -r '.host // empty'      "$CJ" 2>/dev/null || true)"
           src="$(jq -r '.source // empty'    "$CJ" 2>/dev/null || true)"
-          printf '%s|%s|%s|%s\n' "$su" "$hn" "$src" "$(basename "$U")"
-          exit 0
         fi
-      else
-        # Fallback: split by commas, then by quotes; pick the record whose key ($2) matches.
-        iid="$(awk -v RS=',' -F'"' '$2=="install_id"{print $4; exit}' "$CJ" || true)"
-        if [ "$iid" = "${ID}" ]; then
-          su="$(awk -v RS=',' -F'"' '$2=="smb_user"{print $4; exit}' "$CJ" || true)"
-          hn="$(awk -v RS=',' -F'"' '$2=="host"{print $4; exit}'      "$CJ" || true)"
-          src="$(awk -v RS=',' -F'"' '$2=="source"{print $4; exit}'    "$CJ" || true)"
-          printf '%s|%s|%s|%s\n' "$su" "$hn" "$src" "$(basename "$U")"
-          exit 0
+        if [ -z "$su" ]; then
+          su="$(awk -v RS=',' -F'"' '$2=="smb_user"{print $4; exit}' "$CJ" 2>/dev/null || true)"
+          hn="$(awk -v RS=',' -F'"' '$2=="host"{print $4; exit}'      "$CJ" 2>/dev/null || true)"
+          src="$(awk -v RS=',' -F'"' '$2=="source"{print $4; exit}'    "$CJ" 2>/dev/null || true)"
         fi
+        printf '%s|%s|%s|%s\n' "$su" "$hn" "$src" "$(basename "$U")"
+        exit 0
       fi
     done
   `;
@@ -146,16 +150,24 @@ async function readAllMetasForUser(pathAbs: string, smbUser: string): Promise<Ar
       CJ="$D/.houston/client.json"
       [ -f "$CJ" ] || continue
 
+      # Try jq first, fall back to awk if jq fails (e.g. invalid JSON from Windows backslashes)
+      su=""
       if command -v jq >/dev/null 2>&1; then
         su="$(jq -r '.smb_user // empty' "$CJ" 2>/dev/null || true)"
-        [ "$su" = "${U}" ] || continue
+      fi
+      if [ -z "$su" ]; then
+        su="$(awk -v RS=',' -F'"' '$2=="smb_user"{print $4; exit}' "$CJ" 2>/dev/null || true)"
+      fi
+      [ "$su" = "${U}" ] || continue
+
+      hn=""; src=""
+      if command -v jq >/dev/null 2>&1; then
         hn="$(jq -r '.host // empty'      "$CJ" 2>/dev/null || true)"
         src="$(jq -r '.source // empty'    "$CJ" 2>/dev/null || true)"
-      else
-        su="$(awk -v RS=',' -F'"' '$2=="smb_user"{print $4; exit}' "$CJ" || true)"
-        [ "$su" = "${U}" ] || continue
-        hn="$(awk -v RS=',' -F'"' '$2=="host"{print $4; exit}'      "$CJ" || true)"
-        src="$(awk -v RS=',' -F'"' '$2=="source"{print $4; exit}'    "$CJ" || true)"
+      fi
+      if [ -z "$hn" ]; then
+        hn="$(awk -v RS=',' -F'"' '$2=="host"{print $4; exit}'      "$CJ" 2>/dev/null || true)"
+        src="$(awk -v RS=',' -F'"' '$2=="source"{print $4; exit}'    "$CJ" 2>/dev/null || true)"
       fi
 
       printf '%s|%s|%s\n' "$(basename "$D")" "$hn" "$src"
@@ -234,7 +246,14 @@ export function useUserScopedFolderListByInstall(installIdRef: Ref<string>, dept
 
       // construct absolute/relative options directly from meta
       function normSource(src: string) {
-        const noLead = String(src || '').replace(/^\/+/, '');
+        // Normalize: strip chars illegal on Linux FS, convert backslashes to forward slashes
+        // (mirrors client-side sanitizeFilePath so paths match actual server directories)
+        const normalized = String(src || '')
+          .replace(/[:*?"<>|]/g, '')
+          .replace(/\\/g, '/')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const noLead = normalized.replace(/^\/+/, '');
         return noLead.endsWith('/') ? noLead : noLead + '/';
       }
 
