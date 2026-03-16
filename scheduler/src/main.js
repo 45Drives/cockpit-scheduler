@@ -7,7 +7,7 @@ import '@45drives/houston-common-ui/style.css';
 import { createPinia } from 'pinia';
 import { router } from './router';
 import { applyThemeFromAliasStyle } from "./composables/theme.js";
-
+import { server } from '@45drives/houston-common-lib';
 import { useClientContextStore } from './stores/clientContext';
 
 async function bootstrapApp() {
