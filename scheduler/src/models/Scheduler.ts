@@ -410,10 +410,6 @@ export class Scheduler implements SchedulerType {
         return (await this.isAdminUser()) ? 'auto' : 'user';
     }
 
-
-    // One canonical root (as requested)
-    // private static readonly STATE_ROOT = '/var/lib/45drives/houston/scheduler';
-
     // Read a file if it exists; otherwise return ''
     private async readMaybe(path: string): Promise<string> {
         try { return await this.readTextRoot(path); } catch { return ''; }
@@ -436,7 +432,6 @@ export class Scheduler implements SchedulerType {
             if (typeof tpl === 'string') return tpl;
             if (tpl && typeof tpl === 'object') return String(tpl.name || tpl.type || '');
             const output = String(tpl ?? '');
-            // console.log('[Scheduler -> loadTaskInstances]: coerceTemplateName returns', output);
             return output;
         };
 
@@ -444,7 +439,6 @@ export class Scheduler implements SchedulerType {
             if (Array.isArray(raw)) return raw;
             let result = [];
             try { result = JSON.parse(String(raw || '[]')); } catch { result = []; }
-            // console.log('[Scheduler -> loadTaskInstances]: safeParseItems returns', result);
             return result;
         };
 
@@ -472,21 +466,8 @@ export class Scheduler implements SchedulerType {
                         const unit = String(t.unit || await this.unitNameFromParts(templateKey, t.name, 'user'));
                         console.log('[Scheduler -> loadTaskInstances]: unit', unit);
                        
-                        // *** TRUST the daemon’s data; only fall back to disk if missing ***
-                        const paramsObj = (t.params ?? t.parameters ?? {});
                         const schedObj = (t.schedule ?? { enabled: false, intervals: [] });
                         const notes = (t.notes ?? '');
-
-                        // if ((!paramsObj || !Object.keys(paramsObj).length) || !schedObj) {
-                        //     const basePaths = [
-                        //         `${Scheduler.STATE_ROOT}/${username}/${t.name}`,
-                        //         `${Scheduler.STATE_ROOT}/${uid}/${t.name}`,
-                        //     ];
-                        //     const envText = await this.readFirst(basePaths.map(b => `${b}/${unit}.env`));
-                        //     const jsonText = await this.readFirst(basePaths.map(b => `${b}/${unit}.json`));
-                        //     if (envText) Object.assign(paramsObj, this.parseEnvTextToParams(envText));
-                        //     if (jsonText) Object.assign(schedObj, JSON.parse(jsonText));
-                        // }
 
                         const intervals = Array.isArray(schedObj.intervals)
                             ? schedObj.intervals.map((i: any) => new TaskScheduleInterval(i))
@@ -617,10 +598,8 @@ export class Scheduler implements SchedulerType {
         function assignValues(node: ParameterNode, prefix = ''): void {
             const currentPrefix = prefix ? prefix + '_' : '';
             const fullKey = currentPrefix + node.key;
-            // console.log(`Assigning value for key: ${fullKey}`);  
             if (parameters.hasOwnProperty(fullKey)) {
                 let value = parameters[fullKey];
-                // console.log(`Found value: ${value} for key: ${fullKey}`);  // Debug log to confirm values
                 if (node instanceof StringParameter || node instanceof SelectionParameter) {
                     node.value = value;
                 } else if (node instanceof IntParameter) {
@@ -645,7 +624,6 @@ export class Scheduler implements SchedulerType {
             return acc;
         }, {} as Record<string, string|number>);
 
-      //  console.log('templateName:', templateName);
 
         function formatEnvOption(envObject, key, emptyValue = '', excludeValues = [0, '0', "''"], resetKeys: string[] = []) {
             if (envObject[key] && !excludeValues.includes(envObject[key])) {
@@ -697,7 +675,6 @@ export class Scheduler implements SchedulerType {
             default:
                 break;
         }
-      //  console.log('envObject After:', envObject);
         return envObject;
     }
 
@@ -726,7 +703,6 @@ export class Scheduler implements SchedulerType {
         await this.ensureBackend();
         // generate env file with key/value pairs (Task Parameters)
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
-        //  console.log('envKeyVals Before Parse:', envKeyValues);
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
         let scriptPath = '';
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
@@ -811,7 +787,6 @@ export class Scheduler implements SchedulerType {
         await this.ensureBackend();
         //populate data from env file and then delete + recreate task files
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
-        // console.log('envKeyVals:', envKeyValues);
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
         const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
@@ -875,42 +850,6 @@ export class Scheduler implements SchedulerType {
         await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
 
     }
-
-    // maybe using this later, not sure.
-    // private async renameLegacyTaskFiles(templateName: string, oldName: string, newName: string, wantEnabled: boolean) {
-    //     const prefix = 'houston_scheduler_';
-    //     const etc = '/etc/systemd/system';
-    //     const oldBase = `${prefix}${templateName}_${oldName}`;
-    //     const newBase = `${prefix}${templateName}_${newName}`;
-
-    //     const sh = (cmd: string) => legacy.useSpawn(['bash', '-lc', cmd], { superuser: 'try' }).promise();
-
-    //     // was enabled? (don’t fail if unit missing)
-    //     let wasEnabled = false;
-    //     try {
-    //         const st = await legacy.useSpawn(['bash', '-lc', `systemctl is-enabled ${oldBase}.timer`], { superuser: 'try' }).promise();
-    //         wasEnabled = /enabled/.test(st.stdout || '');
-    //     } catch { }
-
-    //     // stop/disable old
-    //     await sh(`systemctl stop ${oldBase}.timer ${oldBase}.service 2>/dev/null || true`);
-    //     await sh(`systemctl disable ${oldBase}.timer 2>/dev/null || true`);
-
-    //     // move state files if present
-    //     await sh(`[ -e ${etc}/${oldBase}.env ]  && mv ${etc}/${oldBase}.env  ${etc}/${newBase}.env  || true`);
-    //     await sh(`[ -e ${etc}/${oldBase}.json ] && mv ${etc}/${oldBase}.json ${etc}/${newBase}.json || true`);
-    //     await sh(`[ -e ${etc}/${oldBase}.txt ]  && mv ${etc}/${oldBase}.txt  ${etc}/${newBase}.txt  || true`);
-
-    //     // service/timer files are regenerated from templates (safer than mv due to embedded names)
-    //     await sh(`rm -f ${etc}/${oldBase}.service ${etc}/${oldBase}.timer || true`);
-    //     await sh(`systemctl daemon-reload`);
-
-    //     // re-enable if it *was* enabled or the UI wants it enabled
-    //     const enable = wantEnabled || wasEnabled;
-    //     if (enable) {
-    //         await sh(`systemctl enable --now ${newBase}.timer 2>/dev/null || true`);
-    //     }
-    // }
 
 
     async updateTaskNotes(taskInstance) {

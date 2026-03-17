@@ -30,7 +30,7 @@ export class TaskSchedule implements TaskScheduleType {
 }
 
 export class TaskScheduleInterval implements TaskScheduleIntervalType {
-    [key: string]: any; // Use a more specific type if possible
+    [key: string]: any;
     dayOfWeek?: DayOfWeek[];
 
     constructor(intervalData: TaskScheduleIntervalType) {
@@ -49,8 +49,8 @@ export class TaskTemplate implements TaskTemplateType {
         this.parameterSchema = parameterSchema;
         }
 
-    createTaskInstance(parameters: ParameterNode) {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -86,8 +86,8 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ZFSReplicationTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -104,8 +104,8 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: AutomatedSnapshotTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -143,8 +143,8 @@ export class RsyncTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: RsyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -157,8 +157,8 @@ export class ScrubTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: ScrubTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -174,8 +174,8 @@ export class CustomTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CustomTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -189,8 +189,8 @@ export class SmartTestTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: SmartTestTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }
 
@@ -262,7 +262,7 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
         super(name, parameterSchema);
     }
 
-    createTaskInstance(parameters: ParameterNode, schedule?: TaskSchedule): new (name: string, template: CloudSyncTaskTemplate, parameters: ParameterNode, schedule: TaskSchedule, notes: string) => TaskInstance {
-        return TaskInstance;
+    createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes: string = ''): TaskInstance {
+        return new TaskInstance(name, this, parameters, schedule, notes);
     }
 }

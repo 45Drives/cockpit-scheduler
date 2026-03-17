@@ -20,7 +20,7 @@ interface TaskTemplateType {
 	name: string;
 	parameterSchema: ParameterNodeType;
 
-	createTaskInstance(parameters: ParameterNode): TaskInstance;
+	createTaskInstance(name: string, parameters: ParameterNode, schedule: TaskSchedule, notes?: string): TaskInstance;
 }
 
 interface TaskInstanceType {

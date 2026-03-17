@@ -18,7 +18,7 @@ import ensure_ssh_script from "../scripts/ensure_passwordless_ssh.py?raw";
 //@ts-ignore
 import stop_task_script from "../scripts/legacy-stop-task-now.py?raw";
 
-import { inject, InjectionKey, ref, type Ref } from "vue";
+import { inject, InjectionKey, type Ref } from "vue";
 
 const errorString = (e: any) => e?.message ?? String(e);
 const textDecoder = new TextDecoder("utf-8");
@@ -364,33 +364,36 @@ export function getDiskIDName(
   diskIdentifier: string,
   selectedDiskName: string
 ) {
-  // console.log('disks:', disks, 'diskID:', diskIdentifier, 'selectedDiskName:', selectedDiskName);
   const phyPathPrefix = "/dev/disk/by-path/";
   const sdPathPrefix = "/dev/";
-  const newDisk = ref();
-  const diskName = ref("");
-  const diskPath = ref("");
+  const foundDisk = disks.find((disk) => disk.name === selectedDiskName);
+  let diskName = "";
+  let diskPath = "";
 
-  newDisk.value = disks.find((disk) => disk.name === selectedDiskName);
+  if (!foundDisk) {
+    console.warn("getDiskIDName: disk not found:", selectedDiskName);
+    return { diskName, diskPath };
+  }
+
   switch (diskIdentifier) {
 	case "vdev_path":
-	  diskPath.value = newDisk.value!.vdev_path;
-	  diskName.value = selectedDiskName;
+	  diskPath = foundDisk.vdev_path;
+	  diskName = selectedDiskName;
 	  break;
 	case "phy_path":
-	  diskPath.value = newDisk.value!.phy_path;
-	  diskName.value = diskPath.value.replace(phyPathPrefix, "");
+	  diskPath = foundDisk.phy_path;
+	  diskName = diskPath.replace(phyPathPrefix, "");
 	  break;
 	case "sd_path":
-	  diskPath.value = newDisk.value!.sd_path;
-	  diskName.value = diskPath.value.replace(sdPathPrefix, "");
+	  diskPath = foundDisk.sd_path;
+	  diskName = diskPath.replace(sdPathPrefix, "");
 	  break;
 	default:
-	  console.log("error with selectedDiskNames/diskIdentifier");
+	  console.warn("getDiskIDName: unknown diskIdentifier:", diskIdentifier);
 	  break;
   }
 
-  return { diskName: diskName.value, diskPath: diskPath.value };
+  return { diskName, diskPath };
 }
 
 export function truncateName(name: string, threshold: number) {

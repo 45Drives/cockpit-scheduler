@@ -45,7 +45,6 @@ const days = computed(() => {
 		const date = new Date(currentYear.value, currentMonth.value, i + 1);
 		const id = date.toISOString().split('T')[0]; // YYYY-MM-DD format
 		const isMarked = checkSchedule(date, props.interval);
-		// console.log(`Day ${date.getDate()} is marked: ${isMarked}`);
 		return { id, date: i + 1, isMarked, isPadding: false };
 	});
 

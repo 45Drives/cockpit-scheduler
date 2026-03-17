@@ -610,20 +610,16 @@ function saveInterval(interval) {
     }
 
     if (validateFields(interval)) {
-      //  console.log('selectedIndex in saveInterval:', selectedIndex.value);
         if (selectedIndex.value !== undefined) {
             // Deep clone the interval object to ensure no references are shared
             const updatedInterval = JSON.parse(JSON.stringify(interval));
             
             localIntervals.value[selectedIndex.value] = updatedInterval;
-          //  console.log('updatedInterval saved (saveInterval):', updatedInterval);
         } else {
             const newInterval = JSON.parse(JSON.stringify(interval));
             localIntervals.value.push(newInterval);
-          //  console.log('newInterval saved (saveInterval):', newInterval);
         }
        
-      //  console.log('all intervals (saveInterval):', localIntervals.value);
         clearFields();
     } 
 }
@@ -635,9 +631,7 @@ function clearSelectedInterval() {
 }
 
 function removeSelectedInterval(index) {
-  //  console.log('interval to remove (removeSelectedInterval):', localIntervals.value[index])
     localIntervals.value.splice(index, 1);
-  //  console.log('intervals after splice (removeSelectedInterval):', localIntervals.value);
     clearSelectedInterval();
 }
 
@@ -783,7 +777,6 @@ const intervalSelectedClass = (intervalIdx) => {
 }
 
 watch(newInterval, (newVal, oldVal) => {
-  //  console.log('newInterval changed (watch):', newVal);
     forceUpdateCalendar();
 }, { deep: true });
 
@@ -796,14 +789,12 @@ function forceUpdateCalendar() {
 onMounted(() => {
     console.log('mode (onMounted):', props.mode);
     
-  //  console.log('task data (onMounted)', props.task);
     if (props.mode == 'new') {
         selectedInterval.value = undefined;
         selectedIndex.value = undefined;
         localIntervals.value = [];
     } else {
         localIntervals.value = [...props.task.schedule.intervals];
-      //  console.log('localIntervals (onMounted)', localIntervals.value);
         initialScheduleIntervals.value = JSON.parse(JSON.stringify(localIntervals.value));
    }
 });

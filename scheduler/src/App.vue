@@ -139,5 +139,4 @@ provide(logInjectionKey, myTaskLog);
 provide(taskInstancesInjectionKey, taskInstances);
 provide(taskTemplatesInjectionKey, taskTemplates);
 provide(truncateTextInjectionKey, truncateText);
-provide(truncateTextInjectionKey, truncateText);
 </script>

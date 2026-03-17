@@ -200,7 +200,6 @@ async function showSchedulePromptDialog() {
     await loadConfirmationComponent();
 
     showSchedulePrompt.value = true;
-    // console.log('Showing confirmation dialog...');
 }
 
 

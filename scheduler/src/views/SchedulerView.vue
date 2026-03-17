@@ -498,18 +498,14 @@ const loadScheduleWizardComponent = async () => {
 }
 
 async function showThisScheduleWizardComponent() {
-  //  console.log('Attempting to load Schedule Wizard Component...');
     try {
         await loadScheduleWizardComponent();
-      //  console.log('schedulerView: Component loaded, setting showThisScheduleWizard to true.');
-        // console.log('schedulerView: setting showThisScheduleWizard to true.');
         showThisScheduleWizard.value = true;
     } catch (error) {
         console.error('Failed to load Schedule Wizard Component:', error);
     }
 }
 const updateShowThisScheduleWizardComponent = (newVal) => {
-  //  console.log('updateShowThisScheduleWizard triggered');
     showThisScheduleWizard.value = newVal;
 }
 

@@ -152,7 +152,6 @@ async function showConfirmationDialog() {
 }
 
 const confirmSaveChanges : ConfirmationCallback = async () => {
-  //  console.log('Saving and scheduling task now...');
     saving.value = true;
     await saveEditedTask();
     saving.value = false;
@@ -169,7 +168,6 @@ const cancelEdit : ConfirmationCallback = async () => {
 
 async function saveEditedTask() {
     console.log('save changes triggered');
-  //  console.log('params to save:', parameters.value)
     const template = ref();
     if (taskInstance.value?.template.name == 'ZFS Replication Task') {
         template.value = new ZFSReplicationTaskTemplate();
@@ -191,11 +189,9 @@ async function saveEditedTask() {
     if (sanitizedName.startsWith('_')) {
         sanitizedName = 'task' + sanitizedName;
     }
-  //  console.log('sanitizedName:', sanitizedName);
 
     const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
     const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,taskInstance.value.notes);
-  //  console.log('edited task: ', task);
 
     await myScheduler.updateTaskInstance(task);
 
@@ -209,13 +205,11 @@ const updateShowSaveConfirmation = (newVal) => {
 async function saveChangesBtn() {
     const hasChanges = parameterInputComponent.value.hasChanges();
     if (hasChanges) {
-        // console.log('data has changed, triggering save');
         errorList.value = [];
         if (await validateComponentParams()) {
             showConfirmationDialog();
         }
     } else {
-        // console.log('no changes');
         showEditTaskWizard.value = false;
         pushNotification(new Notification('No Changes Found', `Task saved as-is, no changes detected.`, 'info', 6000));
     }

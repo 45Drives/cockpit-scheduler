@@ -51,15 +51,6 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
         },
         oAuthSupported: true
     }),
-    // "onedrive": new CloudSyncProvider("Microsoft OneDrive", "onedrive", {
-    //     parameters: {
-    //         // token: { value: "", type: 'object', defaultValue: "" },
-    //         client_id: { value: "", type: 'string', defaultValue: "" },
-    //         client_secret: { value: "", type: 'string', defaultValue: "" },
-    //         region: { value: "global", type: 'select', allowedValues: ["global", "us", "de", "cn"], defaultValue: "global" }
-    //     },
-    //     // oAuthSupported: true
-    // }),
     "azureblob": new CloudSyncProvider("Microsoft Azure Blob", "azureblob", {
         parameters: {
             account: { value: "", type: 'string', defaultValue: "" },
@@ -234,7 +225,6 @@ export function getButtonStyles(hovered: boolean, selectedProvider?: CloudSyncPr
     const mainColor = getProviderColor(selectedProvider, selectedRemote);
     const hoverColor = getProviderHoverColor(selectedProvider, selectedRemote);
 
-    // console.log(`Hovered: ${hovered}, Main Color: ${mainColor}, Hover Color: ${hoverColor}`);
 
     return {
         backgroundColor: hovered ? hoverColor : mainColor,

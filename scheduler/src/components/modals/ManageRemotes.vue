@@ -522,10 +522,8 @@ const displayValue = computed({
     get: () => {
         if (loadedEditableRemoteProvider.value) {
             let token = loadedEditableRemoteParams.value.parameters.token.value;
-            // console.log("GET: Current token value:", token);
 
             if (!token) {
-                // console.log("GET: Token is missing or empty.");
                 return '';
             }
 
@@ -533,34 +531,27 @@ const displayValue = computed({
                 try {
                     // Try to parse the string as JSON
                     token = JSON.parse(token);
-                    // console.log("GET: Parsed token string into object:", token);
                 } catch (error) {
-                    // console.warn("GET: Token string is not valid JSON. Returning as-is:", token);
                     return token;
                 }
             }
 
             if (typeof token === 'object') {
                 const jsonString = JSON.stringify(token, null, 2);
-                // console.log("GET: Token is an object. Returning JSON string:", jsonString);
                 return jsonString;
             } else {
-                // console.log("GET: Token is not an object. Returning as-is:", token);
                 return token;
             }
         }
     },
     set: (newValue: string) => {
         if (loadedEditableRemoteProvider.value) {
-            // console.log("SET: New value received for token:", newValue);
 
             try {
                 // Try to parse the new value as JSON
                 const parsedValue = JSON.parse(newValue);
-                // console.log("SET: Parsed new value into JSON object:", parsedValue);
                 loadedEditableRemoteParams.value.parameters.token.value = parsedValue;
             } catch (error) {
-                // console.warn("SET: Failed to parse new value as JSON. Keeping as string:", newValue);
                 loadedEditableRemoteParams.value.parameters.token.value = newValue;
             }
 
@@ -612,7 +603,6 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                 const { accessToken: token, refreshToken: refresh, userId: id } = event.data;
 
                 // Log the received token data
-                // console.log('OAuth response received:', event.data);
 
                 if (token && refresh && id) {
                     accessToken.value = token;
@@ -631,7 +621,6 @@ function oAuthBtn(selectedProvider: CloudSyncProvider) {
                     };
 
                     // Log the assembled full token
-                    // console.log('Assembled full token:', fullToken);
 
                     oAuthenticated.value = true;
                     loadedEditableRemoteParams.value.parameters.token.value = JSON.stringify(fullToken);

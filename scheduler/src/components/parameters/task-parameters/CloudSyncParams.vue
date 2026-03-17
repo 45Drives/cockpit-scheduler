@@ -801,7 +801,6 @@ onMounted(async () => {
     await initializeData();
     isTaskLoading.value = false; // Mark loading as complete
 
-    //  console.log("Existing remotes:", existingRemotes);
 });
 
 watch(selectedRemote, (newVal) => {
@@ -1206,7 +1205,6 @@ async function validateLocalTransferPath() {
     // Check if the path exists asynchronously
     const pathExists = await checkLocalPathExists(localPath.value);
     const validPath = validatePath(localPath.value);
-    //  console.log(`Path Exists: ${pathExists}, Valid Format: ${validPath}`);
 
     if (!pathExists) {
         errorList.value.push(`Path does not exist: ${localPath.value}`);
@@ -1220,7 +1218,6 @@ async function validateLocalTransferPath() {
         return false;
     }
 
-    //  console.log("Valid source path.");
     return true;
 }
 
@@ -1420,7 +1417,6 @@ function setParams() {
         );
 
     parameters.value = newParams;
-    //  console.log('newParams:', newParams);
 }
 
 defineExpose({
