@@ -80,6 +80,19 @@
                                 <td class="px-3 py-2 align-top">
                                     <span class="text-sm" :class="taskStatusClass(row.status)">{{ row.status || '—'
                                         }}</span>
+                                    <!-- Progress bar for running tasks -->
+                                    <div v-if="row.isRunning" class="mt-1">
+                                        <div class="w-full bg-well h-1.5 rounded-full overflow-hidden">
+                                            <div v-if="row.progress !== null"
+                                                class="h-full rounded-full bg-success transition-all"
+                                                :style="{ width: Math.min(row.progress, 100) + '%' }"></div>
+                                            <div v-else
+                                                class="h-full rounded-full w-full animate-pulse bg-secondary"></div>
+                                        </div>
+                                        <span class="text-xs text-muted">
+                                            {{ row.progress !== null ? Math.round(row.progress) + '%' : 'Running…' }}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="px-3 py-2 align-top">
                                     <span class="text-sm">{{ row.schedule }}</span>
@@ -323,6 +336,8 @@ const rows = computed(() => {
             type: typeLabel(t),
             details: detailsFor(t),
             status: live.statusFor(t) ?? '—',
+            progress: live.progressFor(t),
+            isRunning: live.isRunningNow(t),
             schedule: getSchedule(t),
             lastRun: live.lastRunFor(t) ?? getLastRun(t),
             raw: t,

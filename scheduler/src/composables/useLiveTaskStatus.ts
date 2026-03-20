@@ -19,8 +19,10 @@ export function useLiveTaskStatus(
     const statusMap = ref<Record<string, string>>({});
     const lastRunMap = ref<Record<string, string>>({});
     const lastCompletedAtMap = ref<Record<string, number>>({});
+    const progressMap = ref<Record<string, number | null>>({});
     const polling = ref(false);
     let intervalId: number | undefined;
+    let progressIntervalId: number | undefined;
 
     async function refreshOne(t: AnyTask) {
         const id = taskId(t);
@@ -303,11 +305,38 @@ export function useLiveTaskStatus(
         await Promise.all(tasks.map(refreshOne));
     }
 
+    async function refreshProgress() {
+        const tasks = tasksRef.value ?? [];
+        await Promise.allSettled(tasks.map(async (t) => {
+            const id = taskId(t);
+            // Only poll progress for running tasks
+            const s = statusMap.value[id];
+            if (!s) return;
+            const lower = s.toLowerCase();
+            const running = lower.includes('running') || lower.includes('starting');
+            if (!running) {
+                // Clear stale progress when task is no longer running
+                if (progressMap.value[id] !== undefined) {
+                    progressMap.value[id] = null;
+                }
+                return;
+            }
+            try {
+                const p = await scheduler.getTaskProgress(t);
+                progressMap.value[id] = (typeof p === 'number' && Number.isFinite(p)) ? p : null;
+            } catch {
+                progressMap.value[id] = null;
+            }
+        }));
+    }
+
     function start() {
         if (polling.value) return;
         polling.value = true;
         refreshAll();
+        refreshProgress();
         intervalId = window.setInterval(refreshAll, opts?.intervalMs ?? 1500);
+        progressIntervalId = window.setInterval(refreshProgress, 5000);
     }
 
     function stop() {
@@ -315,6 +344,10 @@ export function useLiveTaskStatus(
         if (intervalId) {
             clearInterval(intervalId);
             intervalId = undefined;
+        }
+        if (progressIntervalId) {
+            clearInterval(progressIntervalId);
+            progressIntervalId = undefined;
         }
     }
 
@@ -332,6 +365,7 @@ export function useLiveTaskStatus(
 
     function statusFor(t: AnyTask) { return statusMap.value[taskId(t)]; }
     function lastRunFor(t: AnyTask) { return lastRunMap.value[taskId(t)]; }
+    function progressFor(t: AnyTask): number | null { return progressMap.value[taskId(t)] ?? null; }
 
     function isCompleted(t: AnyTask): boolean {
         const s = statusFor(t);
@@ -371,8 +405,10 @@ export function useLiveTaskStatus(
         toggleSchedule,
         statusFor,
         lastRunFor,
+        progressFor,
         statusMap,
         lastRunMap,
+        progressMap,
         isCompleted,
         isRunningNow,
         isFailed,
