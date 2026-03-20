@@ -56,66 +56,97 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="row in displayRows" :key="row.id"
-                                class="border-b border-default bg-default hover:bg-well text-left">
-                                <td class="px-3 py-2 align-top">
-                                    <div class="font-medium">{{ row.name }}</div>
-                                </td>
-                                <td class="px-3 py-2 align-top">
-                                    <span
-                                        class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
-                                        :title="row.type">
-                                        {{ row.type }} (Scope: {{ row.scope }})
-                                    </span>
-                                </td>
-                                <td class="px-3 py-2 align-top">
-                                    <div class="text-sm leading-5">
-                                        <div><span class="text-muted">Source:</span> {{ row.details.source }}</div>
-                                        <div><span class="text-muted">Destination:</span> {{ row.details.destination }}
+                            <template v-for="row in displayRows" :key="row.id">
+                                <tr class="border-b border-default bg-default hover:bg-well text-left">
+                                    <td class="px-3 py-2 align-top">
+                                        <div class="font-medium">{{ row.name }}</div>
+                                    </td>
+                                    <td class="px-3 py-2 align-top">
+                                        <span
+                                            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
+                                            :title="row.type">
+                                            {{ row.type }} (Scope: {{ row.scope }})
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2 align-top">
+                                        <div class="text-sm leading-5">
+                                            <div><span class="text-muted">Source:</span> {{ row.details.source }}</div>
+                                            <div><span class="text-muted">Destination:</span> {{ row.details.destination }}
+                                            </div>
+                                            <div v-if="row.details.extra"><span class="text-muted">Info:</span> {{
+                                                row.details.extra }}</div>
                                         </div>
-                                        <div v-if="row.details.extra"><span class="text-muted">Info:</span> {{
-                                            row.details.extra }}</div>
-                                    </div>
-                                </td>
-                                <td class="px-3 py-2 align-top">
-                                    <span class="text-sm" :class="taskStatusClass(row.status)">{{ row.status || '—'
-                                        }}</span>
-                                    <!-- Progress bar for running tasks -->
-                                    <div v-if="row.isRunning" class="mt-1">
-                                        <div class="w-full bg-well h-1.5 rounded-full overflow-hidden">
+                                    </td>
+                                    <td class="px-3 py-2 align-top">
+                                        <span :class="taskStatusBadgeClass(row.status)">
+                                            {{ row.status || '—' }}
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2 align-top">
+                                        <span class="text-sm">{{ row.schedule }}</span>
+                                    </td>
+                                    <td class="px-3 py-2 align-top">
+                                        <span class="text-sm">{{ row.lastRun }}</span>
+                                    </td>
+                                    <td class="px-3 py-2 align-top">
+                                        <div class="flex gap-2 flex-wrap items-center">
+                                            <button v-if="!row.isRunning" class="btn btn-xs btn-primary"
+                                                @click="confirmRunNow(row.raw)" :disabled="loading">Run Now</button>
+                                            <button v-else class="btn btn-xs btn-danger"
+                                                @click="confirmStopNow(row.raw)" :disabled="loading">Stop</button>
+                                            <button class="btn btn-xs btn-secondary" @click="viewLogs(row.raw)"
+                                                :disabled="loading">View Logs</button>
+                                            <button class="btn btn-xs btn-secondary" @click="edit(row.raw)"
+                                                :disabled="loading">Edit</button>
+                                            <button class="btn btn-xs btn-danger" @click="confirmRemove(row.raw)"
+                                                :disabled="loading">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <!-- Progress bar row beneath the task -->
+                                <tr v-if="row.isRunning" class="bg-default">
+                                    <td colspan="7" class="px-3 py-1">
+                                        <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded overflow-hidden">
                                             <div v-if="row.progress !== null"
-                                                class="h-full rounded-full bg-success transition-all"
+                                                class="h-2 rounded bg-success transition-all"
                                                 :style="{ width: Math.min(row.progress, 100) + '%' }"></div>
                                             <div v-else
-                                                class="h-full rounded-full w-full animate-pulse bg-secondary"></div>
+                                                class="h-2 rounded w-full animate-pulse bg-slate-400 dark:bg-slate-500"></div>
                                         </div>
-                                        <span class="text-xs text-muted">
+                                        <div class="text-xs mt-1 text-muted">
                                             {{ row.progress !== null ? Math.round(row.progress) + '%' : 'Running…' }}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="px-3 py-2 align-top">
-                                    <span class="text-sm">{{ row.schedule }}</span>
-                                </td>
-                                <td class="px-3 py-2 align-top">
-                                    <span class="text-sm">{{ row.lastRun }}</span>
-                                </td>
-                                <td class="px-3 py-2 align-top">
-                                    <div class="flex gap-2">
-                                        <button class="btn btn-xs btn-primary" @click="runNow(row.raw)"
-                                            :disabled="loading">Run Now</button>
-                                        <button class="btn btn-xs btn-secondary" @click="edit(row.raw)"
-                                            :disabled="loading">Edit</button>
-                                        <button class="btn btn-xs btn-danger" @click="remove(row.raw)"
-                                            :disabled="loading">Delete</button>
-                                    </div>
-                                </td>
-                            </tr>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
                         </tbody>
                     </table>
                 </div> <!-- /bordered scroll box -->
             </div>
         </div>
+    </div>
+
+    <!-- Log View Modal -->
+    <div v-if="showLogView">
+        <component :is="logViewComponent" @close="closeLogView" :id-key="'simple-log-view'" :task="selectedLogTask!" />
+    </div>
+
+    <!-- Confirmation Dialogs -->
+    <div v-if="showRunNowPrompt">
+        <component :is="confirmDialogComponent" @close="(v: boolean) => showRunNowPrompt = v" :showFlag="showRunNowPrompt"
+            title="Run Task" message="Do you wish to run this task now?" :confirmYes="runNowYes"
+            :confirmNo="() => showRunNowPrompt = false" :operating="operating" operation="starting" />
+    </div>
+    <div v-if="showStopNowPrompt">
+        <component :is="confirmDialogComponent" @close="(v: boolean) => showStopNowPrompt = v" :showFlag="showStopNowPrompt"
+            title="Stop Task" message="Do you wish to stop this task now?" :confirmYes="stopNowYes"
+            :confirmNo="() => showStopNowPrompt = false" :operating="operating" operation="stopping" />
+    </div>
+    <div v-if="showRemovePrompt">
+        <component :is="confirmDialogComponent" @close="(v: boolean) => showRemovePrompt = v" :showFlag="showRemovePrompt"
+            title="Remove Task" message="Are you sure you want to remove this task? This cannot be undone."
+            :confirmYes="removeYes" :confirmNo="() => showRemovePrompt = false" :operating="operating"
+            operation="removing" />
     </div>
 </template>
 
@@ -128,7 +159,7 @@ import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, 
 import { Notification, pushNotification, confirm } from '@45drives/houston-common-ui';
 import { useRouter } from 'vue-router';
 import { useTaskDraftStore } from '../stores/taskDraft';
-import { useLiveTaskStatus, taskStatusClass } from '../composables/useLiveTaskStatus';
+import { useLiveTaskStatus, taskStatusClass, taskStatusBadgeClass } from '../composables/useLiveTaskStatus';
 
 const router = useRouter();
 const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
@@ -139,6 +170,24 @@ const draftStore = useTaskDraftStore();
 const search = ref('');
 const selected = ref<any>(null);
 const myTaskLog = injectWithCheck(logInjectionKey, 'log not provided!');
+
+/* ── View Logs modal ──────────────────────────────────── */
+const showLogView = ref(false);
+const selectedLogTask = ref<any>(null);
+const logViewComponent = ref();
+provide('show-log-view', showLogView);
+
+async function viewLogs(t: any) {
+    selectedLogTask.value = t;
+    if (!logViewComponent.value) {
+        const mod = await import('../components/modals/LogView.vue');
+        logViewComponent.value = mod.default;
+    }
+    showLogView.value = true;
+}
+function closeLogView() {
+    showLogView.value = false;
+}
 
 const fetching = ref(false);
 const everLoaded = ref(false);
@@ -371,16 +420,119 @@ async function refresh() {
     }
 }
 
-async function runNow(t: any) {
-    selected.value = t;
-    pushNotification(new Notification('Task Started', `Task ${t?.name ?? ''} has started running.`, 'info', 6000));
-    try {
-        await myScheduler.runTaskNow(t);
-        pushNotification(new Notification('Task Successful', `Task ${t?.name ?? ''} completed.`, 'success', 6000));
-    } catch {
-        pushNotification(new Notification('Task Failed', `Task ${t?.name ?? ''} failed.`, 'error', 6000));
+/* ── Confirmation dialogs ─────────────────────────────── */
+const confirmDialogComponent = ref();
+const showRunNowPrompt = ref(false);
+const showStopNowPrompt = ref(false);
+const showRemovePrompt = ref(false);
+const operating = ref(false);
+
+async function loadConfirmDialog() {
+    if (!confirmDialogComponent.value) {
+        const mod = await import('../components/common/ConfirmationDialog.vue');
+        confirmDialogComponent.value = mod.default;
     }
 }
+
+async function confirmRunNow(t: any) {
+    selected.value = t;
+    await loadConfirmDialog();
+    showRunNowPrompt.value = true;
+}
+
+const runNowYes = async () => {
+    const t = selected.value;
+    if (!t) { showRunNowPrompt.value = false; return; }
+
+    operating.value = true;
+    showRunNowPrompt.value = false;
+
+    pushNotification(new Notification('Task Started', `Task ${t?.name ?? ''} has started running.`, 'info', 6000));
+
+    // Immediately mark as running so the UI updates before the server responds
+    const id = t?.id ?? t?.uuid ?? t?.name;
+    if (id) {
+        live.statusMap.value[id] = 'Active (running)';
+        live.lastRunMap.value[id] = 'Running now...';
+        live.progressMap.value[id] = null;
+    }
+
+    try {
+        await myScheduler.runTaskNow(t);
+
+        // Inspect exit code for accurate notification
+        let exitCode: number | null = null;
+        try {
+            const latest = await myTaskLog.getLatestEntryFor(t);
+            if (latest && typeof latest.exitCode === 'number') exitCode = latest.exitCode;
+        } catch { /* fall back to generic */ }
+
+        if (exitCode === 0) {
+            pushNotification(new Notification('Task Successful', `Task ${t.name} completed.`, 'success', 6000));
+        } else if (exitCode !== null) {
+            pushNotification(new Notification('Task Failed', `Task ${t.name} failed (exit code ${exitCode}).`, 'error', 6000));
+        } else {
+            pushNotification(new Notification('Task Finished', `Task ${t.name} finished.`, 'success', 6000));
+        }
+    } catch {
+        pushNotification(new Notification('Task Failed', `Task ${t?.name ?? ''} failed.`, 'error', 6000));
+    } finally {
+        operating.value = false;
+        live.refreshAll();
+    }
+};
+
+async function confirmStopNow(t: any) {
+    selected.value = t;
+    await loadConfirmDialog();
+    showStopNowPrompt.value = true;
+}
+
+const stopNowYes = async () => {
+    const t = selected.value;
+    if (!t) { showStopNowPrompt.value = false; return; }
+
+    operating.value = true;
+    showStopNowPrompt.value = false;
+
+    pushNotification(new Notification('Task Stopping', `Task ${t?.name ?? ''} is stopping.`, 'info', 6000));
+
+    try {
+        await myScheduler.stopTaskNow(t);
+        pushNotification(new Notification('Task Stopped', `Task ${t?.name ?? ''} has been stopped.`, 'success', 6000));
+    } catch {
+        pushNotification(new Notification('Stop Failed', `Failed to stop task ${t?.name ?? ''}.`, 'error', 6000));
+    } finally {
+        operating.value = false;
+        live.refreshAll();
+    }
+};
+
+async function confirmRemove(t: any) {
+    selected.value = t;
+    await loadConfirmDialog();
+    showRemovePrompt.value = true;
+}
+
+const removeYes = async () => {
+    const t = selected.value;
+    if (!t) { showRemovePrompt.value = false; return; }
+
+    operating.value = true;
+    showRemovePrompt.value = false;
+
+    fetching.value = true;
+    try {
+        await myScheduler.unregisterTaskInstance(t);
+        pushNotification(new Notification('Task Removed', 'Backup task deleted.', 'success', 6000));
+        await myScheduler.loadTaskInstances();
+    } catch (e: any) {
+        pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 6000));
+    } finally {
+        operating.value = false;
+        fetching.value = false;
+    }
+};
 
 async function edit(t: any) {
     draftStore.setDraft(t, 'edit');
@@ -389,22 +541,7 @@ async function edit(t: any) {
 
 }
 
-async function remove(t: any) {
-    const ok = window.confirm(`Delete "${t?.name ?? 'this task'}"? This cannot be undone.`);
-    if (!ok) return;
-    loading.value = true;
-    fetching.value = true;            // keep table visible while we reload
-    try {
-        await myScheduler.unregisterTaskInstance(t);
-        pushNotification(new Notification('Task Removed', 'Backup task deleted.', 'success', 6000));
-        await myScheduler.loadTaskInstances();
-    } catch (e: any) {
-        pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 6000));
-    } finally {
-        loading.value = false;
-        fetching.value = false;
-    }
-}
+
 /**
  * Add New Task
  */
