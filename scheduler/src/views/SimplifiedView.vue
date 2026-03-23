@@ -1,5 +1,5 @@
 <template>
-    <div class="h-full flex flex-col bg-well text-default">
+    <div class="h-full flex flex-col bg-default text-default p-3">
         <!-- Toolbar (same as BackUpListView) -->
         <div class="flex flex-row items-center justify-between font-bold">
             <div class="flex items-center justify-start">
@@ -47,26 +47,30 @@
                         <thead class="text-left sticky top-0 bg-secondary z-10">
                             <tr class="border-b border-default">
                                 <th class="px-3 py-2">Task Name</th>
-                                <th class="px-3 py-2">Type</th>
+                                <th class="px-3 py-2 whitespace-nowrap w-px">Type</th>
                                 <th class="px-3 py-2">Details</th>
-                                <th class="px-3 py-2">Status</th>
-                                <th class="px-3 py-2">Schedule</th>
-                                <th class="px-3 py-2">Last Run</th>
-                                <th class="px-3 py-2">Actions</th>
+                                <th class="px-3 py-2 whitespace-nowrap">Status</th>
+                                <th class="px-3 py-2 whitespace-nowrap w-px">Schedule</th>
+                                <th class="px-3 py-2 whitespace-nowrap">Last Run</th>
+                                <th class="px-3 py-2 whitespace-nowrap w-px">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <template v-for="row in displayRows" :key="row.id">
-                                <tr class="border-b border-default bg-default hover:bg-well text-left">
+                                <tr class="border-b border-default bg-default hover:bg-accent text-left">
                                     <td class="px-3 py-2 align-top">
                                         <div class="font-medium">{{ row.name }}</div>
                                     </td>
-                                    <td class="px-3 py-2 align-top">
-                                        <span
-                                            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
-                                            :title="row.type">
-                                            {{ row.type }} (Scope: {{ row.scope }})
-                                        </span>
+                                    <td class="px-3 py-2 align-top whitespace-nowrap">
+                                        <div class="inline-flex items-center gap-2">
+                                            <span
+                                                class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
+                                                :title="row.type">
+                                                {{ row.type }}
+                                            </span>
+                                            <br/>
+                                            <span class="text-xs text-muted">(Scope: {{ row.scope }})</span>
+                                        </div>
                                     </td>
                                     <td class="px-3 py-2 align-top">
                                         <div class="text-sm leading-5">
@@ -77,19 +81,19 @@
                                                 row.details.extra }}</div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-2 align-top">
+                                    <td class="px-3 py-2 align-top whitespace-nowrap">
                                         <span :class="taskStatusBadgeClass(row.status)">
                                             {{ row.status || '—' }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 align-top">
+                                    <td class="px-3 py-2 align-top whitespace-nowrap">
                                         <span class="text-sm">{{ row.schedule }}</span>
                                     </td>
-                                    <td class="px-3 py-2 align-top">
+                                    <td class="px-3 py-2 align-top whitespace-nowrap">
                                         <span class="text-sm">{{ row.lastRun }}</span>
                                     </td>
-                                    <td class="px-3 py-2 align-top">
-                                        <div class="flex gap-2 flex-wrap items-center">
+                                    <td class="px-3 py-2 align-top whitespace-nowrap">
+                                        <div class="flex flex-nowrap gap-2 items-center min-w-max">
                                             <button v-if="!row.isRunning" class="btn btn-xs btn-primary"
                                                 @click="confirmRunNow(row.raw)" :disabled="loading">Run Now</button>
                                             <button v-else class="btn btn-xs btn-danger"
