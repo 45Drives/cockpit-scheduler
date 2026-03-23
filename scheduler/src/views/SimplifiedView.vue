@@ -1,23 +1,60 @@
 <template>
-    <div class="h-full flex flex-col bg-default text-default p-3">
-        <!-- Toolbar (same as BackUpListView) -->
-        <div class="flex flex-row items-center justify-between font-bold">
-            <div class="flex items-center justify-start">
-                <button class="btn btn-primary text-sm mr-3" @click="openAdd" :disabled="loading">
-                    <PlusIcon class="w-5 h-5 text-white" />
+    <div class="h-full flex flex-col bg-well text-default p-3 gap-3">
+        <!-- Toolbar: selection actions + new/refresh (matches BackUpListView) -->
+        <div class="flex flex-wrap items-center gap-2 min-h-8">
+            <!-- Action buttons (visible when a task is selected) -->
+            <div class="flex flex-wrap items-center gap-2"
+                :class="selectedTask ? '' : 'invisible pointer-events-none'">
+                <span class="text-sm text-muted mr-1">1 selected</span>
+
+                <button class="btn btn-primary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                    :disabled="!selectedTask || selectedRowRunning"
+                    @click="selectedTask && confirmRunNow(selectedTask)">
+                    <PlayIcon class="w-4 h-4" />
+                    Run Now
                 </button>
-                Schedule New Backup
-            </div>
-            <div class="flex items-center justify-end">
-                Refresh Backup List
-                <button class="btn btn-secondary text-sm ml-3" @click="refresh" :disabled="loading">
-                    <ArrowPathIcon class="w-5 h-5 text-white" />
+
+                <button v-if="selectedRowRunning"
+                    class="btn btn-danger text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                    @click="selectedTask && confirmStopNow(selectedTask)">
+                    <StopIcon class="w-4 h-4" />
+                    Stop
+                </button>
+
+                <button class="btn btn-secondary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                    :disabled="!selectedTask" @click="selectedTask && viewLogs(selectedTask)">
+                    <DocumentTextIcon class="w-4 h-4" />
+                    Logs
+                </button>
+
+                <button class="btn btn-secondary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                    :disabled="!selectedTask" @click="selectedTask && edit(selectedTask)">
+                    <PencilSquareIcon class="w-4 h-4" />
+                    Edit
+                </button>
+
+                <button class="btn btn-danger text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                    :disabled="!selectedTask" @click="selectedTask && confirmRemove(selectedTask)">
+                    <TrashIcon class="w-4 h-4" />
+                    Delete
                 </button>
             </div>
+
+            <div class="flex-1" />
+
+            <button class="btn btn-primary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none" @click="openAdd" :disabled="loading">
+                <PlusIcon class="w-4 h-4" />
+                New Backup
+            </button>
+
+            <button class="btn btn-secondary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none" @click="refresh" :disabled="loading">
+                <ArrowPathIcon class="w-4 h-4" />
+                Refresh
+            </button>
         </div>
 
-        <!-- Content area fills remaining height; one scroll container -->
-        <div class="flex-1 min-h-0 mt-2 relative">
+        <!-- Content area fills remaining height -->
+        <div class="flex-1 min-h-0 relative">
             <!-- initial load -->
             <div v-if="showInitialSpinner" class="absolute inset-0 flex items-center justify-center">
                 <CustomLoadingSpinner :width="'w-24'" :height="'h-24'" :baseColor="'text-gray-200'"
@@ -25,11 +62,10 @@
             </div>
 
             <!-- empty state -->
-            <div v-else-if="displayRows.length === 0" class="h-full flex items-center justify-center">
-                <div class="text-center">
-                    <h2 class="text-default">No Remote Backup Tasks Found</h2>
-                    <p class="text-muted mt-1">Click “Add New Task” to create one.</p>
-                </div>
+            <div v-else-if="displayRows.length === 0" class="h-full flex flex-col items-center justify-center text-center py-12 gap-3">
+                <CircleStackIcon class="w-12 h-12 text-muted opacity-30" />
+                <span class="text-muted text-lg">No remote backup tasks found</span>
+                <p class="text-sm text-muted">Click <b>New Backup</b> above to create one.</p>
             </div>
 
             <!-- table -->
@@ -41,91 +77,90 @@
                         :fillColor="'fill-gray-500'" />
                 </div>
 
-                <!-- match BackUpListView: border, rounded, sticky header, single scroll -->
-                <div class="h-full overflow-auto border border-default rounded-md">
-                    <table class="min-w-full text-sm">
-                        <thead class="text-left sticky top-0 bg-secondary z-10">
+                <div class="h-full overflow-auto">
+                    <table class="min-w-full text-sm text-left table-fixed border border-default rounded-md" style="table-layout: fixed;">
+                        <thead class="sticky top-0 bg-secondary z-10">
                             <tr class="border-b border-default">
-                                <th class="px-3 py-2">Task Name</th>
-                                <th class="px-3 py-2 whitespace-nowrap w-px">Type</th>
-                                <th class="px-3 py-2">Details</th>
-                                <th class="px-3 py-2 whitespace-nowrap">Status</th>
-                                <th class="px-3 py-2 whitespace-nowrap w-px">Schedule</th>
-                                <th class="px-3 py-2 whitespace-nowrap">Last Run</th>
-                                <th class="px-3 py-2 whitespace-nowrap w-px">Actions</th>
+                                <th class="px-3 py-2" style="width: 42px;">
+                                    <span class="sr-only">Select</span>
+                                </th>
+                                <th class="px-3 py-2" style="width: 180px;">Name</th>
+                                <th class="px-3 py-2" style="width: 120px;">Type</th>
+                                <th class="px-3 py-2" style="width: 360px;">Details</th>
+                                <th class="px-3 py-2" style="width: 150px;">Schedule</th>
+                                <th class="px-3 py-2" style="width: 140px;">Status</th>
+                                <th class="px-3 py-2" style="width: 190px;">Last Run</th>
                             </tr>
                         </thead>
                         <tbody>
                             <template v-for="row in displayRows" :key="row.id">
-                                <tr class="border-b border-default bg-default hover:bg-accent text-left">
-                                    <td class="px-3 py-2 align-top">
-                                        <div class="font-medium">{{ row.name }}</div>
+                                <tr class="border-b border-default text-left cursor-pointer select-none transition-colors row-hover"
+                                    :class="isSelected(row.raw) ? 'row-selected' : 'bg-default'"
+                                    @click="toggleSelection(row.raw)">
+                                    <td class="px-3 py-2">
+                                        <input
+                                            type="radio"
+                                            name="remote-backup-selection"
+                                            class="input-radio pointer-events-none"
+                                            :checked="isSelected(row.raw)"
+                                            :aria-label="`Select ${row.name}`"
+                                        />
                                     </td>
-                                    <td class="px-3 py-2 align-top whitespace-nowrap">
-                                        <div class="inline-flex items-center gap-2">
-                                            <span
-                                                class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
-                                                :title="row.type">
-                                                {{ row.type }}
-                                            </span>
-                                            <br/>
-                                            <span class="text-xs text-muted">(Scope: {{ row.scope }})</span>
-                                        </div>
+                                    <td class="px-3 py-2 truncate" :title="row.name">{{ row.name }}</td>
+                                    <td class="px-3 py-2 truncate">
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
+                                            :title="row.type">
+                                            {{ row.type }}
+                                        </span>
                                     </td>
-                                    <td class="px-3 py-2 align-top">
-                                        <div class="text-sm leading-5">
-                                            <div><span class="text-muted">Source:</span> {{ row.details.source }}</div>
-                                            <div><span class="text-muted">Destination:</span> {{ row.details.destination }}
+                                    <td class="px-3 py-2">
+                                        <div class="space-y-1 min-w-0">
+                                            <div class="truncate" :title="row.details.source">
+                                                <span class="text-muted mr-2">Source</span>{{ row.details.source }}
                                             </div>
-                                            <div v-if="row.details.extra"><span class="text-muted">Info:</span> {{
-                                                row.details.extra }}</div>
+                                            <div class="truncate" :title="row.details.destination">
+                                                <span class="text-muted mr-2">Destination</span>{{ row.details.destination }}
+                                            </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-2 align-top whitespace-nowrap">
-                                        <span :class="taskStatusBadgeClass(row.status)">
+                                    <td class="px-3 py-2 truncate" :title="row.schedule">{{ row.schedule }}</td>
+                                    <td class="px-3 py-2">
+                                        <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
+                                            :class="taskStatusBadgeClass(row.status)">
+                                            <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(row.status)" />
                                             {{ row.status || '—' }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 align-top whitespace-nowrap">
-                                        <span class="text-sm">{{ row.schedule }}</span>
-                                    </td>
-                                    <td class="px-3 py-2 align-top whitespace-nowrap">
-                                        <span class="text-sm">{{ row.lastRun }}</span>
-                                    </td>
-                                    <td class="px-3 py-2 align-top whitespace-nowrap">
-                                        <div class="flex flex-nowrap gap-2 items-center min-w-max">
-                                            <button v-if="!row.isRunning" class="btn btn-xs btn-primary"
-                                                @click="confirmRunNow(row.raw)" :disabled="loading">Run Now</button>
-                                            <button v-else class="btn btn-xs btn-danger"
-                                                @click="confirmStopNow(row.raw)" :disabled="loading">Stop</button>
-                                            <button class="btn btn-xs btn-secondary" @click="viewLogs(row.raw)"
-                                                :disabled="loading">View Logs</button>
-                                            <button class="btn btn-xs btn-secondary" @click="edit(row.raw)"
-                                                :disabled="loading">Edit</button>
-                                            <button class="btn btn-xs btn-danger" @click="confirmRemove(row.raw)"
-                                                :disabled="loading">Delete</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <!-- Progress bar row beneath the task -->
-                                <tr v-if="row.isRunning" class="bg-default">
-                                    <td colspan="7" class="px-3 py-1">
-                                        <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded overflow-hidden">
-                                            <div v-if="row.progress !== null"
-                                                class="h-2 rounded bg-success transition-all"
-                                                :style="{ width: Math.min(row.progress, 100) + '%' }"></div>
-                                            <div v-else
-                                                class="h-2 rounded w-full animate-pulse bg-slate-400 dark:bg-slate-500"></div>
-                                        </div>
-                                        <div class="text-xs mt-1 text-muted">
-                                            {{ row.progress !== null ? Math.round(row.progress) + '%' : 'Running…' }}
-                                        </div>
-                                    </td>
+                                    <td class="px-3 py-2 truncate" :title="row.lastRun">{{ row.lastRun }}</td>
                                 </tr>
                             </template>
                         </tbody>
                     </table>
-                </div> <!-- /bordered scroll box -->
+                </div>
+            </div>
+        </div>
+
+        <div v-if="runningRows.length > 0"
+            class="bg-accent rounded-lg border border-default shrink-0 flex flex-col">
+            <div class="px-3 pt-3 pb-1.5 text-xs font-semibold text-muted uppercase tracking-wide">
+                {{ runningRows.length }} backup{{ runningRows.length > 1 ? 's' : '' }} in progress
+            </div>
+            <div class="overflow-y-auto max-h-[220px] px-3 pb-3 space-y-2">
+                <div v-for="row in runningRows" :key="`progress-${row.id}`"
+                    class="flex items-center gap-3 py-1.5">
+                    <span class="text-sm font-medium text-default truncate min-w-[120px] max-w-[240px]"
+                        :title="row.name">{{ row.name }}</span>
+                    <div class="flex-1 h-2.5 bg-default rounded-full overflow-hidden">
+                        <div v-if="row.progress != null"
+                            class="h-full bg-primary rounded-full transition-all duration-300"
+                            :style="{ width: Math.min(row.progress, 100) + '%' }" />
+                        <div v-else
+                            class="h-full bg-primary rounded-full animate-pulse w-full" />
+                    </div>
+                    <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
+                        {{ row.progress != null ? Math.round(row.progress) + '%' : 'Running…' }}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
@@ -156,7 +191,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onActivated, onUnmounted, onMounted, watch, provide } from 'vue';
-import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, PlusIcon, PlayIcon, StopIcon, DocumentTextIcon, PencilSquareIcon, TrashIcon, CircleStackIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, logInjectionKey } from '../keys/injection-keys';
@@ -174,6 +209,35 @@ const draftStore = useTaskDraftStore();
 const search = ref('');
 const selected = ref<any>(null);
 const myTaskLog = injectWithCheck(logInjectionKey, 'log not provided!');
+
+/* ── Single-select (matches local BackUpListView pattern) ── */
+const selectedTask = ref<any>(null);
+
+function toggleSelection(t: any) {
+    const id = t?.id ?? t?.uuid ?? t?.name;
+    const curId = selectedTask.value?.id ?? selectedTask.value?.uuid ?? selectedTask.value?.name;
+    selectedTask.value = id === curId ? null : t;
+}
+
+function isSelected(t: any) {
+    if (!selectedTask.value) return false;
+    const id = t?.id ?? t?.uuid ?? t?.name;
+    const curId = selectedTask.value?.id ?? selectedTask.value?.uuid ?? selectedTask.value?.name;
+    return id === curId;
+}
+
+const selectedRowRunning = computed(() => {
+    if (!selectedTask.value) return false;
+    return live.isRunningNow(selectedTask.value);
+});
+
+function statusDotClass(status: string) {
+    const s = (status ?? '').toLowerCase();
+    if (s.includes('running') || s.includes('in progress')) return 'bg-blue-500';
+    if (s.includes('fail') || s.includes('error')) return 'bg-red-500';
+    if (s.includes('success') || s.includes('complete') || s.includes('active')) return 'bg-green-500';
+    return 'bg-gray-400';
+}
 
 /* ── View Logs modal ──────────────────────────────────── */
 const showLogView = ref(false);
@@ -411,6 +475,7 @@ const displayRows = computed(() => {
     return rows.value;
 });
 
+const runningRows = computed(() => displayRows.value.filter((row: any) => row.isRunning));
 
 /**
  * Actions
@@ -556,3 +621,22 @@ async function openAdd() {
     router.push({ name: 'SimpleAddTask', query: { session } });
 }
 </script>
+
+
+<style scoped>
+tbody tr.row-selected {
+    background-color: var(--row-selected-bg) !important;
+    outline: 2px solid var(--btn-primary-border);
+    outline-offset: -2px;
+    border-radius: 0.375rem;
+}
+
+tbody tr.row-selected > td {
+    background-color: inherit;
+}
+
+tbody tr.row-hover:hover {
+    background-color: var(--row-hover-bg);
+    border-radius: 0.375rem;
+}
+</style>
