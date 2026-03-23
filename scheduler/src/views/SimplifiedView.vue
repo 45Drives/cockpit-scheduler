@@ -44,7 +44,7 @@
                 <!-- match BackUpListView: border, rounded, sticky header, single scroll -->
                 <div class="h-full overflow-auto border border-default rounded-md">
                     <table class="min-w-full text-sm">
-                        <thead class="text-left sticky top-0 bg-accent z-10">
+                        <thead class="text-left sticky top-0 bg-secondary z-10">
                             <tr class="border-b border-default">
                                 <th class="px-3 py-2">Task Name</th>
                                 <th class="px-3 py-2">Type</th>
