@@ -117,6 +117,12 @@ export function useLiveTaskStatus(
             ) {
                 statusMap.value[id] = schedulerStatusText;
                 lastRunMap.value[id] = 'Running now...';
+                // Seed progress to 0 so the bar starts empty instead of
+                // showing a misleading full-width indeterminate bar while
+                // waiting for the first progress poll.
+                if (progressMap.value[id] == null) {
+                    progressMap.value[id] = 0;
+                }
                 return;
             }
 
