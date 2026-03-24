@@ -486,27 +486,31 @@ function oAuthBtn(p: CloudSyncProvider) {
     // Listen for the token — works for both direct popup and Electron relay
     const handler = (evt: MessageEvent) => {
         const data = evt.data || {}
-        // Accept typed envelope from Electron relay
-        if (data.type === '45d-oauth-response' && data.accessToken) {
-            const token = { access_token: data.accessToken, refresh_token: data.refreshToken, expiry: data.expiry }
-            providerValues.token = JSON.stringify(token)
+
+        function applyToken(tokenStr: string) {
+            if (panel.value === 'edit') {
+                edit.params.token = tokenStr
+            } else {
+                providerValues.token = tokenStr
+            }
             oAuthenticated.value = true
             oauthFallbackUrl.value = ''
             pushNotification(new Notification('Authenticated', `Connected to ${p.name}`, 'success', 6000))
             window.removeEventListener('message', handler)
             activeOAuthHandler = null
+        }
+
+        // Accept typed envelope from Electron relay
+        if (data.type === '45d-oauth-response' && data.accessToken) {
+            const token = { access_token: data.accessToken, refresh_token: data.refreshToken, expiry: data.expiry }
+            applyToken(JSON.stringify(token))
             return
         }
         // Accept direct postMessage from popup (standalone Cockpit in browser)
         const { accessToken, refreshToken, expiry, userId } = data
         if (accessToken && refreshToken && userId) {
             const token = { access_token: accessToken, refresh_token: refreshToken, expiry }
-            providerValues.token = JSON.stringify(token)
-            oAuthenticated.value = true
-            oauthFallbackUrl.value = ''
-            pushNotification(new Notification('Authenticated', `Connected to ${p.name}`, 'success', 6000))
-            window.removeEventListener('message', handler)
-            activeOAuthHandler = null
+            applyToken(JSON.stringify(token))
         }
     }
     window.addEventListener('message', handler)

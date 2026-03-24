@@ -53,6 +53,13 @@ rm -f "$TEMPLATE"
 %dir /etc/45drives/houston
 %config(noreplace) /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
 
+%post
+# Migrate existing task service files to pick up new ExecStart logic
+MIGRATE_SCRIPT="/opt/45drives/houston/scheduler/scripts/migrate-task-services.py"
+if command -v python3 >/dev/null 2>&1 && [ -f "$MIGRATE_SCRIPT" ]; then
+    python3 "$MIGRATE_SCRIPT" || true
+fi
+
 %postun
 # $1 == 0 when the package is being erased (not upgraded)
 if [ "$1" -eq 0 ]; then

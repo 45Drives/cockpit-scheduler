@@ -36,20 +36,19 @@ def parse_env_file(parameter_env_file_path):
 
 def generate_exec_start(templateName, parameters, scriptPath):
     base_python_command = f"python3 -u {scriptPath}"
+    custom_task_wrapper = "python3 -u /opt/45drives/houston/scheduler/scripts/run-custom-task.py"
     
-    # if templateName == 'ScrubTask':
-    #     return('zpool scrub ' + parameters['scrubConfig_pool_pool'])   
-    # elif(templateName=="CustomTask"):
     if(templateName=="CustomTask"):
         file_path = parameters.get('customTaskConfig_filePath', '')
         if not file_path:
-            return parameters.get('customTaskConfig_command', 'No command provided')  # Return command or a message if not provided
+            command = parameters.get('customTaskConfig_command', 'No command provided')
+            return f"{custom_task_wrapper} {command}"
         if file_path.endswith('.py'):
-            return f"python3 -u {file_path}"  # For Python scripts
+            return f"{custom_task_wrapper} python3 -u {file_path}"
         elif file_path.endswith('.sh'):
-            return f"bash {file_path}"  # For Bash scripts
+            return f"{custom_task_wrapper} bash {file_path}"
         elif file_path.endswith('.bash'):
-            return f"bash {file_path}"  # For Bash scripts (same command as .sh)
+            return f"{custom_task_wrapper} bash {file_path}"
         else:
             raise ValueError("Unsupported file type: Only .py and .sh files are allowed.")
         

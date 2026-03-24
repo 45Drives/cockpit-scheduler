@@ -14,8 +14,23 @@ PCT_RE = re.compile(r"(\d+(?:\.\d+)?)%")
 def run(cmd):
     return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=False)
 
+def is_scrub_in_progress(pool: str) -> bool:
+    """Check if a scrub is already running on the pool."""
+    p = run(["zpool", "status", pool])
+    if p.returncode != 0:
+        return False
+    for line in p.stdout.splitlines():
+        m = SCAN_RE.search(line)
+        if m and "in progress" in m.group("state").strip().lower():
+            return True
+    return False
+
 def start_scrub(pool: str):
     notifier.notify(f"STATUS=Starting scrub on pool {pool}…")
+    if is_scrub_in_progress(pool):
+        print(f"Scrub already in progress on pool {pool}, monitoring existing scrub")
+        notifier.notify(f"STATUS=Scrub already in progress on {pool}, monitoring…")
+        return
     p = run(["zpool", "scrub", pool])
     if p.returncode != 0:
         msg = p.stderr.strip() or p.stdout.strip() or "zpool scrub failed"
