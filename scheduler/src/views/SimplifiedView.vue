@@ -1,55 +1,54 @@
 <template>
     <div class="h-full flex flex-col bg-well text-default p-3 gap-3">
         <!-- Toolbar: selection actions + new/refresh (matches BackUpListView) -->
-        <div class="flex flex-wrap items-center gap-2 min-h-8">
+        <div class="flex flex-wrap items-center gap-2 min-h-9">
             <!-- Action buttons (visible when a task is selected) -->
             <div class="flex flex-wrap items-center gap-2"
                 :class="selectedTask ? '' : 'invisible pointer-events-none'">
-                <span class="text-sm text-muted mr-1">1 selected</span>
+                <span class="text-xs text-gray-500 mr-1">1 selected</span>
 
-                <button class="btn btn-primary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
                     :disabled="!selectedTask || selectedRowRunning"
                     @click="selectedTask && confirmRunNow(selectedTask)">
                     <PlayIcon class="w-4 h-4" />
-                    Run Now
+                    <template v-if="!selectedRowRunning">Run Now</template>
+                    <template v-else>Running…</template>
                 </button>
 
                 <button v-if="selectedRowRunning"
-                    class="btn btn-danger text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                    class="btn btn-sm btn-danger h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
                     @click="selectedTask && confirmStopNow(selectedTask)">
                     <StopIcon class="w-4 h-4" />
                     Stop
                 </button>
 
-                <button class="btn btn-secondary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
                     :disabled="!selectedTask" @click="selectedTask && viewLogs(selectedTask)">
                     <DocumentTextIcon class="w-4 h-4" />
                     Logs
                 </button>
 
-                <button class="btn btn-secondary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
                     :disabled="!selectedTask" @click="selectedTask && edit(selectedTask)">
                     <PencilSquareIcon class="w-4 h-4" />
                     Edit
                 </button>
 
-                <button class="btn btn-danger text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none"
+                <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                     :disabled="!selectedTask" @click="selectedTask && confirmRemove(selectedTask)">
                     <TrashIcon class="w-4 h-4" />
-                    Delete
                 </button>
             </div>
 
             <div class="flex-1" />
 
-            <button class="btn btn-primary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none" @click="openAdd" :disabled="loading">
+            <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5" @click="openAdd" :disabled="loading">
                 <PlusIcon class="w-4 h-4" />
                 New Backup
             </button>
 
-            <button class="btn btn-secondary text-sm h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 leading-none" @click="refresh" :disabled="loading">
+            <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="Refresh" @click="refresh" :disabled="loading">
                 <ArrowPathIcon class="w-4 h-4" />
-                Refresh
             </button>
         </div>
 
@@ -69,7 +68,7 @@
             </div>
 
             <!-- table -->
-            <div v-else class="h-full overflow-hidden">
+            <div v-else class="h-full overflow-hidden flex flex-col">
                 <!-- busy overlay while keeping table visible -->
                 <div v-if="showOverlaySpinner"
                     class="absolute inset-0 z-[100] flex items-center justify-center bg-well/60 backdrop-blur-sm">
@@ -77,69 +76,82 @@
                         :fillColor="'fill-gray-500'" />
                 </div>
 
-                <div class="h-full overflow-auto">
-                    <table class="min-w-full text-sm text-left table-fixed border border-default rounded-md" style="table-layout: fixed;">
-                        <thead class="sticky top-0 bg-secondary z-10">
-                            <tr class="border-b border-default">
-                                <th class="px-3 py-2" style="width: 42px;">
+                <div class="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-700 flex-1 flex flex-col min-h-0">
+                    <div class="flex-1 overflow-y-auto">
+                    <table class="min-w-full text-sm text-left table-fixed" style="table-layout: fixed;">
+                        <thead class="sticky top-0 bg-neutral-50 dark:bg-neutral-850 z-10">
+                            <tr class="border-b border-neutral-200 dark:border-neutral-700">
+                                <th class="px-3 py-2 table-header-cell" style="width: 42px;">
                                     <span class="sr-only">Select</span>
                                 </th>
-                                <th class="px-3 py-2" style="width: 180px;">Name</th>
-                                <th class="px-3 py-2" style="width: 120px;">Type</th>
-                                <th class="px-3 py-2" style="width: 360px;">Details</th>
-                                <th class="px-3 py-2" style="width: 150px;">Schedule</th>
-                                <th class="px-3 py-2" style="width: 140px;">Status</th>
-                                <th class="px-3 py-2" style="width: 190px;">Last Run</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 180px;">Name</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 120px;">Type</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 360px;">Details</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 150px;">Schedule</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 140px;">Status</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 190px;">Last Run</th>
                             </tr>
                         </thead>
                         <tbody>
                             <template v-for="row in displayRows" :key="row.id">
-                                <tr class="border-b border-default text-left cursor-pointer select-none transition-colors row-hover"
-                                    :class="isSelected(row.raw) ? 'row-selected' : 'bg-default'"
+                                <tr class="border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer select-none transition-colors border-l-2"
+                                    :class="isSelected(row.raw)
+                                        ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400'
+                                        : 'border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
                                     @click="toggleSelection(row.raw)">
-                                    <td class="px-3 py-2">
+                                    <td class="px-3 py-1.5" @click.stop>
                                         <input
                                             type="radio"
                                             name="remote-backup-selection"
                                             class="input-radio pointer-events-none"
                                             :checked="isSelected(row.raw)"
+                                            @change="toggleSelection(row.raw)"
                                             :aria-label="`Select ${row.name}`"
                                         />
                                     </td>
-                                    <td class="px-3 py-2 truncate" :title="row.name">{{ row.name }}</td>
-                                    <td class="px-3 py-2 truncate">
-                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-default/10"
+                                    <td class="px-3 py-1.5 truncate font-medium" :title="row.name">{{ row.name }}</td>
+                                    <td class="px-3 py-1.5 truncate text-gray-500">
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-700/50 text-gray-600 dark:text-gray-300"
                                             :title="row.type">
                                             {{ row.type }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2">
+                                    <td class="px-3 py-1.5">
                                         <div class="space-y-1 min-w-0">
-                                            <div class="truncate" :title="row.details.source">
+                                            <div class="truncate text-gray-500" :title="row.details.source">
                                                 <span class="text-muted mr-2">Source</span>{{ row.details.source }}
                                             </div>
-                                            <div class="truncate" :title="row.details.destination">
-                                                <span class="text-muted mr-2">Destination</span>{{ row.details.destination }}
+                                            <div class="truncate text-gray-500" :title="row.details.destination">
+                                                <span class="text-muted mr-2">Dest</span>{{ row.details.destination }}
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-2 truncate" :title="row.schedule">{{ row.schedule }}</td>
-                                    <td class="px-3 py-2">
+                                    <td class="px-3 py-1.5 truncate capitalize text-gray-500" :title="row.schedule">{{ row.schedule }}</td>
+                                    <td class="px-3 py-1.5">
                                         <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
                                             :class="taskStatusBadgeClass(row.status)">
                                             <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(row.status)" />
                                             {{ row.status || '—' }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 truncate" :title="row.lastRun">{{ row.lastRun }}</td>
+                                    <td class="px-3 py-1.5 truncate text-gray-500" :title="row.lastRun">{{ row.lastRun }}</td>
                                 </tr>
                             </template>
                         </tbody>
                     </table>
+                    </div>
+                    <!-- Summary footer -->
+                    <div class="table-summary-footer shrink-0">
+                        {{ displayRows.length }} task{{ displayRows.length !== 1 ? 's' : '' }}
+                        <template v-if="runningRows.length > 0">
+                            · <span class="text-blue-500">{{ runningRows.length }} running</span>
+                        </template>
+                    </div>
                 </div>
             </div>
         </div>
 
+        <!-- Running tasks progress strip -->
         <div v-if="runningRows.length > 0"
             class="bg-accent rounded-lg border border-default shrink-0 flex flex-col">
             <div class="px-3 pt-3 pb-1.5 text-xs font-semibold text-muted uppercase tracking-wide">
@@ -624,19 +636,5 @@ async function openAdd() {
 
 
 <style scoped>
-tbody tr.row-selected {
-    background-color: var(--row-selected-bg) !important;
-    outline: 2px solid var(--btn-primary-border);
-    outline-offset: -2px;
-    border-radius: 0.375rem;
-}
-
-tbody tr.row-selected > td {
-    background-color: inherit;
-}
-
-tbody tr.row-hover:hover {
-    background-color: var(--row-hover-bg);
-    border-radius: 0.375rem;
-}
+/* No custom row styles needed — selection/hover handled via Tailwind classes */
 </style>
