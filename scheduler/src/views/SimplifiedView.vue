@@ -293,10 +293,10 @@ onMounted(boot);
 onActivated(boot);
 onUnmounted(() => live.stop());
 
-// Only remote backups (Rsync Task + Cloud Sync Task)
+// Only remote backups (Rsync Task + Cloud Sync Task + ZFS Replication Task)
 const remoteTasks = computed(() =>
     (taskInstances.value ?? []).filter(
-        (t: any) => t?.template?.name === 'Rsync Task' || t?.template?.name === 'Cloud Sync Task'
+        (t: any) => t?.template?.name === 'Rsync Task' || t?.template?.name === 'Cloud Sync Task' || t?.template?.name === 'ZFS Replication Task'
     )
 );
 const live = useLiveTaskStatus(remoteTasks, myScheduler, myTaskLog, { intervalMs: 1500 });
@@ -320,6 +320,9 @@ function isRsync(t: any) {
 }
 function isCloud(t: any) {
     return t?.template?.name === 'Cloud Sync Task';
+}
+function isZfsRep(t: any) {
+    return t?.template?.name === 'ZFS Replication Task';
 }
 
 function getSource(t: any) {
@@ -365,10 +368,7 @@ function getSchedule(t: any) {
 function typeLabel(t: any) {
     if (isRsync(t)) return 'Server-to-Server';
     if (isCloud(t)) return 'Cloud Backup';
-    // Future types (left here for easy extension):
-    // if (t?.template?.name === 'ZFS Replication Task') return 'ZFS → ZFS Backup';
-    // if (t?.template?.name === 'Auto Snapshot Task') return 'Automatic Snapshot';
-    // if (t?.template?.name === 'ZFS Scrub Task') return 'ZFS Scrub';
+    if (isZfsRep(t)) return 'ZFS to ZFS Backup';
     return '—';
 }
 
@@ -402,6 +402,20 @@ function formatCloudDestination(t: any) {
 
     return `${remote}${isBlank(path) ? '' : `:${path}`}`;
 }
+function getZfsDataset(t: any, paramKey: string) {
+    const config = paramsOf(t);
+    const ds = config.find((x: any) => x.key === paramKey);
+    if (!ds) return '—';
+    const pool = ds.children?.find((c: any) => c.key === 'pool')?.value ?? '';
+    const dataset = ds.children?.find((c: any) => c.key === 'dataset')?.value ?? '';
+    const host = ds.children?.find((c: any) => c.key === 'host')?.value ?? '';
+    const user = ds.children?.find((c: any) => c.key === 'user')?.value ?? '';
+    const localPart = dataset ? `${pool}/${dataset}` : pool || '—';
+    if (!host) return localPart;
+    const userPart = user ? `${user}@` : '';
+    return `${userPart}${host}:${localPart}`;
+}
+
 function detailsFor(t: any) {
     const source = getSource(t);
     if (isRsync(t)) {
@@ -414,6 +428,12 @@ function detailsFor(t: any) {
         return {
             source,
             destination: formatCloudDestination(t),
+            extra: undefined,
+        };
+    } else if (isZfsRep(t)) {
+        return {
+            source: getZfsDataset(t, 'sourceDataset'),
+            destination: getZfsDataset(t, 'destDataset'),
             extra: undefined,
         };
     }

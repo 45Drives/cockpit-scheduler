@@ -46,6 +46,15 @@
                             </select>
                         </div>
 
+                        <!-- ZFS Replication info blurb -->
+                        <div v-if="selectedTemplate?.name === 'ZFS Replication Task'" class="mb-2 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3">
+                            <p class="text-sm text-blue-700 dark:text-blue-300">
+                                <strong>ZFS to ZFS Backup</strong> sends incremental block-level snapshots between servers.
+                                This is more efficient than file-level sync and preserves exact dataset state including
+                                permissions, timestamps, and metadata. Recommended when both source and destination use ZFS.
+                            </p>
+                        </div>
+
                         <!-- Parameters -->
                         <div v-if="selectedTemplate" class="min-h-0">
                             <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
@@ -93,7 +102,7 @@ import {
 import type { TaskInstance as TaskInstanceType, TaskTemplate as TaskTemplateType } from '../../models/Tasks';
 import type { TaskSchedule as UITaskSchedule } from '@45drives/houston-common-lib';
 import { useTaskDraftStore } from '../../stores/taskDraft';
-import { injectWithCheck } from '../../composables/utility';
+import { injectWithCheck, getPoolData } from '../../composables/utility';
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
 defineOptions({ name: 'SimpleTaskForm' });
@@ -160,16 +169,28 @@ const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, 'taskTemplates 
 const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
 const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
 
-const simpleAllowed = ['Rsync Task', 'Cloud Sync Task'];
+const simpleAllowed = ['Rsync Task', 'Cloud Sync Task', 'ZFS Replication Task'];
+const localZfsAvailable = ref(false);
+
+onMounted(async () => {
+    try {
+        const pools = await getPoolData();
+        localZfsAvailable.value = Array.isArray(pools) && pools.length > 0;
+    } catch {
+        localZfsAvailable.value = false;
+    }
+});
+
 const allowedTemplates = computed(() => {
     const orderMap = Object.fromEntries(simpleAllowed.map((n, i) => [n, i]));
     return taskTemplates
         .filter((t: any) => simpleAllowed.includes(t.name))
+        .filter((t: any) => t.name !== 'ZFS Replication Task' || localZfsAvailable.value)
         .sort((a: any, b: any) => orderMap[a.name] - orderMap[b.name]);
 });
 
 const nameOverrides: Record<string, string> = {
-    'ZFS Replication Task': 'ZFS → ZFS Backup',
+    'ZFS Replication Task': 'ZFS to ZFS Backup',
     'Automated Snapshot Task': 'Automatic Snapshots',
     'Scrub Task': 'ZFS Scrub',
     'Rsync Task': 'Server-to-Server Backup',

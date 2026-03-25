@@ -1,4 +1,5 @@
 <template>
+    <!-- Loading spinner (shared) -->
     <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <div
             class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
@@ -6,6 +7,156 @@
                 :fillColor="'fill-gray-500'" />
         </div>
     </div>
+
+    <!-- ═══ SIMPLE MODE ═══ -->
+    <div v-else-if="props.simple" class="space-y-4 my-2">
+
+        <!-- Source: Which dataset to back up -->
+        <SimpleFormCard title="Which dataset do you want to back up?"
+            description="Pick the ZFS pool and dataset on this server that you want to protect.">
+
+            <label class="block text-sm mt-1 text-default">Pool</label>
+            <div v-if="loadingSourcePools" class="mt-1 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Loading pools…</span>
+            </div>
+            <select v-else v-model="sourcePool" :class="[
+                'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
+                sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]">
+                <option value="">Select a pool</option>
+                <option v-for="pool in sourcePools" :key="pool" :value="pool">{{ pool }}</option>
+            </select>
+
+            <label class="block text-sm mt-3 text-default">Dataset</label>
+            <div v-if="loadingSourceDatasets" class="mt-1 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Loading datasets…</span>
+            </div>
+            <select v-else v-model="sourceDataset" :disabled="!sourcePool" :class="[
+                'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
+                sourceDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]">
+                <option value="">{{ sourcePool ? 'Select a dataset' : 'Pick a pool first' }}</option>
+                <option v-for="ds in sourceDatasets" :key="ds" :value="ds">{{ ds }}</option>
+            </select>
+
+            <template #footer>
+                <p class="text-[11px] text-muted">
+                    This is the data you want to send <strong>from</strong> this server.
+                </p>
+            </template>
+        </SimpleFormCard>
+
+        <!-- Destination: Where to send it -->
+        <SimpleFormCard title="Where should the backup go?"
+            description="Enter the remote server details and pick the destination pool and dataset.">
+            <template #header-right>
+                <button v-if="!testingSSH" @click="handleTestSSH" :disabled="!destHost" class="btn btn-secondary h-fit">
+                    Test SSH
+                </button>
+                <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
+            </template>
+
+            <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="block text-sm text-default">Server address</label>
+                    <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
+                        'mt-1 block w-full input-textlike text-sm bg-default text-default',
+                        destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                    ]" placeholder="e.g. 10.0.0.5 or backup.local" />
+                </div>
+                <div>
+                    <label class="block text-sm text-default">User</label>
+                    <input type="text" v-model="destUser"
+                        class="mt-1 block w-full input-textlike text-sm bg-default text-default"
+                        placeholder="root (default)" :disabled="!destHost" />
+                </div>
+                <div>
+                    <label class="block text-sm text-default">SSH Port</label>
+                    <input type="number" v-model="destPort" min="1" max="65535"
+                        class="mt-1 block w-full input-textlike text-sm bg-default text-default"
+                        placeholder="22" :disabled="!destHost" />
+                </div>
+            </div>
+
+            <label class="block text-sm mt-3 text-default">Destination Pool</label>
+            <div v-if="loadingDestPools" class="mt-1 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Loading remote pools…</span>
+            </div>
+            <select v-else v-model="destPool" :disabled="!destHost" :class="[
+                'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
+                destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]">
+                <option value="">{{ destHost ? 'Select a pool' : 'Enter server address first' }}</option>
+                <option v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
+            </select>
+
+            <label class="block text-sm mt-3 text-default">Destination Dataset</label>
+            <div v-if="loadingDestDatasets" class="mt-1 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Loading remote datasets…</span>
+            </div>
+            <div v-else>
+                <div class="flex items-center gap-2 mb-1">
+                    <label class="text-xs text-muted">Use existing dataset?</label>
+                    <input type="checkbox" v-model="useExistingDest" class="h-3.5 w-3.5 rounded" />
+                </div>
+                <select v-if="useExistingDest" v-model="destDataset" :disabled="!destPool" :class="[
+                    'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
+                    destDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]">
+                    <option value="">{{ destPool ? 'Select a dataset' : 'Pick a pool first' }}</option>
+                    <option v-for="ds in destDatasets" :key="ds" :value="ds">{{ ds }}</option>
+                </select>
+                <input v-else type="text" v-model="destDataset" :disabled="!destPool" :class="[
+                    'mt-1 block w-full input-textlike text-sm bg-default text-default',
+                    customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" placeholder="New dataset name (created on first run)" />
+            </div>
+
+            <template #footer>
+                <p class="text-[11px] text-muted">
+                    We'll use SSH to send ZFS snapshots to this server. Make sure passwordless SSH is configured.
+                </p>
+            </template>
+        </SimpleFormCard>
+
+        <!-- Snapshot retention -->
+        <SimpleFormCard title="How long should snapshots be kept?"
+            description="Snapshots are created each time the backup runs. Old snapshots are automatically cleaned up after this period. Leave at 0 to keep all snapshots.">
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-default">On this server (source)</label>
+                    <div class="flex gap-2 mt-1">
+                        <input type="number" min="0" v-model="srcRetentionTime"
+                            class="block w-20 input-textlike text-sm bg-default text-default" placeholder="0" />
+                        <select v-model="srcRetentionUnit"
+                            class="block flex-1 input-textlike text-sm bg-default text-default rounded-md">
+                            <option value="">Keep all</option>
+                            <option v-for="opt in retentionUnitOptions" :key="opt" :value="opt">{{ opt }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm text-default">On backup server (destination)</label>
+                    <div class="flex gap-2 mt-1">
+                        <input type="number" min="0" v-model="destRetentionTime"
+                            class="block w-20 input-textlike text-sm bg-default text-default" placeholder="0" />
+                        <select v-model="destRetentionUnit"
+                            class="block flex-1 input-textlike text-sm bg-default text-default rounded-md">
+                            <option value="">Keep all</option>
+                            <option v-for="opt in retentionUnitOptions" :key="opt" :value="opt">{{ opt }}</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </SimpleFormCard>
+    </div>
+
+    <!-- ═══ ADVANCED MODE (existing UI) ═══ -->
     <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
         <!-- TOP LEFT -->
         <div name="source-data"
@@ -408,6 +559,7 @@ import { ExclamationCircleIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@h
 import { Switch } from '@headlessui/vue';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
+import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 import {
     ParameterNode,
     ZfsDatasetParameter,
@@ -434,6 +586,7 @@ import { pushNotification, Notification } from '@45drives/houston-common-ui';
 interface ZfsRepTaskParamsProps {
     parameterSchema: ParameterNodeType;
     task?: TaskInstanceType;
+    simple?: boolean;
 }
 
 const props = defineProps<ZfsRepTaskParamsProps>();
@@ -940,8 +1093,8 @@ watch(transferMethod, async (newValue) => {
 /* ---------------- Validation ---------------- */
 
 function validateHost() {
-    if (isPull.value && destHost.value === "") {
-        errorList.value.push("Host is required for pull replication.");
+    if ((isPull.value || props.simple) && destHost.value === "") {
+        errorList.value.push("A destination server address is required.");
         destHostErrorTag.value = true;
         return;
     }
@@ -1255,6 +1408,13 @@ async function confirmNetcatTest(destHost2: string, destPort2: number) {
 }
 
 onMounted(async () => {
+    if (props.simple) {
+        // Simple mode: always push, always SSH, sensible defaults
+        directionSwitched.value = false;
+        transferMethod.value = 'ssh';
+        destUser.value = 'root';
+        destPort.value = 22;
+    }
     await initializeData();
 });
 
