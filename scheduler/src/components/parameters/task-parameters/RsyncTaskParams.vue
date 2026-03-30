@@ -63,7 +63,7 @@
             ]" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
 
             <p class="text-[11px] text-muted mt-1">
-                Tip: A trailing <code>/</code> changes how rsync copies folders; see tooltip.
+                Tip: End the path with <code>/</code> to copy the folder's contents, or leave it off to copy the folder itself.
             </p>
         </SimpleFormCard>
 
@@ -72,7 +72,7 @@
             description="Leave “Server address” empty to copy on this machine.">
             <template #header-right>
                 <button v-if="!testingSSH" @click="handleTestSSH" class="btn btn-secondary h-fit">
-                    Test SSH
+                    Test Connection (SSH)
                 </button>
                 <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
             </template>
@@ -111,7 +111,7 @@
 
             <template #footer>
                 <p class="text-[11px] text-muted">
-                    We’ll use SSH for remote copies. Keep the server field empty for local copies.
+                    We'll connect securely for remote copies. Keep the server field empty for local copies.
                 </p>
             </template>
         </SimpleFormCard>
@@ -831,7 +831,7 @@ function validatePath(path: string): boolean {
 function validateSourcePath() {
     if (validatePath(sourcePath.value)) {
         if (props.simple && sourcePath.value && !sourcePath.value.endsWith('/')) {
-            errorList.value.push("In Simple mode, source must be a folder path ending with '/'.");
+            errorList.value.push("Source must be a folder path ending with '/'.");
             sourcePathErrorTag.value = true;
             return false;
         }

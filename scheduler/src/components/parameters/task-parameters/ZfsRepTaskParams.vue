@@ -12,8 +12,8 @@
     <div v-else-if="props.simple" class="space-y-4 my-2">
 
         <!-- Source: Which dataset to back up -->
-        <SimpleFormCard title="Which dataset do you want to back up?"
-            description="Pick the ZFS pool and dataset on this server that you want to protect.">
+        <SimpleFormCard title="Which folder do you want to back up?"
+            description="Pick the ZFS pool and dataset (folder) on this server that you want to protect.">
 
             <label class="block text-sm mt-1 text-default">Pool</label>
             <div v-if="loadingSourcePools" class="mt-1 flex items-center gap-2">
@@ -28,7 +28,7 @@
                 <option v-for="pool in sourcePools" :key="pool" :value="pool">{{ pool }}</option>
             </select>
 
-            <label class="block text-sm mt-3 text-default">Dataset</label>
+            <label class="block text-sm mt-3 text-default">Dataset (Folder)</label>
             <div v-if="loadingSourceDatasets" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
                 <span class="text-sm text-muted">Loading datasets…</span>
@@ -50,10 +50,10 @@
 
         <!-- Destination: Where to send it -->
         <SimpleFormCard title="Where should the backup go?"
-            description="Enter the remote server details and pick the destination pool and dataset.">
+            description="Enter the backup server details and pick the destination ZFS pool and dataset.">
             <template #header-right>
                 <button v-if="!testingSSH" @click="handleTestSSH" :disabled="!destHost" class="btn btn-secondary h-fit">
-                    Test SSH
+                    Test Connection (SSH)
                 </button>
                 <button v-else disabled class="btn btn-secondary h-fit">Testing…</button>
             </template>
@@ -73,7 +73,7 @@
                         placeholder="root (default)" :disabled="!destHost" />
                 </div>
                 <div>
-                    <label class="block text-sm text-default">SSH Port</label>
+                    <label class="block text-sm text-default">Port</label>
                     <input type="number" v-model="destPort" min="1" max="65535"
                         class="mt-1 block w-full input-textlike text-sm bg-default text-default"
                         placeholder="22" :disabled="!destHost" />
@@ -83,7 +83,7 @@
             <label class="block text-sm mt-3 text-default">Destination Pool</label>
             <div v-if="loadingDestPools" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
-                <span class="text-sm text-muted">Loading remote pools…</span>
+                <span class="text-sm text-muted">Loading backup server pools…</span>
             </div>
             <select v-else v-model="destPool" :disabled="!destHost" :class="[
                 'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
@@ -96,7 +96,7 @@
             <label class="block text-sm mt-3 text-default">Destination Dataset</label>
             <div v-if="loadingDestDatasets" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
-                <span class="text-sm text-muted">Loading remote datasets…</span>
+                <span class="text-sm text-muted">Loading datasets…</span>
             </div>
             <div v-else>
                 <div class="flex items-center gap-2 mb-1">
@@ -125,7 +125,7 @@
 
         <!-- Snapshot retention -->
         <SimpleFormCard title="How long should snapshots be kept?"
-            description="Snapshots are created each time the backup runs. Old snapshots are automatically cleaned up after this period. Leave at 0 to keep all snapshots.">
+            description="A ZFS snapshot is created each time the backup runs. Old snapshots are automatically cleaned up after this period. Leave at 0 to keep all snapshots.">
 
             <div class="grid grid-cols-2 gap-4">
                 <div>

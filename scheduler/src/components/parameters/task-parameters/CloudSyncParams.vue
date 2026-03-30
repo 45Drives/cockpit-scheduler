@@ -60,7 +60,7 @@
                             class="mt-1 block w-full input-textlike sm:text-sm text-default" :class="[
                                 errorTags?.selectedRemote ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                             ]">
-                            <option :value="undefined">Select Remote</option>
+                            <option :value="undefined">Select Account</option>
                             <option v-for="(remote, idx) in existingRemotes" :key="idx" :value="remote">
                                 {{ remote.name }}
                             </option>
@@ -76,7 +76,7 @@
 
                 <div class="flex lg:justify-end gap-2">
                     <button @click.stop="manageRemotesBtn()" class="btn btn-secondary w-full lg:w-auto">
-                        Add/Manage Cloud Credentials
+                        Add/Manage Cloud Accounts
                     </button>
                 </div>
             </div>

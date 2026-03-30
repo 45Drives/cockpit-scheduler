@@ -49,9 +49,9 @@
                         <!-- ZFS Replication info blurb -->
                         <div v-if="selectedTemplate?.name === 'ZFS Replication Task'" class="mb-2 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3">
                             <p class="text-sm text-blue-700 dark:text-blue-300">
-                                <strong>ZFS to ZFS Backup</strong> sends incremental block-level snapshots between servers.
-                                This is more efficient than file-level sync and preserves exact dataset state including
-                                permissions, timestamps, and metadata. Recommended when both source and destination use ZFS.
+                                <strong>ZFS Backup</strong> uses ZFS replication to send only the changes (incremental snapshots)
+                                since the last backup — much faster than copying everything each time. It also preserves
+                                exact file permissions, timestamps, and metadata. Recommended when both servers use ZFS storage.
                             </p>
                         </div>
 
@@ -190,10 +190,10 @@ const allowedTemplates = computed(() => {
 });
 
 const nameOverrides: Record<string, string> = {
-    'ZFS Replication Task': 'ZFS to ZFS Backup',
+    'ZFS Replication Task': 'ZFS Backup (Server-to-Server)',
     'Automated Snapshot Task': 'Automatic Snapshots',
-    'Scrub Task': 'ZFS Scrub',
-    'Rsync Task': 'Server-to-Server Backup',
+    'Scrub Task': 'Disk Health Check (ZFS Scrub)',
+    'Rsync Task': 'File Copy / Sync (Rsync)',
     'Cloud Sync Task': 'Cloud Backup',
 };
 

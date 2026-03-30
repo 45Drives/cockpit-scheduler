@@ -2,7 +2,7 @@
     <!-- SIMPLE MODE -->
     <div v-if="props.simple" class="space-y-4 my-2">
         <SimpleFormCard title="What do you want to snapshot?"
-            description="Pick the pool and folder (dataset) you want to protect.">
+            description="Pick the ZFS pool and dataset (folder) you want to protect.">
             <label class="block text-sm mt-1 text-default">Pool</label>
             <select v-model="sourcePool" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                 sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
@@ -11,7 +11,7 @@
                 <option v-if="loadingSourcePools">Loading...</option>
             </select>
 
-            <label class="block text-sm mt-3 text-default">Folder (Dataset)</label>
+            <label class="block text-sm mt-3 text-default">Dataset (Folder)</label>
             <select v-model="sourceDataset" :class="['mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                 sourceDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']">
                 <option value="">Select a Dataset</option>
