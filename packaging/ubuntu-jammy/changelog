@@ -1,3 +1,10 @@
+cockpit-scheduler (1.4.9-1jammy) jammy; urgency=medium
+
+  * Improves ZFS Replication/AutoSnapshot tasks to support multiple retention intervals
+    per task
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 08 Apr 2026 12:32:42 -0300
+
 cockpit-scheduler (1.4.8-2jammy) jammy; urgency=medium
 
   * Updating package to stable

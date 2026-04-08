@@ -1,3 +1,3 @@
-## task scheduler 1.4.8-2
+## task scheduler 1.4.9-1
 
-* Updating package to stable
+* Improves ZFS Replication/AutoSnapshot tasks to support multiple retention intervals per task
