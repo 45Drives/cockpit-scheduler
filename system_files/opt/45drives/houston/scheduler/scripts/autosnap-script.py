@@ -36,13 +36,13 @@ def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
 def run(cmd: List[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
-def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_name: Optional[str]) -> str:
+def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_name: Optional[str], tier_tag: str = "") -> str:
     if not filesystem:
         print("ERROR: filesystem is empty", file=sys.stderr)
         sys.exit(1)
 
     ts = dt.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
-    snapname = f"{filesystem}@{(custom_name + '-' if custom_name else '')}{task_name}-{ts}"
+    snapname = f"{filesystem}@{(custom_name + '-' if custom_name else '')}{task_name}{tier_tag}-{ts}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -126,7 +126,35 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
 
     return snaps
 
-def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time: int, retention_unit: str, exclude_snap: str) -> None:
+def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str = "", tier_idx=None) -> bool:
+    """Check if a snapshot belongs to this task, optionally scoped to a tier."""
+    if "@" not in snap_name:
+        return False
+    suf = snap_name.split("@", 1)[1]
+    tn = (task_name or "").strip()
+    cn = (custom_name or "").strip()
+    if not tn:
+        return False
+
+    if tier_idx is not None:
+        tier_prefix = f"{tn}-t{tier_idx}-"
+        if suf.startswith(tier_prefix):
+            return True
+        if cn:
+            cn_tier_prefix = f"{cn}-{tn}-t{tier_idx}-"
+            if suf.startswith(cn_tier_prefix):
+                return True
+        return False
+
+    # Legacy/single-tier
+    if suf.startswith(f"{tn}-"):
+        return True
+    if cn and suf.startswith(f"{cn}-{tn}-"):
+        return True
+    return False
+
+
+def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time: int, retention_unit: str, exclude_snap: str, tier_idx=None, custom_name: str = "") -> None:
     if retention_time <= 0 or not retention_unit:
         print("Retention not configured; skipping prune.")
         notifier.notify("STATUS=Snapshot created; pruning not configured.")
@@ -154,9 +182,14 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         if s.name == exclude_snap:
             continue
 
-        belongs = (s.task_tag == task_name)
+        # Use tier-scoped matching when tier_idx is set
+        belongs = _is_autosnap_task_snapshot(s.name, task_name, custom_name, tier_idx=tier_idx)
 
-        if not belongs and ENABLE_LEGACY_FALLBACK:
+        # Fallback: check ZFS property tag
+        if not belongs and tier_idx is None:
+            belongs = (s.task_tag == task_name)
+
+        if not belongs and tier_idx is None and ENABLE_LEGACY_FALLBACK:
             m = LEGACY_NAME_RE.search(s.name)
             if m and m.group('task') == task_name:
                 belongs = True
@@ -233,8 +266,9 @@ def _field_matches_value(pattern: str, current: int) -> bool:
             return current in values
         except ValueError:
             return False
+    # Single value — allow ±1 tolerance for timer drift
     try:
-        return current == int(pattern)
+        return abs(current - int(pattern)) <= 1
     except ValueError:
         return False
 
@@ -301,9 +335,13 @@ def main():
         has_per_interval_retention = any(
             isinstance(iv.get("retention"), dict) for iv in intervals
         )
+        tier_tag = ""   # empty = legacy snapshot naming
+        tier_idx = None # None = legacy pruning (all task snapshots)
+
         if has_per_interval_retention and len(intervals) > 1:
             now = dt.datetime.now()
             tier_idx = match_current_tier(intervals, now)
+            tier_tag = f"-t{tier_idx}"
             print(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
 
             matched_iv = intervals[tier_idx]
@@ -325,8 +363,32 @@ def main():
     notifier.notify("READY=1")
     notifier.notify("STATUS=Running snapshot task…")
 
-    created = create_snapshot(filesystem, is_recursive, task_name, custom_name)
-    prune_snapshots_by_retention(filesystem, task_name, rt, ru, created)
+    created = create_snapshot(filesystem, is_recursive, task_name, custom_name, tier_tag=tier_tag)
+    prune_snapshots_by_retention(filesystem, task_name, rt, ru, created, tier_idx=tier_idx, custom_name=custom_name or "")
+
+    # Clean up legacy (pre-tier) untagged snapshots when multi-tier is active.
+    # Uses the longest retention window across all tiers so we don't prune
+    # snapshots that a longer-retention tier would still want to keep.
+    if tier_idx is not None and schedule_data and isinstance(schedule_data.get("intervals"), list):
+        _unit_secs = {
+            "minutes": 60, "hours": 3600, "days": 86400,
+            "weeks": 604800, "months": 2592000, "years": 31536000,
+        }
+        max_secs = 0
+        max_time = 0
+        max_unit = ""
+        for iv in schedule_data["intervals"]:
+            iv_ret = (iv.get("retention") or {})
+            snap_ret = iv_ret.get("source") or iv_ret.get("destination") or {}
+            t = snap_ret.get("retentionTime", 0) or 0
+            u = snap_ret.get("retentionUnit", "")
+            s = int(t) * _unit_secs.get(u, 0)
+            if s > max_secs:
+                max_secs = s
+                max_time = t
+                max_unit = u
+        if max_secs > 0:
+            prune_snapshots_by_retention(filesystem, task_name, max_time, max_unit, created, tier_idx=None, custom_name=custom_name or "")
 
     notifier.notify("STATUS=Snapshot task completed.")
 

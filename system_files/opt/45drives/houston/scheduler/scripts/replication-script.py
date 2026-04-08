@@ -229,9 +229,9 @@ def _field_matches_value(pattern: str, current: int) -> bool:
         except ValueError:
             return False
 
-    # Single value
+    # Single value — allow ±1 tolerance for timer drift
     try:
-        return current == int(pattern)
+        return abs(current - int(pattern)) <= 1
     except ValueError:
         return False
 
@@ -2212,6 +2212,68 @@ def main():
             )
 
         final_pct = min(100, int(current_pct))
+
+        # Fix #3: Clean up legacy (pre-tier) untagged snapshots that would
+        # otherwise be orphaned forever once multi-tier tagging is active.
+        # Use tier_idx=None (matches untagged) with the LONGEST retention
+        # window across all tiers so we don't prune too aggressively.
+        if tier_idx is not None and schedule_data and isinstance(schedule_data.get("intervals"), list):
+            _unit_secs = {
+                "minutes": 60, "hours": 3600, "days": 86400,
+                "weeks": 604800, "months": 2592000, "years": 31536000,
+            }
+            max_src_secs = 0
+            max_src_time = 0
+            max_src_unit = ""
+            max_dst_secs = 0
+            max_dst_time = 0
+            max_dst_unit = ""
+            for iv in schedule_data["intervals"]:
+                iv_ret = (iv.get("retention") or {})
+                sr = iv_ret.get("source") or {}
+                dr = iv_ret.get("destination") or {}
+                st = sr.get("retentionTime", 0) or 0
+                su = sr.get("retentionUnit", "")
+                dt_val = dr.get("retentionTime", 0) or 0
+                du = dr.get("retentionUnit", "")
+                s_secs = int(st) * _unit_secs.get(su, 0)
+                d_secs = int(dt_val) * _unit_secs.get(du, 0)
+                if s_secs > max_src_secs:
+                    max_src_secs = s_secs
+                    max_src_time = st
+                    max_src_unit = su
+                if d_secs > max_dst_secs:
+                    max_dst_secs = d_secs
+                    max_dst_time = dt_val
+                    max_dst_unit = du
+
+            if max_src_secs > 0:
+                if direction == "pull":
+                    prune_snapshots_by_retention(
+                        sourceFilesystem, taskName, max_src_time, max_src_unit, newSnap,
+                        remoteUser, remoteHost, sshPort, transferMethod,
+                        progress_base=0, progress_span=0, tier_idx=None,
+                    )
+                else:
+                    prune_snapshots_by_retention(
+                        sourceFilesystem, taskName, max_src_time, max_src_unit, newSnap,
+                        progress_base=0, progress_span=0, tier_idx=None,
+                    )
+            if max_dst_secs > 0:
+                if direction == "pull":
+                    prune_snapshots_by_retention(
+                        destFilesystem, taskName, max_dst_time, max_dst_unit, newSnap,
+                        progress_base=0, progress_span=0, tier_idx=None,
+                    )
+                else:
+                    prune_snapshots_by_retention(
+                        destFilesystem, taskName, max_dst_time, max_dst_unit, newSnap,
+                        remoteUser if remoteHost else None,
+                        remoteHost if remoteHost else None,
+                        sshPort, transferMethod,
+                        progress_base=0, progress_span=0, tier_idx=None,
+                    )
+
         notifier.notify(f"STATUS=ZFS replication task completed. {final_pct}% complete")
 
     except Exception as e:
