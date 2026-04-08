@@ -316,16 +316,24 @@ You can:
 - remove an interval
 - save multiple intervals for the same task
 
-### Snapshot retention limitation
+### Per-interval retention
 
-Tasks that use snapshot retention currently support only **one schedule interval**.
+For **ZFS Replication Tasks** and **Automated Snapshot Tasks**, retention is configured directly on each schedule interval rather than on the task itself.
 
-This applies when:
+When you add or edit an interval, the schedule dialog shows retention fields:
 
-- an **Automated Snapshot Task** has retention enabled
-- a **ZFS Replication Task** has source or destination retention enabled
+- For **ZFS Replication Tasks**: separate **Source** and **Destination** retention time and unit
+- For **Automated Snapshot Tasks**: a single retention time and unit
 
-If you need multiple schedules with different retention behavior, create multiple tasks instead of packing everything into one.
+This means a single task can have multiple intervals with different retention windows. For example:
+
+- an hourly interval that keeps snapshots for 1 day
+- a daily interval that keeps snapshots for 1 week
+- a weekly interval that keeps snapshots for 1 month
+
+When the task runs, the backend determines which interval triggered the current run and applies that interval's retention policy during pruning.
+
+If no retention is configured on an interval, the task skips pruning for that run.
 
 ### Save Schedule
 
@@ -357,10 +365,11 @@ You can adjust:
 
 - task parameters
 - endpoints and paths
-- retention settings
 - transfer options
 - remote selections
 - task-specific advanced options
+
+Note: for ZFS Replication and Automated Snapshot tasks, retention is now configured per schedule interval in **Manage Schedule**, not on the task edit form.
 
 If nothing changed, the module closes the editor and reports that no changes were found.
 
@@ -504,10 +513,12 @@ Important behavior:
 
 #### Retention Policies
 
-ZFS Replication tasks can maintain retention on:
+ZFS Replication tasks support retention on:
 
 - the **source side**
 - the **destination side**
+
+Retention is configured **per schedule interval** in the **Manage Schedule** dialog, not on the task creation form. Each interval can have its own source and destination retention settings.
 
 Each retention policy includes:
 
@@ -525,9 +536,10 @@ Supported units:
 
 Retention rules:
 
-- `0` means **keep all snapshots**
-- old task-owned snapshots older than the retention window may be pruned
+- `0` or blank means **keep all snapshots** for that interval
+- old task-owned snapshots older than the matched interval's retention window may be pruned
 - if the schedule is disabled for longer than the retention window and later re-enabled, older snapshots may be removed on the next run
+- when multiple intervals exist, the backend determines which interval triggered the current run and applies only that interval's retention policy
 
 #### Overwrite and resume behavior
 
@@ -570,17 +582,22 @@ Use this task to create scheduled ZFS snapshots on a dataset.
 
 #### Retention behavior
 
-Automated snapshot retention is very important:
+Retention for automated snapshots is configured **per schedule interval** in the **Manage Schedule** dialog, not on the task creation form.
 
-- `0` means **keep all snapshots**
+Each interval can have its own retention time and unit. When the task runs, the backend determines which interval triggered the run and applies that interval's retention policy.
+
+Retention rules:
+
+- `0` or blank means **keep all snapshots** for that interval
 - any value above `0` enables pruning
 - pruning applies to snapshots created by the task
-- snapshots older than the retention interval can be deleted after a successful run
+- snapshots older than the matched interval's retention window can be deleted after a successful run
 
-Example:
+Example with multiple intervals:
 
-- `24 hours` keeps about a day of snapshots created by that task
-- `4 weeks` keeps roughly four weeks of that task's snapshots
+- an hourly interval with `24 hours` retention keeps about a day of hourly snapshots
+- a daily interval with `4 weeks` retention keeps roughly four weeks of daily snapshots
+- both intervals run under the same task
 
 #### Recursive snapshots
 
@@ -1111,20 +1128,20 @@ The task starts the SMART test, but the drive finishes the long test on its own 
 
 That is expected when:
 
-- retention is set to a non-zero value
+- retention is set to a non-zero value on the schedule interval that triggered the run
 - the snapshots belong to that task
-- they are older than the configured window
+- they are older than the configured window for that interval
 
 If you want the task to keep everything:
 
-- set retention time to `0`
+- set retention time to `0` or leave it blank on each interval
 
 ### Best practices
 
 - Test new tasks manually once before relying on a schedule
 - Keep names descriptive and consistent
 - Use notes for operational context
-- Use separate tasks when retention or schedule needs differ
+- Use per-interval retention to apply different retention windows across schedules within a single task
 - Be very careful with destructive options such as **Delete Files**, **Sync**, and ZFS overwrite/rollback behavior
 
 ---
