@@ -120,27 +120,7 @@
                     </div>
                 </div>
 
-                <div name="source-snapshot-retention" class="">
-                    <div class="flex flex-row justify-between items-center">
-                        <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                            Retention Policy
-                            <InfoTile class="ml-1"
-                                :title="`How long to keep snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
-                        </label>
-                    </div>
-                    <div class="flex flex-row gap-2 w-full items-center justify-between">
-                        <input type="number" min="0" v-model="retentionTime"
-                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            placeholder="" />
-                        <select v-model="retentionUnit"
-                            class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                            <option value="">Select a Retention Interval</option>
-                            <option v-for="option in retentionUnitOptions" :key="option" :value="option">
-                                {{ option }}
-                            </option>
-                        </select>
-                    </div>
-                </div>
+                <!-- Retention moved to per-interval in Schedule modal -->
 
                 <div class="flex flex-row gap-2">
                     <div name="custom-snapshot-name-toggle" class="flex flex-row items-center justify-between">

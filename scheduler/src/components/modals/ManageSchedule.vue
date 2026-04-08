@@ -132,6 +132,48 @@
                                     </tr>
                                 </table>
                             </div>
+                            <!-- Per-Interval Retention (ZFS Replication / Automated Snapshot) -->
+                            <div v-if="isRetentionCapableTask" name="interval-retention" class="col-span-2 border border-default rounded-md p-2 mt-2 bg-well">
+                                <label class="block text-sm font-medium leading-6 text-default">Interval Retention Policy</label>
+                                <p class="text-xs text-muted mb-2">Override the task default retention for this interval. Leave at 0 to use the task-level default.</p>
+                                <div class="grid gap-2" :class="isReplicationTask ? 'grid-cols-2' : 'grid-cols-1'">
+                                    <!-- Source Retention (replication only) -->
+                                    <div v-if="isReplicationTask">
+                                        <label class="block text-xs font-medium text-default mb-1">Source Retention</label>
+                                        <div class="flex gap-1">
+                                            <input @click.stop v-model.number="retentionSourceTime" type="number" min="0"
+                                                class="w-20 text-default input-textlike bg-default" placeholder="0" />
+                                            <select @click.stop v-model="retentionSourceUnit"
+                                                class="text-default bg-default input-textlike text-sm grow">
+                                                <option value="minutes">Minutes</option>
+                                                <option value="hours">Hours</option>
+                                                <option value="days">Days</option>
+                                                <option value="weeks">Weeks</option>
+                                                <option value="months">Months</option>
+                                                <option value="years">Years</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <!-- Destination Retention (replication) / Retention (autosnap) -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-default mb-1">{{ isReplicationTask ? 'Destination Retention' : 'Retention' }}</label>
+                                        <div class="flex gap-1">
+                                            <input @click.stop v-model.number="retentionDestTime" type="number" min="0"
+                                                class="w-20 text-default input-textlike bg-default" placeholder="0" />
+                                            <select @click.stop v-model="retentionDestUnit"
+                                                class="text-default bg-default input-textlike text-sm grow">
+                                                <option value="minutes">Minutes</option>
+                                                <option value="hours">Hours</option>
+                                                <option value="days">Days</option>
+                                                <option value="weeks">Weeks</option>
+                                                <option value="months">Months</option>
+                                                <option value="years">Years</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div name="buttons" class="col-span-2 button-group-row justify-between mt-2">
                                 <button name="clearFields" @click.stop="clearFields()" class="btn btn-danger h-min">
                                     Clear Interval
@@ -140,8 +182,7 @@
                                     @click.stop="saveInterval(newInterval)" class="btn btn-secondary h-min">
                                     Update Interval</button>
                                 <button v-else name="saveInterval" @click.stop="saveInterval(newInterval)"
-                                    class="btn btn-secondary h-min"
-                                    :disabled="usingSnapshotRetention && localIntervals.length >= 1">
+                                    class="btn btn-secondary h-min">
                                     Save Interval</button>
                             </div>
                         </div>
@@ -173,6 +214,12 @@
                                                 class="flex flex-row grow w-full justify-center text-center text-xs text-semibold italic text-default">
                                                 EDITING INTERVAL:</span>
                                             <p>{{ myScheduler.parseIntervalIntoString(interval) }}</p>
+                                            <p v-if="interval.retention" class="text-xs text-muted mt-0.5">
+                                                Retention:
+                                                <span v-if="interval.retention.source">Src {{ interval.retention.source.retentionTime }} {{ interval.retention.source.retentionUnit }}</span>
+                                                <span v-if="interval.retention.source && interval.retention.destination"> / </span>
+                                                <span v-if="interval.retention.destination">Dst {{ interval.retention.destination.retentionTime }} {{ interval.retention.destination.retentionUnit }}</span>
+                                            </p>
                                         </div>
                                     </button>
                                 </li>
@@ -278,6 +325,20 @@ const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 
 const savingSchedule = ref(false);
 const scheduleEnabled = ref(true);
+
+const retentionSourceTime = ref(0);
+const retentionSourceUnit = ref('hours');
+const retentionDestTime = ref(0);
+const retentionDestUnit = ref('hours');
+
+const isRetentionCapableTask = computed(() => {
+    const tpl = props.task.template.name;
+    return tpl === 'ZFS Replication Task' || tpl === 'Automated Snapshot Task';
+});
+
+const isReplicationTask = computed(() => {
+    return props.task.template.name === 'ZFS Replication Task';
+});
 
 const initialScheduleIntervals = ref({});
 
@@ -402,6 +463,10 @@ function clearFields() {
         year: { value: '' },
         dayOfWeek: []
     });
+    retentionSourceTime.value = 0;
+    retentionSourceUnit.value = 'hours';
+    retentionDestTime.value = 0;
+    retentionDestUnit.value = 'hours';
     forceUpdateCalendar();
     clearSelectedInterval();
 }
@@ -605,19 +670,35 @@ function selectionMethod(interval : TaskScheduleIntervalType, index: number) {
 }
 
 function saveInterval(interval) {
-    if (usingSnapshotRetention.value) {
-        pushNotification(new Notification('Interval Limit Reached', 'Tasks using Snapshot Retention Policy can currently only have one scheduled interval.\nCreate multiple tasks to handle different retention policies.', 'warning', 6000));
-    }
-
     if (validateFields(interval)) {
+        const clone = JSON.parse(JSON.stringify(interval));
+
+        // Attach per-interval retention if applicable
+        if (isRetentionCapableTask.value) {
+            const retention: any = {};
+            if (retentionSourceTime.value > 0) {
+                retention.source = {
+                    retentionTime: retentionSourceTime.value,
+                    retentionUnit: retentionSourceUnit.value
+                };
+            }
+            if (retentionDestTime.value > 0) {
+                retention.destination = {
+                    retentionTime: retentionDestTime.value,
+                    retentionUnit: retentionDestUnit.value
+                };
+            }
+            if (Object.keys(retention).length > 0) {
+                clone.retention = retention;
+            } else {
+                delete clone.retention;
+            }
+        }
+
         if (selectedIndex.value !== undefined) {
-            // Deep clone the interval object to ensure no references are shared
-            const updatedInterval = JSON.parse(JSON.stringify(interval));
-            
-            localIntervals.value[selectedIndex.value] = updatedInterval;
+            localIntervals.value[selectedIndex.value] = clone;
         } else {
-            const newInterval = JSON.parse(JSON.stringify(interval));
-            localIntervals.value.push(newInterval);
+            localIntervals.value.push(clone);
         }
        
         clearFields();
@@ -649,6 +730,12 @@ function editSelectedInterval(interval : TaskScheduleIntervalType) {
 
     // Set selectedDays to the days from the interval or to an empty array if not present
     newInterval.dayOfWeek! = interval.dayOfWeek ?? [];
+
+    // Populate per-interval retention fields
+    retentionSourceTime.value = interval.retention?.source?.retentionTime ?? 0;
+    retentionSourceUnit.value = interval.retention?.source?.retentionUnit ?? 'hours';
+    retentionDestTime.value = interval.retention?.destination?.retentionTime ?? 0;
+    retentionDestUnit.value = interval.retention?.destination?.retentionUnit ?? 'hours';
 }
 
 const showSaveConfirmation = ref(false);

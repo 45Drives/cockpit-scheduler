@@ -18,20 +18,6 @@
                 </b>
             </p>
 
-            <p v-if="hasSnapshotRetentionPolicy(taskInstance)" class="my-2 truncate"
-                :title="`Keep Src. Snapshots For: ${findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionTime')} ${findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionUnit')}`">
-                Keep Src. Snapshots For:
-                <b>{{
-                    findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionTime')
-                    }} {{
-                        findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionUnit')
-                    }}</b>
-            </p>
-
-            <p v-else class="my-2 truncate text-sm" :title="`No Snapshot Retention Policy Configured`">
-                <b>No Snapshot Retention Policy Configured</b>
-            </p>
-
             <div v-if="remoteHost !== ''" class="my-2 flex flex-col gap-1 min-w-0">
                 <div class="truncate" :title="`${remoteLabel} ${remoteProtoLabel} Host: ${remoteHost}`">
                     {{ remoteLabel }} {{ remoteProtoLabel }} Host: <b>{{ remoteHost }}</b>
@@ -74,29 +60,27 @@
                     {{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}
                 </b>
             </p>
-
-            <p v-if="hasSnapshotRetentionPolicy(taskInstance)" class="my-2 truncate"
-                :title="`Keep Dest. Snapshots For: ${findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionTime')} ${findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionUnit')}`">
-                Keep Dest. Snapshots For:
-                <b>{{
-                    findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionTime')
-                    }} {{
-                        findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionUnit')
-                    }}</b>
-            </p>
-
-            <p v-else class="my-2 truncate text-sm" :title="`No Snapshot Retention Policy Configured`">
-                <b>No Snapshot Retention Policy Configured</b>
-            </p>
         </div>
 
         <div class="col-span-2 row-span-2 min-w-0">
             <p class="my-2 font-bold">Current Schedules:</p>
-            <div v-if="taskInstance.schedule.intervals.length > 0"
-                v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                class="flex flex-row col-span-2 divide divide-y divide-default p-1"
-                :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+            <div v-if="taskInstance.schedule.intervals.length > 0">
+                <div v-for="(interval, idx) in taskInstance.schedule.intervals" :key="idx"
+                    class="flex flex-col col-span-2 divide divide-y divide-default p-1"
+                    :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                    <p v-if="interval.retention" class="text-xs text-muted ml-2">
+                        Retention:
+                        <span v-if="interval.retention.source">
+                            Src {{ interval.retention.source.retentionTime }} {{ interval.retention.source.retentionUnit }}
+                        </span>
+                        <span v-if="interval.retention.source && interval.retention.destination"> / </span>
+                        <span v-if="interval.retention.destination">
+                            Dst {{ interval.retention.destination.retentionTime }} {{ interval.retention.destination.retentionUnit }}
+                        </span>
+                    </p>
+                    <p v-else class="text-xs text-muted ml-2">No retention policy</p>
+                </div>
             </div>
             <div v-else>
                 <p>No Intervals Currently Scheduled</p>
@@ -117,27 +101,6 @@ interface ZfsRepTaskDetailsProps {
 const props = defineProps<ZfsRepTaskDetailsProps>();
 const taskInstance = ref(props.task);
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-
-function findNestedValue(obj: any, path: string) {
-    const keys = path.split('.');
-    let current = obj;
-
-    for (const key of keys) {
-        if (!current) return null;
-        if (current.children) {
-            current = current.children.find((child: any) => child.key === key);
-        } else {
-            return null;
-        }
-    }
-    return current?.value ?? null;
-}
-
-function hasSnapshotRetentionPolicy(taskInstance: any) {
-    const sourceRetentionTime = findNestedValue(taskInstance.parameters, 'snapshotRetention.source.retentionTime');
-    const destinationRetentionTime = findNestedValue(taskInstance.parameters, 'snapshotRetention.destination.retentionTime');
-    return (sourceRetentionTime > 0 || destinationRetentionTime > 0);
-}
 
 const direction = computed(() => {
     const node = taskInstance.value?.parameters?.children?.find((c: any) => c.key === 'direction');

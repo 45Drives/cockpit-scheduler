@@ -194,18 +194,132 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
     print(msg)
     notifier.notify(f"STATUS={msg}")
 
+def load_schedule_json(path: str):
+    """Load the schedule JSON file. Returns the parsed dict or None."""
+    if not path:
+        return None
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: could not read schedule JSON at {path}: {e}")
+        return None
+
+
+def _field_matches_value(pattern: str, current: int) -> bool:
+    """Check if a systemd calendar field pattern matches a value."""
+    pattern = str(pattern).strip()
+    if pattern == "*":
+        return True
+    if ".." in pattern:
+        parts = pattern.split("..")
+        try:
+            a, b = int(parts[0]), int(parts[1])
+            return a <= current <= b
+        except (ValueError, IndexError):
+            return False
+    if "/" in pattern:
+        parts = pattern.split("/")
+        try:
+            start, step = int(parts[0]), int(parts[1])
+            if step <= 0:
+                return False
+            return current >= start and (current - start) % step == 0
+        except (ValueError, IndexError):
+            return False
+    if "," in pattern:
+        try:
+            values = [int(v.strip()) for v in pattern.split(",")]
+            return current in values
+        except ValueError:
+            return False
+    try:
+        return current == int(pattern)
+    except ValueError:
+        return False
+
+
+def _interval_matches_time(interval: dict, now) -> bool:
+    """Check if a schedule interval matches the current time."""
+    for field in ("minute", "hour", "day", "month", "year"):
+        val = interval.get(field, {}).get("value", "*")
+        if not _field_matches_value(val, getattr(now, field)):
+            return False
+    dow = interval.get("dayOfWeek", [])
+    if dow:
+        dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        current_dow = dow_names[now.weekday()]
+        normalized_dow = [str(d).strip()[:3].title() for d in dow]
+        if current_dow not in normalized_dow:
+            return False
+    return True
+
+
+def _count_specificity(interval: dict) -> int:
+    count = 0
+    for field in ("minute", "hour", "day", "month", "year"):
+        val = str(interval.get(field, {}).get("value", "*")).strip()
+        if val != "*":
+            count += 1
+    if interval.get("dayOfWeek", []):
+        count += 1
+    return count
+
+
+def match_current_tier(intervals: list, now) -> int:
+    """Return index of best-matching interval for current time. Falls back to 0."""
+    matched = []
+    for idx, interval in enumerate(intervals):
+        if _interval_matches_time(interval, now):
+            matched.append((idx, _count_specificity(interval)))
+    if not matched:
+        return 0
+    matched.sort(key=lambda x: (x[1], x[0]), reverse=True)
+    return matched[0][0]
+
+
 def main():
     filesystem = os.environ.get("autoSnapConfig_filesystem_dataset", "").strip()
     is_recursive = os.environ.get("autoSnapConfig_recursive_flag", "false").strip().lower() == "true"
     custom_name = os.environ.get("autoSnapConfig_customName", "").strip() or None
     task_name = os.environ.get("taskName", "").strip()
 
+    # Task-level (default) retention from env
     rt_raw = os.environ.get("autoSnapConfig_snapshotRetention_retentionTime", "0").strip()
     ru = os.environ.get("autoSnapConfig_snapshotRetention_retentionUnit", "").strip()
     try:
         rt = int(rt_raw)
     except ValueError:
         rt = 0
+
+    # Multi-interval tier support: override retention from schedule JSON if available
+    schedule_json_path = os.environ.get("scheduleJsonPath", "")
+    schedule_data = load_schedule_json(schedule_json_path)
+
+    if schedule_data and isinstance(schedule_data.get("intervals"), list):
+        intervals = schedule_data["intervals"]
+        has_per_interval_retention = any(
+            isinstance(iv.get("retention"), dict) for iv in intervals
+        )
+        if has_per_interval_retention and len(intervals) > 1:
+            now = dt.datetime.now()
+            tier_idx = match_current_tier(intervals, now)
+            print(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
+
+            matched_iv = intervals[tier_idx]
+            iv_ret = matched_iv.get("retention", {}) or {}
+            # AutoSnap only has one location — check source first, then destination
+            snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
+            if snap_ret.get("retentionTime", 0) > 0:
+                rt = snap_ret["retentionTime"]
+                ru = snap_ret.get("retentionUnit", ru)
+        elif has_per_interval_retention and len(intervals) == 1:
+            # Single interval with per-interval retention
+            iv_ret = intervals[0].get("retention", {}) or {}
+            snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
+            if snap_ret.get("retentionTime", 0) > 0:
+                rt = snap_ret["retentionTime"]
+                ru = snap_ret.get("retentionUnit", ru)
 
     notifier.notify("STATUS=Starting snapshot task…")
     notifier.notify("READY=1")

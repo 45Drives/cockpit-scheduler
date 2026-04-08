@@ -48,6 +48,10 @@ type TaskScheduleIntervalType = {
 	[K in TimeUnit]?: TimeComponentType;
 } & {
 	dayOfWeek?: (DayOfWeek)[];
+	retention?: {
+		source?: { retentionTime: number; retentionUnit: string; };
+		destination?: { retentionTime: number; retentionUnit: string; };
+	};
 };
 
 interface LocationType {

@@ -555,6 +555,11 @@ export class Scheduler implements SchedulerType {
                     const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
                     const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
 
+                    // Migrate old task-level env retention into per-interval retention
+                    if (templateKey === 'ZfsReplicationTask' || templateKey === 'AutomatedSnapshotTask') {
+                        this.migrateEnvRetentionToIntervals(templateKey, task.parameters || {}, schedule);
+                    }
+
                     const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
                     (inst as any)._templateKey = templateKey;
                     this.setScope(inst, 'system');
@@ -777,6 +782,11 @@ export class Scheduler implements SchedulerType {
             const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
             await unwrap(jsonFile.write(jsonString, { superuser: 'try' }));
             console.log('json file created and content written successfully');
+
+            // Add schedule JSON path to env so backend scripts can read per-interval retention
+            const envFileForUpdate = new File(server, envFilePath);
+            const envWithSchedulePath = envKeyValuesString + `\nscheduleJsonPath=${jsonFilePath}`;
+            await unwrap(envFileForUpdate.replace(envWithSchedulePath, { superuser: 'try' }));
 
             await createTaskFiles(templateName, scriptPath, envFilePath, templateTimerPath, jsonFilePath);
         }
@@ -1389,6 +1399,50 @@ export class Scheduler implements SchedulerType {
         } catch (e) {
             console.error(errorString(e));
             return false;
+        }
+    }
+
+    /**
+     * Migrate old task-level env retention values into per-interval retention.
+     * Only applies when intervals exist but none of them carry their own retention.
+     */
+    private migrateEnvRetentionToIntervals(
+        templateKey: string,
+        params: Record<string, any>,
+        schedule: TaskSchedule
+    ) {
+        if (!schedule.intervals.length) return;
+
+        // Check if any interval already has retention (new-style task)
+        const anyHasRetention = schedule.intervals.some((iv: any) => iv.retention);
+        if (anyHasRetention) return;
+
+        let srcTime = 0, srcUnit = '', dstTime = 0, dstUnit = '';
+
+        if (templateKey === 'ZfsReplicationTask') {
+            srcTime = parseInt(params['zfsRepConfig_snapshotRetention_source_retentionTime'] || '0', 10);
+            srcUnit = params['zfsRepConfig_snapshotRetention_source_retentionUnit'] || '';
+            dstTime = parseInt(params['zfsRepConfig_snapshotRetention_destination_retentionTime'] || '0', 10);
+            dstUnit = params['zfsRepConfig_snapshotRetention_destination_retentionUnit'] || '';
+        } else if (templateKey === 'AutomatedSnapshotTask') {
+            srcTime = parseInt(params['autoSnapConfig_snapshotRetention_retentionTime'] || '0', 10);
+            srcUnit = params['autoSnapConfig_snapshotRetention_retentionUnit'] || '';
+        }
+
+        // Only migrate if there's actually a retention value set
+        if (srcTime <= 0 && dstTime <= 0) return;
+
+        console.log(`[migration] Migrating env retention to per-interval for ${templateKey}`);
+
+        for (const interval of schedule.intervals) {
+            const retention: any = {};
+            if (srcTime > 0) {
+                retention.source = { retentionTime: srcTime, retentionUnit: srcUnit };
+            }
+            if (dstTime > 0) {
+                retention.destination = { retentionTime: dstTime, retentionUnit: dstUnit };
+            }
+            (interval as any).retention = retention;
         }
     }
 

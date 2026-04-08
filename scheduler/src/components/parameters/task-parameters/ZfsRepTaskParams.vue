@@ -123,37 +123,7 @@
             </template>
         </SimpleFormCard>
 
-        <!-- Snapshot retention -->
-        <SimpleFormCard title="How long should snapshots be kept?"
-            description="A ZFS snapshot is created each time the backup runs. Old snapshots are automatically cleaned up after this period. Leave at 0 to keep all snapshots.">
-
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm text-default">On this server (source)</label>
-                    <div class="flex gap-2 mt-1">
-                        <input type="number" min="0" v-model="srcRetentionTime"
-                            class="block w-20 input-textlike text-sm bg-default text-default" placeholder="0" />
-                        <select v-model="srcRetentionUnit"
-                            class="block flex-1 input-textlike text-sm bg-default text-default rounded-md">
-                            <option value="">Keep all</option>
-                            <option v-for="opt in retentionUnitOptions" :key="opt" :value="opt">{{ opt }}</option>
-                        </select>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm text-default">On backup server (destination)</label>
-                    <div class="flex gap-2 mt-1">
-                        <input type="number" min="0" v-model="destRetentionTime"
-                            class="block w-20 input-textlike text-sm bg-default text-default" placeholder="0" />
-                        <select v-model="destRetentionUnit"
-                            class="block flex-1 input-textlike text-sm bg-default text-default rounded-md">
-                            <option value="">Keep all</option>
-                            <option v-for="opt in retentionUnitOptions" :key="opt" :value="opt">{{ opt }}</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </SimpleFormCard>
+        <!-- Snapshot retention is now configured per-interval in the Schedule modal -->
     </div>
 
     <!-- ═══ ADVANCED MODE (existing UI) ═══ -->
@@ -236,26 +206,7 @@
                 </div>
             </div>
 
-            <div name="source-snapshot-retention">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                        {{ retentionSourceLabel }}
-                        <InfoTile class="ml-1"
-                            :title="`How long to keep source snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
-                    </label>
-                </div>
-                <div class="flex flex-row gap-2 w-full items-center justify-between">
-                    <input type="number" min="0" v-model="srcRetentionTime"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" />
-                    <select v-model="srcRetentionUnit"
-                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select an Interval</option>
-                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
-                            {{ option }}
-                        </option>
-                    </select>
-                </div>
-            </div>
+            <!-- Source retention moved to per-interval in Schedule modal -->
 
             <div name="direction" class="col-span-1">
                 <div class="w-full mt-2 flex flex-row justify-between items-center text-center space-x-2 text-default">
@@ -374,26 +325,7 @@
                 </div>
             </div>
 
-            <div name="destination-snapshot-retention">
-                <div class="flex flex-row justify-between items-center">
-                    <label class="mt-1 block text-sm leading-6 text-default whitespace-nowrap">
-                        {{ retentionDestLabel }}
-                        <InfoTile class="ml-1"
-                            :title="`How long to keep destination snapshots for. Leave at 0 to keep ALL snapshots.\nWARNING: Disabling an automated task's schedule for a period of time longer than the retention interval and re-enabling the schedule may result in a purge of snapshots.`" />
-                    </label>
-                </div>
-                <div class="flex flex-row gap-2 w-full items-center justify-between">
-                    <input type="number" min="0" v-model="destRetentionTime"
-                        class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default" />
-                    <select v-model="destRetentionUnit"
-                        class="text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6">
-                        <option value="">Select an Interval</option>
-                        <option v-for="option in retentionUnitOptions" :key="option" :value="option">
-                            {{ option }}
-                        </option>
-                    </select>
-                </div>
-            </div>
+            <!-- Destination retention moved to per-interval in Schedule modal -->
 
             <div v-if="useExistingDest" name="migration-overwrite" class="mt-2 border-t border-default pt-2">
                 <div class="flex items-center justify-between">

@@ -29,22 +29,25 @@
                     boolToYesNo(findValue(taskInstance.parameters,
                     'recursive_flag', 'recursive_flag')) }}</b>
             </p>
-            <p v-if="findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime') > 0" class="my-2 truncate"
-                :title="`Keep Snapshots For: ${findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime')} ${findValue(taskInstance.parameters, 'snapshotRetention', 'retentionUnit')}`">
-                Keep Snapshots For: <b>{{ findValue(taskInstance.parameters, 'snapshotRetention', 'retentionTime') }} {{
-                    findValue(taskInstance.parameters, 'snapshotRetention', 'retentionUnit') }}</b>
-            </p>
-            <p v-else class="my-2 truncate" :title="`No Retention Policy (Keep All Snapshots)`">
-                <b>No Retention Policy (Keep All Snapshots)</b>
-            </p>
         </div>
         <div class="col-span-2 row-span-2">
             <p class="mt-2 font-bold">Current Schedules:</p>
-            <div v-if="taskInstance.schedule.intervals.length > 0"
-                v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                class="flex flex-row col-span-2 divide divide-y divide-default p-1"
-                :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+            <div v-if="taskInstance.schedule.intervals.length > 0">
+                <div v-for="(interval, idx) in taskInstance.schedule.intervals" :key="idx"
+                    class="flex flex-col col-span-2 divide divide-y divide-default p-1"
+                    :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
+                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+                    <p v-if="interval.retention" class="text-xs text-muted ml-2">
+                        Retention:
+                        <span v-if="interval.retention.source">
+                            {{ interval.retention.source.retentionTime }} {{ interval.retention.source.retentionUnit }}
+                        </span>
+                        <span v-else-if="interval.retention.destination">
+                            {{ interval.retention.destination.retentionTime }} {{ interval.retention.destination.retentionUnit }}
+                        </span>
+                    </p>
+                    <p v-else class="text-xs text-muted ml-2">No retention policy</p>
+                </div>
             </div>
             <div v-else>
                 <p>No Intervals Currently Scheduled</p>
