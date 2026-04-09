@@ -620,7 +620,7 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     command = ["zfs", "snapshot"]
     if is_recursive:
         command.append("-r")
-    timestamp = datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
     new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{task_name}{tier_tag}-{timestamp}"
     command.append(new_snap)
 
@@ -656,7 +656,7 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
 
 
 def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_tag=""):
-    timestamp = datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
     new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{task_name}{tier_tag}-{timestamp}"
 
     cmd = ["zfs", "snapshot"]

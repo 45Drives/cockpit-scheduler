@@ -1,84 +1,74 @@
 <template>
-    <!-- Details for Rsync Task -->
-    <div v-if="taskInstance.template.name === 'Rsync Task'" class="grid grid-cols-4 items-left text-left">
-        <div class="col-span-1">
-            <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
-                Task Type: <b>Rsync Task</b>
-            </p>
-            <p class="my-2 truncate"
-                :title="`Send Type: ${findValue(taskInstance.parameters, 'target_info', 'host') !== '' ? 'Remote' : 'Local'}`">
-                Transfer Type:
-                <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">Remote ({{
-                    upperCaseWord(findValue(taskInstance.parameters, 'direction', 'direction')) }})</b>
-                <b v-if="findValue(taskInstance.parameters, 'target_info', 'host') === ''">Local ({{
-                    upperCaseWord(findValue(taskInstance.parameters, 'direction', 'direction')) }})</b>
-            </p>
-            <p class="my-2 truncate"
-                :title="`Local Path: ${findValue(taskInstance.parameters, 'local_path', 'local_path')}`">
-                Local Path: <b>{{ findValue(taskInstance.parameters, 'local_path', 'local_path') }}</b>
-            </p>
-            <p class="my-2 truncate"
-                :title="`Target Path: ${findValue(taskInstance.parameters, 'target_info', 'path')}`">
-                Target Path: <b>{{ findValue(taskInstance.parameters, 'target_info', 'path') }}</b>
-            </p>
-            <p class="my-2" v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">
-                <span class="truncate"
-                    :title="`Remote SSH Host: ${findValue(taskInstance.parameters,'target_info', 'host')}`">
-                    Remote SSH Host: <b>{{ findValue(taskInstance.parameters,'target_info', 'host') }}</b>
-                </span>
-                <span class="truncate"
-                    :title="`Remote SSH Port: ${findValue(taskInstance.parameters,'target_info', 'port')}`">
-                    Remote SSH Port: : <b>{{ findValue(taskInstance.parameters,'target_info', 'port') }}</b>
-                </span>
-            </p>
-        </div>
-        <div class="col-span-1">
-
-            <p class="my-2 truncate"
-                :title="`Archive Mode: ${boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'archive_flag'))}`">
-                Archive Mode: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'archive_flag'))
-                    }}</b>
-            </p>
-            <p class="my-2 truncate"
-                :title="`Recursive: ${boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'recursive_flag'))}`">
-                Recursive: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'recursive_flag'))
-                    }}</b>
-            </p>
-            <p class="my-2 truncate"
-                :title="`Compressed: ${boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'compressed_flag'))}`">
-                Compressed: <b>{{ boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'compressed_flag'))
-                    }}</b>
-            </p>
-            <p class="my-2 truncate"
-                :title="`Bandwidth Limit: ${((findValue(taskInstance.parameters, 'rsyncOptions', 'bandwidth_limit_kbps') !== 0 ? `${findValue(taskInstance.parameters, 'rsyncOptions', 'bandwidth_limit_kbps')} kb/s` : 'No'))}`">
-                Bandwidth Limit: <b>{{ ((findValue(taskInstance.parameters, 'rsyncOptions', 'bandwidth_limit_kbps') !==
-                    0 ? `${findValue(taskInstance.parameters, 'rsyncOptions', 'bandwidth_limit_kbps')} kb/s` : 'No'))
-                    }}</b>
-            </p>
-            <!-- <p class="my-2 truncate"
-                :title="`Parallel Threads: ${(findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') !== 0 ? findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') : 'No')}`">
-                Parallel Threads: <b>{{ (findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') !== 0 ?
-                    findValue(taskInstance.parameters, 'rsyncOptions', 'parallel_threads') : 'No') }}</b>
-            </p> -->
-        </div>
-        <div class="col-span-2 row-span-2">
-            <p class="my-2 font-bold">Current Schedules:</p>
-            <div v-if="taskInstance.schedule.intervals.length > 0"
-                v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                class="flex flex-row col-span-2 divide divide-y divide-default p-1"
-                :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
+    <div class="grid grid-cols-2 gap-4">
+        <DetailSection title="Configuration — Rsync Task">
+            <!-- Direction visual -->
+            <div class="flex items-end justify-around text-center pb-2 mb-2 border-b border-default">
+                <div class="min-w-0 flex-1 text-left">
+                    <span class="text-xs text-muted block">{{ isPush ? 'Source' : 'Target' }}</span>
+                    <span class="text-sm font-semibold text-default block truncate"
+                        :title="findValue(taskInstance.parameters, 'local_path', 'local_path')">
+                        {{ findValue(taskInstance.parameters, 'local_path', 'local_path') || '—' }}
+                    </span>
+                </div>
+                <div class="flex items-center mx-2 mb-0.5 flex-shrink-0"
+                    :class="isPush ? '' : 'rotate-180'"
+                    :title="isPush ? 'Push' : 'Pull'">
+                    <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
+                    <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
+                    <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
+                </div>
+                <div class="min-w-0 flex-1 text-right">
+                    <span class="text-xs text-muted block">{{ isPush ? 'Target' : 'Source' }}</span>
+                    <span class="text-sm font-semibold text-default block truncate"
+                        :title="findValue(taskInstance.parameters, 'target_info', 'path')">
+                        {{ findValue(taskInstance.parameters, 'target_info', 'path') || '—' }}
+                    </span>
+                </div>
             </div>
-            <div v-else>
-                <p>No Intervals Currently Scheduled</p>
+            <!-- Fields -->
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+                <DetailField label="Transfer Type" :value="transferTypeLabel" />
+                <template v-if="findValue(taskInstance.parameters, 'target_info', 'host') !== ''">
+                    <DetailField label="Remote SSH Host"
+                        :value="findValue(taskInstance.parameters, 'target_info', 'host')" wrap />
+                    <DetailField label="Remote SSH Port"
+                        :value="String(findValue(taskInstance.parameters, 'target_info', 'port') ?? '')" />
+                </template>
             </div>
-        </div>
+        </DetailSection>
+        <DetailSection title="Transfer Options">
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+                <DetailField label="Archive Mode"
+                    :value="boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'archive_flag'))" />
+                <DetailField label="Recursive"
+                    :value="boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'recursive_flag'))" />
+                <DetailField label="Compressed"
+                    :value="boolToYesNo(findValue(taskInstance.parameters, 'rsyncOptions', 'compressed_flag'))" />
+                <DetailField label="Bandwidth Limit" :value="bandwidthLabel" />
+                <DetailField label="Delete When Removed"
+                    :value="boolToYesNo(!!findValue(taskInstance.parameters, 'rsyncOptions', 'delete_when_removed_flag'))" />
+                <DetailField label="Skip Newer"
+                    :value="boolToYesNo(!!findValue(taskInstance.parameters, 'rsyncOptions', 'skip_newer_flag'))" />
+                <DetailField label="Keep Partial"
+                    :value="boolToYesNo(!!findValue(taskInstance.parameters, 'rsyncOptions', 'keep_partial_flag'))" />
+                <DetailField label="Checksum"
+                    :value="boolToYesNo(!!findValue(taskInstance.parameters, 'rsyncOptions', 'checksum_flag'))" />
+                <DetailField v-if="findValue(taskInstance.parameters, 'rsyncOptions', 'filter_include')"
+                    label="Include Filter"
+                    :value="findValue(taskInstance.parameters, 'rsyncOptions', 'filter_include')" wrap />
+                <DetailField v-if="findValue(taskInstance.parameters, 'rsyncOptions', 'filter_exclude')"
+                    label="Exclude Filter"
+                    :value="findValue(taskInstance.parameters, 'rsyncOptions', 'filter_exclude')" wrap />
+            </div>
+        </DetailSection>
     </div>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue';
-import { boolToYesNo, injectWithCheck, findValue, upperCaseWord } from '../../../composables/utility'
-import { schedulerInjectionKey } from '../../../keys/injection-keys';
+import { ref, computed } from 'vue';
+import { boolToYesNo, findValue, upperCaseWord } from '../../../composables/utility';
+import { ChevronDoubleRightIcon } from '@heroicons/vue/24/outline';
+import DetailField from '../../common/DetailField.vue';
+import DetailSection from '../../common/DetailSection.vue';
 
 interface RsyncTaskDetailsProps {
     task: TaskInstanceType;
@@ -86,6 +76,20 @@ interface RsyncTaskDetailsProps {
 
 const props = defineProps<RsyncTaskDetailsProps>();
 const taskInstance = ref(props.task);
-const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
+
+const isRemote = computed(() => findValue(taskInstance.value.parameters, 'target_info', 'host') !== '');
+const directionLabel = computed(() => upperCaseWord(findValue(taskInstance.value.parameters, 'direction', 'direction')));
+const isPush = computed(() => (findValue(taskInstance.value.parameters, 'direction', 'direction') || '').toLowerCase() !== 'pull');
+
+const transferTypeLabel = computed(() => {
+    return isRemote.value
+        ? `Remote (${directionLabel.value})`
+        : `Local (${directionLabel.value})`;
+});
+
+const bandwidthLabel = computed(() => {
+    const limit = findValue(taskInstance.value.parameters, 'rsyncOptions', 'bandwidth_limit_kbps');
+    return limit !== 0 ? `${limit} kb/s` : 'No';
+});
 
 </script>

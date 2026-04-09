@@ -206,19 +206,19 @@ function validateCustomTask(){
 function unwrapCommand(wrappedCommand) {
     // Check if the command starts with /bin/bash -c "
     const prefix = '/bin/bash -c "';
-    if (!wrappedCommand.startsWith(prefix)) {
+    if (!wrappedCommand.startsWith(prefix) || !wrappedCommand.endsWith('"')) {
         return wrappedCommand; // Return as-is if it doesn't match
     }
 
     // Extract the command part
     const commandPart = wrappedCommand.slice(prefix.length, -1); // Remove the ending quote
 
-    // Unescape the command
+    // Unescape in reverse order of escaping (backslashes first!)
     const unescapedCommand = commandPart
-        .replace(/\\'/g, "'")  // Unescape single quotes
-        .replace(/\\"/g, '"')   // Unescape double quotes
-        .replace(/\\`/g, '`')   // Unescape backticks
-        .replace(/\\\\/g, '\\'); // Unescape backslashes
+        .replace(/\\\\/g, '\\') // Unescape backslashes first
+        .replace(/\\'/g, "'")     // Unescape single quotes
+        .replace(/\\"/g, '"')    // Unescape double quotes
+        .replace(/\\`/g, '`');    // Unescape backticks
 
     return unescapedCommand;
 }
@@ -228,11 +228,11 @@ function clearErrorTags() {
     errorList.value = [];
 }
 function wrapCommandWithBash(userCommand) {
-    // Escape backslashes, single quotes, double quotes, and backticks
+    // Escape backslashes first, then quotes and backticks
     const escapedCommand = userCommand
         .replace(/\\/g, '\\\\') // Escape backslashes
-        .replace(/'/g, "'\\''") // Escape single quotes
-        .replace(/"/g, '\\"')    // Escape double quotes
+        .replace(/'/g, "\\'"  ) // Escape single quotes
+        .replace(/"/g, '\\"')   // Escape double quotes
         .replace(/`/g, '\\`');   // Escape backticks
 
     // Construct the final command

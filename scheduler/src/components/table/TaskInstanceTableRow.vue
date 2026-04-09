@@ -1,35 +1,28 @@
 <template>
-	<!-- <tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
-		class="grid grid-cols-10 grid-flow-cols w-full text-center items-center rounded-sm p-1"> -->
 	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
-		class="grid grid-cols-9 grid-flow-cols w-full text-center items-center rounded-sm p-1">
+		class="grid w-full text-center items-center rounded-sm p-1"
+		style="grid-template-columns: minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)">
 		<!-- Name -->
 		<td :title="taskInstance.name"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-2 col-span-2">
+			class="min-w-0 truncate text-base font-medium text-default border-r border-default text-left ml-2">
 			{{ taskInstance.name }}
 		</td>
 
 		<!-- Status -->
 		<td :title="taskInstance.schedule.enabled ? statusText : 'Disabled'"
-			class="truncate text-xs font-medium text-default border-r border-default col-span-1">
+			class="min-w-0 truncate text-xs font-medium text-default border-r border-default">
 			<span :class="taskStatusBadgeClass(statusText)">
 				{{ statusText || 'N/A' }}
 			</span>
 		</td>
 
-		<!-- Scope -->
-		<!-- <td :title="taskInstance.scope"
-			class="truncate text-base font-medium text-default border-r border-default text-left ml-2 col-span-1">
-			<span>{{ taskInstance.scope }}</span>
-		</td> -->
-
 		<!-- Last run -->
-		<td :title="lastRunText" class="truncate text-sm font-medium border-r border-default text-left ml-2 col-span-3">
+		<td :title="lastRunText" class="min-w-0 truncate text-sm font-medium border-r border-default text-left ml-2">
 			<span>{{ lastRunText }}</span>
 		</td>
 
 		<!-- Scheduled toggle -->
-		<td class="truncate text-base font-medium text-default border-r border-default text-left col-span-1">
+		<td class="text-base font-medium text-default border-r border-default text-left">
 			<Switch v-model="scheduleEnabledModel" :disabled="taskInstance.schedule.intervals.length === 0" :title="taskInstance.schedule.intervals.length > 0
 				? `Schedule is ${taskInstance.schedule.enabled ? 'Enabled' : 'Disabled'}`
 				: 'No Schedule Found, Manage Schedule + add intervals to Enable'" :class="[
@@ -49,7 +42,7 @@
 		</td>
 
 		<!-- Actions -->
-		<td class="text-base font-medium text-default border-default m-1 col-span-2">
+		<td class="text-base font-medium text-default border-default m-1">
 			<button v-if="isExpanded" @click="toggleTaskDetails()"
 				class="btn w-full text-gray-50 bg-red-700 hover:bg-red-800 dark:hover:bg-red-900 dark:bg-red-800">
 				Close Details
@@ -60,7 +53,7 @@
 		</td>
 
 		<!-- Progress bar (full width row) -->
-		<td v-if="showProgressBar" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
+		<td v-if="showProgressBar" class="col-span-full h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
 				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded overflow-hidden">
 					<div v-if="!isIndeterminate" class="h-2 rounded" :class="progressBarClass"
@@ -75,12 +68,10 @@
 		</td>
 
 		<!-- Expanded details -->
-		<td v-if="isExpanded" class="col-span-10 h-full px-2 mx-2 py-1 border-t border-default">
-			<div>
-				<TaskInstanceDetails :task="taskInstance" />
-			</div>
+		<td v-if="isExpanded" class="col-span-full px-3 py-3 border-t border-default">
+			<TaskInstanceDetails :task="taskInstance" />
 
-			<div class="button-group-row justify-center mt-2">
+			<div class="flex flex-wrap gap-2 justify-center mt-4 pt-4 border-t border-default">
 				<button v-if="!isRunning" @click="runTaskBtn()"
 					class="flex flex-row min-h-fit flex-nowrap btn btn-success">
 					Run Now

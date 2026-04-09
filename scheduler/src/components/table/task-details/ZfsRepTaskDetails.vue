@@ -1,98 +1,63 @@
 <template>
-    <!-- Details for ZFS Replication Task -->
-    <div v-if="taskInstance.template.name === 'ZFS Replication Task'"
-        class="grid w-full grid-cols-4 gap-x-8 items-start text-left">
-        <div class="col-span-1 min-w-0">
-            <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
-                Task Type: <b>ZFS Replication Task</b>
-            </p>
-
-            <p class="my-2 truncate" :title="sendTypeTitle">
-                Send Type: <b>{{ sendTypeLabel }}</b>
-            </p>
-
-            <p class="my-2 truncate"
-                :title="`Source: ${findValue(taskInstance.parameters, 'sourceDataset', 'dataset')}`">
-                Source: <b>
-                    {{ findValue(taskInstance.parameters, 'sourceDataset', 'dataset') }}
-                </b>
-            </p>
-
-            <div v-if="remoteHost !== ''" class="my-2 flex flex-col gap-1 min-w-0">
-                <div class="truncate" :title="`${remoteLabel} ${remoteProtoLabel} Host: ${remoteHost}`">
-                    {{ remoteLabel }} {{ remoteProtoLabel }} Host: <b>{{ remoteHost }}</b>
+    <div class="grid grid-cols-2 gap-4">
+        <DetailSection title="Configuration — ZFS Replication Task">
+            <!-- Direction visual -->
+            <div class="flex items-end justify-around text-center pb-2 mb-2 border-b border-default">
+                <div class="min-w-0 flex-1 text-left">
+                    <span class="text-xs text-muted block">Source</span>
+                    <span class="text-sm font-semibold text-default block truncate"
+                        :title="sourceFullPath">
+                        {{ sourceFullPath || '—' }}
+                    </span>
                 </div>
-
-                <div class="truncate"
-                    :title="`${remoteLabel} ${remoteProtoLabel} Port: ${findValue(taskInstance.parameters, 'destDataset', 'port')}`">
-                    {{ remoteLabel }} {{ remoteProtoLabel }} Port:
-                    <b>{{ findValue(taskInstance.parameters, 'destDataset', 'port') }}</b>
+                <div class="flex items-center mx-2 mb-0.5 flex-shrink-0"
+                    :class="isPull ? 'rotate-180' : ''"
+                    :title="isPull ? 'Pull' : 'Push'">
+                    <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
+                    <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
+                    <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
+                </div>
+                <div class="min-w-0 flex-1 text-right">
+                    <span class="text-xs text-muted block">Destination</span>
+                    <span class="text-sm font-semibold text-default block truncate"
+                        :title="destFullPath">
+                        {{ destFullPath || '—' }}
+                    </span>
                 </div>
             </div>
-        </div>
-
-        <div class="col-span-1 min-w-0">
-            <p class="my-2 truncate"
-                :title="`Compression: ${findValue(taskInstance.parameters, 'sendOptions', 'raw_flag') ? 'Raw' : findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag') ? 'Compressed' : 'None'}`">
-                Compression: <b>{{
-                    findValue(taskInstance.parameters, 'sendOptions', 'raw_flag') ? 'Raw' :
-                        findValue(taskInstance.parameters, 'sendOptions', 'compressed_flag') ? 'Compressed' : 'None'
-                    }}</b>
-            </p>
-
-            <p class="my-2 truncate"
-                :title="`Recursive Send: ${boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))}`">
-                Recursive Send: <b>{{
-                    boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))
-                    }}</b>
-            </p>
-
-            <p class="my-2 truncate"
-                :title="`Resume Failure Continue: ${boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))}`">
-                Resume Failure Continue: <b>{{
-                    boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))
-                    }}</b>
-            </p>
-
-            <p class="my-2 truncate"
-                :title="`Destination: ${findValue(taskInstance.parameters, 'destDataset', 'dataset')}`">
-                Destination: <b>
-                    {{ findValue(taskInstance.parameters, 'destDataset', 'dataset') }}
-                </b>
-            </p>
-        </div>
-
-        <div class="col-span-2 row-span-2 min-w-0">
-            <p class="my-2 font-bold">Current Schedules:</p>
-            <div v-if="taskInstance.schedule.intervals.length > 0">
-                <div v-for="(interval, idx) in taskInstance.schedule.intervals" :key="idx"
-                    class="flex flex-col col-span-2 divide divide-y divide-default p-1"
-                    :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                    <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
-                    <p v-if="interval.retention" class="text-xs text-muted ml-2">
-                        Retention:
-                        <span v-if="interval.retention.source">
-                            Src {{ interval.retention.source.retentionTime }} {{ interval.retention.source.retentionUnit }}
-                        </span>
-                        <span v-if="interval.retention.source && interval.retention.destination"> / </span>
-                        <span v-if="interval.retention.destination">
-                            Dst {{ interval.retention.destination.retentionTime }} {{ interval.retention.destination.retentionUnit }}
-                        </span>
-                    </p>
-                    <p v-else class="text-xs text-muted ml-2">No retention policy</p>
-                </div>
+            <!-- Fields -->
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+                <DetailField label="Send Type" :value="sendTypeLabel" />
+                <template v-if="remoteHost !== ''">
+                    <DetailField :label="`${remoteLabel} Host`" :value="remoteHost" wrap />
+                    <DetailField :label="`${remoteLabel} Port`"
+                        :value="String(findValue(taskInstance.parameters, 'destDataset', 'port') ?? '')" />
+                    <DetailField label="Protocol" :value="remoteProtoLabel" />
+                    <DetailField label="SSH User"
+                        :value="findValue(taskInstance.parameters, 'destDataset', 'user') || 'root'" />
+                </template>
             </div>
-            <div v-else>
-                <p>No Intervals Currently Scheduled</p>
+        </DetailSection>
+        <DetailSection title="Transfer Options">
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+                <DetailField label="Direction" :value="isPull ? 'Pull' : 'Push'" />
+                <DetailField label="Compression" :value="compressionValue" />
+                <DetailField label="Recursive Send"
+                    :value="boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))" />
+                <DetailField label="Resume on Failure"
+                    :value="boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))" />
+                <DetailField v-if="isRemote" label="Transfer Method" :value="effectiveTransferMethod === 'netcat' ? 'Netcat' : 'SSH'" />
             </div>
-        </div>
+        </DetailSection>
     </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { boolToYesNo, injectWithCheck, findValue } from '../../../composables/utility'
-import { schedulerInjectionKey } from '../../../keys/injection-keys';
+import { boolToYesNo, findValue } from '../../../composables/utility';
+import { ChevronDoubleRightIcon } from '@heroicons/vue/24/outline';
+import DetailField from '../../common/DetailField.vue';
+import DetailSection from '../../common/DetailSection.vue';
 
 interface ZfsRepTaskDetailsProps {
     task: TaskInstanceType;
@@ -100,7 +65,6 @@ interface ZfsRepTaskDetailsProps {
 
 const props = defineProps<ZfsRepTaskDetailsProps>();
 const taskInstance = ref(props.task);
-const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 
 const direction = computed(() => {
     const node = taskInstance.value?.parameters?.children?.find((c: any) => c.key === 'direction');
@@ -114,30 +78,41 @@ const remoteHost = computed(() => findValue(taskInstance.value.parameters, 'dest
 const isRemote = computed(() => remoteHost.value !== '');
 
 const effectiveTransferMethod = computed(() => {
-    // If blank/unknown but remote exists, assume SSH for display
     if (!transferMethod.value && isRemote.value) return 'ssh';
     return transferMethod.value;
 });
 
 const sendTypeLabel = computed(() => {
-    // If no remote host, it's local replication regardless of direction flag
     if (!isRemote.value) return 'Local';
-
-    // Remote + pull is always SSH-only in your UI
     if (isPull.value) return 'Pull (Remote via SSH)';
-
-    // Remote + push
     if (effectiveTransferMethod.value === 'netcat') return 'Push (Remote via Netcat)';
     if (effectiveTransferMethod.value === 'ssh') return 'Push (Remote via SSH)';
     return 'Push (Remote)';
 });
 
-const sendTypeTitle = computed(() => `Send Type: ${sendTypeLabel.value}`);
-
 const remoteLabel = computed(() => (isPull.value ? 'Remote Source' : 'Remote Target'));
 const remoteProtoLabel = computed(() => {
-    // Pull: force SSH label
     if (isPull.value) return 'SSH';
     return effectiveTransferMethod.value === 'netcat' ? 'Netcat' : 'SSH';
+});
+
+const compressionValue = computed(() => {
+    if (findValue(taskInstance.value.parameters, 'sendOptions', 'raw_flag')) return 'Raw';
+    if (findValue(taskInstance.value.parameters, 'sendOptions', 'compressed_flag')) return 'Compressed';
+    return 'None';
+});
+
+const sourceFullPath = computed(() => {
+    const pool = findValue(taskInstance.value.parameters, 'sourceDataset', 'pool') || '';
+    const dataset = findValue(taskInstance.value.parameters, 'sourceDataset', 'dataset') || '';
+    if (!pool || dataset.startsWith(pool + '/') || dataset === pool) return dataset;
+    return `${pool}/${dataset}`;
+});
+
+const destFullPath = computed(() => {
+    const pool = findValue(taskInstance.value.parameters, 'destDataset', 'pool') || '';
+    const dataset = findValue(taskInstance.value.parameters, 'destDataset', 'dataset') || '';
+    if (!pool || dataset.startsWith(pool + '/') || dataset === pool) return dataset;
+    return `${pool}/${dataset}`;
 });
 </script>

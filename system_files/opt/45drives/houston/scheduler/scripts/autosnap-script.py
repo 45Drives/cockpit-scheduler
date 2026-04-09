@@ -41,7 +41,7 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         print("ERROR: filesystem is empty", file=sys.stderr)
         sys.exit(1)
 
-    ts = dt.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
     snapname = f"{filesystem}@{(custom_name + '-' if custom_name else '')}{task_name}{tier_tag}-{ts}"
 
     cmd = ["zfs", "snapshot"]

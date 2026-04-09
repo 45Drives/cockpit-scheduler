@@ -1,45 +1,49 @@
 <template>
-    <!-- Details for Custom Task -->
-    <div v-if="taskInstance.template.name === 'Custom Task'"
-        class="grid grid-cols-4 items-left text-left">
-        <div class="col-span-1">
-            <p class="my-2 truncate" :title="`Task Type: ${taskInstance.template.name}`">
-                Task Type: <b>Custom Task</b>
-            </p>
-            <p class="my-2 truncate" :title="`Pool: ${findValue(taskInstance.parameters, 'pool', 'pool')}`">
-                Execution Type: <b>
-                    {{ taskInstance.parameters.children.find(child => child.key === 'filePath_flag')?.value ? 'Script File' : 'Custom Command' }}                </b>
-            </p>
+    <DetailSection title="Configuration — Custom Task">
+        <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+            <DetailField label="Execution Type" :value="executionType" />
+            <DetailField v-if="isScriptFile" label="Script Path"
+                :value="findValue(taskInstance.parameters, 'filePath', 'filePath') || '—'" wrap />
+            <DetailField v-else label="Command"
+                :value="displayCommand" wrap />
+        </div>
+    </DetailSection>
+</template>
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import { findValue } from '../../../composables/utility';
+import DetailField from '../../common/DetailField.vue';
+import DetailSection from '../../common/DetailSection.vue';
 
-        </div>
-        <div class="col-span-1">
-           
-        </div>
-        <div class="col-span-2 row-span-2">
-            <p class="my-2 font-bold">Current Schedules:</p>
-            <div v-if="taskInstance.schedule.intervals.length > 0"
-                v-for="interval, idx in taskInstance.schedule.intervals" :key="idx"
-                class="flex flex-row col-span-2 divide divide-y divide-default p-1" :title="`Run ${myScheduler.parseIntervalIntoString(interval)}.`">
-                <p>Run {{ myScheduler.parseIntervalIntoString(interval) }}.</p>
-            </div>
-            <div v-else>
-                <p>No Intervals Currently Scheduled</p>
-            </div>
-        </div>
-    
-    </div>
-    </template>
-    <script setup lang="ts">
-    import { ref} from 'vue';
-    import { boolToYesNo, injectWithCheck, findValue } from '../../../composables/utility'
-    import { schedulerInjectionKey } from '../../../keys/injection-keys';
-    
-    interface CustomTaskDetailsProps {
-        task: TaskInstanceType;
+interface CustomTaskDetailsProps {
+    task: TaskInstanceType;
+}
+
+const props = defineProps<CustomTaskDetailsProps>();
+const taskInstance = ref(props.task);
+
+const executionType = computed(() => {
+    const isFilePath = taskInstance.value.parameters.children.find((child: any) => child.key === 'filePath_flag')?.value;
+    return isFilePath ? 'Script File' : 'Custom Command';
+});
+
+const isScriptFile = computed(() => {
+    return !!taskInstance.value.parameters.children.find((child: any) => child.key === 'filePath_flag')?.value;
+});
+
+const displayCommand = computed(() => {
+    const raw = findValue(taskInstance.value.parameters, 'command', 'command') || '';
+    // Unwrap /bin/bash -c "..." wrapper for display
+    const prefix = '/bin/bash -c "';
+    if (raw.startsWith(prefix) && raw.endsWith('"')) {
+        const inner = raw.slice(prefix.length, -1);
+        return inner
+            .replace(/\\\\/g, '\\')
+            .replace(/\\'/g, "'")
+            .replace(/\\"/g, '"')
+            .replace(/\\`/g, '`') || '—';
     }
-    
-    const props = defineProps<CustomTaskDetailsProps>();
-    const taskInstance = ref(props.task);
-    const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
-    
-    </script>
+    return raw || '—';
+});
+
+</script>

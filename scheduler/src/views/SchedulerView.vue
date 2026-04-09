@@ -1,28 +1,21 @@
 <template>
     <div>
-        <div class="flex flex-row justify-between sm:flex sm:items-center">
+        <div class="flex flex-row justify-between items-center">
             <div class="text-left">
                 <p class="mt-4 text-medium text-default">
                     All tasks currently configured on the system are listed here.
                 </p>
             </div>
-            <div class="flex flex-row justify-between">
-                <div class="px-3">
-                    <label class="block text-medium font-medium leading-6 text-default">Filter By Name</label>
-                    <input type="text" @keydown.enter="" v-model="searchItem"
-                        class="text-default bg-default block w-fit input-textlike sm:text-sm" placeholder="Search..." />
+            <div class="flex flex-row items-end gap-3">
+                <div>
+                    <label class="block text-sm font-medium leading-6 text-default">Filter By Name</label>
+                    <input type="text" v-model="searchItem"
+                        class="text-default bg-default block w-full min-w-[200px] input-textlike sm:text-sm" placeholder="Search..." />
                 </div>
-                <div class="mt-5 py-0.5 px-3">
-                    <button @click="refreshBtn()" class="btn btn-secondary">
-                        <ArrowPathIcon class="w-5 h-5 m-0.5" />
-                    </button>
-                </div>
-                <div class="mt-5 py-0.5 px-3">
-                    <button @click="addTaskBtn()" class="btn btn-primary">Add New Task</button>
-                </div>
-                <!-- <div class="mt-5 py-0.5 px-3">
-                    <button @click="showNewScheduleComponent()" class="btn btn-primary">CALENDAR</button>
-                </div> -->
+                <button @click="refreshBtn()" class="btn btn-secondary h-fit">
+                    <ArrowPathIcon class="w-5 h-5 m-0.5" />
+                </button>
+                <button @click="addTaskBtn()" class="btn btn-primary h-fit whitespace-nowrap">Add New Task</button>
             </div>
         </div>
 
@@ -41,10 +34,10 @@
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
-                                    <!-- <tr class="border border-default border-collapse grid grid-cols-10 w-full"> -->
-                                    <tr class="border border-default border-collapse grid grid-cols-9 w-full">
+                                    <tr class="border border-default border-collapse grid w-full"
+                                        style="grid-template-columns: minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)">
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse">
                                             <button @click="sortBy('name')"
                                                 class="flex w-full justify-between whitespace-nowrap">
                                                 Task Name
@@ -56,23 +49,19 @@
                                             </button>
                                         </th>
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse">
                                             Status
                                         </th>
-                                        <!-- <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
-                                            User-Scope
-                                        </th> -->
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-3">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse">
                                             Last Run
                                         </th>
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-1">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse">
                                             Scheduled
                                         </th>
                                         <th scope="col"
-                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse col-span-2">
+                                            class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse">
                                             Details
                                         </th>
                                     </tr>
