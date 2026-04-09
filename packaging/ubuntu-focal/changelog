@@ -1,3 +1,9 @@
+cockpit-scheduler (1.5.0-1focal) focal; urgency=medium
+
+  * Updates task table UI for better UX
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 09 Apr 2026 09:11:30 -0300
+
 cockpit-scheduler (1.4.9-1focal) focal; urgency=medium
 
   * Improves ZFS Replication/AutoSnapshot tasks to support multiple retention intervals

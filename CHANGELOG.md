@@ -1,3 +1,3 @@
-## task scheduler 1.4.9-1
+## task scheduler 1.5.0-1
 
-* Improves ZFS Replication/AutoSnapshot tasks to support multiple retention intervals per task
+* Updates task table UI for better UX
