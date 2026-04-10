@@ -102,7 +102,8 @@ export function useLiveTaskStatus(
 
             // derive a better default status based on schedule.enabled
             let schedulerStatusText: string | undefined = meta?.statusText;
-            if (!schedulerStatusText) {
+            const isFallbackStatus = !schedulerStatusText || schedulerStatusText === '—' || schedulerStatusText === '-';
+            if (isFallbackStatus) {
                 const enabled = !!t?.schedule?.enabled;
                 schedulerStatusText = enabled ? 'Active (pending)' : 'Inactive (Disabled)';
             }
@@ -135,6 +136,7 @@ export function useLiveTaskStatus(
             }
 
             // Prefer log so we can inspect exitCode
+            let logDerivedStatus: string | undefined;
             if (log?.getLatestEntryFor) {
                 try {
                     const latest = await log.getLatestEntryFor(t);
@@ -150,8 +152,10 @@ export function useLiveTaskStatus(
                                     lastCompletedMs = tsMs;
                                     lastCompletedAtMap.value[id] = tsMs;
                                     label = `Completed at ${tsLabel}`;
+                                    logDerivedStatus = 'Completed';
                                 } else {
                                     label = `Failed at ${tsLabel}`;
+                                    logDerivedStatus = 'Failed';
                                 }
                             } else {
                                 // Exit code known but timestamp missing: still show a meaningful label
@@ -160,8 +164,10 @@ export function useLiveTaskStatus(
                                     lastCompletedMs = now;
                                     lastCompletedAtMap.value[id] = now;
                                     label = 'Completed';
+                                    logDerivedStatus = 'Completed';
                                 } else {
                                     label = 'Failed';
+                                    logDerivedStatus = 'Failed';
                                 }
                             }
                         } else if (ms) {
@@ -197,6 +203,12 @@ export function useLiveTaskStatus(
             if ((label === 'Completed' || label === 'Failed') && lastRunMs) {
                 const tsLabel = fmtMs(lastRunMs);
                 label = label === 'Completed' ? `Completed at ${tsLabel}` : `Failed at ${tsLabel}`;
+            }
+
+            // If the original status was a fallback (em-dash) and the log
+            // gives us a decisive result, prefer the log-derived status
+            if (isFallbackStatus && logDerivedStatus) {
+                finalStatusText = logDerivedStatus;
             }
 
             statusMap.value[id] = finalStatusText;
