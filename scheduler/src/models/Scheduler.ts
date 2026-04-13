@@ -1351,11 +1351,13 @@ export class Scheduler implements SchedulerType {
         await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
         console.log('json file created and content written successfully');
 
-        await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
+        if (taskInstance.schedule.enabled) {
+            await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
 
-        // Reload the system daemon and restart timer
-        await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
-        await runCommand(['systemctl', 'restart', `${fullTaskName}.timer`], { superuser: 'try' });
+            // Reload the system daemon and restart timer
+            await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
+            await runCommand(['systemctl', 'restart', `${fullTaskName}.timer`], { superuser: 'try' });
+        }
     }
 
     async deleteSchedule(taskInstance: TaskInstanceType) {
