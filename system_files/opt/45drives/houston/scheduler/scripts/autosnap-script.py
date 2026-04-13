@@ -266,9 +266,9 @@ def _field_matches_value(pattern: str, current: int) -> bool:
             return current in values
         except ValueError:
             return False
-    # Single value — allow ±1 tolerance for timer drift
+    # Single value — exact match
     try:
-        return abs(current - int(pattern)) <= 1
+        return current == int(pattern)
     except ValueError:
         return False
 
@@ -308,7 +308,8 @@ def match_current_tier(intervals: list, now) -> int:
             matched.append((idx, _count_specificity(interval)))
     if not matched:
         return 0
-    matched.sort(key=lambda x: (x[1], x[0]), reverse=True)
+    # Most specific wins; on tie, prefer the lower index (more general / higher-priority)
+    matched.sort(key=lambda x: (x[1], -x[0]), reverse=True)
     return matched[0][0]
 
 
