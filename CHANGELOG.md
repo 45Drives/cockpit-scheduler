@@ -1,3 +1,3 @@
-## task scheduler 1.5.0-1
+## task scheduler 1.5.1-1
 
-* Updates task table UI for better UX
+* Fixes bug with multiple retention/snapshot intervals conflicting

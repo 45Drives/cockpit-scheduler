@@ -1,3 +1,9 @@
+cockpit-scheduler (1.5.1-1bookworm) bookworm; urgency=medium
+
+  * Fixes bug with multiple retention/snapshot intervals conflicting
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 13 Apr 2026 09:19:10 -0300
+
 cockpit-scheduler (1.5.0-1bookworm) bookworm; urgency=medium
 
   * Updates task table UI for better UX
