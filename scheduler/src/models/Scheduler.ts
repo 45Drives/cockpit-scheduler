@@ -474,7 +474,7 @@ export class Scheduler implements SchedulerType {
                             : [];
                         const schedule = new TaskSchedule(!!schedObj.enabled, intervals);
 
-                        const paramNode = this.safeBuildParamNode(tpl.parameterSchema, paramsObj);
+                        const paramNode = this.safeBuildParamNode(tpl.parameterSchema, t.params ?? t.parameters ?? {});
 
                         const inst = new TaskInstance(t.name, tpl, paramNode, schedule, notes);
                         (inst as any)._templateKey = templateKey;
