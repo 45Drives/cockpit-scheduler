@@ -20,37 +20,7 @@
                 <option v-if="loadingSourceDatasets">Loading...</option>
             </select>
         </SimpleFormCard>
-
-        <SimpleFormCard title="How long should we keep snapshots?"
-            description="Choose how long to keep old snapshots. Turn on “Forever” to keep everything.">
-            <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-default">Retention</span>
-                <label class="flex items-center gap-2 text-xs">
-                    <input type="checkbox" v-model="keepForever" class="h-4 w-4 rounded" />
-                    Forever
-                </label>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2 mt-2" :class="keepForever ? 'opacity-50 pointer-events-none' : ''">
-                <input type="number" min="1" v-model.number="retentionTime"
-                    class="col-span-1 block w-full input-textlike sm:text-sm bg-default text-default" />
-                <select v-model="retentionUnit"
-                    class="col-span-2 block w-full input-textlike sm:text-sm bg-default text-default">
-                    <option value="hours">hours</option>
-                    <option value="days">days</option>
-                    <option value="weeks">weeks</option>
-                    <option value="months">months</option>
-                    <option value="years">years</option>
-                </select>
-            </div>
-
-            <template #footer>
-                <p class="text-[11px] text-muted">
-                    Tip: “Forever” keeps all snapshots. If a schedule is paused longer than your chosen time,
-                    older snapshots may be cleaned up when it resumes.
-                </p>
-            </template>
-        </SimpleFormCard>
+        <!-- Snapshot retention is now configured per-interval in the Schedule modal -->
     </div>
 
     <div v-else>
@@ -134,7 +104,7 @@
                         <input v-if="useCustomName" type="text" v-model="customName" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default placeholder:text-xs',
                         customNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" placeholder="Name is CustomName + TaskName + Timestamp" />
+                    ]" placeholder="Name is CustomName + Timestamp" />
                         <input v-else disabled type="text" v-model="customName"
                             class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default placeholder:text-xs"
                             placeholder="Name is TaskName + Timestamp" />
@@ -151,11 +121,10 @@
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
+import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
-import InfoTile from '../../common/InfoTile.vue';
-import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SelectionParameter, SnapshotRetentionParameter } from '../../../models/Parameters';
+import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter, SelectionParameter } from '../../../models/Parameters';
 import { getPoolData, getDatasetData } from '../../../composables/utility';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 
@@ -185,18 +154,6 @@ const useCustomName = ref(false);
 const customName = ref('');
 const customNameErrorTag = ref(false);
 
-const retentionTime = ref(0);
-const retentionUnit = ref('');
-const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])
-
-// “Forever” toggle maps to retentionTime = 0
-const keepForever = computed({
-    get: () => Number(retentionTime || 0) === 0,
-    set: (v: boolean) => {
-        if (v) retentionTime.value = 0
-        else if (retentionTime.value === 0) retentionTime.value = 30 // sensible default when turning off "Forever"
-    }
-})
 
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
@@ -217,13 +174,6 @@ async function initializeData() {
         sendRecursive.value = params.find(p => p.key === 'recursive_flag')!.value;
         useCustomName.value = params.find(p => p.key === 'customName_flag')!.value;
         customName.value = params.find(p => p.key === 'customName')!.value;
-        // snapsToKeep.value = params.find(p => p.key === 'snapRetention')!.value;
-        // useSnapshotRetention.value = snapsToKeep.value > 0 ? true : false;
-        const snapshotRetention = params.find(p => p.key === 'snapshotRetention');
-        if (snapshotRetention) {
-            retentionTime.value = snapshotRetention.children.find(c => c.key === 'retentionTime')!.value;
-            retentionUnit.value = snapshotRetention.children.find(c => c.key === 'retentionUnit')!.value;
-        }
 
         initialParameters.value = JSON.parse(JSON.stringify({
             sourcePool: sourcePool.value,
@@ -231,11 +181,6 @@ async function initializeData() {
             sendRecursive: sendRecursive.value,
             useCustomName: useCustomName.value,
             customName: customName.value,
-            // snapsToKeep: snapsToKeep.value
-            snapshotRetention: {
-                retentionTime: retentionTime.value,
-                retentionUnit: retentionUnit.value,
-            },
         }));
 
         loading.value = false;
@@ -252,11 +197,6 @@ function hasChanges() {
         sendRecursive: sendRecursive.value,
         useCustomName: useCustomName.value,
         customName: customName.value,
-        // snapsToKeep: snapsToKeep.value
-        snapshotRetention: {
-            retentionTime: retentionTime.value,
-            retentionUnit: retentionUnit.value,
-        },
     };
 
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -410,14 +350,7 @@ function setParams() {
         .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', sourcePool.value, sourceDataset.value))
         .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
         .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
-        .addChild(new StringParameter('Custom Name', 'customName', customName.value))
-        .addChild(new SnapshotRetentionParameter(
-            'Snapshot Retention',
-            'snapshotRetention',
-            retentionTime.value,
-            retentionUnit.value
-        )
-    );
+        .addChild(new StringParameter('Custom Name', 'customName', customName.value));
 
     parameters.value = newParams;
 }

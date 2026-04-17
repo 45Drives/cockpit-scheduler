@@ -151,7 +151,12 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         sys.exit(1)
 
     ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    snapname = f"{filesystem}@{(custom_name + '-' if custom_name else '')}{task_name}{tier_tag}-{ts}"
+    # When custom_name is set, use it as the full snapshot label (no task_name in the name).
+    # The ZFS property com.45drives:task is used to track ownership for pruning.
+    if custom_name:
+        snapname = f"{filesystem}@{custom_name}{tier_tag}-{ts}"
+    else:
+        snapname = f"{filesystem}@{task_name}{tier_tag}-{ts}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -240,7 +245,9 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
     return snaps
 
 def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str = "", tier_idx=None) -> bool:
-    """Check if a snapshot belongs to this task, optionally scoped to a tier."""
+    """Check if a snapshot belongs to this task, optionally scoped to a tier.
+    Matches both the new format (customName[-tN]-timestamp) and the legacy
+    format (customName-taskName[-tN]-timestamp) for backward compatibility."""
     if "@" not in snap_name:
         return False
     suf = snap_name.split("@", 1)[1]
@@ -250,18 +257,27 @@ def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str 
         return False
 
     if tier_idx is not None:
+        # New format: customName-tN-... (custom name is full override)
+        if cn and suf.startswith(f"{cn}-t{tier_idx}-"):
+            return True
+        # Default (no custom name): taskName-tN-...
         tier_prefix = f"{tn}-t{tier_idx}-"
         if suf.startswith(tier_prefix):
             return True
+        # Legacy format: customName-taskName-tN-...
         if cn:
             cn_tier_prefix = f"{cn}-{tn}-t{tier_idx}-"
             if suf.startswith(cn_tier_prefix):
                 return True
         return False
 
-    # Legacy/single-tier
+    # New format: customName-timestamp (custom name is full override)
+    if cn and suf.startswith(f"{cn}-"):
+        return True
+    # Default (no custom name): taskName-timestamp
     if suf.startswith(f"{tn}-"):
         return True
+    # Legacy format: customName-taskName-timestamp
     if cn and suf.startswith(f"{cn}-{tn}-"):
         return True
     return False
@@ -297,14 +313,15 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         if s.name == exclude_snap:
             continue
 
-        # Use tier-scoped matching when tier_idx is set
-        belongs = _is_autosnap_task_snapshot(s.name, task_name, custom_name, tier_idx=tier_idx)
+        # Primary: check ZFS property tag (most reliable, works with any naming scheme)
+        belongs = (s.task_tag == task_name)
 
-        # Fallback: check ZFS property tag
-        if not belongs and tier_idx is None:
-            belongs = (s.task_tag == task_name)
+        # Fallback: name-based matching, but ONLY for untagged snapshots.
+        # If a snapshot is tagged for a different task, never claim it.
+        if not belongs and not s.task_tag:
+            belongs = _is_autosnap_task_snapshot(s.name, task_name, custom_name, tier_idx=tier_idx)
 
-        if not belongs and tier_idx is None and ENABLE_LEGACY_FALLBACK:
+        if not belongs and not s.task_tag and tier_idx is None and ENABLE_LEGACY_FALLBACK:
             m = LEGACY_NAME_RE.search(s.name)
             if m and m.group('task') == task_name:
                 belongs = True

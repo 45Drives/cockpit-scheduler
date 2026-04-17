@@ -39,10 +39,11 @@
         </div>
     </div>
     <div v-if="inputType === 'command'" class="border border-default rounded-md p-2 col-span-2 bg-accent">
-      <label for="oneLineCommand" class="mt-1 block text-sm leading-6 text-default">Command</label>
-      <input v-model="oneLineCommand" @input="clearPathIfCommandInput" :class="['mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default', 
+      <label for="oneLineCommand" class="mt-1 block text-sm leading-6 text-default">Command / Script</label>
+      <textarea v-model="oneLineCommand" @input="clearPathIfCommandInput" rows="4" :class="['mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default font-mono', 
              commandErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]"placeholder="Enter your command"/>
+                        ]" placeholder="Enter command(s) — supports multiple lines&#10;#!/bin/bash&#10;echo 'Hello'&#10;date"></textarea>
+      <p class="text-xs text-muted mt-1">Multi-line scripts are supported. Each line will be executed as part of a bash script.</p>
       <p v-if="commandError" class="error">{{ commandError }}</p>
     </div>
 </div>
@@ -176,8 +177,14 @@ function validateParams() {
 
     if (errorList.value.length == 0) {
         if (oneLineCommand.value !== '') {
-            // Append /bin/bash -c " to the command and remove any trailing quotes
-            wrapCommand.value =  wrapCommandWithBash(oneLineCommand.value)
+            const isMultiLine = oneLineCommand.value.includes('\n');
+            if (isMultiLine) {
+                // Multi-line: store raw script, backend will write to file
+                wrapCommand.value = oneLineCommand.value;
+            } else {
+                // Single-line: wrap with bash -c as before
+                wrapCommand.value = wrapCommandWithBash(oneLineCommand.value);
+            }
         }
         setParams();
     }
@@ -204,6 +211,10 @@ function validateCustomTask(){
 
 }
 function unwrapCommand(wrappedCommand) {
+    // Multi-line scripts are stored raw (not wrapped)
+    if (wrappedCommand.includes('\n')) {
+        return wrappedCommand;
+    }
     // Check if the command starts with /bin/bash -c "
     const prefix = '/bin/bash -c "';
     if (!wrappedCommand.startsWith(prefix) || !wrappedCommand.endsWith('"')) {

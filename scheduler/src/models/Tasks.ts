@@ -1,4 +1,4 @@
-import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter, SnapshotRetentionParameter } from "./Parameters";
+import { ParameterNode, ZfsDatasetParameter, StringParameter, BoolParameter, IntParameter, SelectionParameter, SelectionOption, LocationParameter } from "./Parameters";
 import { cloudSyncProviders, CloudSyncRemote } from './CloudSync';
 import { TaskExecutionResult } from "./TaskLog";
 
@@ -20,10 +20,12 @@ export class TaskInstance implements TaskInstanceType {
 
 export class TaskSchedule implements TaskScheduleType {
     enabled: boolean;
+    runOnBoot: boolean;
     intervals: TaskScheduleInterval[];
 
-    constructor(enabled: boolean, intervals: TaskScheduleInterval[]) {
+    constructor(enabled: boolean, intervals: TaskScheduleInterval[], runOnBoot: boolean = false) {
         this.enabled = enabled;
+        this.runOnBoot = runOnBoot;
         this.intervals = intervals;
     }
 
@@ -77,11 +79,6 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', false))
                 .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', false))
                 .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', false)) 
-            )
-            .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
-                .addChild(new SnapshotRetentionParameter('Source', 'source', 0, 'minutes'))
-                .addChild(new SnapshotRetentionParameter('Destination', 'destination', 0, 'minutes'))
-
             );
         super(name, parameterSchema);
     }
@@ -98,9 +95,7 @@ export class AutomatedSnapshotTaskTemplate extends TaskTemplate {
             .addChild(new ZfsDatasetParameter('Filesystem', 'filesystem', '', 0, '', '', ''))
             .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))
-            .addChild(new StringParameter('Custom Name', 'customName', ''))
-            .addChild(new SnapshotRetentionParameter('Snapshot Retention', 'snapshotRetention', 0, 'minutes')
-            );
+            .addChild(new StringParameter('Custom Name', 'customName', ''));
         super(name, parameterSchema);
     }
 

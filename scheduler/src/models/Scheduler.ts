@@ -472,9 +472,15 @@ export class Scheduler implements SchedulerType {
                         const intervals = Array.isArray(schedObj.intervals)
                             ? schedObj.intervals.map((i: any) => new TaskScheduleInterval(i))
                             : [];
-                        const schedule = new TaskSchedule(!!schedObj.enabled, intervals);
+                        const schedule = new TaskSchedule(!!schedObj.enabled, intervals, !!schedObj.runOnBoot);
 
                         const paramNode = this.safeBuildParamNode(tpl.parameterSchema, t.params ?? t.parameters ?? {});
+
+                        // Migrate old task-level env retention into per-interval retention
+                        let needsResave = false;
+                        if (templateKey === 'ZfsReplicationTask' || templateKey === 'AutomatedSnapshotTask') {
+                            needsResave = this.migrateEnvRetentionToIntervals(templateKey, t.params ?? t.parameters ?? {}, schedule);
+                        }
 
                         const inst = new TaskInstance(t.name, tpl, paramNode, schedule, notes);
                         (inst as any)._templateKey = templateKey;
@@ -484,6 +490,16 @@ export class Scheduler implements SchedulerType {
                         console.log('[sched] pushing TaskInstance:', t.name, templateKey, schedObj?.enabled);
 
                         this.taskInstances.push(inst);
+
+                        // Auto re-save to strip old retention keys from env
+                        if (needsResave) {
+                            try {
+                                console.log(`[migration] Re-saving daemon user task "${t.name}" to remove old retention env keys`);
+                                await this.updateTaskInstance(inst);
+                            } catch (e) {
+                                console.warn(`[migration] Failed to re-save daemon user task "${t.name}":`, e);
+                            }
+                        }
                     } catch (e) {
                         console.warn('skip bad daemon task record:', e, t);
                     }
@@ -511,10 +527,16 @@ export class Scheduler implements SchedulerType {
                                 const tpl = this.resolveTemplate(templateKey);
 
                                 const intervals = (t.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
-                                const schedule = new TaskSchedule(!!t.schedule?.enabled, intervals);
+                                const schedule = new TaskSchedule(!!t.schedule?.enabled, intervals, !!t.schedule?.runOnBoot);
 
                                 const params = t.params ?? t.parameters ?? {};
                                 const paramNode = this.safeBuildParamNode(tpl.parameterSchema, params);
+
+                                // Migrate old task-level env retention into per-interval retention
+                                let needsResave = false;
+                                if (templateKey === 'ZfsReplicationTask' || templateKey === 'AutomatedSnapshotTask') {
+                                    needsResave = this.migrateEnvRetentionToIntervals(templateKey, params, schedule);
+                                }
 
                                 const inst = new TaskInstance(t.name, tpl, paramNode, schedule, t.notes || '');
                                 (inst as any)._templateKey = templateKey;
@@ -522,6 +544,16 @@ export class Scheduler implements SchedulerType {
 
                                 this.taskInstances.push(inst);
                                 seenSys.add(keyOf(templateKey, t.name));
+
+                                // Auto re-save to strip old retention keys from env
+                                if (needsResave) {
+                                    try {
+                                        console.log(`[migration] Re-saving daemon system task "${t.name}" to remove old retention env keys`);
+                                        await this.updateTaskInstance(inst);
+                                    } catch (e) {
+                                        console.warn(`[migration] Failed to re-save daemon system task "${t.name}":`, e);
+                                    }
+                                }
                             } catch (e) {
                                 console.warn('skip bad daemon system record:', e);
                             }
@@ -553,17 +585,28 @@ export class Scheduler implements SchedulerType {
 
                     const paramNode = this.createParameterNodeFromSchema(tpl.parameterSchema, task.parameters || {});
                     const intervals = (task.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
-                    const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals);
+                    const schedule = new TaskSchedule(!!task.schedule?.enabled, intervals, !!task.schedule?.runOnBoot);
 
                     // Migrate old task-level env retention into per-interval retention
+                    let needsResave = false;
                     if (templateKey === 'ZfsReplicationTask' || templateKey === 'AutomatedSnapshotTask') {
-                        this.migrateEnvRetentionToIntervals(templateKey, task.parameters || {}, schedule);
+                        needsResave = this.migrateEnvRetentionToIntervals(templateKey, task.parameters || {}, schedule);
                     }
 
                     const inst = new TaskInstance(task.name, tpl, paramNode, schedule, task.notes || '');
                     (inst as any)._templateKey = templateKey;
                     this.setScope(inst, 'system');
                     this.taskInstances.push(inst);
+
+                    // Auto re-save to strip old retention keys from env file
+                    if (needsResave) {
+                        try {
+                            console.log(`[migration] Re-saving task "${task.name}" to remove old retention env keys`);
+                            await this.updateTaskInstance(inst);
+                        } catch (e) {
+                            console.warn(`[migration] Failed to re-save task "${task.name}":`, e);
+                        }
+                    }
                 } catch (e) {
                     console.warn('skip bad legacy task record:', e);
                 }
@@ -646,6 +689,17 @@ export class Scheduler implements SchedulerType {
                 } else if (envObject['zfsRepConfig_sendOptions_compressed_flag'] === 'true') {
                     envObject['zfsRepConfig_sendOptions_raw_flag'] = '';
                 }
+                // Remove legacy env-level retention keys (now stored per-interval in schedule JSON)
+                delete envObject['zfsRepConfig_snapshotRetention_source_retentionTime'];
+                delete envObject['zfsRepConfig_snapshotRetention_source_retentionUnit'];
+                delete envObject['zfsRepConfig_snapshotRetention_destination_retentionTime'];
+                delete envObject['zfsRepConfig_snapshotRetention_destination_retentionUnit'];
+                break;
+
+            case 'AutomatedSnapshotTask':
+                // Remove legacy env-level retention keys (now stored per-interval in schedule JSON)
+                delete envObject['autoSnapConfig_snapshotRetention_retentionTime'];
+                delete envObject['autoSnapConfig_snapshotRetention_retentionUnit'];
                 break;
 
             case 'RsyncTask':
@@ -704,6 +758,160 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    /**
+     * Export all task configurations as a JSON blob for backup.
+     */
+    async exportTasks(): Promise<string> {
+        await this.ensureBackend();
+        const exported: any[] = [];
+
+        for (const ti of this.taskInstances) {
+            const templateName = this.normalizeTemplateKey(ti.template.name);
+            const envKeyValues = ti.parameters.asEnvKeyValues();
+            const envObject = this.parseEnvKeyValues(envKeyValues, templateName);
+
+            // For custom tasks with user scripts, include the script body
+            let userScriptBody = '';
+            if (templateName === 'CustomTask') {
+                const filePath = envObject['customTaskConfig_filePath'];
+                if (typeof filePath === 'string' && filePath.includes('/user_scripts/')) {
+                    try {
+                        const { stdout } = await runCommand(['cat', filePath], { superuser: 'try' });
+                        userScriptBody = stdout;
+                    } catch { /* ignore */ }
+                }
+            }
+
+            exported.push({
+                name: ti.name,
+                template: templateName,
+                parameters: envObject,
+                schedule: this.toPlain(ti.schedule),
+                notes: ti.notes || '',
+                userScriptBody,
+            });
+        }
+
+        return JSON.stringify({ version: 1, exportDate: new Date().toISOString(), tasks: exported }, null, 2);
+    }
+
+    /**
+     * Compare an imported task's config against an existing task instance.
+     * Returns true if template, parameters, schedule, and notes all match.
+     */
+    private importedConfigMatchesExisting(existing: TaskInstance, imported: any): boolean {
+        try {
+            const existingTemplate = this.normalizeTemplateKey(existing.template.name);
+            const importedTemplate = this.normalizeTemplateKey(imported.template);
+            if (existingTemplate !== importedTemplate) return false;
+
+            const existingEnv = this.parseEnvKeyValues(existing.parameters.asEnvKeyValues(), existingTemplate);
+            const importedParams = imported.parameters || {};
+
+            // Compare parameter values (ignore taskName which is always set)
+            const allKeys = new Set([...Object.keys(existingEnv), ...Object.keys(importedParams)]);
+            allKeys.delete('taskName');
+            for (const key of allKeys) {
+                if (String(existingEnv[key] ?? '') !== String(importedParams[key] ?? '')) return false;
+            }
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Generate a unique name by appending _imported, _imported_2, etc.
+     */
+    private generateUniqueName(baseName: string, existingNames: Set<string>): string {
+        let candidate = `${baseName}_imported`;
+        if (!existingNames.has(candidate)) return candidate;
+        let counter = 2;
+        while (existingNames.has(`${baseName}_imported_${counter}`)) {
+            counter++;
+        }
+        return `${baseName}_imported_${counter}`;
+    }
+
+    /**
+     * Import tasks from a JSON backup blob.
+     * - If name doesn't exist: import as-is.
+     * - If name exists and config is identical: skip.
+     * - If name exists but config differs: import with a renamed name.
+     * Returns { imported: string[], skipped: string[], renamed: string[], errors: string[] }
+     */
+    async importTasks(jsonString: string): Promise<{ imported: string[]; skipped: string[]; renamed: string[]; errors: string[] }> {
+        await this.ensureBackend();
+        const result = { imported: [] as string[], skipped: [] as string[], renamed: [] as string[], errors: [] as string[] };
+
+        let data: any;
+        try {
+            data = JSON.parse(jsonString);
+        } catch {
+            result.errors.push('Invalid JSON file.');
+            return result;
+        }
+
+        const tasks = data?.tasks;
+        if (!Array.isArray(tasks)) {
+            result.errors.push('No tasks array found in backup file.');
+            return result;
+        }
+
+        const existingNames = new Set(this.taskInstances.map(t => t.name));
+
+        for (const t of tasks) {
+            try {
+                if (!t?.name || !t?.template) {
+                    result.errors.push(`Skipped invalid entry (missing name or template).`);
+                    continue;
+                }
+
+                let finalName = t.name;
+
+                if (existingNames.has(t.name)) {
+                    // Name collision — check if config is identical
+                    const existingTask = this.taskInstances.find(ti => ti.name === t.name);
+                    if (existingTask && this.importedConfigMatchesExisting(existingTask, t)) {
+                        result.skipped.push(t.name);
+                        continue;
+                    }
+                    // Config differs — rename
+                    finalName = this.generateUniqueName(t.name, existingNames);
+                    result.renamed.push(`${t.name} → ${finalName}`);
+                }
+
+                const templateKey = this.normalizeTemplateKey(t.template);
+                const tpl = this.resolveTemplate(templateKey);
+                const paramNode = this.safeBuildParamNode(tpl.parameterSchema, t.parameters || {});
+
+                const intervals = (t.schedule?.intervals || []).map((i: any) => new TaskScheduleInterval(i));
+                const schedule = new TaskSchedule(!!t.schedule?.enabled, intervals, !!t.schedule?.runOnBoot);
+
+                const inst = new TaskInstance(finalName, tpl, paramNode, schedule, t.notes || '');
+
+                // Handle multi-line user scripts
+                if (templateKey === 'CustomTask' && t.userScriptBody) {
+                    const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
+                    const scriptFilePath = `${scriptDir}/${finalName}.sh`;
+                    await runCommand(['mkdir', '-p', scriptDir], { superuser: 'try' });
+                    const scriptFile = new File(server, scriptFilePath);
+                    await unwrap(scriptFile.write(t.userScriptBody, { superuser: 'try' }));
+                    await runCommand(['chmod', '+x', scriptFilePath], { superuser: 'try' });
+                }
+
+                await this.registerTaskInstance(inst);
+                result.imported.push(finalName);
+                existingNames.add(finalName);
+            } catch (e) {
+                result.errors.push(`${t.name}: ${errorString(e)}`);
+            }
+        }
+
+        return result;
+    }
+
     async registerTaskInstance(taskInstance: TaskInstance) {
         await this.ensureBackend();
         // generate env file with key/value pairs (Task Parameters)
@@ -716,7 +924,36 @@ export class Scheduler implements SchedulerType {
         if (templateName === 'CustomTask') {
             const children = taskInstance.parameters?.children;
             const pathParam = children?.find((child: any) => child.key === 'filePath');
-            scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
+            const commandParam = children?.find((child: any) => child.key === 'command');
+            const commandValue = commandParam?.value || '';
+
+            // Multi-line script: write to a file and point filePath at it
+            if (commandValue && commandValue.includes('\n')) {
+                const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
+                const scriptFilePath = `${scriptDir}/${taskInstance.name}.sh`;
+
+                // Ensure directory exists
+                await runCommand(['mkdir', '-p', scriptDir], { superuser: 'try' });
+
+                // Prepend shebang if not present
+                let scriptContent = commandValue;
+                if (!scriptContent.startsWith('#!')) {
+                    scriptContent = '#!/bin/bash\n' + scriptContent;
+                }
+
+                // Write script file
+                const scriptFile = new File(server, scriptFilePath);
+                await unwrap(scriptFile.write(scriptContent, { superuser: 'try' }));
+                await runCommand(['chmod', '+x', scriptFilePath], { superuser: 'try' });
+
+                // Override env to use the script file
+                envObject['customTaskConfig_filePath'] = scriptFilePath;
+                envObject['customTaskConfig_filePath_flag'] = 'true';
+                envObject['customTaskConfig_command_flag'] = 'false';
+                scriptPath = scriptFilePath;
+            } else {
+                scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
+            }
         } else {
             const scriptFileName = this.getScriptFromTemplateName(templateName);
             scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;
@@ -923,6 +1160,13 @@ export class Scheduler implements SchedulerType {
             await this.disableSchedule(taskInstance);
         }
         await removeTask(fullTaskName);
+
+        // Clean up user script file for CustomTask if it exists
+        if (templateName === 'CustomTask') {
+            const userScriptPath = `/opt/45drives/houston/scheduler/user_scripts/${taskInstance.name}.sh`;
+            await runCommand(['rm', '-f', userScriptPath], { superuser: 'try' }).catch(() => {});
+        }
+
         console.log(`${fullTaskName} removed`);
     }
     
@@ -1407,17 +1651,35 @@ export class Scheduler implements SchedulerType {
     /**
      * Migrate old task-level env retention values into per-interval retention.
      * Only applies when intervals exist but none of them carry their own retention.
+     * Returns true if migration was performed (caller should re-save the task).
      */
     private migrateEnvRetentionToIntervals(
         templateKey: string,
         params: Record<string, any>,
         schedule: TaskSchedule
-    ) {
-        if (!schedule.intervals.length) return;
+    ): boolean {
+        if (!schedule.intervals.length) return false;
 
         // Check if any interval already has retention (new-style task)
         const anyHasRetention = schedule.intervals.some((iv: any) => iv.retention);
-        if (anyHasRetention) return;
+
+        // Detect whether old-style retention keys exist in the params
+        let hasOldKeys = false;
+        if (templateKey === 'ZfsReplicationTask') {
+            hasOldKeys = (
+                'zfsRepConfig_snapshotRetention_source_retentionTime' in params ||
+                'zfsRepConfig_snapshotRetention_source_retentionUnit' in params ||
+                'zfsRepConfig_snapshotRetention_destination_retentionTime' in params ||
+                'zfsRepConfig_snapshotRetention_destination_retentionUnit' in params
+            );
+        } else if (templateKey === 'AutomatedSnapshotTask') {
+            hasOldKeys = (
+                'autoSnapConfig_snapshotRetention_retentionTime' in params ||
+                'autoSnapConfig_snapshotRetention_retentionUnit' in params
+            );
+        }
+
+        if (!hasOldKeys) return false;
 
         let srcTime = 0, srcUnit = '', dstTime = 0, dstUnit = '';
 
@@ -1431,21 +1693,25 @@ export class Scheduler implements SchedulerType {
             srcUnit = params['autoSnapConfig_snapshotRetention_retentionUnit'] || '';
         }
 
-        // Only migrate if there's actually a retention value set
-        if (srcTime <= 0 && dstTime <= 0) return;
+        // Migrate values into intervals only if they don't already have retention
+        if (!anyHasRetention && (srcTime > 0 || dstTime > 0)) {
+            console.log(`[migration] Migrating env retention to per-interval for ${templateKey}`);
 
-        console.log(`[migration] Migrating env retention to per-interval for ${templateKey}`);
-
-        for (const interval of schedule.intervals) {
-            const retention: any = {};
-            if (srcTime > 0) {
-                retention.source = { retentionTime: srcTime, retentionUnit: srcUnit };
+            for (const interval of schedule.intervals) {
+                const retention: any = {};
+                if (srcTime > 0) {
+                    retention.source = { retentionTime: srcTime, retentionUnit: srcUnit };
+                }
+                if (dstTime > 0) {
+                    retention.destination = { retentionTime: dstTime, retentionUnit: dstUnit };
+                }
+                (interval as any).retention = retention;
             }
-            if (dstTime > 0) {
-                retention.destination = { retentionTime: dstTime, retentionUnit: dstUnit };
-            }
-            (interval as any).retention = retention;
         }
+
+        // Always return true if old keys existed — they need to be stripped on re-save
+        console.log(`[migration] Old retention env keys detected for ${templateKey} — will re-save to remove them`);
+        return true;
     }
 
     parseIntervalIntoString(interval) {

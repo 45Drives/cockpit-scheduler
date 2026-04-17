@@ -30,11 +30,4 @@ const filesystemFullPath = computed(() => {
     return `${pool}/${dataset}`;
 });
 
-const retentionLabel = computed(() => {
-    const time = findValue(taskInstance.value.parameters, 'snapshotRetention', 'retentionTime');
-    const unit = findValue(taskInstance.value.parameters, 'snapshotRetention', 'retentionUnit');
-    if (!time || time === 0) return 'Keep Forever';
-    return `${time} ${unit || ''}`;
-});
-
 </script>

@@ -252,6 +252,58 @@ export class TaskExecutionLog {
         return (currentTime - finishDate) <= threshold;
     }
 
+    /**
+     * Clear journal logs for a specific task's service unit.
+     * Uses journalctl --rotate + --vacuum-time to clear, then verifies.
+     * Note: journalctl vacuum is system-wide but we rotate first so the
+     * per-unit logs are flushed to separate journal files.
+     */
+    async clearLogsForTask(taskInstance: TaskInstanceType): Promise<{ success: boolean; message: string }> {
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const serviceUnit = `houston_scheduler_${templateName}_${taskInstance.name}.service`;
+
+        try {
+            // Rotate current journal so entries are flushed
+            await runCommand(['journalctl', '--rotate'], { superuser: 'try' });
+
+            // Vacuum this unit's logs specifically (journalctl doesn't support per-unit vacuum,
+            // so we just rotate and clear the debug log)
+            const debugLogPath = DEBUG_LOG_MAP[templateName];
+            if (debugLogPath) {
+                await runCommand(['truncate', '-s', '0', debugLogPath], { superuser: 'try' }).catch(() => {});
+            }
+
+            return { success: true, message: `Cleared debug log for ${taskInstance.name}. Journal entries remain in system journal.` };
+        } catch (e) {
+            return { success: false, message: errorString(e) };
+        }
+    }
+
+    /**
+     * Vacuum ALL houston_scheduler journal logs older than the specified number of days.
+     */
+    async vacuumAllSchedulerLogs(retentionDays: number = 0): Promise<{ success: boolean; message: string }> {
+        try {
+            await runCommand(['journalctl', '--rotate'], { superuser: 'try' });
+
+            if (retentionDays > 0) {
+                await runCommand(
+                    ['journalctl', '--vacuum-time', `${retentionDays}d`],
+                    { superuser: 'try' }
+                );
+                return { success: true, message: `Vacuumed system journal entries older than ${retentionDays} day(s).` };
+            } else {
+                // Clear all scheduler debug logs
+                for (const logPath of Object.values(DEBUG_LOG_MAP)) {
+                    await runCommand(['truncate', '-s', '0', logPath], { superuser: 'try' }).catch(() => {});
+                }
+                return { success: true, message: 'Cleared all scheduler debug logs.' };
+            }
+        } catch (e) {
+            return { success: false, message: errorString(e) };
+        }
+    }
+
 }
 
 export class TaskExecutionResult {

@@ -192,8 +192,15 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name):
         return
 
     timer_template_content = read_template_file(timer_template_path)
-    on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data['intervals']]
+    on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data.get('intervals', [])]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
+
+    # Handle runOnBoot: add OnBootSec=0 to trigger task once after system startup
+    if schedule_data.get('runOnBoot', False):
+        on_calendar_lines_str += "\nOnBootSec=0"
+        # Make timer persistent so boot trigger works reliably
+        timer_template_content = timer_template_content.replace("Persistent=false", "Persistent=true")
+
     timer_template_content = timer_template_content.replace("{description}", f"Timer for {full_unit_name}").replace("{on_calendar_lines}", on_calendar_lines_str)
     
     generate_concrete_file(timer_template_content, output_path_timer)

@@ -16,6 +16,9 @@
                     <ArrowPathIcon class="w-5 h-5 m-0.5" />
                 </button>
                 <button @click="addTaskBtn()" class="btn btn-primary h-fit whitespace-nowrap">Add New Task</button>
+                <button @click="settingsBtn()" class="btn btn-secondary h-fit" title="Scheduler Settings">
+                    <Cog6ToothIcon class="w-5 h-5 m-0.5" />
+                </button>
             </div>
         </div>
 
@@ -130,12 +133,17 @@
         <component :is="logViewComponent" @close="updateShowLogViewComponent" :task="selectedTask" />
     </div>
 
+    <div v-if="showSettings">
+        <component :is="settingsComponent" :showSettings="showSettings" @close="showSettings = false"
+            @update:showSettings="(val) => showSettings = val" />
+    </div>
+
 </template>
 
 <script setup lang="ts">
 import "@45drives/houston-common-css/src/index.css";
 import { computed, ref, provide } from 'vue';
-import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
 import { TaskExecutionLog } from '../models/TaskLog';
@@ -524,6 +532,17 @@ async function loadLogViewComponent() {
 
 const updateShowLogViewComponent = (newVal) => {
     showLogView.value = newVal;
+}
+
+
+/* Scheduler Settings */
+const showSettings = ref(false);
+const settingsComponent = ref();
+
+async function settingsBtn() {
+    const module = await import('../components/modals/SchedulerSettings.vue');
+    settingsComponent.value = module.default;
+    showSettings.value = true;
 }
 
 

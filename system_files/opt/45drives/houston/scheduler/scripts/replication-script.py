@@ -51,14 +51,18 @@ sys.stderr = SafeStream(sys.stderr)
 
 notifier = get_notifier()
 
+# ZFS user property used to tag snapshots for reliable ownership tracking
+TASK_PROP = "com.45drives:task"
+
 
 class Snapshot:
-    def __init__(self, name, guid, creation, creation_epoch=0, order_key=0):
+    def __init__(self, name, guid, creation, creation_epoch=0, order_key=0, task_tag=None):
         self.name = name
         self.guid = guid
         self.creation = creation
         self.creation_epoch = creation_epoch
         self.order_key = order_key
+        self.task_tag = task_tag
 
 
 def split_zfs_list_line(line: str):
@@ -212,6 +216,9 @@ def filter_dataset_snapshots(snaps, dataset: str):
 
 
 def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "", tier_idx=None) -> bool:
+    """Check if a snapshot belongs to this task by name pattern.
+    Matches both new format (customName[-tN]-timestamp) and legacy
+    format (customName-taskName[-tN]-timestamp) for backward compatibility."""
     suf = snapshot_suffix(full_snap_name)
     tn = (task_name or "").strip()
     cn = (custom_name or "").strip()
@@ -220,19 +227,27 @@ def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "",
         return False
 
     if tier_idx is not None:
-        # Multi-tier: match "taskName-tN-..." or "customName-taskName-tN-..."
+        # New format: customName-tN-... (custom name is full override)
+        if cn and suf.startswith(f"{cn}-t{tier_idx}-"):
+            return True
+        # Default (no custom name): taskName-tN-...
         tier_prefix = f"{tn}-t{tier_idx}-"
         if suf.startswith(tier_prefix):
             return True
+        # Legacy format: customName-taskName-tN-...
         if cn:
             cn_tier_prefix = f"{cn}-{tn}-t{tier_idx}-"
             if suf.startswith(cn_tier_prefix):
                 return True
         return False
 
-    # Legacy/single-tier: match "taskName-..." or "customName-taskName-..."
+    # New format: customName-timestamp (custom name is full override)
+    if cn and suf.startswith(f"{cn}-"):
+        return True
+    # Default (no custom name): taskName-timestamp
     if suf.startswith(f"{tn}-"):
         return True
+    # Legacy format: customName-taskName-timestamp
     if cn and suf.startswith(f"{cn}-{tn}-"):
         return True
     return False
@@ -404,6 +419,25 @@ def get_local_snapshots(filesystem):
             snap = parse_snapshot_line(line)
             if snap:
                 snaps.append(snap)
+
+        # Fetch task tags for ownership tracking
+        tag_map = {}
+        try:
+            tag_cmd = ["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem]
+            tag_p = run_logged(tag_cmd, text=True)
+            if tag_p.returncode == 0:
+                for line in (tag_p.stdout or "").splitlines():
+                    try:
+                        name, prop, value = line.split("\t")
+                        if prop == TASK_PROP and value != "-":
+                            tag_map[name] = value
+                    except ValueError:
+                        continue
+        except Exception:
+            pass
+        for s in snaps:
+            s.task_tag = tag_map.get(s.name)
+
         return snaps
 
     err = (p.stderr or p.stdout or "").lower()
@@ -437,6 +471,28 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
             snap = parse_snapshot_line(line)
             if snap:
                 snapshots.append(snap)
+
+        # Fetch task tags from remote for ownership tracking
+        tag_map = {}
+        try:
+            tag_args = ["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem]
+            tag_p = ssh_run_args(user, host, ssh_port, tag_args, capture_output=True, check=False, text=False)
+            if tag_p.returncode == 0:
+                tag_out = (tag_p.stdout or b"")
+                if isinstance(tag_out, str):
+                    tag_out = tag_out.encode()
+                for line in tag_out.decode(errors="replace").splitlines():
+                    try:
+                        name, prop, value = line.split("\t")
+                        if prop == TASK_PROP and value != "-":
+                            tag_map[name] = value
+                    except ValueError:
+                        continue
+        except Exception:
+            pass
+        for s in snapshots:
+            s.task_tag = tag_map.get(s.name)
+
         return snapshots
 
     errb = (p.stderr or b"")
@@ -668,7 +724,12 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     if is_recursive:
         command.append("-r")
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{task_name}{tier_tag}-{timestamp}"
+    # When custom_name is set, use it as the full snapshot label (no task_name in the name).
+    # The ZFS property com.45drives:task is used to track ownership for pruning.
+    if custom_name:
+        new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
+    else:
+        new_snap = f"{filesystem}@{task_name}{tier_tag}-{timestamp}"
     command.append(new_snap)
 
     notifier.notify(f"STATUS=Creating snapshot {new_snap}…")
@@ -699,12 +760,23 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
 
     print(f"new snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Snapshot created: {new_snap}")
+
+    # Tag snapshot with our task property so we can reliably identify it for pruning
+    try:
+        run_logged(["zfs", "set", f"{TASK_PROP}={task_name}", new_snap], check=True, text=True)
+    except Exception as e:
+        print(f"WARNING: failed to tag snapshot {new_snap}: {e}")
+
     return new_snap
 
 
 def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_tag=""):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{task_name}{tier_tag}-{timestamp}"
+    # When custom_name is set, use it as the full snapshot label (no task_name in the name).
+    if custom_name:
+        new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
+    else:
+        new_snap = f"{filesystem}@{task_name}{tier_tag}-{timestamp}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -741,6 +813,15 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
 
     print(f"new remote snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Remote snapshot created: {new_snap}")
+
+    # Tag remote snapshot with our task property for reliable pruning
+    try:
+        ssh_run_args(remote_user, remote_host, ssh_port,
+                     ["zfs", "set", f"{TASK_PROP}={task_name}", new_snap],
+                     capture_output=True, check=False, text=True)
+    except Exception as e:
+        print(f"WARNING: failed to tag remote snapshot {new_snap}: {e}")
+
     return new_snap
 
 
@@ -844,6 +925,7 @@ def prune_snapshots_by_retention(
     progress_base=0,
     progress_span=100,
     tier_idx=None,
+    custom_name="",
 ):
     if remote_host:
         snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
@@ -895,7 +977,15 @@ def prune_snapshots_by_retention(
     excluded_suffix = excluded_snapshot_name.split("@", 1)[-1] if excluded_snapshot_name else None
 
     for snapshot in snapshots:
-        if is_task_snapshot(snapshot.name, task_name, tier_idx=tier_idx):
+        # Primary: check ZFS property tag (most reliable, works with any naming scheme)
+        belongs = (hasattr(snapshot, 'task_tag') and snapshot.task_tag == task_name)
+
+        # Fallback: name-based matching, but ONLY for untagged snapshots.
+        # If a snapshot is tagged for a different task, never claim it.
+        if not belongs and not getattr(snapshot, 'task_tag', None):
+            belongs = is_task_snapshot(snapshot.name, task_name, custom_name=custom_name, tier_idx=tier_idx)
+
+        if belongs:
             snap_suffix = snapshot_suffix(snapshot.name)
             if excluded_suffix and snap_suffix == excluded_suffix:
                 continue
@@ -2339,6 +2429,7 @@ def main():
                 progress_base=current_pct,
                 progress_span=50,
                 tier_idx=tier_idx,
+                custom_name=customName,
             )
             current_pct = prune_snapshots_by_retention(
                 destFilesystem,
@@ -2349,6 +2440,7 @@ def main():
                 progress_base=current_pct,
                 progress_span=50,
                 tier_idx=tier_idx,
+                custom_name=customName,
             )
         else:
             # Push: source local, destination maybe remote
@@ -2361,6 +2453,7 @@ def main():
                 progress_base=current_pct,
                 progress_span=50,
                 tier_idx=tier_idx,
+                custom_name=customName,
             )
             current_pct = prune_snapshots_by_retention(
                 destFilesystem,
@@ -2375,6 +2468,7 @@ def main():
                 progress_base=current_pct,
                 progress_span=50,
                 tier_idx=tier_idx,
+                custom_name=customName,
             )
 
         final_pct = min(100, int(current_pct))
@@ -2419,17 +2513,20 @@ def main():
                         sourceFilesystem, taskName, max_src_time, max_src_unit, newSnap,
                         remoteUser, remoteHost, sshPort, transferMethod,
                         progress_base=0, progress_span=0, tier_idx=None,
+                        custom_name=customName,
                     )
                 else:
                     prune_snapshots_by_retention(
                         sourceFilesystem, taskName, max_src_time, max_src_unit, newSnap,
                         progress_base=0, progress_span=0, tier_idx=None,
+                        custom_name=customName,
                     )
             if max_dst_secs > 0:
                 if direction == "pull":
                     prune_snapshots_by_retention(
                         destFilesystem, taskName, max_dst_time, max_dst_unit, newSnap,
                         progress_base=0, progress_span=0, tier_idx=None,
+                        custom_name=customName,
                     )
                 else:
                     prune_snapshots_by_retention(
@@ -2438,6 +2535,7 @@ def main():
                         remoteHost if remoteHost else None,
                         sshPort, transferMethod,
                         progress_base=0, progress_span=0, tier_idx=None,
+                        custom_name=customName,
                     )
 
         notifier.notify(f"STATUS=ZFS replication task completed. {final_pct}% complete")

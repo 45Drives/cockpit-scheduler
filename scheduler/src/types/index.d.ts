@@ -41,6 +41,7 @@ interface TimeComponentType {
 
 interface TaskScheduleType {
 	enabled: boolean;
+	runOnBoot?: boolean;
 	intervals: TaskScheduleIntervalType[];
 }
 

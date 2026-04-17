@@ -455,7 +455,7 @@
                     <input v-if="useCustomName" type="text" v-model="customName" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customNameErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" placeholder="Name is TaskName + CustomName + Timestamp" />
+                    ]" placeholder="Name is CustomName + Timestamp" />
                     <input v-else disabled type="text" v-model="customName"
                         class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="Name is TaskName + Timestamp" />
@@ -498,7 +498,6 @@ import {
     IntParameter,
     StringParameter,
     BoolParameter,
-    SnapshotRetentionParameter,
     SelectionOption,
     SelectionParameter
 } from '../../../models/Parameters';
@@ -582,12 +581,6 @@ const useCustomName = ref(false);
 const customName = ref('');
 const customNameErrorTag = ref(false);
 
-const srcRetentionTime = ref(0);
-const srcRetentionUnit = ref('');
-const destRetentionTime = ref(0);
-const destRetentionUnit = ref('');
-const retentionUnitOptions = ref(['minutes', 'hours', 'days', 'weeks', 'months', 'years']);
-
 const useCustomTarget = ref(true);
 const useCustomSource = ref(false);
 const customSrcPoolErrorTag = ref(false);
@@ -618,13 +611,6 @@ const isPull = computed(() => directionSwitched.value);
 const remoteEndpointLabel = computed(() => (isPull.value ? 'Remote Source' : 'Remote Target'));
 const sourceCardLabel = computed(() => (isPull.value ? 'Remote Source Location' : 'Source Location'));
 const targetCardLabel = computed(() => (isPull.value ? 'Local Target Location' : 'Target Location'));
-
-const retentionSourceLabel = computed(() =>
-    isPull.value ? 'Remote Source Retention Policy' : 'Source Retention Policy'
-);
-const retentionDestLabel = computed(() =>
-    isPull.value ? 'Local Target Retention Policy' : 'Destination Retention Policy'
-);
 
 const hostPlaceholder = computed(() =>
     isPull.value ? 'Required for pull replication.' : 'Leave blank for local replication.'
@@ -787,18 +773,6 @@ async function initializeData() {
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
         customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
 
-        const snapshotRetentionParams = params.find(p => p.key === 'snapshotRetention')!.children;
-        const sourceRetention = snapshotRetentionParams.find(c => c.key === 'source');
-        if (sourceRetention) {
-            srcRetentionTime.value = sourceRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
-            srcRetentionUnit.value = sourceRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
-        }
-        const destinationRetention = snapshotRetentionParams.find(c => c.key === 'destination');
-        if (destinationRetention) {
-            destRetentionTime.value = destinationRetention.children.find(c => c.key === 'retentionTime')?.value || 0;
-            destRetentionUnit.value = destinationRetention.children.find(c => c.key === 'retentionUnit')?.value || '';
-        }
-
         // Optional connectivity check if remote endpoint exists
         if (destHost.value) {
             const sshTarget = `${destUser.value}@${destHost.value}`;
@@ -858,10 +832,6 @@ async function initializeData() {
             mbufferUnit: mbufferUnit.value,
             useCustomName: useCustomName.value,
             customName: customName.value,
-            srcRetentionTime: srcRetentionTime.value,
-            srcRetentionUnit: srcRetentionUnit.value,
-            destRetentionTime: destRetentionTime.value,
-            destRetentionUnit: destRetentionUnit.value,
             transferMethod: transferMethod.value,
             allowOverwrite: allowOverwrite.value,
             resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
@@ -896,10 +866,6 @@ function hasChanges() {
         mbufferUnit: mbufferUnit.value,
         useCustomName: useCustomName.value,
         customName: customName.value,
-        srcRetentionTime: srcRetentionTime.value,
-        srcRetentionUnit: srcRetentionUnit.value,
-        destRetentionTime: destRetentionTime.value,
-        destRetentionUnit: destRetentionUnit.value,
         allowOverwrite: allowOverwrite.value,
         resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
         useExistingDest: useExistingDest.value,
@@ -1280,10 +1246,6 @@ function setParams() {
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
             .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
-        )
-        .addChild(new ParameterNode('Snapshot Retention', 'snapshotRetention')
-            .addChild(new SnapshotRetentionParameter('Source', 'source', srcRetentionTime.value, srcRetentionUnit.value))
-            .addChild(new SnapshotRetentionParameter('Destination', 'destination', destRetentionTime.value, destRetentionUnit.value))
         );
 
     parameters.value = newParams;

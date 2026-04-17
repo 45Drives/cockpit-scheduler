@@ -26,6 +26,37 @@
                             </select>
                         </div>
 
+                        <!-- Cron Expression Input (Advanced) -->
+                        <div name="cron-expression" class="col-span-1 mt-2">
+                            <button @click.stop="showAdvanced = !showAdvanced" type="button"
+                                class="flex items-center gap-1 text-sm text-muted hover:text-default transition-colors">
+                                <ChevronRightIcon class="w-4 h-4 transition-transform" :class="{ 'rotate-90': showAdvanced }" />
+                                <span>Advanced: Cron Expression</span>
+                            </button>
+                            <div v-if="showAdvanced" class="mt-2 border border-default rounded-md p-2 bg-well">
+                                <div class="flex flex-row justify-between items-center">
+                                    <div class="flex flex-row items-center">
+                                        <label class="block text-sm leading-6 text-default">Cron Expression</label>
+                                        <InfoTile class="ml-1"
+                                            title="Enter a standard cron expression (minute hour day month day-of-week). Example: '0 2 * * Mon,Fri' for 2 AM on Mon and Fri. Fields are auto-populated below." />
+                                    </div>
+                                    <ExclamationCircleIcon v-if="cronErrorTag" class="mt-1 w-5 h-5 text-danger" />
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input @click.stop v-model="cronExpression" type="text" placeholder="M H D Mo DOW (e.g., 0 2 * * *)"
+                                        :class="[
+                                        'my-1 block w-full text-default input-textlike bg-default',
+                                        cronErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                                        ]"
+                                        @keyup.enter="applyCronExpression" />
+                                    <button @click.stop="applyCronExpression" class="btn btn-secondary h-fit whitespace-nowrap">
+                                        Apply
+                                    </button>
+                                </div>
+                                <p class="text-xs text-muted mt-1">Parses a 5-field cron expression and adds it as an interval. You still need to click "Save Schedule" to persist changes.</p>
+                            </div>
+                        </div>
+
                         <div name="schedule-fields" class="col-span-1 grid grid-cols-2 gap-2 mt-2">
                             <div name="hour">
                                 <div class="flex flex-row justify-between items-center">
@@ -231,6 +262,17 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Run on Boot Checkbox -->
+                <div name="run-on-boot" class="border border-default rounded-md p-2 mt-2 bg-accent">
+                    <label class="flex items-center gap-2 text-sm text-default cursor-pointer">
+                        <input type="checkbox" v-model="runOnBoot"
+                            class="w-4 h-4 text-success bg-well border-default rounded focus:ring-green-500 dark:focus:ring-green-600" />
+                        <span class="font-medium">Run on system startup (@reboot)</span>
+                        <InfoTile class="ml-1"
+                            title="When enabled, this task will also run once immediately after system boot, in addition to any scheduled intervals." />
+                    </label>
+                </div>
             </div>
 
         </template>
@@ -301,7 +343,7 @@ import { inject, reactive, ref, Ref, watch, onMounted, computed } from 'vue';
 import Modal from '../common/Modal.vue';
 import CalendarComponent from '../common/CalendarComponent.vue';
 import InfoTile from '../common/InfoTile.vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronRightIcon } from '@heroicons/vue/24/outline';
 import { TaskInstance } from '../../models/Tasks';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
@@ -325,6 +367,10 @@ const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
 
 const savingSchedule = ref(false);
 const scheduleEnabled = ref(true);
+const runOnBoot = ref(false);
+const cronExpression = ref('');
+const cronErrorTag = ref(false);
+const showAdvanced = ref(false);
 
 const retentionSourceTime = ref(0);
 const retentionSourceUnit = ref('hours');
@@ -436,6 +482,7 @@ const cancelCancel: ConfirmationCallback = async () => {
 const thisTask = ref(props.task);
 const newSchedule = reactive<TaskScheduleType>({
     enabled: scheduleEnabled.value,
+    runOnBoot: false,
     intervals: [],
 });
 
@@ -469,6 +516,95 @@ function clearFields() {
     retentionDestUnit.value = 'hours';
     forceUpdateCalendar();
     clearSelectedInterval();
+}
+
+// Cron expression parsing: "M H D Mo DOW" → schedule fields
+const DOW_MAP: Record<string, DayOfWeek> = {
+    '0': 'Sun', '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu', '5': 'Fri', '6': 'Sat', '7': 'Sun',
+    'sun': 'Sun', 'mon': 'Mon', 'tue': 'Tue', 'wed': 'Wed', 'thu': 'Thu', 'fri': 'Fri', 'sat': 'Sat',
+};
+
+function cronFieldToSystemd(field: string, kind: 'min' | 'hour' | 'day' | 'month'): string {
+    if (field === '*') return '*';
+    // */N → 0/N (or 1/N for day)
+    const stepAll = field.match(/^\*\/(\d+)$/);
+    if (stepAll) {
+        const start = kind === 'day' ? '1' : '0';
+        return `${start}/${stepAll[1]}`;
+    }
+    // Cron ranges use '-', systemd uses '..'
+    return field.replace(/-/g, '..');
+}
+
+function parseCronDow(field: string): DayOfWeek[] {
+    if (field === '*') return [];
+
+    const result: DayOfWeek[] = [];
+    for (const part of field.split(',')) {
+        const trimmed = part.trim();
+
+        // Handle ranges: 1-5, Mon-Fri
+        if (trimmed.includes('-')) {
+            const [startStr, endStr] = trimmed.split('-');
+            const startKey = startStr.trim().toLowerCase();
+            const endKey = endStr.trim().toLowerCase();
+            const startDay = DOW_MAP[startKey];
+            const endDay = DOW_MAP[endKey];
+            if (startDay && endDay) {
+                const ordered: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const si = ordered.indexOf(startDay);
+                const ei = ordered.indexOf(endDay);
+                if (si <= ei) {
+                    for (let i = si; i <= ei; i++) result.push(ordered[i]);
+                } else {
+                    // Wrap around: e.g. Fri-Mon
+                    for (let i = si; i < 7; i++) result.push(ordered[i]);
+                    for (let i = 0; i <= ei; i++) result.push(ordered[i]);
+                }
+                continue;
+            }
+        }
+
+        const key = trimmed.toLowerCase();
+        const day = DOW_MAP[key];
+        if (day) result.push(day);
+    }
+    // Deduplicate
+    return [...new Set(result)];
+}
+
+function applyCronExpression() {
+    cronErrorTag.value = false;
+    const raw = (cronExpression.value || '').trim();
+    if (!raw) {
+        cronErrorTag.value = true;
+        pushNotification(new Notification('Invalid Cron', 'Enter a cron expression with 5 fields: minute hour day month day-of-week', 'error', 5000));
+        return;
+    }
+
+    const parts = raw.split(/\s+/);
+    if (parts.length !== 5) {
+        cronErrorTag.value = true;
+        pushNotification(new Notification('Invalid Cron', `Expected 5 fields (M H D Mo DOW), got ${parts.length}.`, 'error', 5000));
+        return;
+    }
+
+    const [min, hour, day, month, dow] = parts;
+
+    newInterval.minute!.value = cronFieldToSystemd(min, 'min');
+    newInterval.hour!.value = cronFieldToSystemd(hour, 'hour');
+    newInterval.day!.value = cronFieldToSystemd(day, 'day');
+    newInterval.month!.value = cronFieldToSystemd(month, 'month');
+    newInterval.year!.value = '*';
+    newInterval.dayOfWeek = parseCronDow(dow);
+
+    selectedPreset.value = 'none';
+    forceUpdateCalendar();
+
+    // Auto-save the interval so the user doesn't have to click Save Interval separately
+    saveInterval(newInterval);
+
+    pushNotification(new Notification('Cron Applied', `Parsed "${raw}" and added interval.`, 'success', 4000));
 }
 
 function setFields(min, hr, d, mon, y, dow) {
@@ -791,8 +927,8 @@ const updateShowSaveConfirmation = (newVal) => {
 const intervals = ref<TaskScheduleIntervalType[]>([]);
 
 async function saveScheduleBtn() {
-    if (localIntervals.value.length < 1) {
-        pushNotification(new Notification('Save Failed', `At least one interval is required.`, 'error', 6000));
+    if (localIntervals.value.length < 1 && !runOnBoot.value) {
+        pushNotification(new Notification('Save Failed', `At least one interval or "Run on Boot" is required.`, 'error', 6000));
     } else {
 
         // Normalize all intervals once more prior to save
@@ -808,6 +944,7 @@ async function saveScheduleBtn() {
 
         newSchedule.intervals = [];                // clear first to avoid duplicates across edits
         newSchedule.intervals.push(...cleaned);
+        newSchedule.runOnBoot = runOnBoot.value;
         thisTask.value.schedule = newSchedule;
 
         await showConfirmationDialog();
@@ -880,9 +1017,11 @@ onMounted(() => {
         selectedInterval.value = undefined;
         selectedIndex.value = undefined;
         localIntervals.value = [];
+        runOnBoot.value = false;
     } else {
         localIntervals.value = [...props.task.schedule.intervals];
         initialScheduleIntervals.value = JSON.parse(JSON.stringify(localIntervals.value));
+        runOnBoot.value = !!props.task.schedule.runOnBoot;
    }
 });
 

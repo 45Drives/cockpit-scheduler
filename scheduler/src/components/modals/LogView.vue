@@ -82,6 +82,16 @@
                                 </svg>
                             </button>
 
+                            <!-- Clean Logs Button -->
+                            <button class="btn btn-danger px-3 py-1 text-sm flex items-center gap-2 h-fit"
+                                @click="cleanTaskLogs" :disabled="cleaningLogs">
+                                {{ cleaningLogs ? 'Cleaning...' : 'Clean Debug Log' }}
+                                <svg v-if="cleaningLogs" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                            </button>
+
                         </div>
                     </div>
 
@@ -153,6 +163,7 @@ import Modal from '../../components/common/Modal.vue';
 import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../../composables/utility'
 import { logInjectionKey } from '../../keys/injection-keys';
+import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface LogViewProps {
     idKey: string;
@@ -173,6 +184,7 @@ const pollInterval = ref();
 const showDebugLog = ref(false);
 const debugLogContent = ref('');
 const loadingDebugLog = ref(false);
+const cleaningLogs = ref(false);
 
 const closeModal = () => {
     showLogView.value = false;
@@ -208,6 +220,26 @@ async function toggleDebugLog() {
     } finally {
         loadingDebugLog.value = false;
         showDebugLog.value = true;
+    }
+}
+
+async function cleanTaskLogs() {
+    cleaningLogs.value = true;
+    try {
+        const result = await myTaskLog.clearLogsForTask(taskInstance.value);
+        if (result.success) {
+            pushNotification(new Notification('Logs Cleaned', result.message, 'success', 5000));
+            // Refresh the debug log view if it was open
+            if (showDebugLog.value) {
+                debugLogContent.value = await myTaskLog.getDebugLog(taskInstance.value);
+            }
+        } else {
+            pushNotification(new Notification('Clean Failed', result.message, 'error', 5000));
+        }
+    } catch (e) {
+        pushNotification(new Notification('Clean Failed', String(e), 'error', 5000));
+    } finally {
+        cleaningLogs.value = false;
     }
 }
 

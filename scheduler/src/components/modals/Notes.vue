@@ -163,7 +163,7 @@ async function saveEditedTask() {
     }
     console.log('sanitizedName:', sanitizedName);
 
-    const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals);
+    const schedule = new TaskSchedule(taskInstance.value.schedule.enabled, taskInstance.value.schedule.intervals, taskInstance.value.schedule.runOnBoot);
     const task = new TaskInstance(sanitizedName, template.value, parameters.value, schedule,notes.value);
     console.log('editing note for task: ', task);
 
