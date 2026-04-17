@@ -3,9 +3,54 @@ import sys
 import os
 import re
 import shlex
+import traceback
+import datetime as dt
 from notify import get_notifier
 
+
+class SafeStream:
+    """Wrap stdout/stderr so broken pipes don't crash the script."""
+    def __init__(self, stream):
+        self._stream = stream
+    def write(self, data):
+        try:
+            return self._stream.write(data)
+        except Exception:
+            return 0
+    def flush(self):
+        try:
+            return self._stream.flush()
+        except Exception:
+            return None
+    def isatty(self):
+        try:
+            return self._stream.isatty()
+        except Exception:
+            return False
+    def fileno(self):
+        try:
+            return self._stream.fileno()
+        except Exception:
+            return -1
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+sys.stdout = SafeStream(sys.stdout)
+sys.stderr = SafeStream(sys.stderr)
+
 notifier = get_notifier()
+
+DEBUG_LOG = os.environ.get("RSYNC_DEBUG_LOG", "/tmp/rsync_task_debug.log")
+DEBUG_ENABLED = os.environ.get("RSYNC_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
+
+def dbg(msg: str):
+    if not DEBUG_ENABLED:
+        return
+    try:
+        with open(DEBUG_LOG, "a") as f:
+            f.write(f"{dt.datetime.now().isoformat()} {msg}\n")
+    except Exception:
+        pass
 PROGRESS_RE = re.compile(r'(\d+)%')
 
 def shlex_join(argv):
@@ -306,17 +351,30 @@ def parse_arguments():
 
 
 def main():
-    notifier.notify("STATUS=Starting task…")
-    notifier.notify("READY=1")
-    notifier.notify("STATUS=Running task…")
-    print("Starting rsync script...")
-    options = parse_arguments()
-    options['localPath'] = normalize_local_source_path(options.get('localPath', ''))
-    if not options.get('targetHost'):
-        options['targetPath'] = normalize_dest_path_for_file_copy(options.get('targetPath', ''))
-        
-    execute_rsync(options)
-    notifier.notify("STATUS=Finishing up…")
+    try:
+        dbg("=== rsync task start ===")
+        notifier.notify("STATUS=Starting task…")
+        notifier.notify("READY=1")
+        notifier.notify("STATUS=Running task…")
+        print("Starting rsync script...")
+        options = parse_arguments()
+        dbg(f"direction={options['direction']} host={options['targetHost']} src={options['localPath']} dest={options['targetPath']}")
+        options['localPath'] = normalize_local_source_path(options.get('localPath', ''))
+        if not options.get('targetHost'):
+            options['targetPath'] = normalize_dest_path_for_file_copy(options.get('targetPath', ''))
+            
+        execute_rsync(options)
+        notifier.notify("STATUS=Finishing up…")
+        dbg("=== rsync task completed ===")
+    except SystemExit:
+        raise
+    except Exception as e:
+        tb = traceback.format_exc()
+        dbg(f"FATAL: {tb}")
+        print(f"FATAL: {e}", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        notifier.notify(f"STATUS=Rsync task failed: {e}")
+        sys.exit(1)
 
 
 if __name__ == '__main__':

@@ -4,10 +4,55 @@ import sys
 import os
 import re
 import time
+import traceback
+import datetime as dt
 
 from notify import get_notifier
 
+
+class SafeStream:
+    """Wrap stdout/stderr so broken pipes don't crash the script."""
+    def __init__(self, stream):
+        self._stream = stream
+    def write(self, data):
+        try:
+            return self._stream.write(data)
+        except Exception:
+            return 0
+    def flush(self):
+        try:
+            return self._stream.flush()
+        except Exception:
+            return None
+    def isatty(self):
+        try:
+            return self._stream.isatty()
+        except Exception:
+            return False
+    def fileno(self):
+        try:
+            return self._stream.fileno()
+        except Exception:
+            return -1
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+sys.stdout = SafeStream(sys.stdout)
+sys.stderr = SafeStream(sys.stderr)
+
 notifier = get_notifier()
+
+DEBUG_LOG = os.environ.get("SCRUB_DEBUG_LOG", "/tmp/scrub_debug.log")
+DEBUG_ENABLED = os.environ.get("SCRUB_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
+
+def dbg(msg: str):
+    if not DEBUG_ENABLED:
+        return
+    try:
+        with open(DEBUG_LOG, "a") as f:
+            f.write(f"{dt.datetime.now().isoformat()} {msg}\n")
+    except Exception:
+        pass
 SCAN_RE = re.compile(r"scan:\s+(?P<state>[\w\s]+)\s+(?P<rest>.*)", re.IGNORECASE)
 PCT_RE = re.compile(r"(\d+(?:\.\d+)?)%")
 
@@ -66,54 +111,71 @@ def get_scrub_progress(pool: str):
     return None, None
 
 def main():
-    pool = os.environ.get("scrubConfig_pool_pool", "").strip()
-    if not pool:
-        msg = "No pool specified for scrubConfig_pool_pool"
-        print(f"ERROR: {msg}")
-        notifier.notify(f"STATUS={msg}")
-        sys.exit(1)
+    try:
+        pool = os.environ.get("scrubConfig_pool_pool", "").strip()
+        if not pool:
+            msg = "No pool specified for scrubConfig_pool_pool"
+            print(f"ERROR: {msg}")
+            notifier.notify(f"STATUS={msg}")
+            sys.exit(1)
 
-    notifier.notify("STATUS=Starting scrub task…")
-    notifier.notify("READY=1")
-    notifier.notify("STATUS=Triggering scrub…")
+        dbg(f"=== scrub task start === pool={pool}")
 
-    start_scrub(pool)
+        notifier.notify("STATUS=Starting scrub task…")
+        notifier.notify("READY=1")
+        notifier.notify("STATUS=Triggering scrub…")
 
-    # Poll progress until scrub is done
-    last_pct_int = None
-    while True:
-        state, pct = get_scrub_progress(pool)
-        if state is None:
-            # Could not parse; just sleep a bit and retry
-            time.sleep(5)
-            continue
+        start_scrub(pool)
 
-        if "in progress" in state or "resilver" in state:
-            if pct is not None:
-                pct_int = int(pct)
-                if pct_int != last_pct_int:
-                    last_pct_int = pct_int
-                    notifier.notify(f"STATUS=Scrubbing {pool}… {pct_int}% complete")
+        # Poll progress until scrub is done
+        last_pct_int = None
+        while True:
+            state, pct = get_scrub_progress(pool)
+            if state is None:
+                # Could not parse; just sleep a bit and retry
+                time.sleep(5)
+                continue
+
+            if "in progress" in state or "resilver" in state:
+                if pct is not None:
+                    pct_int = int(pct)
+                    if pct_int != last_pct_int:
+                        last_pct_int = pct_int
+                        notifier.notify(f"STATUS=Scrubbing {pool}… {pct_int}% complete")
+                else:
+                    notifier.notify(f"STATUS=Scrubbing {pool}… in progress")
+                time.sleep(10)
+                continue
+
+            # Not in progress anymore; treat as done or failed depending on state text
+            if "completed" in state or "repaired" in state or "scrubbed" in state:
+                notifier.notify(f"STATUS=Scrub on {pool} completed.")
+                print(f"Scrub on {pool} completed.")
+                dbg(f"scrub completed on {pool}")
+                break
+            elif "canceled" in state or "cancelled" in state:
+                notifier.notify(f"STATUS=Scrub on {pool} was canceled.")
+                print(f"Scrub on {pool} was canceled.")
+                dbg(f"scrub canceled on {pool}")
+                break
             else:
-                notifier.notify(f"STATUS=Scrubbing {pool}… in progress")
-            time.sleep(10)
-            continue
+                notifier.notify(f"STATUS=Scrub on {pool} ended: {state}")
+                print(f"Scrub on {pool} ended: {state}")
+                dbg(f"scrub ended on {pool}: {state}")
+                break
 
-        # Not in progress anymore; treat as done or failed depending on state text
-        if "completed" in state or "repaired" in state or "scrubbed" in state:
-            notifier.notify(f"STATUS=Scrub on {pool} completed.")
-            print(f"Scrub on {pool} completed.")
-            break
-        elif "canceled" in state or "cancelled" in state:
-            notifier.notify(f"STATUS=Scrub on {pool} was canceled.")
-            print(f"Scrub on {pool} was canceled.")
-            break
-        else:
-            notifier.notify(f"STATUS=Scrub on {pool} ended: {state}")
-            print(f"Scrub on {pool} ended: {state}")
-            break
+        dbg("=== scrub task completed ===")
+        sys.exit(0)
 
-    sys.exit(0)
+    except SystemExit:
+        raise
+    except Exception as e:
+        tb = traceback.format_exc()
+        dbg(f"FATAL: {tb}")
+        print(f"FATAL: {e}", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        notifier.notify(f"STATUS=Scrub task failed: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

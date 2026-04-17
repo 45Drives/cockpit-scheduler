@@ -72,6 +72,16 @@
                                 </Switch>
                             </div>
 
+                            <!-- Debug Log Button -->
+                            <button class="btn btn-secondary px-3 py-1 text-sm flex items-center gap-2 h-fit"
+                                @click="toggleDebugLog" :disabled="loadingDebugLog">
+                                {{ showDebugLog ? 'Hide' : 'View' }} Debug Log
+                                <svg v-if="loadingDebugLog" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                            </button>
+
                         </div>
                     </div>
 
@@ -114,6 +124,14 @@
                     </div>
                 </div>
 
+                <!-- Debug Log Section -->
+                <div v-if="showDebugLog" class="mt-4 bg-plugin-header p-4 rounded-lg">
+                    <h4 class="text-sm font-semibold text-default mb-2">Debug Log</h4>
+                    <div class="h-64 overflow-y-scroll bg-accent rounded p-2">
+                        <pre class="text-xs text-muted whitespace-pre-wrap break-words">{{ debugLogContent }}</pre>
+                    </div>
+                </div>
+
             </div>
         </template>
         <template v-slot:footer>
@@ -152,6 +170,9 @@ const thisLogEntry = ref<TaskExecutionResultType>();
 const viewMoreLogs = ref(false);
 const allLogsForThisTask = ref('');
 const pollInterval = ref();
+const showDebugLog = ref(false);
+const debugLogContent = ref('');
+const loadingDebugLog = ref(false);
 
 const closeModal = () => {
     showLogView.value = false;
@@ -171,6 +192,22 @@ function logColor(line: string) {
         return 'text-default';
     } else {
         return 'text-muted';
+    }
+}
+
+async function toggleDebugLog() {
+    if (showDebugLog.value) {
+        showDebugLog.value = false;
+        return;
+    }
+    loadingDebugLog.value = true;
+    try {
+        debugLogContent.value = await myTaskLog.getDebugLog(taskInstance.value);
+    } catch (e) {
+        debugLogContent.value = `Failed to read debug log: ${e}`;
+    } finally {
+        loadingDebugLog.value = false;
+        showDebugLog.value = true;
     }
 }
 

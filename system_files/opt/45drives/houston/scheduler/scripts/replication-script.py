@@ -132,6 +132,53 @@ def ssh_base_args(user, host, port):
     return args
 
 
+def _detect_nc_flavour(remote_user=None, remote_host=None, remote_port="22"):
+    """
+    Detect which netcat variant is installed (locally or on a remote host).
+    Returns "openbsd" if netcat-openbsd (Ubuntu), "ncat" for nmap-ncat (Rocky/RHEL),
+    or "unknown".  The distinction matters because:
+      - ncat / nmap-ncat:    nc -l <port>
+      - netcat-openbsd:      nc -l -p <port>
+    """
+    try:
+        if remote_user and remote_host:
+            ssh_cmd = ssh_base_args(remote_user, remote_host, remote_port)
+            ssh_cmd.append("nc -h")
+            p = subprocess.run(
+                ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, timeout=10,
+            )
+        else:
+            p = subprocess.run(
+                ["nc", "-h"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, timeout=10,
+            )
+        out = ((p.stdout or "") + " " + (p.stderr or "")).lower()
+    except Exception:
+        out = ""
+
+    if "ncat" in out or "nmap" in out:
+        return "ncat"
+    if "openbsd" in out or "-p" in out:
+        return "openbsd"
+    return "unknown"
+
+
+def build_nc_listen_cmd(port: str, remote_user=None, remote_host=None, remote_port="22"):
+    """
+    Build a portable `nc -l …` command string for the receiver side.
+    Handles ncat (Rocky/RHEL) vs netcat-openbsd (Ubuntu/Debian).
+    """
+    flavour = _detect_nc_flavour(remote_user, remote_host, remote_port)
+    dbg(f"nc flavour on {'remote' if remote_host else 'local'}: {flavour}")
+    port_q = shlex.quote(port)
+    if flavour == "openbsd":
+        # netcat-openbsd requires -l -p <port>
+        return f"nc -l -p {port_q}"
+    # ncat and unknown default to nc -l <port>
+    return f"nc -l {port_q}"
+
+
 def join_zfs_path(pool: str, dataset: str) -> str:
     pool = (pool or "").strip()
     ds = (dataset or "").strip()
@@ -697,6 +744,93 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
     return new_snap
 
 
+# Timeout (seconds) for a single `zfs destroy` call.
+ZFS_DESTROY_TIMEOUT = int(os.environ.get("ZFS_DESTROY_TIMEOUT", "120"))
+
+
+def _snapshot_has_holds_local(snap_name: str) -> bool:
+    """Return True if *snap_name* has any user holds that would block destroy."""
+    try:
+        p = subprocess.run(
+            ["zfs", "holds", "-H", snap_name],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=30,
+        )
+        return bool(p.stdout.strip())
+    except Exception as e:
+        dbg(f"holds check failed for {snap_name}: {e}")
+        return False
+
+
+def _snapshot_has_holds_remote(snap_name, remote_user, remote_host, remote_port):
+    """Return True if remote snapshot has holds."""
+    try:
+        p = ssh_run_args(
+            remote_user, remote_host, remote_port,
+            ["zfs", "holds", "-H", snap_name],
+            capture_output=True, check=False, text=True, timeout=30,
+        )
+        return bool((p.stdout or "").strip())
+    except Exception as e:
+        dbg(f"remote holds check failed for {snap_name}: {e}")
+        return False
+
+
+def safe_destroy_local(snap_name: str) -> bool:
+    """Destroy a local snapshot with holds check + timeout. Returns True on success."""
+    if _snapshot_has_holds_local(snap_name):
+        msg = f"WARNING: snapshot {snap_name} has holds — skipping destroy"
+        print(msg)
+        dbg(msg)
+        return False
+    try:
+        subprocess.run(
+            ["zfs", "destroy", snap_name],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=ZFS_DESTROY_TIMEOUT,
+        )
+        return True
+    except subprocess.TimeoutExpired:
+        msg = f"WARNING: zfs destroy timed out after {ZFS_DESTROY_TIMEOUT}s for {snap_name} — skipping"
+        print(msg)
+        dbg(msg)
+        return False
+    except subprocess.CalledProcessError as e:
+        detail = e.stderr.strip() if e.stderr else str(e)
+        msg = f"WARNING: zfs destroy failed for {snap_name}: {detail}"
+        print(msg)
+        dbg(msg)
+        return False
+
+
+def safe_destroy_remote(snap_name, remote_user, remote_host, remote_port) -> bool:
+    """Destroy a remote snapshot with holds check + timeout. Returns True on success."""
+    if _snapshot_has_holds_remote(snap_name, remote_user, remote_host, remote_port):
+        msg = f"WARNING: remote snapshot {snap_name} has holds — skipping destroy"
+        print(msg)
+        dbg(msg)
+        return False
+    try:
+        p = ssh_run_args(
+            remote_user, remote_host, remote_port,
+            ["zfs", "destroy", snap_name],
+            capture_output=True, check=False, text=True,
+            timeout=ZFS_DESTROY_TIMEOUT,
+        )
+        if p.returncode != 0:
+            err = (p.stderr or p.stdout or "").strip()
+            msg = f"WARNING: remote zfs destroy failed for {snap_name}: {err}"
+            print(msg)
+            dbg(msg)
+            return False
+        return True
+    except subprocess.TimeoutExpired:
+        msg = f"WARNING: remote zfs destroy timed out after {ZFS_DESTROY_TIMEOUT}s for {snap_name} — skipping"
+        print(msg)
+        dbg(msg)
+        return False
+
+
 def prune_snapshots_by_retention(
     filesystem,
     task_name,
@@ -781,40 +915,32 @@ def prune_snapshots_by_retention(
 
     total = len(snapshots_to_delete)
     notifier.notify(f"STATUS=Pruning {total} {prefix}snapshot(s)… {start}% complete")
+    dbg(f"prune: {total} candidates to destroy (remote={bool(remote_host)})")
 
+    pruned = 0
+    skipped = 0
     for idx, snapshot in enumerate(snapshots_to_delete, start=1):
+        dbg(f"prune: destroying {snapshot.name} ({idx}/{total})")
         if remote_host:
-            p = ssh_run_args(
-                remote_user,
-                remote_host,
-                remote_port,
-                ["zfs", "destroy", snapshot.name],
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-            if p.returncode != 0:
-                err = (p.stderr or p.stdout or "").strip()
-                print(f"Failed to delete snapshot {snapshot.name}: {err}")
-                notifier.notify(f"STATUS=Failed to delete snapshot {snapshot.name}")
-                sys.exit(1)
+            ok = safe_destroy_remote(snapshot.name, remote_user, remote_host, remote_port)
+        else:
+            ok = safe_destroy_local(snapshot.name)
+
+        if ok:
+            pruned += 1
             print(f"Deleted snapshot: {snapshot.name}")
         else:
-            delete_command = ["zfs", "destroy", snapshot.name]
-            try:
-                subprocess.run(delete_command, check=True)
-                print(f"Deleted snapshot: {snapshot.name}")
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to delete snapshot {snapshot.name}: {e}")
-                notifier.notify(f"STATUS=Failed to delete snapshot {snapshot.name}")
-                sys.exit(1)
+            skipped += 1
 
         pct = start + int(idx * span / total)
         notifier.notify(f"STATUS=Pruning {total} {prefix}snapshot(s)… {pct}% complete")
 
-    msg = f"Pruned {len(snapshots_to_delete)} snapshots older than retention period ({retention_val} {retention_unit})."
+    msg = f"Pruned {pruned} snapshots older than retention period ({retention_val} {retention_unit})."
+    if skipped:
+        msg += f" Skipped {skipped} (held/busy)."
     final_pct = min(100, start + span)
     notifier.notify(f"STATUS={msg} {final_pct}% complete")
+    dbg(msg)
     return final_pct
 
 
@@ -980,7 +1106,8 @@ def send_snapshot_push(
         notifier.notify(f"STATUS=Sending snapshot {sendName} via netcat to {recvHostUser}@{recvHost}:{recvName}…")
 
         recv_q = shlex.quote(recvName)
-        listen_cmd = f"nc -l {shlex.quote(data_port)} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
+        nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port)
+        listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
         ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
         ssh_cmd_listener.append(listen_cmd)
 
@@ -1227,6 +1354,7 @@ def resume_receive_push(
     mBufferUnit="G",
     transferMethod="ssh",
     recvDataPort=None,
+    forceOverwrite=False,
 ):
     notifier.notify("STATUS=Resuming ZFS send/recv pipeline from resume token…")
 
@@ -1234,7 +1362,10 @@ def resume_receive_push(
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if transferMethod == "local" or not recvHost:
-        recv_cmd = ["zfs", "recv", "-s", recvName]
+        recv_cmd = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            recv_cmd.append("-F")
+        recv_cmd.append(recvName)
         process_recv = subprocess.Popen(
             recv_cmd,
             stdin=process_send.stdout,
@@ -1258,7 +1389,8 @@ def resume_receive_push(
         ssh_port = str(recvSshPort or "22")
 
         recv_q = shlex.quote(recvName)
-        listen_cmd = f"nc -l {shlex.quote(data_port)} | zfs recv -s {recv_q}"
+        nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port)
+        listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
         ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
         ssh_cmd_listener.append(listen_cmd)
 
@@ -1328,11 +1460,15 @@ def resume_receive_push(
         universal_newlines=True,
     )
 
+    recv_args = ["zfs", "recv", "-s"]
+    if forceOverwrite:
+        recv_args.append("-F")
+    recv_args.append(recvName)
     process_remote_recv = ssh_popen_args(
         recvHostUser,
         recvHost,
         recvSshPort,
-        ["zfs", "recv", "-s", recvName],
+        recv_args,
         stdin=process_m_buff.stdout,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1359,6 +1495,7 @@ def resume_receive_pull(
     remoteUser="root",
     mBufferSize="1",
     mBufferUnit="G",
+    forceOverwrite=False,
 ):
     notifier.notify("STATUS=Resuming ZFS pull pipeline from resume token…")
 
@@ -1384,7 +1521,10 @@ def resume_receive_pull(
         stderr=subprocess.PIPE,
     )
 
-    recv_cmd = ["zfs", "recv", "-s", localRecvFs]
+    recv_cmd = ["zfs", "recv", "-s"]
+    if forceOverwrite:
+        recv_cmd.append("-F")
+    recv_cmd.append(localRecvFs)
     process_local_recv = subprocess.Popen(
         recv_cmd,
         stdin=process_m_buff.stdout,
@@ -1823,11 +1963,22 @@ def main():
                     remoteUser=remoteUser,
                     mBufferSize=str(mBufferSize),
                     mBufferUnit=mBufferUnit,
+                    forceOverwrite=allowOverwrite,
                 )
                 if ok:
                     return
                 err_lower = (err or "").lower()
-                if resumeFailAllowOverwrite:
+                needs_overwrite = "destination exists" in err_lower or "must specify -f" in err_lower
+                if needs_overwrite and not allowOverwrite:
+                    hard_msg = (
+                        f"Resume failed for {destFilesystem}: destination requires rollback (-F) "
+                        "but Allow Overwrite is not enabled. Enable Allow Overwrite or manually "
+                        "clear the destination state."
+                    )
+                    notifier.notify(f"STATUS={hard_msg}")
+                    print(hard_msg)
+                    sys.exit(2)
+                if resumeFailAllowOverwrite or needs_overwrite:
                     msg = (
                         f"Resume attempt failed for {destFilesystem}; clearing resume token and continuing with normal replication."
                     )
@@ -1839,6 +1990,8 @@ def main():
                         notifier.notify(f"STATUS={fail_msg}")
                         print(fail_msg)
                         sys.exit(2)
+                    if needs_overwrite:
+                        forceOverwrite = True
                 elif "modified since" in err_lower or "has been modified" in err_lower:
                     hard_msg = (
                         "Resume failed because destination was modified since the most recent snapshot. "
@@ -1897,11 +2050,22 @@ def main():
                     mBufferUnit=mBufferUnit,
                     transferMethod=transferMethod if transferMethod else "ssh",
                     recvDataPort=dataPort,
+                    forceOverwrite=allowOverwrite,
                 )
                 if ok:
                     return
                 err_lower = (err or "").lower()
-                if resumeFailAllowOverwrite:
+                needs_overwrite = "destination exists" in err_lower or "must specify -f" in err_lower
+                if needs_overwrite and not allowOverwrite:
+                    hard_msg = (
+                        f"Resume failed for {destFilesystem}: destination requires rollback (-F) "
+                        "but Allow Overwrite is not enabled. Enable Allow Overwrite or manually "
+                        "clear the destination state."
+                    )
+                    notifier.notify(f"STATUS={hard_msg}")
+                    print(hard_msg)
+                    sys.exit(2)
+                if resumeFailAllowOverwrite or needs_overwrite:
                     msg = (
                         f"Resume attempt failed for {destFilesystem}; clearing resume token and continuing with normal replication."
                     )
@@ -1918,6 +2082,8 @@ def main():
                         notifier.notify(f"STATUS={fail_msg}")
                         print(fail_msg)
                         sys.exit(2)
+                    if needs_overwrite:
+                        forceOverwrite = True
                 elif "modified since" in err_lower or "has been modified" in err_lower:
                     hard_msg = (
                         "Resume failed because destination was modified since the most recent snapshot. "

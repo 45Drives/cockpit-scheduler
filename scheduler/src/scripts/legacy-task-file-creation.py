@@ -173,7 +173,9 @@ def create_task(template_name, script_path, param_env_path):
     # service_template_content = service_template_content.replace("{ExecStart}", exec_start_command)
     locked_exec = (
         "/bin/sh -c 'exec 9>/run/%n.lock && flock -n 9 || "
-        "{ echo \"Already running, skipping.\"; exit 0; }; exec " + exec_start_command + "'"
+        "{ echo \"Already running, skipping.\" >&2; "
+        "systemd-notify --status=\"Skipped: previous run still active\" 2>/dev/null; "
+        "exit 0; }; exec " + exec_start_command + "'"
     )
     service_template_content = service_template_content.replace("{ExecStart}", locked_exec)
     

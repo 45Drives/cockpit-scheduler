@@ -5,11 +5,71 @@ import datetime as dt
 import json
 import os
 import re
+import time
+import traceback
 from typing import List, Optional, Tuple
 
 from notify import get_notifier
 
+
+class SafeStream:
+    """Wrap stdout/stderr so broken pipes don't crash the script."""
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, data):
+        try:
+            return self._stream.write(data)
+        except Exception:
+            return 0
+
+    def flush(self):
+        try:
+            return self._stream.flush()
+        except Exception:
+            return None
+
+    def isatty(self):
+        try:
+            return self._stream.isatty()
+        except Exception:
+            return False
+
+    def fileno(self):
+        try:
+            return self._stream.fileno()
+        except Exception:
+            return -1
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+sys.stdout = SafeStream(sys.stdout)
+sys.stderr = SafeStream(sys.stderr)
+
 notifier = get_notifier()
+
+# ---------------------------------------------------------------------------
+# Debug logging — always writes to a file so we have a trace even when
+# systemd journal is empty (e.g. pipe closed, SafeStream swallows errors).
+# ---------------------------------------------------------------------------
+DEBUG_LOG = os.environ.get("AUTOSNAP_DEBUG_LOG", "/tmp/autosnap_debug.log")
+DEBUG_ENABLED = os.environ.get("AUTOSNAP_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
+
+def dbg(msg: str):
+    if not DEBUG_ENABLED:
+        return
+    try:
+        line = f"{dt.datetime.now().isoformat()} {msg}\n"
+        with open(DEBUG_LOG, "a") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+# Timeout (seconds) for a single `zfs destroy` call.  If a snapshot has
+# holds or clones the destroy can block indefinitely; this prevents that.
+ZFS_DESTROY_TIMEOUT = int(os.environ.get("ZFS_DESTROY_TIMEOUT", "120"))
 
 TASK_PROP = "com.45drives:task"
 LEGACY_NAME_RE = re.compile(r'@(?:[^@]+-)?(?P<task>[^@]+)-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$')
@@ -36,9 +96,58 @@ def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
 def run(cmd: List[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
+
+def _snapshot_has_holds(snap_name: str) -> bool:
+    """Return True if *snap_name* has any user holds that would block destroy."""
+    try:
+        p = subprocess.run(
+            ["zfs", "holds", "-H", snap_name],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=30,
+        )
+        # Each line is a hold; if there's output, holds exist.
+        return bool(p.stdout.strip())
+    except Exception as e:
+        dbg(f"holds check failed for {snap_name}: {e}")
+        return False
+
+
+def safe_destroy(snap_name: str) -> bool:
+    """
+    Destroy a snapshot with a timeout and a pre-check for holds.
+    Returns True on success, False if skipped/failed (non-fatal).
+    """
+    if _snapshot_has_holds(snap_name):
+        msg = f"WARNING: snapshot {snap_name} has holds — skipping destroy"
+        print(msg, file=sys.stderr)
+        dbg(msg)
+        notifier.notify(f"STATUS={msg}")
+        return False
+    try:
+        subprocess.run(
+            ["zfs", "destroy", snap_name],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=ZFS_DESTROY_TIMEOUT,
+        )
+        return True
+    except subprocess.TimeoutExpired:
+        msg = f"WARNING: zfs destroy timed out after {ZFS_DESTROY_TIMEOUT}s for {snap_name} — skipping"
+        print(msg, file=sys.stderr)
+        dbg(msg)
+        notifier.notify(f"STATUS={msg}")
+        return False
+    except subprocess.CalledProcessError as e:
+        detail = e.stderr.strip() if e.stderr else str(e)
+        msg = f"WARNING: zfs destroy failed for {snap_name}: {detail}"
+        print(msg, file=sys.stderr)
+        dbg(msg)
+        return False
+
+
 def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_name: Optional[str], tier_tag: str = "") -> str:
     if not filesystem:
         print("ERROR: filesystem is empty", file=sys.stderr)
+        dbg("ERROR: filesystem is empty")
         sys.exit(1)
 
     ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
@@ -49,15 +158,18 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         cmd.append("-r")
     cmd.append(snapname)
 
+    dbg(f"Creating snapshot: {' '.join(cmd)}")
     notifier.notify(f"STATUS=Creating snapshot {snapname}…")
     try:
         res = run(cmd)
         print(f"Created snapshot: {snapname}")
+        dbg(f"Snapshot created: {snapname}")
         notifier.notify(f"STATUS=Snapshot created: {snapname} 20% complete")
     except subprocess.CalledProcessError as e:
         msg = e.stderr.strip() if e.stderr else "zfs snapshot failed"
         notifier.notify(f"STATUS=Snapshot creation failed: {msg}")
         print(f"ERROR: zfs snapshot failed: {msg}", file=sys.stderr)
+        dbg(f"ERROR: zfs snapshot failed: {msg}")
         sys.exit(1)
 
     # Tag snapshot with our task property so we can safely identify it later
@@ -66,6 +178,7 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
     except subprocess.CalledProcessError as e:
         # Non-fatal, but warn so pruning by tag may skip this one
         print(f"WARNING: failed to tag snapshot {snapname}: {e.stderr.strip()}", file=sys.stderr)
+        dbg(f"WARNING: failed to tag snapshot {snapname}: {e.stderr.strip()}")
 
     return snapname
 
@@ -155,6 +268,7 @@ def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str 
 
 
 def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time: int, retention_unit: str, exclude_snap: str, tier_idx=None, custom_name: str = "") -> None:
+    dbg(f"prune_snapshots_by_retention: fs={filesystem} task={task_name} retention={retention_time} {retention_unit} tier_idx={tier_idx}")
     if retention_time <= 0 or not retention_unit:
         print("Retention not configured; skipping prune.")
         notifier.notify("STATUS=Snapshot created; pruning not configured.")
@@ -176,6 +290,7 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
 
     cutoff = int(dt.datetime.now().timestamp()) - (retention_time * unit_seconds)
     snaps = get_local_snapshots(filesystem)
+    dbg(f"prune: found {len(snaps)} total snapshots for {filesystem}")
 
     candidates = []
     for s in snaps:
@@ -202,29 +317,34 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
     
     if not candidates:
         print("No snapshots to prune.")
+        dbg("prune: no candidates")
         notifier.notify("STATUS=Snapshot created; no old snapshots to prune.")
         return
 
     candidates.sort(key=lambda s: s.creation_epoch)
+    dbg(f"prune: {len(candidates)} candidates to destroy")
 
     pruned = 0
+    skipped = 0
     total = len(candidates)
     base = 20  # snapshot phase
     notifier.notify(f"STATUS=Pruning {total} old snapshot(s)… {base}% complete")
     for idx, s in enumerate(candidates, start=1):
-        try:
-            run(["zfs", "destroy", s.name])
+        dbg(f"prune: destroying {s.name} ({idx}/{total})")
+        if safe_destroy(s.name):
             pruned += 1
             print(f"Deleted snapshot: {s.name}")
-        except subprocess.CalledProcessError as e:
-            print(f"ERROR: failed to delete {s.name}: {e.stderr.strip()}", file=sys.stderr)
-            continue
+        else:
+            skipped += 1
 
-        pct = int(idx * 100 / total)
+        pct = 20 + int(idx * 80 / total)
         notifier.notify(f"STATUS=Pruning {total} old snapshot(s)… {pct}% complete")
 
     msg = f"Pruned {pruned} snapshot(s) older than {retention_time} {retention_unit}."
+    if skipped:
+        msg += f" Skipped {skipped} (held/busy)."
     print(msg)
+    dbg(msg)
     notifier.notify(f"STATUS={msg}")
 
 def load_schedule_json(path: str):
@@ -314,84 +434,101 @@ def match_current_tier(intervals: list, now) -> int:
 
 
 def main():
-    filesystem = os.environ.get("autoSnapConfig_filesystem_dataset", "").strip()
-    is_recursive = os.environ.get("autoSnapConfig_recursive_flag", "false").strip().lower() == "true"
-    custom_name = os.environ.get("autoSnapConfig_customName", "").strip() or None
-    task_name = os.environ.get("taskName", "").strip()
-
-    # Task-level (default) retention from env
-    rt_raw = os.environ.get("autoSnapConfig_snapshotRetention_retentionTime", "0").strip()
-    ru = os.environ.get("autoSnapConfig_snapshotRetention_retentionUnit", "").strip()
     try:
-        rt = int(rt_raw)
-    except ValueError:
-        rt = 0
+        filesystem = os.environ.get("autoSnapConfig_filesystem_dataset", "").strip()
+        is_recursive = os.environ.get("autoSnapConfig_recursive_flag", "false").strip().lower() == "true"
+        custom_name = os.environ.get("autoSnapConfig_customName", "").strip() or None
+        task_name = os.environ.get("taskName", "").strip()
 
-    # Multi-interval tier support: override retention from schedule JSON if available
-    schedule_json_path = os.environ.get("scheduleJsonPath", "")
-    schedule_data = load_schedule_json(schedule_json_path)
+        dbg("=== autosnap task start ===")
+        dbg(f"filesystem={filesystem} recursive={is_recursive} task_name={task_name} custom_name={custom_name}")
 
-    if schedule_data and isinstance(schedule_data.get("intervals"), list):
-        intervals = schedule_data["intervals"]
-        has_per_interval_retention = any(
-            isinstance(iv.get("retention"), dict) for iv in intervals
-        )
+        # Task-level (default) retention from env
+        rt_raw = os.environ.get("autoSnapConfig_snapshotRetention_retentionTime", "0").strip()
+        ru = os.environ.get("autoSnapConfig_snapshotRetention_retentionUnit", "").strip()
+        try:
+            rt = int(rt_raw)
+        except ValueError:
+            rt = 0
+
+        # Multi-interval tier support: override retention from schedule JSON if available
+        schedule_json_path = os.environ.get("scheduleJsonPath", "")
+        schedule_data = load_schedule_json(schedule_json_path)
+
         tier_tag = ""   # empty = legacy snapshot naming
         tier_idx = None # None = legacy pruning (all task snapshots)
 
-        if has_per_interval_retention and len(intervals) > 1:
-            now = dt.datetime.now()
-            tier_idx = match_current_tier(intervals, now)
-            tier_tag = f"-t{tier_idx}"
-            print(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
+        if schedule_data and isinstance(schedule_data.get("intervals"), list):
+            intervals = schedule_data["intervals"]
+            has_per_interval_retention = any(
+                isinstance(iv.get("retention"), dict) for iv in intervals
+            )
 
-            matched_iv = intervals[tier_idx]
-            iv_ret = matched_iv.get("retention", {}) or {}
-            # AutoSnap only has one location — check source first, then destination
-            snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
-            if snap_ret.get("retentionTime", 0) > 0:
-                rt = snap_ret["retentionTime"]
-                ru = snap_ret.get("retentionUnit", ru)
-        elif has_per_interval_retention and len(intervals) == 1:
-            # Single interval with per-interval retention
-            iv_ret = intervals[0].get("retention", {}) or {}
-            snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
-            if snap_ret.get("retentionTime", 0) > 0:
-                rt = snap_ret["retentionTime"]
-                ru = snap_ret.get("retentionUnit", ru)
+            if has_per_interval_retention and len(intervals) > 1:
+                now = dt.datetime.now()
+                tier_idx = match_current_tier(intervals, now)
+                tier_tag = f"-t{tier_idx}"
+                print(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
+                dbg(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
 
-    notifier.notify("STATUS=Starting snapshot task…")
-    notifier.notify("READY=1")
-    notifier.notify("STATUS=Running snapshot task…")
+                matched_iv = intervals[tier_idx]
+                iv_ret = matched_iv.get("retention", {}) or {}
+                # AutoSnap only has one location — check source first, then destination
+                snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
+                if snap_ret.get("retentionTime", 0) > 0:
+                    rt = snap_ret["retentionTime"]
+                    ru = snap_ret.get("retentionUnit", ru)
+            elif has_per_interval_retention and len(intervals) == 1:
+                # Single interval with per-interval retention
+                iv_ret = intervals[0].get("retention", {}) or {}
+                snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
+                if snap_ret.get("retentionTime", 0) > 0:
+                    rt = snap_ret["retentionTime"]
+                    ru = snap_ret.get("retentionUnit", ru)
 
-    created = create_snapshot(filesystem, is_recursive, task_name, custom_name, tier_tag=tier_tag)
-    prune_snapshots_by_retention(filesystem, task_name, rt, ru, created, tier_idx=tier_idx, custom_name=custom_name or "")
+        dbg(f"retention: time={rt} unit={ru}")
 
-    # Clean up legacy (pre-tier) untagged snapshots when multi-tier is active.
-    # Uses the longest retention window across all tiers so we don't prune
-    # snapshots that a longer-retention tier would still want to keep.
-    if tier_idx is not None and schedule_data and isinstance(schedule_data.get("intervals"), list):
-        _unit_secs = {
-            "minutes": 60, "hours": 3600, "days": 86400,
-            "weeks": 604800, "months": 2592000, "years": 31536000,
-        }
-        max_secs = 0
-        max_time = 0
-        max_unit = ""
-        for iv in schedule_data["intervals"]:
-            iv_ret = (iv.get("retention") or {})
-            snap_ret = iv_ret.get("source") or iv_ret.get("destination") or {}
-            t = snap_ret.get("retentionTime", 0) or 0
-            u = snap_ret.get("retentionUnit", "")
-            s = int(t) * _unit_secs.get(u, 0)
-            if s > max_secs:
-                max_secs = s
-                max_time = t
-                max_unit = u
-        if max_secs > 0:
-            prune_snapshots_by_retention(filesystem, task_name, max_time, max_unit, created, tier_idx=None, custom_name=custom_name or "")
+        notifier.notify("STATUS=Starting snapshot task…")
+        notifier.notify("READY=1")
+        notifier.notify("STATUS=Running snapshot task…")
 
-    notifier.notify("STATUS=Snapshot task completed.")
+        created = create_snapshot(filesystem, is_recursive, task_name, custom_name, tier_tag=tier_tag)
+        prune_snapshots_by_retention(filesystem, task_name, rt, ru, created, tier_idx=tier_idx, custom_name=custom_name or "")
+
+        # Clean up legacy (pre-tier) untagged snapshots when multi-tier is active.
+        # Uses the longest retention window across all tiers so we don't prune
+        # snapshots that a longer-retention tier would still want to keep.
+        if tier_idx is not None and schedule_data and isinstance(schedule_data.get("intervals"), list):
+            _unit_secs = {
+                "minutes": 60, "hours": 3600, "days": 86400,
+                "weeks": 604800, "months": 2592000, "years": 31536000,
+            }
+            max_secs = 0
+            max_time = 0
+            max_unit = ""
+            for iv in schedule_data["intervals"]:
+                iv_ret = (iv.get("retention") or {})
+                snap_ret = iv_ret.get("source") or iv_ret.get("destination") or {}
+                t = snap_ret.get("retentionTime", 0) or 0
+                u = snap_ret.get("retentionUnit", "")
+                s = int(t) * _unit_secs.get(u, 0)
+                if s > max_secs:
+                    max_secs = s
+                    max_time = t
+                    max_unit = u
+            if max_secs > 0:
+                prune_snapshots_by_retention(filesystem, task_name, max_time, max_unit, created, tier_idx=None, custom_name=custom_name or "")
+
+        notifier.notify("STATUS=Snapshot task completed.")
+        dbg("=== autosnap task completed ===")
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        dbg(f"FATAL: {tb}")
+        print(f"FATAL: {e}", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        notifier.notify(f"STATUS=Snapshot task failed: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

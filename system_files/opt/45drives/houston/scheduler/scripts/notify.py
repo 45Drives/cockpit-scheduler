@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import socket
+import sys
 
 try:
     # Optional dependency
@@ -12,6 +13,7 @@ except Exception:
 
 class Notifier:
     def __init__(self):
+        self._warned = False
         if _sdnotify_available:
             self._impl = SystemdNotifier()
         else:
@@ -25,6 +27,9 @@ class Notifier:
                     self._socket_path = '\0' + self._socket_path[1:]
 
                 self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            elif not self._warned:
+                print("WARNING: NOTIFY_SOCKET not set — systemd status updates will not be visible", file=sys.stderr)
+                self._warned = True
 
     def notify(self, message: str):
         # Prefer real sdnotify
@@ -32,15 +37,19 @@ class Notifier:
             try:
                 self._impl.notify(message)
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                if not self._warned:
+                    print(f"WARNING: sdnotify failed: {e}", file=sys.stderr)
+                    self._warned = True
 
         # Fallback to direct UNIX datagram
         if self._sock and self._socket_path:
             try:
                 self._sock.sendto(message.encode('utf-8'), self._socket_path)
-            except Exception:
-                pass
+            except Exception as e:
+                if not self._warned:
+                    print(f"WARNING: UNIX notify socket failed: {e}", file=sys.stderr)
+                    self._warned = True
 
 
 def get_notifier():

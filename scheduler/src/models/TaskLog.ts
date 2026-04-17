@@ -30,6 +30,20 @@ async function runCommand(
 
 const errorString = (e: any) => e?.message ?? String(e);
 
+/**
+ * Maps formatted template names to the debug log file written by each script.
+ * These are the /tmp/ logs that always exist even when the journal is empty.
+ */
+const DEBUG_LOG_MAP: Record<string, string> = {
+    ZfsReplicationTask: '/tmp/zfs_rep_debug.log',
+    AutomatedSnapshotTask: '/tmp/autosnap_debug.log',
+    RsyncTask: '/tmp/rsync_task_debug.log',
+    CloudSyncTask: '/tmp/cloudsync_debug.log',
+    ScrubTask: '/tmp/scrub_debug.log',
+    SmartTest: '/tmp/smart_test_debug.log',
+    CustomTask: '/tmp/custom_task_debug.log',
+};
+
 export class TaskExecutionLog {
     entries: TaskExecutionResult[];
 
@@ -188,6 +202,27 @@ export class TaskExecutionLog {
         } catch (e) {
             console.warn('getLatestEntryFor failed:', errorString(e));
             return false;
+        }
+    }
+
+    /**
+     * Read the /tmp/ debug log for a task's template.
+     * Returns the last `lines` lines, or an empty string if unavailable.
+     */
+    async getDebugLog(taskInstance: TaskInstanceType, lines = 200): Promise<string> {
+        const templateName = formatTemplateName(taskInstance.template.name);
+        const logPath = DEBUG_LOG_MAP[templateName];
+        if (!logPath) {
+            return `No debug log path configured for template "${templateName}".`;
+        }
+        try {
+            const { stdout } = await runCommand(
+                ['tail', '-n', String(lines), logPath],
+                { superuser: 'try' },
+            );
+            return (stdout || '').trim() || '(debug log is empty)';
+        } catch {
+            return `(debug log not found at ${logPath})`;
         }
     }
 

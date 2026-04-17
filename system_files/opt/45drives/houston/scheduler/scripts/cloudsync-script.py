@@ -7,9 +7,53 @@ from datetime import datetime, timedelta, timezone
 import requests
 import shlex
 import re
+import traceback
 from notify import get_notifier
 
+
+class SafeStream:
+    """Wrap stdout/stderr so broken pipes don't crash the script."""
+    def __init__(self, stream):
+        self._stream = stream
+    def write(self, data):
+        try:
+            return self._stream.write(data)
+        except Exception:
+            return 0
+    def flush(self):
+        try:
+            return self._stream.flush()
+        except Exception:
+            return None
+    def isatty(self):
+        try:
+            return self._stream.isatty()
+        except Exception:
+            return False
+    def fileno(self):
+        try:
+            return self._stream.fileno()
+        except Exception:
+            return -1
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+sys.stdout = SafeStream(sys.stdout)
+sys.stderr = SafeStream(sys.stderr)
+
 notifier = get_notifier()
+
+DEBUG_LOG = os.environ.get("CLOUDSYNC_DEBUG_LOG", "/tmp/cloudsync_debug.log")
+DEBUG_ENABLED = os.environ.get("CLOUDSYNC_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
+
+def dbg(msg: str):
+    if not DEBUG_ENABLED:
+        return
+    try:
+        with open(DEBUG_LOG, "a") as f:
+            f.write(f"{datetime.now().isoformat()} {msg}\n")
+    except Exception:
+        pass
 
 PROGRESS_RE = re.compile(r'(\d+)%')
 DEFAULT_RCLONE_CONF = '/root/.config/rclone/rclone.conf'
@@ -438,19 +482,32 @@ def main():
     """
     Main execution entry point.
     """
-    options = parse_arguments()
-    is_dry_run = options.get('dry_run_flag', False)
+    try:
+        dbg("=== cloudsync task start ===")
+        options = parse_arguments()
+        is_dry_run = options.get('dry_run_flag', False)
 
-    mode_label = "Dry-run" if is_dry_run else "Transfer"
+        mode_label = "Dry-run" if is_dry_run else "Transfer"
+        dbg(f"mode={mode_label} remote={options.get('rclone_remote')} direction={options.get('direction')}")
 
-    notifier.notify(f"STATUS=Starting {mode_label}…")
-    notifier.notify("READY=1")
-    notifier.notify(f"STATUS=Running {mode_label}…")
-    print(f"Starting rclone script ({mode_label.lower()})...")
+        notifier.notify(f"STATUS=Starting {mode_label}…")
+        notifier.notify("READY=1")
+        notifier.notify(f"STATUS=Running {mode_label}…")
+        print(f"Starting rclone script ({mode_label.lower()})...")
 
-    execute_rclone(options)
+        execute_rclone(options)
 
-    notifier.notify(f"STATUS={mode_label} completed successfully")
+        notifier.notify(f"STATUS={mode_label} completed successfully")
+        dbg("=== cloudsync task completed ===")
+    except SystemExit:
+        raise
+    except Exception as e:
+        tb = traceback.format_exc()
+        dbg(f"FATAL: {tb}")
+        print(f"FATAL: {e}", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        notifier.notify(f"STATUS=Cloud sync task failed: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     notifier.notify("STATUS=Starting task…")
