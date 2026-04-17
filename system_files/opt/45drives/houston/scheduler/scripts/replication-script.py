@@ -397,6 +397,9 @@ def get_dest_ports(transfer_method: str):
     return (ssh_port, data_port)
 
 
+# Timeout for ZFS list/get commands that can hang on degraded pools (seconds)
+ZFS_LIST_TIMEOUT = 600
+
 def get_local_snapshots(filesystem):
     cmd = [
         "zfs",
@@ -410,8 +413,13 @@ def get_local_snapshots(filesystem):
         "-r",
         filesystem,
     ]
-    # p = subprocess.run(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    p = run_logged(cmd, text=True)
+    try:
+        p = run_logged(cmd, text=True, timeout=ZFS_LIST_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        msg = f"Timed out after {ZFS_LIST_TIMEOUT}s listing snapshots on {filesystem}. The pool may be degraded or unresponsive."
+        print(msg, file=sys.stderr)
+        notifier.notify(f"STATUS={msg}")
+        sys.exit(1)
     
     if p.returncode == 0:
         snaps = []
@@ -460,7 +468,13 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
         filesystem,
     ]
 
-    p = ssh_run_args(user, host, ssh_port, args, capture_output=True, check=False, text=False)
+    try:
+        p = ssh_run_args(user, host, ssh_port, args, capture_output=True, check=False, text=False, timeout=ZFS_LIST_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        msg = f"Timed out after {ZFS_LIST_TIMEOUT}s listing remote snapshots on {user}@{host}:{filesystem}. The remote pool may be degraded or unresponsive."
+        print(msg, file=sys.stderr)
+        notifier.notify(f"STATUS={msg}")
+        sys.exit(1)
 
     if p.returncode == 0:
         snapshots = []
@@ -629,9 +643,8 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
         now = time.time()
 
         if total_bytes:
-            pct = int(bytes_sent * 100 / total_bytes)
+            pct = min(int(bytes_sent * 100 / total_bytes), 100)
             if pct > last_pct and (now - last_emit) >= min_interval:
-                pct = min(pct, 99)
                 notifier.notify(f"STATUS={label}… {pct}% complete")
                 last_pct = pct
                 last_emit = now
@@ -1983,9 +1996,13 @@ def main():
             dbg(f"ssh returncode={p.returncode}")
             
             # ----- snapshot inventory -----
+            print(f"Fetching remote source snapshots from {remoteUser}@{remoteHost}:{remote_source_fs}…")
+            notifier.notify(f"STATUS=Fetching remote source snapshots from {remoteUser}@{remoteHost}:{remote_source_fs}…")
             sourceSnapshots = get_remote_snapshots(remoteUser, remoteHost, sshPort, remote_source_fs) or []
             sourceSnapshots.sort(key=lambda x: x.order_key)
 
+            print(f"Fetching local destination snapshots for {local_target_fs}…")
+            notifier.notify(f"STATUS=Fetching local destination snapshots for {local_target_fs}…")
             destinationSnapshots = get_local_snapshots(local_target_fs)
             dbg(f"sourceSnapshots count={len(sourceSnapshots) if sourceSnapshots is not None else 'None'}")
             dbg(f"destSnapshots state={'None' if destinationSnapshots is None else len(destinationSnapshots)}")
@@ -2014,12 +2031,18 @@ def main():
                 dbg("ssh -vv output:\n" + p.stdout)
                 dbg(f"ssh returncode={p.returncode}")
 
+            print(f"Fetching local source snapshots for {local_source_fs}…")
+            notifier.notify(f"STATUS=Fetching local source snapshots for {local_source_fs}…")
             sourceSnapshots = get_local_snapshots(local_source_fs) or []
             sourceSnapshots.sort(key=lambda x: x.order_key)
 
             if remoteHost and remoteUser:
+                print(f"Fetching remote destination snapshots from {remoteUser}@{remoteHost}:{target_fs}…")
+                notifier.notify(f"STATUS=Fetching remote destination snapshots from {remoteUser}@{remoteHost}:{target_fs}…")
                 destinationSnapshots = get_remote_snapshots(remoteUser, remoteHost, sshPort, target_fs)
             else:
+                print(f"Fetching local destination snapshots for {target_fs}…")
+                notifier.notify(f"STATUS=Fetching local destination snapshots for {target_fs}…")
                 destinationSnapshots = get_local_snapshots(target_fs)
 
         forceOverwrite = False
@@ -2538,7 +2561,7 @@ def main():
                         custom_name=customName,
                     )
 
-        notifier.notify(f"STATUS=ZFS replication task completed. {final_pct}% complete")
+        notifier.notify("STATUS=ZFS replication task completed. 100% complete")
 
     except Exception as e:
         newSnap = locals().get("newSnap", "unknown")

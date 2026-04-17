@@ -93,8 +93,11 @@ def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
     except Exception as e:
         print(f"Failed to send D-Bus notification: {e}")
 
-def run(cmd: List[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+# Timeout for ZFS list/get commands that can hang on degraded pools (seconds)
+ZFS_LIST_TIMEOUT = int(os.environ.get("ZFS_LIST_TIMEOUT", "600"))
+
+def run(cmd: List[str], timeout: int = None) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=timeout)
 
 
 def _snapshot_has_holds(snap_name: str) -> bool:
@@ -196,7 +199,11 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
     # names + GUIDs
     try:
         # -p makes numeric properties plain; list doesn't make creation epoch, so get via zfs get
-        names = run(["zfs", "list", "-H", "-t", "snapshot", "-r", "-o", "name,guid", filesystem]).stdout.splitlines()
+        names = run(["zfs", "list", "-H", "-t", "snapshot", "-r", "-o", "name,guid", filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
+    except subprocess.TimeoutExpired:
+        print(f"ERROR: Timed out after {ZFS_LIST_TIMEOUT}s listing snapshots on {filesystem}. The pool may be degraded or unresponsive.", file=sys.stderr)
+        dbg(f"ERROR: Timed out listing snapshots on {filesystem}")
+        sys.exit(1)
     except subprocess.CalledProcessError as e:
         print(f"ERROR: zfs list failed: {e.stderr.strip()}", file=sys.stderr)
         return snaps
@@ -213,8 +220,13 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
 
     # Batch get creation as epoch (-p) and our tag property
     # Note: zfs get can accept multiple properties
-    props_out = run(["zfs", "get", "-H", "-p", "-r", "-o", "name,property,value", "creation", filesystem]).stdout.splitlines()
-    tag_out  = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem]).stdout.splitlines()
+    try:
+        props_out = run(["zfs", "get", "-H", "-p", "-r", "-o", "name,property,value", "creation", filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
+        tag_out  = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
+    except subprocess.TimeoutExpired:
+        print(f"ERROR: Timed out after {ZFS_LIST_TIMEOUT}s fetching snapshot properties on {filesystem}. The pool may be degraded or unresponsive.", file=sys.stderr)
+        dbg(f"ERROR: Timed out fetching snapshot properties on {filesystem}")
+        sys.exit(1)
 
     creation_map = {}
     for line in props_out:
@@ -287,7 +299,7 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
     dbg(f"prune_snapshots_by_retention: fs={filesystem} task={task_name} retention={retention_time} {retention_unit} tier_idx={tier_idx}")
     if retention_time <= 0 or not retention_unit:
         print("Retention not configured; skipping prune.")
-        notifier.notify("STATUS=Snapshot created; pruning not configured.")
+        notifier.notify("STATUS=Snapshot created; pruning not configured. 100% complete")
         return
 
     unit_seconds = {
@@ -301,7 +313,7 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
 
     if not unit_seconds:
         print(f"WARNING: Unknown retention unit '{retention_unit}'; skipping prune.")
-        notifier.notify(f"STATUS=Snapshot created; unknown retention unit '{retention_unit}', skipping prune.")
+        notifier.notify(f"STATUS=Snapshot created; unknown retention unit '{retention_unit}', skipping prune. 100% complete")
         return
 
     cutoff = int(dt.datetime.now().timestamp()) - (retention_time * unit_seconds)
@@ -335,7 +347,7 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
     if not candidates:
         print("No snapshots to prune.")
         dbg("prune: no candidates")
-        notifier.notify("STATUS=Snapshot created; no old snapshots to prune.")
+        notifier.notify("STATUS=Snapshot created; no old snapshots to prune. 100% complete")
         return
 
     candidates.sort(key=lambda s: s.creation_epoch)
@@ -362,7 +374,7 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         msg += f" Skipped {skipped} (held/busy)."
     print(msg)
     dbg(msg)
-    notifier.notify(f"STATUS={msg}")
+    notifier.notify(f"STATUS={msg} 100% complete")
 
 def load_schedule_json(path: str):
     """Load the schedule JSON file. Returns the parsed dict or None."""
@@ -536,7 +548,7 @@ def main():
             if max_secs > 0:
                 prune_snapshots_by_retention(filesystem, task_name, max_time, max_unit, created, tier_idx=None, custom_name=custom_name or "")
 
-        notifier.notify("STATUS=Snapshot task completed.")
+        notifier.notify("STATUS=Snapshot task completed. 100% complete")
         dbg("=== autosnap task completed ===")
 
     except Exception as e:
