@@ -114,7 +114,10 @@
 
 	<div v-if="showDisablePrompt">
 		<component :is="disableDialog" @close="updateShowDisablePrompt" :showFlag="showDisablePrompt"
-			title="Disable Schedule" message="Do you wish to disable the schedule for this task?"
+			title="Disable Schedule"
+			:message="liveIsRunning(taskInstance)
+				? 'This task is currently running. Disabling the schedule will prevent future runs, but the current execution will finish.'
+				: 'Do you wish to disable the schedule for this task?'"
 			:confirmYes="disableYes" :confirmNo="disableNo" :operating="disabling" operation="disabling" />
 	</div>
 </template>

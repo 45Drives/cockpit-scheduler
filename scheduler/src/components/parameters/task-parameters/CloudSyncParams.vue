@@ -39,10 +39,8 @@
 
             <!-- manual input fallback -->
             <div v-else class="mt-1">
-                <input type="text" v-model="localPath" @blur="ensureTrailingSlash('local')" :class="[
-                    'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                    errorTags?.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                ]" placeholder="/data/photos/" />
+                <PathAutoComplete v-model="localPath" :error="errorTags?.localPath" :dirs-only="true"
+                    input-class="mt-1" placeholder="/data/photos/" />
                 <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
                 <p class="text-[11px] text-muted mt-1">
                     Tip: Local path should end with a <code>/</code>. We’ll add it for you if missing.
@@ -262,10 +260,8 @@
                             <ExclamationCircleIcon v-if="errorTags.localPath" class="mt-1 w-5 h-5 text-danger" />
                         </div>
                         <div>
-                            <input type="text" v-model="localPath"
-                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                :class="[errorTags.localPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                                placeholder="Specify Local Path" :title="localTitleComputed" />
+                            <PathAutoComplete v-model="localPath" :error="errorTags.localPath" :dirs-only="true"
+                                input-class="mt-1" placeholder="Specify Local Path" />
                         </div>
                     </div>
                     <div name="destination-path">
@@ -392,11 +388,8 @@
                                 </label>
                                 <ExclamationCircleIcon v-if="errorTags.logFilePath" class="mt-1 w-5 h-5 text-danger" />
                             </div>
-                            <input type="text" v-model="logFilePath"
-                                :class="[errorTags.logFilePath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                placeholder="Eg. /var/log/newtask.log"
-                                :title="`Optional path to an rclone log file. If set, rclone will write logs to this file using --log-file=PATH.`" />
+                            <PathAutoComplete v-model="logFilePath" :error="errorTags.logFilePath"
+                                input-class="mt-1" placeholder="Eg. /var/log/newtask.log" />
                         </div>
                         <div name="options-extra-params" class="col-span-1">
                             <div class="flex flex-row justify-between items-center">
@@ -545,11 +538,8 @@
                                                     <ExclamationCircleIcon v-if="errorTags.includeFromPath"
                                                         class="mt-1 w-5 h-5 text-danger" />
                                                 </div>
-                                                <input type="text" v-model="includeFromPath"
-                                                    title="Specify a file containing a list of files to include in the transfer."
-                                                    :class="[errorTags.includeFromPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                                                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                                    placeholder="Eg. '/path/to/included_file_paths.txt'" />
+                                                <PathAutoComplete v-model="includeFromPath" :error="errorTags.includeFromPath"
+                                                    input-class="mt-1" placeholder="Eg. '/path/to/included_file_paths.txt'" />
                                             </div>
                                             <div name="options-exclude-files-from-path" class="col-span-1">
                                                 <div class="flex flex-row justify-between items-center">
@@ -561,11 +551,8 @@
                                                     <ExclamationCircleIcon v-if="errorTags.excludeFromPath"
                                                         class="mt-1 w-5 h-5 text-danger" />
                                                 </div>
-                                                <input type="text" v-model="excludeFromPath"
-                                                    title="Specify a file containing a list of files to exclude from the transfer."
-                                                    :class="[errorTags.excludeFromPath ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                                                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                                                    placeholder="Eg. '/path/to/excluded_files.txt'" />
+                                                <PathAutoComplete v-model="excludeFromPath" :error="errorTags.excludeFromPath"
+                                                    input-class="mt-1" placeholder="Eg. '/path/to/excluded_files.txt'" />
                                             </div>
                                         </div>
                                     </div>
@@ -716,6 +703,7 @@ import { CloudSyncRemote, getProviderLogo, getButtonStyles, CloudSyncProvider, C
 import { injectWithCheck, checkLocalPathExists, validateRemotePath, validateLocalPath } from '../../../composables/utility';
 import { rcloneRemotesInjectionKey, remoteManagerInjectionKey, truncateTextInjectionKey } from '../../../keys/injection-keys';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
+import PathAutoComplete from '../../common/PathAutoComplete.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
 import { useClientContextStore } from '../../../stores/clientContext';

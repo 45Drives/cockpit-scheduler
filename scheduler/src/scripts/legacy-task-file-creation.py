@@ -195,19 +195,25 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name):
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data.get('intervals', [])]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
 
-    # Handle runOnBoot: add OnBootSec=0 to trigger task once after system startup
-    if schedule_data.get('runOnBoot', False):
-        on_calendar_lines_str += "\nOnBootSec=0"
-        # Make timer persistent so boot trigger works reliably
-        timer_template_content = timer_template_content.replace("Persistent=false", "Persistent=true")
+    # runOnBoot is handled in two phases by the caller (JS/TS code):
+    # Phase 1: Timer is created with Persistent=false (here) and started.
+    # Phase 2: If runOnBoot is enabled, the caller rewrites the timer with
+    #          Persistent=true and does a daemon-reload (no restart) so that
+    #          future boots catch up on missed triggers without firing immediately.
+    # We do NOT add OnBootSec or Persistent=true here to avoid triggering an
+    # immediate task run when the timer is first started.
 
     timer_template_content = timer_template_content.replace("{description}", f"Timer for {full_unit_name}").replace("{on_calendar_lines}", on_calendar_lines_str)
     
     generate_concrete_file(timer_template_content, output_path_timer)
     logging.debug("Concrete timer file generated successfully.")
     
-    manage_service(full_unit_name + '.timer', 'enable')
-    start_timer(full_unit_name + '.timer')
+    # Only reload systemd so the new timer unit is recognized.
+    # Do NOT enable or start the timer here — the caller (JS/TS code)
+    # controls when the timer is enabled/started to avoid triggering
+    # an immediate task run on create or edit.
+    subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+    logging.debug(f"systemd daemon reloaded; timer file written for {full_unit_name}")
 
 def main():
     logging.debug('Starting main function')

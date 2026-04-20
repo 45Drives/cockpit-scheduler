@@ -366,6 +366,17 @@ def main():
         execute_rsync(options)
         notifier.notify("STATUS=Finishing up…")
         dbg("=== rsync task completed ===")
+
+        # Persist last-run timestamp for UI display across disable/enable cycles
+        try:
+            import time as _time
+            _task_name = os.environ.get("taskName", "").strip()
+            if _task_name:
+                _lr = f"/etc/systemd/system/houston_scheduler_RsyncTask_{_task_name}.lastrun"
+                with open(_lr, "w") as f:
+                    f.write(str(int(_time.time())))
+        except Exception:
+            pass
     except SystemExit:
         raise
     except Exception as e:

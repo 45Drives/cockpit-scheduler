@@ -93,6 +93,14 @@
             </div>
         </template>
     </Modal>
+
+    <div v-if="showVacuumConfirmation">
+        <component :is="confirmationComponent" @close="showVacuumConfirmation = false"
+            :showFlag="showVacuumConfirmation" :title="confirmationTitle"
+            :message="confirmationMessage"
+            :confirmYes="confirmationYes" :confirmNo="confirmationNo" :operation="confirmationOperation"
+            :operating="confirmationOperating" />
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -123,23 +131,51 @@ const importResult = ref<{ imported: string[]; skipped: string[]; renamed: strin
 const fileInput = ref<HTMLInputElement>();
 const busy = computed(() => exporting.value || importing.value);
 
+const showVacuumConfirmation = ref(false);
+const confirmationComponent = ref();
+const confirmationTitle = ref('');
+const confirmationMessage = ref('');
+const confirmationYes = ref<() => Promise<void>>(async () => {});
+const confirmationNo = ref<() => Promise<void>>(async () => {});
+const confirmationOperation = ref('');
+const confirmationOperating = computed(() => vacuuming.value || vacuumingJournal.value);
+
 function closeModal() {
     emit('update:showSettings', false);
     emit('close');
 }
 
+async function showConfirmation(title: string, message: string, operation: string, onConfirm: () => Promise<void>) {
+    const module = await import('../common/ConfirmationDialog.vue');
+    confirmationComponent.value = module.default;
+    confirmationTitle.value = title;
+    confirmationMessage.value = message;
+    confirmationOperation.value = operation;
+    confirmationYes.value = onConfirm;
+    confirmationNo.value = async () => { showVacuumConfirmation.value = false; };
+    showVacuumConfirmation.value = true;
+}
+
 async function vacuumAllLogs() {
-    vacuuming.value = true;
-    try {
-        const result = await myTaskLog.vacuumAllSchedulerLogs(0);
-        if (result.success) {
-            pushNotification(new Notification('Logs Cleaned', result.message, 'success', 5000));
-        } else {
-            pushNotification(new Notification('Clean Failed', result.message, 'error', 5000));
+    await showConfirmation(
+        'Clean All Debug Logs',
+        'Are you sure you want to truncate all scheduler debug log files?',
+        'cleaning',
+        async () => {
+            vacuuming.value = true;
+            try {
+                const result = await myTaskLog.vacuumAllSchedulerLogs(0);
+                if (result.success) {
+                    pushNotification(new Notification('Logs Cleaned', result.message, 'success', 5000));
+                } else {
+                    pushNotification(new Notification('Clean Failed', result.message, 'error', 5000));
+                }
+            } finally {
+                vacuuming.value = false;
+                showVacuumConfirmation.value = false;
+            }
         }
-    } finally {
-        vacuuming.value = false;
-    }
+    );
 }
 
 async function vacuumJournal() {
@@ -147,17 +183,25 @@ async function vacuumJournal() {
         pushNotification(new Notification('Invalid Input', 'Days must be at least 1.', 'error', 4000));
         return;
     }
-    vacuumingJournal.value = true;
-    try {
-        const result = await myTaskLog.vacuumAllSchedulerLogs(vacuumDays.value);
-        if (result.success) {
-            pushNotification(new Notification('Journal Vacuumed', result.message, 'success', 5000));
-        } else {
-            pushNotification(new Notification('Vacuum Failed', result.message, 'error', 5000));
+    await showConfirmation(
+        'Vacuum Journal',
+        `Are you sure you want to vacuum journal entries older than ${vacuumDays.value} day(s)?`,
+        'vacuuming',
+        async () => {
+            vacuumingJournal.value = true;
+            try {
+                const result = await myTaskLog.vacuumAllSchedulerLogs(vacuumDays.value);
+                if (result.success) {
+                    pushNotification(new Notification('Journal Vacuumed', result.message, 'success', 5000));
+                } else {
+                    pushNotification(new Notification('Vacuum Failed', result.message, 'error', 5000));
+                }
+            } finally {
+                vacuumingJournal.value = false;
+                showVacuumConfirmation.value = false;
+            }
         }
-    } finally {
-        vacuumingJournal.value = false;
-    }
+    );
 }
 
 async function exportTasks() {

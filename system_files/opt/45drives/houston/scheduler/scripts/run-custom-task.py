@@ -69,6 +69,17 @@ def main():
         if result.returncode == 0:
             notifier.notify("STATUS=Completed successfully")
             dbg("=== custom task completed ===")
+
+            # Persist last-run timestamp for UI display across disable/enable cycles
+            try:
+                import time as _time
+                _task_name = os.environ.get("taskName", "").strip()
+                if _task_name:
+                    _lr = f"/etc/systemd/system/houston_scheduler_CustomTask_{_task_name}.lastrun"
+                    with open(_lr, "w") as f:
+                        f.write(str(int(_time.time())))
+            except Exception:
+                pass
         else:
             notifier.notify(f"STATUS=Exited with code {result.returncode}")
             dbg(f"custom task exited with code {result.returncode}")

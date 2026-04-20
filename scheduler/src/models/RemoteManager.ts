@@ -43,7 +43,7 @@ export class RemoteManager implements RemoteManagerType {
     }
 
     async getRemotes() {
-        this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length);  // Clear current remotes
+        const newRemotes: CloudSyncRemote[] = [];
         try {
             const cockpitUser = await (window as any).cockpit.user();
             const username: string = cockpitUser?.name;
@@ -104,12 +104,14 @@ export class RemoteManager implements RemoteManagerType {
                     provider
                 );
 
-                // Add the new remote to the list of cloud sync remotes
-                this.cloudSyncRemotes.push(newRemote);
+                newRemotes.push(newRemote);
             });
         } catch (e) {
             console.error("Error fetching remotes:", e);
         }
+
+        // Replace all at once to avoid flicker
+        this.cloudSyncRemotes.splice(0, this.cloudSyncRemotes.length, ...newRemotes);
     }
 
     async getRemoteByName(remoteName: string): Promise<CloudSyncRemote | null> {

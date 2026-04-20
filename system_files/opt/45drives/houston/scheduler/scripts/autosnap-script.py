@@ -72,15 +72,18 @@ def dbg(msg: str):
 ZFS_DESTROY_TIMEOUT = int(os.environ.get("ZFS_DESTROY_TIMEOUT", "120"))
 
 TASK_PROP = "com.45drives:task"
+TIER_PROP = "com.45drives:tier"
 LEGACY_NAME_RE = re.compile(r'@(?:[^@]+-)?(?P<task>[^@]+)-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$')
+LEGACY_TIER_RE = re.compile(r'-t(\d+)-\d{4}')
 ENABLE_LEGACY_FALLBACK = True
 
 class Snapshot:
-    def __init__(self, name: str, guid: str, creation_epoch: int, task_tag: Optional[str]):
+    def __init__(self, name: str, guid: str, creation_epoch: int, task_tag: Optional[str], tier_tag: Optional[str] = None):
         self.name = name
         self.guid = guid
         self.creation_epoch = creation_epoch
         self.task_tag = task_tag
+        self.tier_tag = tier_tag  # value of com.45drives:tier property
 
 def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
     try:
@@ -147,19 +150,19 @@ def safe_destroy(snap_name: str) -> bool:
         return False
 
 
-def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_name: Optional[str], tier_tag: str = "") -> str:
+def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_name: Optional[str], tier_idx=None) -> str:
     if not filesystem:
         print("ERROR: filesystem is empty", file=sys.stderr)
         dbg("ERROR: filesystem is empty")
         sys.exit(1)
 
     ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    # When custom_name is set, use it as the full snapshot label (no task_name in the name).
-    # The ZFS property com.45drives:task is used to track ownership for pruning.
+    # Snapshot names are kept clean — tier info is stored in ZFS property
+    # com.45drives:tier, and task ownership in com.45drives:task.
     if custom_name:
-        snapname = f"{filesystem}@{custom_name}{tier_tag}-{ts}"
+        snapname = f"{filesystem}@{custom_name}-{ts}"
     else:
-        snapname = f"{filesystem}@{task_name}{tier_tag}-{ts}"
+        snapname = f"{filesystem}@{task_name}-{ts}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -180,13 +183,20 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         dbg(f"ERROR: zfs snapshot failed: {msg}")
         sys.exit(1)
 
-    # Tag snapshot with our task property so we can safely identify it later
+    # Tag snapshot with task ownership and tier index via ZFS properties
     try:
         run(["zfs", "set", f"{TASK_PROP}={task_name}", snapname])
     except subprocess.CalledProcessError as e:
         # Non-fatal, but warn so pruning by tag may skip this one
         print(f"WARNING: failed to tag snapshot {snapname}: {e.stderr.strip()}", file=sys.stderr)
         dbg(f"WARNING: failed to tag snapshot {snapname}: {e.stderr.strip()}")
+
+    if tier_idx is not None:
+        try:
+            run(["zfs", "set", f"{TIER_PROP}={tier_idx}", snapname])
+        except subprocess.CalledProcessError as e:
+            print(f"WARNING: failed to set tier property on {snapname}: {e.stderr.strip()}", file=sys.stderr)
+            dbg(f"WARNING: failed to set tier on {snapname}: {e.stderr.strip()}")
 
     return snapname
 
@@ -218,11 +228,12 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
         if len(parts) == 2:
             pairs.append((parts[0], parts[1]))
 
-    # Batch get creation as epoch (-p) and our tag property
+    # Batch get creation as epoch (-p) and our tag properties
     # Note: zfs get can accept multiple properties
     try:
         props_out = run(["zfs", "get", "-H", "-p", "-r", "-o", "name,property,value", "creation", filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
         tag_out  = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
+        tier_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TIER_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
     except subprocess.TimeoutExpired:
         print(f"ERROR: Timed out after {ZFS_LIST_TIMEOUT}s fetching snapshot properties on {filesystem}. The pool may be degraded or unresponsive.", file=sys.stderr)
         dbg(f"ERROR: Timed out fetching snapshot properties on {filesystem}")
@@ -247,40 +258,35 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
         except ValueError:
             continue
 
+    tier_map = {}
+    for line in tier_out:
+        try:
+            name, prop, value = line.split("\t")
+            if prop == TIER_PROP and value != "-":
+                tier_map[name] = value
+        except ValueError:
+            continue
+
     for name, guid in pairs:
         ce = creation_map.get(name)
         if ce is None:
             # fall back if missing
             ce = int(dt.datetime.now().timestamp())
-        snaps.append(Snapshot(name, guid, ce, tag_map.get(name)))
+        snaps.append(Snapshot(name, guid, ce, tag_map.get(name), tier_map.get(name)))
 
     return snaps
 
-def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str = "", tier_idx=None) -> bool:
-    """Check if a snapshot belongs to this task, optionally scoped to a tier.
-    Matches both the new format (customName[-tN]-timestamp) and the legacy
-    format (customName-taskName[-tN]-timestamp) for backward compatibility."""
+def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str = "") -> bool:
+    """Check if a snapshot belongs to this task by name pattern (fallback).
+    Tier filtering is handled separately via ZFS properties; this function
+    only checks task ownership. Matches new format (customName-timestamp),
+    default format (taskName-timestamp), and legacy formats."""
     if "@" not in snap_name:
         return False
     suf = snap_name.split("@", 1)[1]
     tn = (task_name or "").strip()
     cn = (custom_name or "").strip()
     if not tn:
-        return False
-
-    if tier_idx is not None:
-        # New format: customName-tN-... (custom name is full override)
-        if cn and suf.startswith(f"{cn}-t{tier_idx}-"):
-            return True
-        # Default (no custom name): taskName-tN-...
-        tier_prefix = f"{tn}-t{tier_idx}-"
-        if suf.startswith(tier_prefix):
-            return True
-        # Legacy format: customName-taskName-tN-...
-        if cn:
-            cn_tier_prefix = f"{cn}-{tn}-t{tier_idx}-"
-            if suf.startswith(cn_tier_prefix):
-                return True
         return False
 
     # New format: customName-timestamp (custom name is full override)
@@ -331,7 +337,7 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         # Fallback: name-based matching, but ONLY for untagged snapshots.
         # If a snapshot is tagged for a different task, never claim it.
         if not belongs and not s.task_tag:
-            belongs = _is_autosnap_task_snapshot(s.name, task_name, custom_name, tier_idx=tier_idx)
+            belongs = _is_autosnap_task_snapshot(s.name, task_name, custom_name)
 
         if not belongs and not s.task_tag and tier_idx is None and ENABLE_LEGACY_FALLBACK:
             m = LEGACY_NAME_RE.search(s.name)
@@ -340,6 +346,17 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
 
         if not belongs:
             continue
+
+        # Tier filtering: use com.45drives:tier property (primary),
+        # fall back to -tN in the snapshot name for old snapshots.
+        if tier_idx is not None:
+            snap_tier = s.tier_tag  # from ZFS property
+            if snap_tier is None:
+                # Legacy fallback: parse -tN from name
+                m = LEGACY_TIER_RE.search(s.name)
+                snap_tier = m.group(1) if m else None
+            if snap_tier is not None and str(snap_tier) != str(tier_idx):
+                continue  # belongs to a different tier
         
         if s.creation_epoch <= cutoff:
             candidates.append(s)
@@ -466,7 +483,8 @@ def main():
     try:
         filesystem = os.environ.get("autoSnapConfig_filesystem_dataset", "").strip()
         is_recursive = os.environ.get("autoSnapConfig_recursive_flag", "false").strip().lower() == "true"
-        custom_name = os.environ.get("autoSnapConfig_customName", "").strip() or None
+        use_custom_name = os.environ.get("autoSnapConfig_customName_flag", "false").strip().lower() == "true"
+        custom_name = (os.environ.get("autoSnapConfig_customName", "").strip() or None) if use_custom_name else None
         task_name = os.environ.get("taskName", "").strip()
 
         dbg("=== autosnap task start ===")
@@ -484,7 +502,6 @@ def main():
         schedule_json_path = os.environ.get("scheduleJsonPath", "")
         schedule_data = load_schedule_json(schedule_json_path)
 
-        tier_tag = ""   # empty = legacy snapshot naming
         tier_idx = None # None = legacy pruning (all task snapshots)
 
         if schedule_data and isinstance(schedule_data.get("intervals"), list):
@@ -496,7 +513,6 @@ def main():
             if has_per_interval_retention and len(intervals) > 1:
                 now = dt.datetime.now()
                 tier_idx = match_current_tier(intervals, now)
-                tier_tag = f"-t{tier_idx}"
                 print(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
                 dbg(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
 
@@ -521,7 +537,7 @@ def main():
         notifier.notify("READY=1")
         notifier.notify("STATUS=Running snapshot task…")
 
-        created = create_snapshot(filesystem, is_recursive, task_name, custom_name, tier_tag=tier_tag)
+        created = create_snapshot(filesystem, is_recursive, task_name, custom_name, tier_idx=tier_idx)
         prune_snapshots_by_retention(filesystem, task_name, rt, ru, created, tier_idx=tier_idx, custom_name=custom_name or "")
 
         # Clean up legacy (pre-tier) untagged snapshots when multi-tier is active.
@@ -550,6 +566,15 @@ def main():
 
         notifier.notify("STATUS=Snapshot task completed. 100% complete")
         dbg("=== autosnap task completed ===")
+
+        # Persist last-run timestamp so the UI can show it even after
+        # the schedule is disabled/re-enabled (systemd clears its timestamps).
+        try:
+            lastrun_path = f"/etc/systemd/system/houston_scheduler_AutomatedSnapshotTask_{task_name}.lastrun"
+            with open(lastrun_path, "w") as f:
+                f.write(str(int(time.time())))
+        except Exception as e:
+            dbg(f"WARNING: failed to write lastrun file: {e}")
 
     except Exception as e:
         tb = traceback.format_exc()

@@ -116,9 +116,9 @@
                             </label>
                             <div class="button-group-row justify-between">
                                 <button @click.stop="oAuthBtn(loadedEditableRemoteProvider! as CloudSyncProvider)"
-                                    @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
+                                    @mouseenter="handleMouseEnter('oauth-btn')" @mouseleave="handleMouseLeave('oauth-btn')"
                                     class="flex flex-row items-center text-center h-fit w-full mt-1 btn text-white"
-                                    :style="getButtonStyles(isHovered(loadedEditableRemoteParams.name), loadedEditableRemoteProvider! as CloudSyncProvider, undefined)">
+                                    :style="getButtonStyles(isHovered('oauth-btn'), loadedEditableRemoteProvider! as CloudSyncProvider, undefined)">
                                     <span class="flex-grow text-center mt-0.5">
                                         Authenticate with {{ (loadedEditableRemoteProvider! as CloudSyncProvider).name
                                         }}
@@ -162,42 +162,39 @@
                                     of
                                     config or set with defaults (if applicable)</i>
                             </div>
-                            <div v-for="(parameter, key) in loadedEditableRemoteParams.value.parameters"
-                                :key="String(key)" class="mt-1 text-default">
-                                <!-- find way to skip rendering for 'provider' label -->
-                                <label :for="String(key)" class="block text-sm font-medium text-default">
-                                    {{ key }}</label>
-                                <input
-                                    v-if="parameter.type === 'string' && (loadedEditableRemoteProvider!.type !== 's3' || String(key) !== 'provider')"
-                                    type="text" v-model="parameter.value" :id="String(key)"
-                                    class="block w-full mt-1 input-textlike" :placeholder="parameter.defaultValue
-                                        ? String(parameter.defaultValue)
-                                        : 'Default is empty string'
-                                        " />
-                                <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="parameter.value"
-                                    :id="String(key)"
-                                    class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />
 
-                                <input v-else-if="parameter.type === 'int'" type="number" v-model="parameter.value"
-                                    :id="String(key)" class="block w-full mt-1 input-textlike"
-                                    :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
-
-                                <select v-else-if="parameter.type === 'select'" v-model="parameter.value"
-                                    :id="String(key)" class="block w-full mt-1 input-textlike">
-                                    <option v-for="option in parameter.allowedValues" :key="option" :value="option">
-                                        {{ option }}
-                                    </option>
-                                </select>
-
-                                <textarea v-else-if="parameter.type === 'object' && String(key) !== 'token'"
-                                    v-model="parameter.value" rows="4" :id="String(key)"
-                                    class="block w-full mt-1 input-textlike"
-                                    :placeholder='`Default is empty object`'></textarea>
-                                <textarea v-else-if="parameter.type === 'object' && String(key) === 'token'"
-                                    v-model="displayValue" rows="4" :id="String(key)"
+                            <!-- Token display for OAuth providers -->
+                            <div v-if="loadedEditableRemoteParams.value.oAuthSupported" class="mt-1 text-default">
+                                <label class="block text-sm font-medium text-default">token</label>
+                                <textarea v-model="displayValue" rows="4"
                                     class="block w-full mt-1 input-textlike"
                                     :placeholder='`Automatically retrieved with OAuth. (Default is empty object)`'></textarea>
                             </div>
+
+                            <!-- All rclone options rendered via RcloneOptionField -->
+                            <div v-for="opt in dynamicBasicOptions" :key="'dyn-' + opt.name" class="mt-2 text-default">
+                                <RcloneOptionField :option="opt" v-model="dynamicValues[opt.name]" />
+                            </div>
+
+                            <!-- Dynamic advanced options in a disclosure -->
+                            <Disclosure v-if="dynamicAdvancedOptions.length > 0" v-slot="{ open }" class="col-span-2 mt-3">
+                                <DisclosureButton class="bg-default w-full justify-start text-center rounded-md flex flex-row">
+                                    <div class="m-1">
+                                        <ChevronUpIcon class="h-6 w-6 text-default transition-all duration-200 transform"
+                                            :class="{ 'rotate-90': !open, 'rotate-180': open }" />
+                                    </div>
+                                    <div class="ml-2 mt-1">
+                                        <span class="text-sm text-default">Advanced Options ({{ dynamicAdvancedOptions.length }})</span>
+                                    </div>
+                                </DisclosureButton>
+                                <DisclosurePanel>
+                                    <div class="bg-default p-3 rounded-b-md -mt-1 grid grid-cols-2 gap-x-4">
+                                        <div v-for="opt in dynamicAdvancedOptions" :key="'adv-' + opt.name" class="mt-2 text-default">
+                                            <RcloneOptionField :option="opt" v-model="dynamicValues[opt.name]" />
+                                        </div>
+                                    </div>
+                                </DisclosurePanel>
+                            </Disclosure>
                         </div>
                     </div>
                 </div>
@@ -257,14 +254,17 @@
 </template>
 <script setup lang="ts">
 import { inject, ref, Ref, watch, computed, reactive, onMounted } from 'vue';
+import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import Modal from '../common/Modal.vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
+import RcloneOptionField from '../common/RcloneOptionField.vue';
 import CustomLoadingSpinner from "../common/CustomLoadingSpinner.vue";
 import { CloudAuthParameter, CloudSyncParameter, CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
+import { useRcloneProviders, type RcloneOption } from '../../composables/useRcloneProviders';
 
 const truncateText = injectWithCheck(truncateTextInjectionKey, "truncateText not provided!");
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
@@ -318,6 +318,7 @@ function clearValues() {
     loadedEditableRemoteName.value = '';
     loadedEditableRemoteProvider.value = undefined;
     loadedEditableRemoteParams.value = {};
+    Object.keys(dynamicValues).forEach((key) => delete dynamicValues[key]);
 }
 
 function populateValues(selectedRemote: CloudSyncRemote) {
@@ -330,6 +331,26 @@ function populateValues(selectedRemote: CloudSyncRemote) {
     } else {
         console.error("authParams is undefined in selectedRemote");
     }
+
+    // Initialize dynamic values with ALL rclone options, using existing remote values where present
+    const typeKey = getRcloneTypeKey(selectedRemote.provider);
+    const sub = getSubProvider(selectedRemote.provider);
+    if (typeKey) {
+        const allOpts = rcloneProviders.getProviderOptions(typeKey, sub);
+        const existingParams = selectedRemote.authParams?.parameters ?? {};
+        for (const opt of allOpts) {
+            if (opt.name === 'token' || opt.name === 'provider') continue;
+            // Use existing remote value if present, otherwise rclone default
+            const existing = existingParams[opt.name];
+            if (existing !== undefined && existing.value !== undefined) {
+                dynamicValues[opt.name] = existing.value;
+            } else if (opt.type === 'bool') {
+                dynamicValues[opt.name] = opt.default ?? false;
+            } else {
+                dynamicValues[opt.name] = opt.default ?? '';
+            }
+        }
+    }
 }
 
 const remoteNameErrorTag = ref('');
@@ -337,6 +358,49 @@ const saving = ref(false);
 const oAuthenticated = ref(false);
 
 const errorList = ref<string[]>([]);
+
+// Dynamic rclone provider options
+const rcloneProviders = useRcloneProviders();
+const dynamicValues = reactive<Record<string, any>>({});
+
+onMounted(async () => {
+    rcloneProviders.load();
+});
+
+// Map CloudSync.ts type values to rclone's actual Prefix keys
+const typeToRclonePrefix: Record<string, string> = {
+    'google cloud storage': 'gcs',
+};
+
+function getRcloneTypeKey(provider: CloudSyncProvider | undefined): string {
+    if (!provider) return '';
+    if (provider.type === 's3') return 's3';
+    return typeToRclonePrefix[provider.type] ?? provider.type;
+}
+
+function getSubProvider(provider: CloudSyncProvider | undefined): string | undefined {
+    if (!provider || provider.type !== 's3') return undefined;
+    return provider.providerParams.parameters.provider?.value as string | undefined;
+}
+
+// Hidden fields handled specially (token via OAuth, provider set by selection)
+const hiddenFields = new Set(['token', 'provider']);
+
+const dynamicBasicOptions = computed<RcloneOption[]>(() => {
+    const typeKey = getRcloneTypeKey(loadedEditableRemoteProvider.value);
+    if (!typeKey) return [];
+    const sub = getSubProvider(loadedEditableRemoteProvider.value);
+    return rcloneProviders.getBasicOptions(typeKey, sub)
+        .filter(o => !hiddenFields.has(o.name));
+});
+
+const dynamicAdvancedOptions = computed<RcloneOption[]>(() => {
+    const typeKey = getRcloneTypeKey(loadedEditableRemoteProvider.value);
+    if (!typeKey) return [];
+    const sub = getSubProvider(loadedEditableRemoteProvider.value);
+    return rcloneProviders.getAdvancedOptions(typeKey, sub)
+        .filter(o => !hiddenFields.has(o.name));
+});
 
 const closeModal = () => {
     editMode.value = false;
@@ -396,11 +460,22 @@ function checkForChanges() {
         return;
     }
 
-    // Check if any parameter values have changed
+    // Check if any parameter values have changed (static params like token)
     for (const [key, parameter] of Object.entries(loadedEditableRemoteParams.value.parameters as Record<string, CloudSyncParameter>)) {
         const originalParameter = selectedRemote.value?.authParams.parameters[key];
 
         if (!originalParameter || parameter.value !== originalParameter.value) {
+            hasChanges.value = true;
+            return;
+        }
+    }
+
+    // Check if any dynamic values have changed from their initialized values
+    const existingParams = selectedRemote.value?.authParams?.parameters ?? {};
+    for (const [key, value] of Object.entries(dynamicValues)) {
+        const existing = existingParams[key];
+        const originalValue = existing?.value;
+        if (value !== originalValue && !(value === '' && originalValue === undefined)) {
             hasChanges.value = true;
             return;
         }
@@ -411,7 +486,7 @@ function checkForChanges() {
 }
 
 
-watch([loadedEditableRemoteName, loadedEditableRemoteProvider, loadedEditableRemoteParams], checkForChanges, { deep: true });
+watch([loadedEditableRemoteName, loadedEditableRemoteProvider, loadedEditableRemoteParams, dynamicValues], checkForChanges, { deep: true });
 
 async function saveEditedRemoteBtn() {
     if (!hasChanges.value) {
@@ -433,12 +508,22 @@ async function saveEditedRemoteBtn() {
         const newName = loadedEditableRemoteName.value!;
         const newType = loadedEditableRemoteProvider.value!.type;
 
+        // Merge dynamic rclone values into the params before saving
+        const paramsToSave = JSON.parse(JSON.stringify(loadedEditableRemoteParams.value));
+        if (paramsToSave && paramsToSave.parameters) {
+            for (const [key, value] of Object.entries(dynamicValues)) {
+                if (value !== null && value !== undefined && value !== '' && value !== false) {
+                    paramsToSave.parameters[key] = { value, type: typeof value === 'boolean' ? 'bool' : 'string' };
+                }
+            }
+        }
+
         // Send exactly what you were sending before
         await myRemoteManager.editRemote(
             oldName,
             newName,
             newType,
-            loadedEditableRemoteParams.value!
+            paramsToSave!
         );
 
         // Reload remotes from rclone.conf (now containing merged client_id/secret)

@@ -14,7 +14,15 @@
                             <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate }}</p>
                             <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate }}</p>
                             <p class="text-sm font-medium">Exit Code: {{ thisLogEntry.exitCode }}</p>
-                            <div v-if="viewMoreLogs" class="flex flex-col w-full text-nowrap">
+                            <div v-if="!taskIsActive && !viewMoreLogs" class="flex flex-col w-full text-nowrap">
+                                <p class="text-muted text-sm font-bold">
+                                    Log View Idle
+                                </p>
+                                <p class="text-muted text-xs mt-0.5">
+                                    (Task is not active or scheduled)
+                                </p>
+                            </div>
+                            <div v-else-if="viewMoreLogs" class="flex flex-col w-full text-nowrap">
                                 <p class="text-red-500 text-sm font-bold animate-pulse">
                                     LOG VIEW PAUSED
                                 </p>
@@ -71,30 +79,10 @@
                                     </span>
                                 </Switch>
                             </div>
-
-                            <!-- Debug Log Button -->
-                            <button class="btn btn-secondary px-3 py-1 text-sm flex items-center gap-2 h-fit"
-                                @click="toggleDebugLog" :disabled="loadingDebugLog">
-                                {{ showDebugLog ? 'Hide' : 'View' }} Debug Log
-                                <svg v-if="loadingDebugLog" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                </svg>
-                            </button>
-
-                            <!-- Clean Logs Button -->
-                            <button class="btn btn-danger px-3 py-1 text-sm flex items-center gap-2 h-fit"
-                                @click="cleanTaskLogs" :disabled="cleaningLogs">
-                                {{ cleaningLogs ? 'Cleaning...' : 'Clean Debug Log' }}
-                                <svg v-if="cleaningLogs" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                </svg>
-                            </button>
-
                         </div>
-                    </div>
 
+                    </div>
+                 
                     <div v-if="!loadingLogs" class="bg-plugin-header p-4 rounded-lg mt-1">
                         <ul v-if="thisLogEntry !== undefined" ref="logContainer" role="list"
                             class="divide-y divide-default h-96 overflow-y-scroll">
@@ -133,9 +121,35 @@
                         </div>
                     </div>
                 </div>
+                <div class="button-group-row items-center justify-around mt-2">
+                    <!-- Debug Log Button -->
+                    <button class="btn btn-secondary px-3 py-1 text-sm flex items-center gap-2 h-fit"
+                        @click="toggleDebugLog" :disabled="loadingDebugLog">
+                        {{ showDebugLog ? 'Hide' : 'View' }} Debug Log
+                        <svg v-if="loadingDebugLog" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg"
+                            fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                    </button>
 
+                    <!-- Clean Logs Button -->
+                    <button class="btn btn-danger px-3 py-1 text-sm flex items-center gap-2 h-fit"
+                        @click="cleanTaskLogs" :disabled="cleaningLogs">
+                        {{ cleaningLogs ? 'Cleaning...' : 'Clean Debug Log' }}
+                        <svg v-if="cleaningLogs" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg"
+                            fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                    </button>
+                </div>
                 <!-- Debug Log Section -->
-                <div v-if="showDebugLog" class="mt-4 bg-plugin-header p-4 rounded-lg">
+                <div v-if="showDebugLog" class="mt-2 bg-plugin-header p-4 rounded-lg">
                     <h4 class="text-sm font-semibold text-default mb-2">Debug Log</h4>
                     <div class="h-64 overflow-y-scroll bg-accent rounded p-2">
                         <pre class="text-xs text-muted whitespace-pre-wrap break-words">{{ debugLogContent }}</pre>
@@ -154,9 +168,17 @@
         </template>
     </Modal>
 
+    <div v-if="showCleanConfirmation">
+        <component :is="cleanConfirmationComponent" @close="showCleanConfirmation = false"
+            :showFlag="showCleanConfirmation" :title="'Clean Debug Log'"
+            :message="'Are you sure you want to clean the debug log for this task?'"
+            :confirmYes="confirmCleanLogs" :confirmNo="cancelCleanLogs" :operation="'cleaning'"
+            :operating="cleaningLogs" />
+    </div>
+
 </template>
 <script setup lang="ts">
-import { inject, ref, Ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { inject, ref, Ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 import { Switch } from '@headlessui/vue';
 import Modal from '../../components/common/Modal.vue';
@@ -185,6 +207,10 @@ const showDebugLog = ref(false);
 const debugLogContent = ref('');
 const loadingDebugLog = ref(false);
 const cleaningLogs = ref(false);
+const showCleanConfirmation = ref(false);
+const cleanConfirmationComponent = ref();
+
+const taskIsActive = computed(() => props.task.schedule.enabled);
 
 const closeModal = () => {
     showLogView.value = false;
@@ -224,6 +250,12 @@ async function toggleDebugLog() {
 }
 
 async function cleanTaskLogs() {
+    const module = await import('../common/ConfirmationDialog.vue');
+    cleanConfirmationComponent.value = module.default;
+    showCleanConfirmation.value = true;
+}
+
+const confirmCleanLogs = async () => {
     cleaningLogs.value = true;
     try {
         const result = await myTaskLog.clearLogsForTask(taskInstance.value);
@@ -240,8 +272,13 @@ async function cleanTaskLogs() {
         pushNotification(new Notification('Clean Failed', String(e), 'error', 5000));
     } finally {
         cleaningLogs.value = false;
+        showCleanConfirmation.value = false;
     }
-}
+};
+
+const cancelCleanLogs = async () => {
+    showCleanConfirmation.value = false;
+};
 
 async function refreshLogs() {
     loadingLogs.value = true;
@@ -330,6 +367,8 @@ const preserveScrollPosition = async (fetchFunction: () => Promise<void>) => {
 const startPolling = () => {
     stopPolling(); // Ensure no duplicate intervals
 
+    if (!taskIsActive.value) return; // Don't poll for inactive tasks
+
     pollInterval.value = setInterval(() => {
         if (!viewMoreLogs.value) {
             fetchLatestLog(); // Keep polling latest logs
@@ -349,13 +388,17 @@ watch(viewMoreLogs, async (newVal) => {
         stopPolling(); // Stop polling when viewing all logs
         await preserveScrollPosition(refreshLogs); // Use the better refresh logic
     } else {
-        startPolling(); // Resume polling when viewing only the latest log
+        if (taskIsActive.value) {
+            startPolling(); // Resume polling when viewing only the latest log (and task is active)
+        }
         refreshLogs(); // Ensure latest logs are refreshed when switching back
     }
 });
 onMounted(() => {
     fetchLatestLog();
-    startPolling();
+    if (taskIsActive.value) {
+        startPolling();
+    }
 });
 
 onUnmounted(() => {

@@ -88,40 +88,48 @@
                             <b>Manually Configure Parameters</b> - <i class="text-sm">Blank fields will be left out of
                                 config or set with defaults (if applicable)</i>
                         </div>
-                        <div v-for="([key, parameter], index) in providerParameters" :key="key"
-                            class="mt-1 text-default">
-                            <label :for="String(key)" class="block text-sm font-medium text-default">{{ key }}</label>
-                            <input
-                                v-if="parameter.type === 'string' && (selectedProvider.type !== 's3' || key !== 'provider')"
-                                type="text" v-model="providerValues[key]" :id="String(key)"
-                                class="block w-full mt-1 input-textlike" :placeholder="parameter.defaultValue
-                                        ? String(parameter.defaultValue)
-                                        : 'Default is empty string'
-                                    " />
-                            <input v-else-if="parameter.type === 'bool'" type="checkbox" v-model="providerValues[key]"
-                                :id="String(key)"
-                                class="-mt-1 w-4 h-4 text-success border-default rounded focus:ring-green-500" />
 
-                            <input v-else-if="parameter.type === 'int'" type="number" v-model="providerValues[key]"
-                                :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder="parameter.defaultValue == '' ? 'Default is empty string' : `Default is '${parameter.defaultValue}'`" />
-
-                            <select v-else-if="parameter.type === 'select'" v-model="providerValues[key]"
-                                :id="String(key)" class="block w-full mt-1 input-textlike">
-                                <option v-for="option in parameter.allowedValues" :key="option" :value="option">
-                                    {{ option }}
-                                </option>
-                            </select>
-
-                            <textarea v-else-if="parameter.type === 'object' && key !== 'token'"
-                                v-model="parameter.value" rows="4" :id="String(key)"
-                                class="block w-full mt-1 input-textlike"
-                                :placeholder='`Default is empty object`'></textarea>
-                            <textarea v-else-if="parameter.type === 'object' && key === 'token'" v-model="displayValue"
-                                rows="4" :id="String(key)" class="block w-full mt-1 input-textlike"
-                                :placeholder='`Automatically retrieved with OAuth. (Default is empty object)`'></textarea>
-
+                        <!-- Loading rclone options -->
+                        <div v-if="rcloneProviders.loading.value" class="flex items-center gap-2 my-2">
+                            <svg class="animate-spin h-4 w-4 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            <span class="text-sm text-muted">Loading provider options from rclone…</span>
                         </div>
+
+                        <!-- Token display for OAuth providers -->
+                        <div v-if="selectedProvider.providerParams.oAuthSupported" class="mt-1 text-default">
+                            <label class="block text-sm font-medium text-default">token</label>
+                            <textarea v-model="displayValue" rows="4"
+                                class="block w-full mt-1 input-textlike"
+                                :placeholder='`Automatically retrieved with OAuth. (Default is empty object)`'></textarea>
+                        </div>
+
+                        <!-- All rclone options rendered via RcloneOptionField -->
+                        <div v-for="opt in dynamicBasicOptions" :key="'dyn-' + opt.name" class="mt-2 text-default">
+                            <RcloneOptionField :option="opt" v-model="dynamicValues[opt.name]" />
+                        </div>
+
+                        <!-- Advanced rclone options in a disclosure -->
+                        <Disclosure v-if="dynamicAdvancedOptions.length > 0" v-slot="{ open }" class="mt-3">
+                            <DisclosureButton class="bg-default w-full justify-start text-center rounded-md flex flex-row">
+                                <div class="m-1">
+                                    <ChevronUpIcon class="h-6 w-6 text-default transition-all duration-200 transform"
+                                        :class="{ 'rotate-90': !open, 'rotate-180': open }" />
+                                </div>
+                                <div class="ml-2 mt-1">
+                                    <span class="text-sm text-default">Advanced Options ({{ dynamicAdvancedOptions.length }})</span>
+                                </div>
+                            </DisclosureButton>
+                            <DisclosurePanel>
+                                <div class="bg-default p-3 rounded-b-md -mt-1">
+                                    <div v-for="opt in dynamicAdvancedOptions" :key="'adv-' + opt.name" class="mt-2 text-default">
+                                        <RcloneOptionField :option="opt" v-model="dynamicValues[opt.name]" />
+                                    </div>
+                                </div>
+                            </DisclosurePanel>
+                        </Disclosure>
                     </div>
                 </div>
             </div>
@@ -165,20 +173,24 @@
     </div>
 </template>
 <script setup lang="ts">
-import { inject, ref, Ref, watch, computed, reactive } from 'vue';
+import { inject, ref, Ref, watch, computed, reactive, onMounted } from 'vue';
+import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import Modal from '../common/Modal.vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
 import InfoTile from '../common/InfoTile.vue';
+import RcloneOptionField from '../common/RcloneOptionField.vue';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey, truncateTextInjectionKey } from '../../keys/injection-keys';
 import { CloudSyncProvider, cloudSyncProviders, getButtonStyles, getProviderLogo } from "../../models/CloudSync";
+import { useRcloneProviders, type RcloneOption } from '../../composables/useRcloneProviders';
 
 const myRemoteManager = injectWithCheck(remoteManagerInjectionKey, "remote manager not provided!");
 const existingRemotes = injectWithCheck(rcloneRemotesInjectionKey, "remotes not provided!");
 
 const selectedProvider = ref<CloudSyncProvider>();
 const providerValues = reactive<any>({});
+const dynamicValues = reactive<Record<string, any>>({});
 
 const remoteName = ref('');
 const remoteNameErrorTag = ref('');
@@ -192,13 +204,77 @@ console.log('EXISTING REMOTES:', existingRemotes)!;
 const privacyPolicyUrl = ref('https://cloud-sync.45d.io/privacy');
 const termsOfServiceUrl = ref('https://cloud-sync.45d.io/tos');
 
+// Dynamic rclone provider options
+const rcloneProviders = useRcloneProviders();
+onMounted(() => { rcloneProviders.load(); });
+
+// Map CloudSync.ts type values to rclone's actual Prefix keys
+const typeToRclonePrefix: Record<string, string> = {
+    'google cloud storage': 'gcs',
+};
+
+function getRcloneTypeKey(provider: CloudSyncProvider | undefined): string {
+    if (!provider) return '';
+    if (provider.type === 's3') return 's3';
+    return typeToRclonePrefix[provider.type] ?? provider.type;
+}
+
+// Get the S3 sub-provider name (e.g. "AWS", "Wasabi", "Ceph") for filtering provider-specific options
+function getSubProvider(provider: CloudSyncProvider | undefined): string | undefined {
+    if (!provider || provider.type !== 's3') return undefined;
+    return provider.providerParams.parameters.provider?.value as string | undefined;
+}
+
+// Hidden fields that are handled specially (token via OAuth, provider set by selection)
+const hiddenFields = new Set(['token', 'provider']);
+
+// All basic rclone options for the selected provider
+const dynamicBasicOptions = computed<RcloneOption[]>(() => {
+    const typeKey = getRcloneTypeKey(selectedProvider.value);
+    if (!typeKey) return [];
+    const sub = getSubProvider(selectedProvider.value);
+    return rcloneProviders.getBasicOptions(typeKey, sub)
+        .filter(o => !hiddenFields.has(o.name));
+});
+
+// All advanced rclone options for the selected provider
+const dynamicAdvancedOptions = computed<RcloneOption[]>(() => {
+    const typeKey = getRcloneTypeKey(selectedProvider.value);
+    if (!typeKey) return [];
+    const sub = getSubProvider(selectedProvider.value);
+    return rcloneProviders.getAdvancedOptions(typeKey, sub)
+        .filter(o => !hiddenFields.has(o.name));
+});
+
 watch(selectedProvider, (newlySelectedProvider) => {
     if (newlySelectedProvider) {
         Object.keys(providerValues).forEach((key) => delete providerValues[key]); // Clear previous values
+        Object.keys(dynamicValues).forEach((key) => delete dynamicValues[key]); // Clear dynamic values
 
-        // Initialize providerValues with a shallow copy of the selectedProvider parameters
-        for (const [key, param] of Object.entries(newlySelectedProvider.providerParams.parameters)) {
-            providerValues[key] = param.value ?? param.defaultValue; // Use defaultValue if no current value
+        // Set provider value for S3 types (hidden field)
+        if (newlySelectedProvider.type === 's3') {
+            providerValues.provider = newlySelectedProvider.providerParams.parameters.provider?.value ?? '';
+        }
+
+        // Initialize ALL option values from rclone defaults, using CloudSync.ts defaults where available
+        const typeKey = getRcloneTypeKey(newlySelectedProvider);
+        const sub = getSubProvider(newlySelectedProvider);
+        if (typeKey) {
+            const staticDefaults = newlySelectedProvider.providerParams.parameters;
+            const allOpts = rcloneProviders.getProviderOptions(typeKey, sub);
+            for (const opt of allOpts) {
+                if (opt.name === 'token') continue;
+                if (opt.name === 'provider') continue;
+                // Use CloudSync.ts default if available, otherwise rclone default
+                const staticParam = staticDefaults[opt.name];
+                if (staticParam !== undefined) {
+                    dynamicValues[opt.name] = staticParam.value ?? staticParam.defaultValue ?? (opt.type === 'bool' ? false : '');
+                } else if (opt.type === 'bool') {
+                    dynamicValues[opt.name] = opt.default ?? false;
+                } else {
+                    dynamicValues[opt.name] = opt.default ?? '';
+                }
+            }
         }
     }
 });
@@ -207,6 +283,7 @@ const closeModal = () => {
     oAuthenticated.value = false;
 
     providerValues.token = "" ;
+    Object.keys(dynamicValues).forEach((key) => delete dynamicValues[key]);
     showCreateRemote.value = false;
     emit('close');
 }
@@ -295,13 +372,19 @@ const createRemoteBtn = async () => {
         }
 
         creating.value = true;
-        // Use providerValues as the data source and filter out empty parameters
-        const parametersToSave = Object.fromEntries(
+        // Collect all non-empty option values
+        const allParams = Object.fromEntries(
+            Object.entries(dynamicValues).filter(([key, value]) => {
+                return value !== null && value !== undefined && value !== '' && value !== false;
+            })
+        );
+        // Add special fields from providerValues (provider for S3, token for OAuth)
+        const specialParams = Object.fromEntries(
             Object.entries(providerValues).filter(([key, value]) => {
-                // Check if value is not empty (not null, undefined, or an empty string)
                 return value !== null && value !== undefined && value !== '';
             })
         );
+        const parametersToSave = { ...allParams, ...specialParams };
         const newRemote = await myRemoteManager.createRemote(remoteName.value, selectedProvider.value.type, parametersToSave);
         pushNotification(new Notification('Save Successful', `Remote saved successfully`, 'success', 6000));
         creating.value = false;

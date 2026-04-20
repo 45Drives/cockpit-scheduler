@@ -6,7 +6,7 @@
         </template>
         <template v-slot:content>
             <div name="new-schedule-interval" class="">
-                <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+                <div class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-[auto_auto]">
 
                     <div @click="clearSelectedInterval()" name="schedule-input"
                         class="border border-default rounded-md p-2 col-span-2 row-span-1 col-start-1 row-start-1 bg-accent grid grid-cols-1">
@@ -220,7 +220,7 @@
                     </div>
 
                     <div @click="clearSelectedInterval()" name="schedule-preview"
-                        class="col-start-1 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
+                        class="col-start-1 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent max-h-[32rem] overflow-hidden">
                         <label class="block text-sm font-medium leading-6 text-default">Interval Preview</label>
                         <div class="mt-1">
                             <CalendarComponent :key="calendarKey" :interval="newInterval!" />
@@ -228,13 +228,13 @@
                     </div>
 
                     <div name="schedule-interval-list" @click="clearSelectedInterval()"
-                        class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent">
-                        <div @click="clearSelectedInterval()">
-                            <div class="flex flex-row justify-between">
+                        class="col-start-2 row-start-2 border border-default rounded-md p-2 col-span-1 bg-accent max-h-[32rem] flex flex-col">
+                        <div @click="clearSelectedInterval()" class="flex flex-col min-h-0 grow">
+                            <div class="flex flex-row justify-between shrink-0">
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">
                                     Current Intervals</label>
                             </div>
-                            <ul role="list" class="divide-y divide-default rounded-lg mt-2">
+                            <ul role="list" class="divide-y divide-default rounded-lg mt-2 overflow-y-auto min-h-0">
                                 <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"
                                     :class="intervalSelectedClass(idx)">
                                     <button class="h-full w-full rounded-lg p-2 px-2 text-left"
@@ -255,7 +255,7 @@
                                     </button>
                                 </li>
                             </ul>
-                            <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2">
+                            <div v-if="selectedInterval !== undefined" class="button-group-row justify-between mt-2 shrink-0">
                                 <button name="remove-interval" @click.stop="removeSelectedInterval(selectedIndex)"
                                     class="btn btn-danger h-min w-full">Remove Interval</button>
                             </div>

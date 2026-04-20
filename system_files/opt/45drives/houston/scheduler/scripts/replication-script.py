@@ -53,16 +53,19 @@ notifier = get_notifier()
 
 # ZFS user property used to tag snapshots for reliable ownership tracking
 TASK_PROP = "com.45drives:task"
+TIER_PROP = "com.45drives:tier"
+LEGACY_TIER_RE = re.compile(r'-t(\d+)-\d{4}')
 
 
 class Snapshot:
-    def __init__(self, name, guid, creation, creation_epoch=0, order_key=0, task_tag=None):
+    def __init__(self, name, guid, creation, creation_epoch=0, order_key=0, task_tag=None, tier_tag=None):
         self.name = name
         self.guid = guid
         self.creation = creation
         self.creation_epoch = creation_epoch
         self.order_key = order_key
         self.task_tag = task_tag
+        self.tier_tag = tier_tag  # value of com.45drives:tier property
 
 
 def split_zfs_list_line(line: str):
@@ -215,30 +218,16 @@ def filter_dataset_snapshots(snaps, dataset: str):
     return [s for s in (snaps or []) if dataset_of_snapshot(s.name) == ds]
 
 
-def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "", tier_idx=None) -> bool:
-    """Check if a snapshot belongs to this task by name pattern.
-    Matches both new format (customName[-tN]-timestamp) and legacy
-    format (customName-taskName[-tN]-timestamp) for backward compatibility."""
+def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "") -> bool:
+    """Check if a snapshot belongs to this task by name pattern (fallback).
+    Tier filtering is handled separately via ZFS properties; this function
+    only checks task ownership. Matches new format (customName-timestamp),
+    default format (taskName-timestamp), and legacy formats."""
     suf = snapshot_suffix(full_snap_name)
     tn = (task_name or "").strip()
     cn = (custom_name or "").strip()
 
     if not tn:
-        return False
-
-    if tier_idx is not None:
-        # New format: customName-tN-... (custom name is full override)
-        if cn and suf.startswith(f"{cn}-t{tier_idx}-"):
-            return True
-        # Default (no custom name): taskName-tN-...
-        tier_prefix = f"{tn}-t{tier_idx}-"
-        if suf.startswith(tier_prefix):
-            return True
-        # Legacy format: customName-taskName-tN-...
-        if cn:
-            cn_tier_prefix = f"{cn}-{tn}-t{tier_idx}-"
-            if suf.startswith(cn_tier_prefix):
-                return True
         return False
 
     # New format: customName-timestamp (custom name is full override)
@@ -430,6 +419,7 @@ def get_local_snapshots(filesystem):
 
         # Fetch task tags for ownership tracking
         tag_map = {}
+        tier_map = {}
         try:
             tag_cmd = ["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem]
             tag_p = run_logged(tag_cmd, text=True)
@@ -443,8 +433,22 @@ def get_local_snapshots(filesystem):
                         continue
         except Exception:
             pass
+        try:
+            tier_cmd = ["zfs", "get", "-H", "-r", "-o", "name,property,value", TIER_PROP, filesystem]
+            tier_p = run_logged(tier_cmd, text=True)
+            if tier_p.returncode == 0:
+                for line in (tier_p.stdout or "").splitlines():
+                    try:
+                        name, prop, value = line.split("\t")
+                        if prop == TIER_PROP and value != "-":
+                            tier_map[name] = value
+                    except ValueError:
+                        continue
+        except Exception:
+            pass
         for s in snaps:
             s.task_tag = tag_map.get(s.name)
+            s.tier_tag = tier_map.get(s.name)
 
         return snaps
 
@@ -488,6 +492,7 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
 
         # Fetch task tags from remote for ownership tracking
         tag_map = {}
+        tier_map = {}
         try:
             tag_args = ["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem]
             tag_p = ssh_run_args(user, host, ssh_port, tag_args, capture_output=True, check=False, text=False)
@@ -504,8 +509,25 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
                         continue
         except Exception:
             pass
+        try:
+            tier_args = ["zfs", "get", "-H", "-r", "-o", "name,property,value", TIER_PROP, filesystem]
+            tier_p = ssh_run_args(user, host, ssh_port, tier_args, capture_output=True, check=False, text=False)
+            if tier_p.returncode == 0:
+                tier_out = (tier_p.stdout or b"")
+                if isinstance(tier_out, str):
+                    tier_out = tier_out.encode()
+                for line in tier_out.decode(errors="replace").splitlines():
+                    try:
+                        name, prop, value = line.split("\t")
+                        if prop == TIER_PROP and value != "-":
+                            tier_map[name] = value
+                    except ValueError:
+                        continue
+        except Exception:
+            pass
         for s in snapshots:
             s.task_tag = tag_map.get(s.name)
+            s.tier_tag = tier_map.get(s.name)
 
         return snapshots
 
@@ -732,17 +754,17 @@ def format_bytes(n):
     return f"{n / (1024**4):.1f} TiB"
 
 
-def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None, tier_tag=""):
+def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None, tier_idx=None):
     command = ["zfs", "snapshot"]
     if is_recursive:
         command.append("-r")
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    # When custom_name is set, use it as the full snapshot label (no task_name in the name).
-    # The ZFS property com.45drives:task is used to track ownership for pruning.
+    # Snapshot names are kept clean — tier info is stored in ZFS property
+    # com.45drives:tier, and task ownership in com.45drives:task.
     if custom_name:
-        new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
+        new_snap = f"{filesystem}@{custom_name}-{timestamp}"
     else:
-        new_snap = f"{filesystem}@{task_name}{tier_tag}-{timestamp}"
+        new_snap = f"{filesystem}@{task_name}-{timestamp}"
     command.append(new_snap)
 
     notifier.notify(f"STATUS=Creating snapshot {new_snap}…")
@@ -774,22 +796,28 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     print(f"new snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Snapshot created: {new_snap}")
 
-    # Tag snapshot with our task property so we can reliably identify it for pruning
+    # Tag snapshot with task ownership and tier index via ZFS properties
     try:
         run_logged(["zfs", "set", f"{TASK_PROP}={task_name}", new_snap], check=True, text=True)
     except Exception as e:
         print(f"WARNING: failed to tag snapshot {new_snap}: {e}")
 
+    if tier_idx is not None:
+        try:
+            run_logged(["zfs", "set", f"{TIER_PROP}={tier_idx}", new_snap], check=True, text=True)
+        except Exception as e:
+            print(f"WARNING: failed to set tier property on {new_snap}: {e}")
+
     return new_snap
 
 
-def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_tag=""):
+def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_idx=None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    # When custom_name is set, use it as the full snapshot label (no task_name in the name).
+    # Snapshot names are kept clean — tier info stored in ZFS properties.
     if custom_name:
-        new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
+        new_snap = f"{filesystem}@{custom_name}-{timestamp}"
     else:
-        new_snap = f"{filesystem}@{task_name}{tier_tag}-{timestamp}"
+        new_snap = f"{filesystem}@{task_name}-{timestamp}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -827,13 +855,21 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
     print(f"new remote snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Remote snapshot created: {new_snap}")
 
-    # Tag remote snapshot with our task property for reliable pruning
+    # Tag remote snapshot with task ownership and tier index via ZFS properties
     try:
         ssh_run_args(remote_user, remote_host, ssh_port,
                      ["zfs", "set", f"{TASK_PROP}={task_name}", new_snap],
                      capture_output=True, check=False, text=True)
     except Exception as e:
         print(f"WARNING: failed to tag remote snapshot {new_snap}: {e}")
+
+    if tier_idx is not None:
+        try:
+            ssh_run_args(remote_user, remote_host, ssh_port,
+                         ["zfs", "set", f"{TIER_PROP}={tier_idx}", new_snap],
+                         capture_output=True, check=False, text=True)
+        except Exception as e:
+            print(f"WARNING: failed to set tier property on remote {new_snap}: {e}")
 
     return new_snap
 
@@ -996,15 +1032,33 @@ def prune_snapshots_by_retention(
         # Fallback: name-based matching, but ONLY for untagged snapshots.
         # If a snapshot is tagged for a different task, never claim it.
         if not belongs and not getattr(snapshot, 'task_tag', None):
-            belongs = is_task_snapshot(snapshot.name, task_name, custom_name=custom_name, tier_idx=tier_idx)
+            belongs = is_task_snapshot(snapshot.name, task_name, custom_name=custom_name)
 
-        if belongs:
-            snap_suffix = snapshot_suffix(snapshot.name)
-            if excluded_suffix and snap_suffix == excluded_suffix:
-                continue
-            age_milliseconds = (now - snapshot.creation).total_seconds() * 1000
-            if age_milliseconds > retention_milliseconds:
-                snapshots_to_delete.append(snapshot)
+        if not belongs:
+            continue
+
+        # Tier filtering via ZFS property (with legacy name fallback)
+        if tier_idx is not None:
+            snap_tier = getattr(snapshot, 'tier_tag', None)
+            if snap_tier is not None:
+                # Has tier property — must match
+                if str(snap_tier) != str(tier_idx):
+                    continue
+            else:
+                # No tier property — try legacy -tN name pattern
+                m = LEGACY_TIER_RE.search(snapshot_suffix(snapshot.name))
+                if m:
+                    if int(m.group(1)) != tier_idx:
+                        continue
+                # else: untagged legacy snapshot, let through for cleanup
+
+        snap_suffix = snapshot_suffix(snapshot.name)
+        if excluded_suffix and snap_suffix == excluded_suffix:
+            continue
+
+        age_milliseconds = (now - snapshot.creation).total_seconds() * 1000
+        if age_milliseconds > retention_milliseconds:
+            snapshots_to_delete.append(snapshot)
 
     start = max(0, min(100, int(progress_base)))
     span = max(0, min(100 - start, int(progress_span)))
@@ -1860,7 +1914,8 @@ def main():
             direction = "push"
 
         isRecursiveSnap = as_bool(os.environ.get("zfsRepConfig_sendOptions_recursive_flag"))
-        customName = os.environ.get("zfsRepConfig_sendOptions_customName", "")
+        useCustomName = as_bool(os.environ.get("zfsRepConfig_sendOptions_customName_flag"))
+        customName = os.environ.get("zfsRepConfig_sendOptions_customName", "") if useCustomName else ""
 
         isRaw = as_bool(os.environ.get("zfsRepConfig_sendOptions_raw_flag"))
         isCompressed = as_bool(os.environ.get("zfsRepConfig_sendOptions_compressed_flag"))
@@ -1903,7 +1958,6 @@ def main():
         destinationRetentionUnit = os.environ.get("zfsRepConfig_snapshotRetention_destination_retentionUnit", "")
 
         # --- Multi-interval tier support ---
-        tier_tag = ""   # empty = legacy snapshot naming
         tier_idx = None # None = legacy pruning (all task snapshots)
         schedule_json_path = os.environ.get("scheduleJsonPath", "")
         schedule_data = load_schedule_json(schedule_json_path)
@@ -1916,7 +1970,6 @@ def main():
             if has_per_interval_retention and len(intervals) > 1:
                 now = datetime.datetime.now()
                 tier_idx = match_current_tier(intervals, now)
-                tier_tag = f"-t{tier_idx}"
                 dbg(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
 
                 # Override retention from the matched interval if it has per-interval values
@@ -1935,12 +1988,22 @@ def main():
 
                 dbg_kv("tier_retention", {
                     "tier_idx": tier_idx,
-                    "tier_tag": tier_tag,
                     "sourceRetentionTime": sourceRetentionTime,
                     "sourceRetentionUnit": sourceRetentionUnit,
                     "destinationRetentionTime": destinationRetentionTime,
                     "destinationRetentionUnit": destinationRetentionUnit,
                 })
+            elif has_per_interval_retention and len(intervals) == 1:
+                # Single interval with per-interval retention
+                iv_ret = intervals[0].get("retention", {}) or {}
+                src_ret = iv_ret.get("source", {}) or {}
+                if src_ret.get("retentionTime", 0) > 0:
+                    sourceRetentionTime = src_ret["retentionTime"]
+                    sourceRetentionUnit = src_ret.get("retentionUnit", sourceRetentionUnit)
+                dst_ret = iv_ret.get("destination", {}) or {}
+                if dst_ret.get("retentionTime", 0) > 0:
+                    destinationRetentionTime = dst_ret["retentionTime"]
+                    destinationRetentionUnit = dst_ret.get("retentionUnit", destinationRetentionUnit)
 
         srcPool = os.environ.get("zfsRepConfig_sourceDataset_pool", "")
         srcDs = os.environ.get("zfsRepConfig_sourceDataset_dataset", "")
@@ -2364,7 +2427,7 @@ def main():
                 remoteUser,
                 remoteHost,
                 sshPort,
-                tier_tag=tier_tag,
+                tier_idx=tier_idx,
             )
             exists, dest_snap_name = snapshot_exists_on_destination(
                 destFilesystem,
@@ -2398,7 +2461,7 @@ def main():
                 recursive=isRecursiveSnap,
             )
         else:
-            newSnap = create_snapshot_local(sourceFilesystem, isRecursiveSnap, taskName, customName, tier_tag=tier_tag)
+            newSnap = create_snapshot_local(sourceFilesystem, isRecursiveSnap, taskName, customName, tier_idx=tier_idx)
             exists, dest_snap_name = snapshot_exists_on_destination(
                 destFilesystem,
                 snapshot_suffix(newSnap),
@@ -2562,6 +2625,15 @@ def main():
                     )
 
         notifier.notify("STATUS=ZFS replication task completed. 100% complete")
+
+        # Persist last-run timestamp so the UI can show it even after
+        # the schedule is disabled/re-enabled (systemd clears its timestamps).
+        try:
+            lastrun_path = f"/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{taskName}.lastrun"
+            with open(lastrun_path, "w") as f:
+                f.write(str(int(time.time())))
+        except Exception as e:
+            dbg(f"WARNING: failed to write lastrun file: {e}")
 
     except Exception as e:
         newSnap = locals().get("newSnap", "unknown")

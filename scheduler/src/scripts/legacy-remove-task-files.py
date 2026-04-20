@@ -6,7 +6,7 @@ def delete_task_files(unit_name):
     system_dir = '/etc/systemd/system/'
     
     prefix = "houston_scheduler_"
-    suffixes = ['.env', '.json', '.service', '.timer','.txt']
+    suffixes = ['.env', '.json', '.service', '.timer', '.txt', '.lastrun']
     deleted_count = 0
     
     # Iterate through each file in the system directory

@@ -28,12 +28,9 @@
                     <ExclamationCircleIcon v-if="scriptPathErrorTag" class="mt-1 w-5 h-5 text-danger" />
                 </div>
                 <div>
-                    <input type="text" v-model="scriptPath"
-                        :class="['mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
-                        scriptPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                        ]"
-                        placeholder="Specify Script File Path" 
-                        @input="clearCommandIfPathInput"/>
+                    <PathAutoComplete v-model="scriptPath" :error="scriptPathErrorTag"
+                        input-class="mt-1" placeholder="Specify Script File Path"
+                        @update:model-value="clearCommandIfPathInput" />
                 </div> 
             </div>
         </div>
@@ -56,6 +53,7 @@
 import { ref, Ref, onMounted, watch, inject } from 'vue';
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
+import PathAutoComplete from '../../common/PathAutoComplete.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
 
 interface CustomTaskParamsProps {

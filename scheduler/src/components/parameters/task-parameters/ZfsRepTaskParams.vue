@@ -892,12 +892,17 @@ function debounce(func: any, delay: number) {
 }
 
 const handleDestHostChange = async () => {
-    await getSourcePools();
-    await getTargetPools();
-    sourcePool.value = '';
-    sourceDataset.value = '';
-    destPool.value = '';
-    destDataset.value = '';
+    if (isPull.value) {
+        // Pull mode: host is the source — only refresh source pools
+        await getSourcePools();
+        sourcePool.value = '';
+        sourceDataset.value = '';
+    } else {
+        // Push mode: host is the target — only refresh target pools
+        await getTargetPools();
+        destPool.value = '';
+        destDataset.value = '';
+    }
 };
 
 const debouncedDestHostChange = debounce(handleDestHostChange, 500);

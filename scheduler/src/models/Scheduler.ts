@@ -173,6 +173,24 @@ export class Scheduler implements SchedulerType {
         const tplKey = this.templateKey(ti, this.normalizeTemplateKey(ti.template.name));
         const unit = await this.unitNameFor(ti);
 
+        // Helper: read persisted last-run epoch from .lastrun file
+        // (written by task scripts; survives disable/enable cycles)
+        // Uses failIfNonZero=false so a missing file (cat exit 1) doesn't
+        // trigger console.error logging from houston-common.
+        const readPersistedLastRunMs = async (): Promise<number> => {
+            try {
+                const lastrunPath = `/etc/systemd/system/${unit}.lastrun`;
+                const ep = await unwrap(
+                    server.execute(new Command(["cat", lastrunPath], { superuser: "try" }), false)
+                );
+                if (ep.exitStatus !== 0) return 0;
+                const epoch = parseInt(String(ep.getStdout(false)).trim(), 10);
+                return Number.isFinite(epoch) && epoch > 0 ? epoch * 1000 : 0;
+            } catch {
+                return 0;
+            }
+        };
+
         let timerOut = '', serviceOut = '';
         const preferTimer = !!ti?.schedule?.enabled;
 
@@ -202,11 +220,17 @@ export class Scheduler implements SchedulerType {
 
                 const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
                 const nextRunUs = t.nextElapseUSec || 0;
+                let lastRunMs = this.usToMs(Number(lastRunUs));
+
+                // Fallback: read persisted .lastrun file if systemd cleared its timestamps
+                if (!lastRunMs) {
+                    lastRunMs = await readPersistedLastRunMs();
+                }
 
                 return {
                     unit: u,
                     statusText: String(statusText || '—'),
-                    lastRunMs: this.usToMs(Number(lastRunUs)),
+                    lastRunMs,
                     nextRunMs: this.usToMs(Number(nextRunUs)),
                 };
             } catch {
@@ -258,16 +282,24 @@ export class Scheduler implements SchedulerType {
 
             const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
             const nextRunUs = t.nextElapseUSec || 0;
+            let lastRunMs = this.usToMs(Number(lastRunUs));
+
+            // Fallback: read persisted .lastrun file if systemd cleared its timestamps
+            if (!lastRunMs) {
+                lastRunMs = await readPersistedLastRunMs();
+            }
 
             return {
                 unit,
                 statusText: String(statusText || '—'),
-                lastRunMs: this.usToMs(Number(lastRunUs)),
+                lastRunMs,
                 nextRunMs: this.usToMs(nextRunUs),
             };
         } catch (e) {
             console.warn(`getDisplayMeta(service ${unit}) failed:`, errorString(e));
-            return { unit, statusText: '—', lastRunMs: 0 };
+            // Even on error, try persisted lastrun
+            const fallbackMs = await readPersistedLastRunMs();
+            return { unit, statusText: '—', lastRunMs: fallbackMs };
         }
     }
 
@@ -1026,6 +1058,27 @@ export class Scheduler implements SchedulerType {
             await unwrap(envFileForUpdate.replace(envWithSchedulePath, { superuser: 'try' }));
 
             await createTaskFiles(templateName, scriptPath, envFilePath, templateTimerPath, jsonFilePath);
+
+            // Enable and start the timer if the schedule is enabled.
+            // The Python script writes the timer with Persistent=false so
+            // starting it here won't trigger catch-up on missed triggers.
+            if (taskInstance.schedule.enabled) {
+                await runCommand(['systemctl', 'enable', `${baseName}.timer`], { superuser: 'try' });
+                await runCommand(['systemctl', 'start', `${baseName}.timer`], { superuser: 'try' });
+
+                // Phase 2 for runOnBoot: now that the timer is running (without
+                // catch-up), rewrite it with Persistent=true so future reboots
+                // trigger a catch-up run. daemon-reload picks up the change
+                // without restarting the timer.
+                if (taskInstance.schedule.runOnBoot) {
+                    const timerPath = `/etc/systemd/system/${baseName}.timer`;
+                    const timerFile = new File(server, timerPath);
+                    const currentContent = await unwrap(timerFile.read());
+                    const updatedContent = String(currentContent).replace('Persistent=false', 'Persistent=true');
+                    await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
+                    await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
+                }
+            }
         }
 
     }
@@ -1532,23 +1585,15 @@ export class Scheduler implements SchedulerType {
 
         try {
             const timerName = `${fullTaskName}.timer`;
-            const serviceName = `${fullTaskName}.service`;
 
-            // Stop and disable timer
+            // Only stop and disable the timer — don't touch the service.
+            // If a task is currently running, it will finish naturally;
+            // the disabled timer simply prevents future scheduled runs.
             await runCommand(['systemctl', 'stop', timerName], { superuser: 'try' });
             await runCommand(['systemctl', 'disable', timerName], { superuser: 'try' });
 
             console.log(`${timerName} has been stopped and disabled`);
             taskInstance.schedule.enabled = false;
-
-            try {
-                // Stop and disable service; reset failed state
-                await runCommand(['systemctl', 'stop', serviceName], { superuser: 'try' });
-                await runCommand(['systemctl', 'disable', serviceName], { superuser: 'try' });
-                await runCommand(['systemctl', 'reset-failed', serviceName], { superuser: 'try' });
-            } catch (e) {
-                console.warn(`Stopping/cleaning ${serviceName} returned:`, errorString(e));
-            }
 
             await this.updateSchedule(taskInstance);
         } catch (error) {
@@ -1598,9 +1643,23 @@ export class Scheduler implements SchedulerType {
         if (taskInstance.schedule.enabled) {
             await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
 
-            // Reload the system daemon and restart timer
+            // Reload the system daemon and restart timer.
+            // The Python script now writes Persistent=false, so restart
+            // won't trigger catch-up on missed calendar triggers.
             await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
             await runCommand(['systemctl', 'restart', `${fullTaskName}.timer`], { superuser: 'try' });
+
+            // Phase 2 for runOnBoot: rewrite timer with Persistent=true
+            // after it's already running to enable boot catch-up without
+            // triggering immediate catch-up on this restart.
+            if (taskInstance.schedule.runOnBoot) {
+                const timerPath = `/etc/systemd/system/${fullTaskName}.timer`;
+                const timerFile = new File(server, timerPath);
+                const currentContent = await unwrap(timerFile.read());
+                const updatedContent = String(currentContent).replace('Persistent=false', 'Persistent=true');
+                await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
+                await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
+            }
         }
     }
 

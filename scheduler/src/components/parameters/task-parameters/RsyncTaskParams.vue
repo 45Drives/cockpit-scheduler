@@ -42,10 +42,8 @@
 
             <!-- manual input fallback -->
             <div v-else class="mt-1">
-                <input type="text" v-model="sourcePath" :class="[
-                    'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                    sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                ]" placeholder="e.g. /mnt/backup/projects/" />
+                <PathAutoComplete v-model="sourcePath" :error="sourcePathErrorTag" :dirs-only="true"
+                    input-class="mt-1" placeholder="e.g. /mnt/backup/projects/" />
                 <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
                 <p class="text-[11px] text-muted mt-1">
                     Note: In this mode, source must be a folder (end with <code>/</code>).
@@ -57,10 +55,8 @@
                 <InfoTile class="ml-1" :title="tooltips.target" />
             </label>
 
-            <input type="text" v-model="destPath" :class="[
-                'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
-                destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-            ]" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
+            <PathAutoComplete v-model="destPath" :error="destPathErrorTag"
+                input-class="mt-1" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
 
             <p class="text-[11px] text-muted mt-1">
                 Tip: End the path with <code>/</code> to copy the folder's contents, or leave it off to copy the folder itself.
@@ -142,10 +138,8 @@
                         <ExclamationCircleIcon v-if="sourcePathErrorTag" class="mt-1 w-5 h-5 text-danger" />
                     </div>
                     <div>
-                        <input type="text" v-model="sourcePath"
-                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            :class="[sourcePathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify source path" />
+                        <PathAutoComplete v-model="sourcePath" :error="sourcePathErrorTag"
+                            input-class="mt-1" placeholder="Specify source path" />
                     </div>
                 </div>
 
@@ -158,10 +152,8 @@
                         <ExclamationCircleIcon v-if="destPathErrorTag" class="mt-1 w-5 h-5 text-danger" />
                     </div>
                     <div>
-                        <input type="text" v-model="destPath"
-                            class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                            :class="[destPathErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
-                            placeholder="Specify target path" />
+                        <PathAutoComplete v-model="destPath" :error="destPathErrorTag"
+                            input-class="mt-1" placeholder="Specify target path" />
                     </div>
                 </div>
 
@@ -486,6 +478,7 @@ import {
 import { testSSH, testOrSetupSSH, validateLocalPath } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
+import PathAutoComplete from '../../common/PathAutoComplete.vue';
 import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
 import { useClientContextStore } from '../../../stores/clientContext';
 
