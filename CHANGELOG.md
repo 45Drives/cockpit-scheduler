@@ -1,3 +1,3 @@
-## task scheduler 1.5.1-1
+## task scheduler 1.6.0-1
 
-* Fixes bug with multiple retention/snapshot intervals conflicting
+* Overhauls replication/snapshot backend retention/custom name logic and adds several new features/improvements to app overall
