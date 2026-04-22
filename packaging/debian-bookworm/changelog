@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.1-1bookworm) bookworm; urgency=medium
+
+  * Revamps custom task UI, adds warnings about conflicting schedule intervals, fixes
+    some data repopulation bugs for cron expressions and custom tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 22 Apr 2026 08:32:49 -0300
+
 cockpit-scheduler (1.6.0-1bookworm) bookworm; urgency=medium
 
   * Overhauls replication/snapshot backend retention/custom name logic and adds several
