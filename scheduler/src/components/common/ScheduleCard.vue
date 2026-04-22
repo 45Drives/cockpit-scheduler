@@ -15,7 +15,7 @@
                 </span>
                 <span v-if="retention.source && retention.destination"> / </span>
                 <span v-if="retention.destination">
-                    Dst {{ retention.destination.retentionTime }} {{ retention.destination.retentionUnit }}
+                    {{ isReplicationTask ? 'Dst ' : '' }}{{ retention.destination.retentionTime }} {{ retention.destination.retentionUnit }}
                 </span>
             </p>
             <p v-else class="text-xs text-muted">No retention policy</p>
@@ -29,5 +29,6 @@ defineProps<{
     showBadge?: boolean;
     description: string;
     retention?: any;
+    isReplicationTask?: boolean;
 }>();
 </script>

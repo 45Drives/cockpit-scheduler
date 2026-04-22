@@ -234,6 +234,7 @@
                                 <label class="block text-sm font-medium leading-6 text-default whitespace-nowrap">
                                     Current Intervals</label>
                             </div>
+                            <p class="text-xs text-muted mt-1 mb-1">Note: If multiple intervals overlap or multiple tasks share the same schedule, they may run simultaneously. Watch for resource conflicts with large transfers or heavy operations.</p>
                             <ul role="list" class="divide-y divide-default rounded-lg mt-2 overflow-y-auto min-h-0">
                                 <li v-for="interval, idx in localIntervals" :key="idx" class="text-default rounded-lg"
                                     :class="intervalSelectedClass(idx)">
@@ -249,7 +250,7 @@
                                                 Retention:
                                                 <span v-if="interval.retention.source">Src {{ interval.retention.source.retentionTime }} {{ interval.retention.source.retentionUnit }}</span>
                                                 <span v-if="interval.retention.source && interval.retention.destination"> / </span>
-                                                <span v-if="interval.retention.destination">Dst {{ interval.retention.destination.retentionTime }} {{ interval.retention.destination.retentionUnit }}</span>
+                                                <span v-if="interval.retention.destination">{{ isReplicationTask ? 'Dst' : '' }} {{ interval.retention.destination.retentionTime }} {{ interval.retention.destination.retentionUnit }}</span>
                                             </p>
                                         </div>
                                     </button>
@@ -573,6 +574,37 @@ function parseCronDow(field: string): DayOfWeek[] {
     return [...new Set(result)];
 }
 
+function systemdFieldToCron(field: string, kind: 'min' | 'hour' | 'day' | 'month'): string {
+    if (field === '*') return '*';
+    // 0/N or 1/N → */N
+    const step = field.match(/^(\d+)\/(\d+)$/);
+    if (step) {
+        const start = Number(step[1]);
+        const defaultStart = kind === 'day' ? 1 : 0;
+        if (start === defaultStart) return `*/${step[2]}`;
+        return `${step[1]}-*/${step[2]}`;
+    }
+    // Ranges: a..b → a-b
+    return field.replace(/\.\./g, '-');
+}
+
+function dowToCron(days: DayOfWeek[]): string {
+    if (!days || days.length === 0) return '*';
+    const REVERSE_DOW: Record<DayOfWeek, string> = {
+        'Sun': '0', 'Mon': '1', 'Tue': '2', 'Wed': '3', 'Thu': '4', 'Fri': '5', 'Sat': '6'
+    };
+    return days.map(d => REVERSE_DOW[d] ?? d).join(',');
+}
+
+function intervalToCronExpression(interval: TaskScheduleIntervalType): string {
+    const min = systemdFieldToCron(interval.minute?.value ?? '*', 'min');
+    const hour = systemdFieldToCron(interval.hour?.value ?? '*', 'hour');
+    const day = systemdFieldToCron(interval.day?.value ?? '*', 'day');
+    const month = systemdFieldToCron(interval.month?.value ?? '*', 'month');
+    const dow = dowToCron(interval.dayOfWeek ?? []);
+    return `${min} ${hour} ${day} ${month} ${dow}`;
+}
+
 function applyCronExpression() {
     cronErrorTag.value = false;
     const raw = (cronExpression.value || '').trim();
@@ -600,6 +632,9 @@ function applyCronExpression() {
 
     selectedPreset.value = 'none';
     forceUpdateCalendar();
+
+    // Store cron expression for repopulation on edit
+    (newInterval as any).cronExpression = raw;
 
     // Auto-save the interval so the user doesn't have to click Save Interval separately
     saveInterval(newInterval);
@@ -809,6 +844,13 @@ function saveInterval(interval) {
     if (validateFields(interval)) {
         const clone = JSON.parse(JSON.stringify(interval));
 
+        // Store cron expression for repopulation on edit
+        if (!clone.cronExpression && cronExpression.value?.trim()) {
+            clone.cronExpression = cronExpression.value.trim();
+        } else if (!clone.cronExpression) {
+            clone.cronExpression = intervalToCronExpression(interval);
+        }
+
         // Attach per-interval retention if applicable
         if (isRetentionCapableTask.value) {
             const retention: any = {};
@@ -872,6 +914,13 @@ function editSelectedInterval(interval : TaskScheduleIntervalType) {
     retentionSourceUnit.value = interval.retention?.source?.retentionUnit ?? 'hours';
     retentionDestTime.value = interval.retention?.destination?.retentionTime ?? 0;
     retentionDestUnit.value = interval.retention?.destination?.retentionUnit ?? 'hours';
+
+    // Auto-populate cron expression if the panel is open (or if a stored cron exists)
+    if (interval.cronExpression) {
+        cronExpression.value = interval.cronExpression;
+    } else if (showAdvanced.value) {
+        cronExpression.value = intervalToCronExpression(interval);
+    }
 }
 
 const showSaveConfirmation = ref(false);
@@ -988,6 +1037,10 @@ watch(selectedPreset, (newVal, oldVal) => {
             break;
         default:
             break;
+    }
+    // Auto-populate cron expression if advanced panel is open
+    if (showAdvanced.value && selectedPreset.value !== 'none') {
+        cronExpression.value = intervalToCronExpression(newInterval);
     }
 });
 

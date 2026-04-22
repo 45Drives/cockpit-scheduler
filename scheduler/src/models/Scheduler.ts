@@ -1094,8 +1094,34 @@ export class Scheduler implements SchedulerType {
 
         let scriptPath: string;
         if (templateName === 'CustomTask') {
-            const pathParam = taskInstance.parameters?.children?.find((c: any) => c.key === 'path');
-            scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
+            const children = taskInstance.parameters?.children;
+            const pathParam = children?.find((c: any) => c.key === 'filePath');
+            const commandParam = children?.find((c: any) => c.key === 'command');
+            const commandValue = commandParam?.value || '';
+
+            // Multi-line script: write to a file and point filePath at it
+            if (commandValue && commandValue.includes('\n')) {
+                const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
+                const scriptFilePath = `${scriptDir}/${taskInstance.name}.sh`;
+
+                await runCommand(['mkdir', '-p', scriptDir], { superuser: 'try' });
+
+                let scriptContent = commandValue;
+                if (!scriptContent.startsWith('#!')) {
+                    scriptContent = '#!/bin/bash\n' + scriptContent;
+                }
+
+                const scriptFile = new File(server, scriptFilePath);
+                await unwrap(scriptFile.write(scriptContent, { superuser: 'try' }));
+                await runCommand(['chmod', '+x', scriptFilePath], { superuser: 'try' });
+
+                envObject['customTaskConfig_filePath'] = scriptFilePath;
+                envObject['customTaskConfig_filePath_flag'] = 'true';
+                envObject['customTaskConfig_command_flag'] = 'false';
+                scriptPath = scriptFilePath;
+            } else {
+                scriptPath = pathParam?.value || '/opt/45drives/houston/scheduler/scripts/undefined.py';
+            }
         } else {
             const scriptFileName = this.getScriptFromTemplateName(templateName);
             scriptPath = `/opt/45drives/houston/scheduler/scripts/${scriptFileName}.py`;

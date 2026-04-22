@@ -80,8 +80,8 @@ def normalize_dest_path_for_file_copy(dest_path):
     return dest_path
 
 def build_rsync_command(options):
-    # Base rsync options: human-readable, itemized, with progress
-    command = ['rsync', '-h', '-i', '--progress', '--info=progress2']
+    # Base rsync options: human-readable with progress
+    command = ['rsync', '-h', '--progress', '--info=progress2', '--stats']
 
     custom = options.get('customArgs') or ''
     custom_parts = []
@@ -115,7 +115,9 @@ def build_rsync_command(options):
         # User explicitly chose quiet mode via the UI/env flag
         command.append('-q')
     elif not user_has_verbosity:
+        # Default to verbose + itemize for detailed debug-level logging
         command.append('-v')
+        command.append('-i')
 
     option_flags = {
         'isArchive': '-a',
@@ -240,22 +242,31 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
             bufsize=1,
         )
 
+    # Regex to detect rsync itemized-changes lines (e.g. ">f+++++++++ path/to/file")
+    ITEMIZE_RE = re.compile(r'^[<>ch.*][fdLDS][c.+?][s.+?][t.+?][p.+?][o.+?][g.+?][u.+?][a.+?][x.+?] ')
+
     last_percent = None
 
     try:
         assert process.stdout is not None
         for line in process.stdout:
-            # tee to optional log file
-            if log_fh:
+            is_itemized = bool(ITEMIZE_RE.match(line))
+
+            # Always write to debug log (detailed)
+            dbg(line.rstrip('\n'))
+
+            # User log file: skip noisy itemized lines
+            if log_fh and not is_itemized:
                 try:
                     log_fh.write(line)
                 except Exception as e:
                     print(f"WARNING: Failed to write to log file {log_file_path}: {e}")
                     log_fh = None
 
-            # keep logs in journal
-            sys.stdout.write(line)
-            sys.stdout.flush()
+            # Journal/stdout: skip noisy itemized lines
+            if not is_itemized:
+                sys.stdout.write(line)
+                sys.stdout.flush()
 
             m = PROGRESS_RE.search(line)
             if m:

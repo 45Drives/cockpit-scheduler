@@ -115,9 +115,14 @@ function handleKeydown(event: KeyboardEvent) {
             : suggestions.length - 1;
         scrollToHighlighted();
     } else if (event.key === 'Tab') {
-        if (isOpen && highlightIndex.value >= 0 && highlightIndex.value < suggestions.length) {
+        if (isOpen) {
             event.preventDefault();
-            selectEntry(suggestions[highlightIndex.value]);
+            if (highlightIndex.value >= 0 && highlightIndex.value < suggestions.length) {
+                selectEntry(suggestions[highlightIndex.value]);
+            } else {
+                // Nothing highlighted — select the first item
+                selectEntry(suggestions[0]);
+            }
         }
     } else if (event.key === 'Enter') {
         if (isOpen && highlightIndex.value >= 0 && highlightIndex.value < suggestions.length) {

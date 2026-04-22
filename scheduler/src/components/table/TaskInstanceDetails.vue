@@ -16,7 +16,8 @@
             <div v-if="task.schedule.intervals.length > 0" class="space-y-2">
                 <ScheduleCard v-for="(interval, idx) in task.schedule.intervals" :key="idx" :index="idx"
                     :showBadge="task.schedule.intervals.length > 1"
-                    :description="myScheduler.parseIntervalIntoString(interval)" :retention="interval.retention" />
+                    :description="myScheduler.parseIntervalIntoString(interval)" :retention="interval.retention"
+                    :isReplicationTask="template.name === 'ZFS Replication Task'" />
             </div>
             <p v-else class="text-sm text-muted">No Intervals Currently Scheduled</p>
         </DetailSection>
