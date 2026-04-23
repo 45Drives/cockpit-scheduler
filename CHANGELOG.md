@@ -1,3 +1,3 @@
-## task scheduler 1.6.1-1
+## task scheduler 1.6.2-1
 
-* Revamps custom task UI, adds warnings about conflicting schedule intervals, fixes some data repopulation bugs for cron expressions and custom tasks
+* Fixes snapshot retention pruning for replication

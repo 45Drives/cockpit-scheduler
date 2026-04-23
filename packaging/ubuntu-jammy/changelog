@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.2-1jammy) jammy; urgency=medium
+
+  * Fixes snapshot retention pruning for replication
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 23 Apr 2026 12:38:39 -0300
+
 cockpit-scheduler (1.6.1-1jammy) jammy; urgency=medium
 
   * Revamps custom task UI, adds warnings about conflicting schedule intervals, fixes
