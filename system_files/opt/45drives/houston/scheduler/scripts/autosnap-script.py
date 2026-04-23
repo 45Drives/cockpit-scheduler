@@ -500,6 +500,12 @@ def main():
 
         # Multi-interval tier support: override retention from schedule JSON if available
         schedule_json_path = os.environ.get("scheduleJsonPath", "")
+        # Fallback: derive schedule JSON path from task name if env var is missing
+        if not schedule_json_path and task_name:
+            derived_path = f"/etc/systemd/system/houston_scheduler_AutomatedSnapshotTask_{task_name}.json"
+            if os.path.isfile(derived_path):
+                schedule_json_path = derived_path
+                dbg(f"scheduleJsonPath not in env; using derived path: {derived_path}")
         schedule_data = load_schedule_json(schedule_json_path)
 
         tier_idx = None # None = legacy pruning (all task snapshots)

@@ -1029,9 +1029,13 @@ export class Scheduler implements SchedulerType {
         const jsonFilePath = `/etc/systemd/system/${baseName}.json`;
         const notesFilePath = `/etc/systemd/system/${baseName}.txt`;
 
-        // Write env file
+        // Write env file (include scheduleJsonPath upfront if task has intervals)
+        let envContentToWrite = envKeyValuesString;
+        if (taskInstance.schedule.intervals.length > 0) {
+            envContentToWrite += `\nscheduleJsonPath=${jsonFilePath}`;
+        }
         const envFile = new File(server, envFilePath);
-        await unwrap(envFile.write(envKeyValuesString, { superuser: 'try' }));
+        await unwrap(envFile.write(envContentToWrite, { superuser: 'try' }));
         console.log('env file created and content written successfully');
 
         // Write notes file if needed
@@ -1051,11 +1055,6 @@ export class Scheduler implements SchedulerType {
             const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
             await unwrap(jsonFile.write(jsonString, { superuser: 'try' }));
             console.log('json file created and content written successfully');
-
-            // Add schedule JSON path to env so backend scripts can read per-interval retention
-            const envFileForUpdate = new File(server, envFilePath);
-            const envWithSchedulePath = envKeyValuesString + `\nscheduleJsonPath=${jsonFilePath}`;
-            await unwrap(envFileForUpdate.replace(envWithSchedulePath, { superuser: 'try' }));
 
             await createTaskFiles(templateName, scriptPath, envFilePath, templateTimerPath, jsonFilePath);
 
@@ -1163,10 +1162,23 @@ export class Scheduler implements SchedulerType {
         const houstonSchedulerPrefix = 'houston_scheduler_';
         const baseName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
         const envFilePath = `/etc/systemd/system/${baseName}.env`;
+        const jsonFilePath = `/etc/systemd/system/${baseName}.json`;
 
-        // Update env file
+        // Update schedule JSON if the task has intervals
+        if (taskInstance.schedule.intervals.length > 0) {
+            const jsonFile = new File(server, jsonFilePath);
+            const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
+            await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
+            console.log('schedule json file updated successfully');
+        }
+
+        // Update env file (include scheduleJsonPath for tasks with intervals)
+        let finalEnvString = envKeyValuesString;
+        if (taskInstance.schedule.intervals.length > 0) {
+            finalEnvString += `\nscheduleJsonPath=${jsonFilePath}`;
+        }
         const envFile = new File(server, envFilePath);
-        await unwrap(envFile.replace(envKeyValuesString, { superuser: 'try' }));
+        await unwrap(envFile.replace(finalEnvString, { superuser: 'try' }));
         console.log('env file updated successfully');
 
         // Regenerate the systemd units from the env

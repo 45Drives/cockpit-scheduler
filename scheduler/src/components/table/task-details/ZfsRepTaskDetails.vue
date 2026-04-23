@@ -36,6 +36,9 @@
                     <DetailField label="SSH User"
                         :value="findValue(taskInstance.parameters, 'destDataset', 'user') || 'root'" />
                 </template>
+                <DetailField v-if="findValue(taskInstance.parameters, 'sendOptions', 'customName_flag')"
+                    label="Custom Snap Name" :value="findValue(taskInstance.parameters, 'sendOptions', 'customName')"
+                    wrap />
             </div>
         </DetailSection>
         <DetailSection title="Transfer Options">
@@ -46,7 +49,7 @@
                     :value="boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))" />
                 <DetailField label="Resume on Failure"
                     :value="boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))" />
-                <DetailField v-if="isRemote" label="Transfer Method" :value="effectiveTransferMethod === 'netcat' ? 'Netcat' : 'SSH'" />
+                <DetailField v-if="isRemote" label="Transfer Method" :value="effectiveTransferMethod === 'netcat' ? 'Netcat' : 'SSH'" />          
             </div>
         </DetailSection>
     </div>
