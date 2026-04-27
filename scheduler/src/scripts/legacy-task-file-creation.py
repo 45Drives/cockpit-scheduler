@@ -195,15 +195,14 @@ def create_schedule(schedule_json_path, timer_template_path, full_unit_name):
     on_calendar_lines = [interval_to_on_calendar(interval) for interval in schedule_data.get('intervals', [])]
     on_calendar_lines_str = "\n".join(on_calendar_lines)
 
-    # runOnBoot is handled in two phases by the caller (JS/TS code):
-    # Phase 1: Timer is created with Persistent=false (here) and started.
-    # Phase 2: If runOnBoot is enabled, the caller rewrites the timer with
-    #          Persistent=true and does a daemon-reload (no restart) so that
-    #          future boots catch up on missed triggers without firing immediately.
-    # We do NOT add OnBootSec or Persistent=true here to avoid triggering an
-    # immediate task run when the timer is first started.
+    # Note: runOnBoot (OnBootSec=0s) is NOT added here. The caller (TS code)
+    # injects it into the timer file AFTER the timer is started/restarted,
+    # then does a daemon-reload. This prevents OnBootSec from firing
+    # immediately on timer restart — it only takes effect on next boot.
 
-    timer_template_content = timer_template_content.replace("{description}", f"Timer for {full_unit_name}").replace("{on_calendar_lines}", on_calendar_lines_str)
+    timer_template_content = (timer_template_content
+        .replace("{description}", f"Timer for {full_unit_name}")
+        .replace("{on_calendar_lines}", on_calendar_lines_str))
     
     generate_concrete_file(timer_template_content, output_path_timer)
     logging.debug("Concrete timer file generated successfully.")

@@ -1029,9 +1029,9 @@ export class Scheduler implements SchedulerType {
         const jsonFilePath = `/etc/systemd/system/${baseName}.json`;
         const notesFilePath = `/etc/systemd/system/${baseName}.txt`;
 
-        // Write env file (include scheduleJsonPath upfront if task has intervals)
+        // Write env file (include scheduleJsonPath if task has intervals or runOnBoot)
         let envContentToWrite = envKeyValuesString;
-        if (taskInstance.schedule.intervals.length > 0) {
+        if (taskInstance.schedule.intervals.length > 0 || taskInstance.schedule.runOnBoot) {
             envContentToWrite += `\nscheduleJsonPath=${jsonFilePath}`;
         }
         const envFile = new File(server, envFilePath);
@@ -1045,36 +1045,37 @@ export class Scheduler implements SchedulerType {
             console.log('notes file created and content written successfully');
         }
 
+        // Always write schedule JSON if there are intervals or runOnBoot
+        if (taskInstance.schedule.intervals.length > 0 || taskInstance.schedule.runOnBoot) {
+            const jsonFile = new File(server, jsonFilePath);
+            const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
+            await unwrap(jsonFile.write(jsonString, { superuser: 'try' }));
+            console.log('json file created and content written successfully');
+        }
+
         if (taskInstance.schedule.intervals.length < 1) {
             // No schedule: standalone service
             console.log('No schedules found, parameter file generated.');
             await createStandaloneTask(templateName, scriptPath, envFilePath);
         } else {
-            // Write schedule JSON
-            const jsonFile = new File(server, jsonFilePath);
-            const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
-            await unwrap(jsonFile.write(jsonString, { superuser: 'try' }));
-            console.log('json file created and content written successfully');
-
             await createTaskFiles(templateName, scriptPath, envFilePath, templateTimerPath, jsonFilePath);
 
             // Enable and start the timer if the schedule is enabled.
-            // The Python script writes the timer with Persistent=false so
-            // starting it here won't trigger catch-up on missed triggers.
             if (taskInstance.schedule.enabled) {
                 await runCommand(['systemctl', 'enable', `${baseName}.timer`], { superuser: 'try' });
                 await runCommand(['systemctl', 'start', `${baseName}.timer`], { superuser: 'try' });
 
-                // Phase 2 for runOnBoot: now that the timer is running (without
-                // catch-up), rewrite it with Persistent=true so future reboots
-                // trigger a catch-up run. daemon-reload picks up the change
-                // without restarting the timer.
+                // Phase 2: inject OnBootSec=0s AFTER the timer is running so
+                // it doesn't fire immediately. daemon-reload picks up the
+                // on-disk change; it will only trigger on next actual boot.
                 if (taskInstance.schedule.runOnBoot) {
                     const timerPath = `/etc/systemd/system/${baseName}.timer`;
                     const timerFile = new File(server, timerPath);
-                    const currentContent = await unwrap(timerFile.read());
-                    const updatedContent = String(currentContent).replace('Persistent=false', 'Persistent=true');
-                    await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
+                    const currentContent = String(await unwrap(timerFile.read()));
+                    if (!currentContent.includes('OnBootSec=')) {
+                        const updatedContent = currentContent.replace('Persistent=false', 'OnBootSec=0s\nPersistent=false');
+                        await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
+                    }
                     await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
                 }
             }
@@ -1164,17 +1165,17 @@ export class Scheduler implements SchedulerType {
         const envFilePath = `/etc/systemd/system/${baseName}.env`;
         const jsonFilePath = `/etc/systemd/system/${baseName}.json`;
 
-        // Update schedule JSON if the task has intervals
-        if (taskInstance.schedule.intervals.length > 0) {
+        // Update schedule JSON if the task has intervals or runOnBoot
+        if (taskInstance.schedule.intervals.length > 0 || taskInstance.schedule.runOnBoot) {
             const jsonFile = new File(server, jsonFilePath);
             const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
             await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
             console.log('schedule json file updated successfully');
         }
 
-        // Update env file (include scheduleJsonPath for tasks with intervals)
+        // Update env file (include scheduleJsonPath for tasks with intervals or runOnBoot)
         let finalEnvString = envKeyValuesString;
-        if (taskInstance.schedule.intervals.length > 0) {
+        if (taskInstance.schedule.intervals.length > 0 || taskInstance.schedule.runOnBoot) {
             finalEnvString += `\nscheduleJsonPath=${jsonFilePath}`;
         }
         const envFile = new File(server, envFilePath);
@@ -1681,21 +1682,20 @@ export class Scheduler implements SchedulerType {
         if (taskInstance.schedule.enabled) {
             await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
 
-            // Reload the system daemon and restart timer.
-            // The Python script now writes Persistent=false, so restart
-            // won't trigger catch-up on missed calendar triggers.
+            // Reload and restart timer (without OnBootSec so it doesn't fire now).
             await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
             await runCommand(['systemctl', 'restart', `${fullTaskName}.timer`], { superuser: 'try' });
 
-            // Phase 2 for runOnBoot: rewrite timer with Persistent=true
-            // after it's already running to enable boot catch-up without
-            // triggering immediate catch-up on this restart.
+            // Phase 2: inject OnBootSec=0s AFTER the timer is running so
+            // it doesn't fire immediately — only on next actual boot.
             if (taskInstance.schedule.runOnBoot) {
                 const timerPath = `/etc/systemd/system/${fullTaskName}.timer`;
                 const timerFile = new File(server, timerPath);
-                const currentContent = await unwrap(timerFile.read());
-                const updatedContent = String(currentContent).replace('Persistent=false', 'Persistent=true');
-                await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
+                const currentContent = String(await unwrap(timerFile.read()));
+                if (!currentContent.includes('OnBootSec=')) {
+                    const updatedContent = currentContent.replace('Persistent=false', 'OnBootSec=0s\nPersistent=false');
+                    await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
+                }
                 await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
             }
         }
