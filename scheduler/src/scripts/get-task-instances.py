@@ -11,8 +11,9 @@ class TaskScheduleInterval:
         self.__dict__ = interval_data
 
 class TaskSchedule:
-    def __init__(self, enabled, intervals):
+    def __init__(self, enabled, intervals, runOnBoot=False):
         self.enabled = enabled
+        self.runOnBoot = runOnBoot
         self.intervals = [TaskScheduleInterval(interval).__dict__ for interval in intervals]
 
 class TaskInstance:
@@ -100,7 +101,7 @@ def create_task_instances(system_dir, valid_files):
                 if '.json' in file_dict:
                     json_file_name = file_dict['.json']
                     schedule_data = read_json_schedule(os.path.join(system_dir, json_file_name))
-                    schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'])
+                    schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'], schedule_data.get('runOnBoot', False))
                 else:
                     schedule = TaskSchedule(False, [])
                 

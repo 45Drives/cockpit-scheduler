@@ -71,8 +71,11 @@ def dbg(msg: str):
 # holds or clones the destroy can block indefinitely; this prevents that.
 ZFS_DESTROY_TIMEOUT = int(os.environ.get("ZFS_DESTROY_TIMEOUT", "120"))
 
-TASK_PROP = "com.45drives:task"
-TIER_PROP = "com.45drives:tier"
+TASK_PROP = "com.45drives_scheduler:task_name"
+TIER_PROP = "com.45drives_scheduler:retention_tier"
+# Legacy property names — read for backward compat with existing snapshots
+LEGACY_TASK_PROP = "com.45drives:task"
+LEGACY_TIER_PROP = "com.45drives:tier"
 LEGACY_NAME_RE = re.compile(r'@(?:[^@]+-)?(?P<task>[^@]+)-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$')
 LEGACY_TIER_RE = re.compile(r'-t(\d+)-\d{4}')
 ENABLE_LEGACY_FALLBACK = True
@@ -83,7 +86,7 @@ class Snapshot:
         self.guid = guid
         self.creation_epoch = creation_epoch
         self.task_tag = task_tag
-        self.tier_tag = tier_tag  # value of com.45drives:tier property
+        self.tier_tag = tier_tag  # value of retention_tier property (tN format)
 
 def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
     try:
@@ -158,7 +161,7 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
 
     ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
     # Snapshot names are kept clean — tier info is stored in ZFS property
-    # com.45drives:tier, and task ownership in com.45drives:task.
+    # com.45drives_scheduler:retention_tier, and task ownership in com.45drives_scheduler:task_name.
     if custom_name:
         snapname = f"{filesystem}@{custom_name}-{ts}"
     else:
@@ -193,7 +196,7 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
 
     if tier_idx is not None:
         try:
-            run(["zfs", "set", f"{TIER_PROP}={tier_idx}", snapname])
+            run(["zfs", "set", f"{TIER_PROP}=t{tier_idx}", snapname])
         except subprocess.CalledProcessError as e:
             print(f"WARNING: failed to set tier property on {snapname}: {e.stderr.strip()}", file=sys.stderr)
             dbg(f"WARNING: failed to set tier on {snapname}: {e.stderr.strip()}")
@@ -230,10 +233,14 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
 
     # Batch get creation as epoch (-p) and our tag properties
     # Note: zfs get can accept multiple properties
+    # We query both new and legacy property names for backward compat
     try:
         props_out = run(["zfs", "get", "-H", "-p", "-r", "-o", "name,property,value", "creation", filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
         tag_out  = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
         tier_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TIER_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
+        # Legacy property reads (may return nothing on new snapshots)
+        legacy_tag_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", LEGACY_TASK_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
+        legacy_tier_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", LEGACY_TIER_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
     except subprocess.TimeoutExpired:
         print(f"ERROR: Timed out after {ZFS_LIST_TIMEOUT}s fetching snapshot properties on {filesystem}. The pool may be degraded or unresponsive.", file=sys.stderr)
         dbg(f"ERROR: Timed out fetching snapshot properties on {filesystem}")
@@ -249,7 +256,15 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
         except ValueError:
             continue
 
+    # Build tag map: legacy first, then new props override
     tag_map = {}
+    for line in legacy_tag_out:
+        try:
+            name, prop, value = line.split("\t")
+            if prop == LEGACY_TASK_PROP and value != "-":
+                tag_map[name] = value
+        except ValueError:
+            continue
     for line in tag_out:
         try:
             name, prop, value = line.split("\t")
@@ -258,7 +273,16 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
         except ValueError:
             continue
 
+    # Build tier map: legacy first (normalize to tN format), then new props override
     tier_map = {}
+    for line in legacy_tier_out:
+        try:
+            name, prop, value = line.split("\t")
+            if prop == LEGACY_TIER_PROP and value != "-":
+                # Normalize old numeric value to tN format
+                tier_map[name] = value if value.startswith("t") else f"t{value}"
+        except ValueError:
+            continue
     for line in tier_out:
         try:
             name, prop, value = line.split("\t")
@@ -347,15 +371,16 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         if not belongs:
             continue
 
-        # Tier filtering: use com.45drives:tier property (primary),
+        # Tier filtering: use retention_tier property (primary),
         # fall back to -tN in the snapshot name for old snapshots.
+        # tier_tag is now normalized to tN format during reading.
         if tier_idx is not None:
-            snap_tier = s.tier_tag  # from ZFS property
+            snap_tier = s.tier_tag  # from ZFS property (already tN format)
             if snap_tier is None:
                 # Legacy fallback: parse -tN from name
                 m = LEGACY_TIER_RE.search(s.name)
-                snap_tier = m.group(1) if m else None
-            if snap_tier is not None and str(snap_tier) != str(tier_idx):
+                snap_tier = f"t{m.group(1)}" if m else None
+            if snap_tier is not None and snap_tier != f"t{tier_idx}":
                 continue  # belongs to a different tier
         
         if s.creation_epoch <= cutoff:

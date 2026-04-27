@@ -203,6 +203,7 @@ const thisLogEntry = ref<TaskExecutionResultType>();
 const viewMoreLogs = ref(false);
 const allLogsForThisTask = ref('');
 const pollInterval = ref();
+const debugPollInterval = ref();
 const showDebugLog = ref(false);
 const debugLogContent = ref('');
 const loadingDebugLog = ref(false);
@@ -281,7 +282,6 @@ const cancelCleanLogs = async () => {
 };
 
 async function refreshLogs() {
-    loadingLogs.value = true;
     loadingMoreLogs.value = true;
     await preserveScrollPosition(async () => {
         try {
@@ -300,10 +300,14 @@ async function refreshLogs() {
                 }
             }
 
+            // Also refresh the debug log if it's open
+            if (showDebugLog.value) {
+                debugLogContent.value = await myTaskLog.getDebugLog(taskInstance.value);
+            }
+
         } catch (error) {
             console.error("Failed to refresh logs:", error);
         } finally {
-            loadingLogs.value = false;
             loadingMoreLogs.value = false;
         }
     });
@@ -315,7 +319,6 @@ const fetchLatestLog = async () => {
         return; // Do not fetch latest logs when viewing all logs
     }
 
-    loadingLogs.value = true;
     try {
         const latestLog = await myTaskLog.getLatestEntryFor(taskInstance.value);
         if (latestLog) {
@@ -323,8 +326,6 @@ const fetchLatestLog = async () => {
         }
     } catch (error) {
         console.error("Failed to fetch logs:", error);
-    } finally {
-        loadingLogs.value = false;
     }
 };
 
@@ -349,10 +350,8 @@ const fetchAllLogs = async () => {
 const logContainer = ref<HTMLElement | null>(null);
 
 const preserveScrollPosition = async (fetchFunction: () => Promise<void>) => {
-    if (!logContainer.value) return;
-
-    const previousScrollHeight = logContainer.value.scrollHeight;
-    const previousScrollTop = logContainer.value.scrollTop;
+    const previousScrollHeight = logContainer.value?.scrollHeight ?? 0;
+    const previousScrollTop = logContainer.value?.scrollTop ?? 0;
 
     await fetchFunction();
 
@@ -373,7 +372,7 @@ const startPolling = () => {
         if (!viewMoreLogs.value) {
             fetchLatestLog(); // Keep polling latest logs
         }
-    }, 30000);
+    }, 5000);
 };
 
 const stopPolling = () => {
@@ -382,6 +381,34 @@ const stopPolling = () => {
         pollInterval.value = null;
     }
 };
+
+const startDebugPolling = () => {
+    stopDebugPolling();
+    debugPollInterval.value = setInterval(async () => {
+        if (showDebugLog.value) {
+            try {
+                debugLogContent.value = await myTaskLog.getDebugLog(taskInstance.value);
+            } catch (e) {
+                console.warn('Debug log poll failed:', e);
+            }
+        }
+    }, 5000);
+};
+
+const stopDebugPolling = () => {
+    if (debugPollInterval.value) {
+        clearInterval(debugPollInterval.value);
+        debugPollInterval.value = null;
+    }
+};
+
+watch(showDebugLog, (newVal) => {
+    if (newVal) {
+        startDebugPolling();
+    } else {
+        stopDebugPolling();
+    }
+});
 
 watch(viewMoreLogs, async (newVal) => {
     if (newVal) {
@@ -394,8 +421,18 @@ watch(viewMoreLogs, async (newVal) => {
         refreshLogs(); // Ensure latest logs are refreshed when switching back
     }
 });
-onMounted(() => {
-    fetchLatestLog();
+onMounted(async () => {
+    loadingLogs.value = true;
+    try {
+        const latestLog = await myTaskLog.getLatestEntryFor(taskInstance.value);
+        if (latestLog) {
+            thisLogEntry.value = latestLog;
+        }
+    } catch (error) {
+        console.error("Failed to fetch initial logs:", error);
+    } finally {
+        loadingLogs.value = false;
+    }
     if (taskIsActive.value) {
         startPolling();
     }
@@ -403,6 +440,7 @@ onMounted(() => {
 
 onUnmounted(() => {
     stopPolling();
+    stopDebugPolling();
 });
 
 </script>
