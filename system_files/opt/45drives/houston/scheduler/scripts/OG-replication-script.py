@@ -164,170 +164,19 @@ def filter_dataset_snapshots(snaps, dataset: str):
     return [s for s in (snaps or []) if dataset_of_snapshot(s.name) == ds]
 
 
-def _retention_suffix():
-    """Build a snapshot name suffix from the source retention env vars."""
-    rt = os.environ.get("zfsRepConfig_snapshotRetention_source_retentionTime", "0")
-    ru = os.environ.get("zfsRepConfig_snapshotRetention_source_retentionUnit", "")
-    unit_short = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w", "months": "mo", "years": "y"}
-    short = unit_short.get(ru, ru[:1] if ru else "")
-    return f"--{rt}{short}" if rt and rt != "0" and short else ""
-
-
-def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "", tier_idx=None) -> bool:
+def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "") -> bool:
     suf = snapshot_suffix(full_snap_name)
     tn = (task_name or "").strip()
     cn = (custom_name or "").strip()
 
-    # --- CUSTOM: match "prefix-YYYY-MM-DD_HH.MM.SS--retention" format ---
-    if re.match(r'.+-\d{2,4}-\d{2}-\d{2}_\d{2}\.\d{2}\.\d{2}--.+$', suf):
-        # If custom_name is provided, require it as prefix
-        if cn:
-            return suf.startswith(f"{cn}-")
-        return True
-
     if not tn:
         return False
 
-    if tier_idx is not None:
-        # Multi-tier: match "taskName-tN-..." or "customName-taskName-tN-..."
-        tier_prefix = f"{tn}-t{tier_idx}-"
-        if suf.startswith(tier_prefix):
-            return True
-        if cn:
-            cn_tier_prefix = f"{cn}-{tn}-t{tier_idx}-"
-            if suf.startswith(cn_tier_prefix):
-                return True
-        return False
-
-    # Legacy/single-tier: match "taskName-..." or "customName-taskName-..."
     if suf.startswith(f"{tn}-"):
         return True
     if cn and suf.startswith(f"{cn}-{tn}-"):
         return True
     return False
-
-
-# ---------------------------------------------------------------------------
-# Multi-interval tier matching
-# ---------------------------------------------------------------------------
-
-def _field_matches_value(pattern: str, current: int) -> bool:
-    """Check if a systemd calendar field pattern matches a value."""
-    pattern = str(pattern).strip()
-    if pattern == "*":
-        return True
-
-    # Range: A..B
-    if ".." in pattern:
-        parts = pattern.split("..")
-        try:
-            a, b = int(parts[0]), int(parts[1])
-            return a <= current <= b
-        except (ValueError, IndexError):
-            return False
-
-    # Step: A/N
-    if "/" in pattern:
-        parts = pattern.split("/")
-        try:
-            start, step = int(parts[0]), int(parts[1])
-            if step <= 0:
-                return False
-            return current >= start and (current - start) % step == 0
-        except (ValueError, IndexError):
-            return False
-
-    # Comma list: A,B,C
-    if "," in pattern:
-        try:
-            values = [int(v.strip()) for v in pattern.split(",")]
-            return current in values
-        except ValueError:
-            return False
-
-    # Single value — allow ±1 tolerance for timer drift
-    try:
-        return abs(current - int(pattern)) <= 1
-    except ValueError:
-        return False
-
-
-def _interval_matches_time(interval: dict, now: datetime.datetime) -> bool:
-    """Check if a schedule interval matches the current time."""
-    minute_val = interval.get("minute", {}).get("value", "*")
-    if not _field_matches_value(minute_val, now.minute):
-        return False
-
-    hour_val = interval.get("hour", {}).get("value", "*")
-    if not _field_matches_value(hour_val, now.hour):
-        return False
-
-    day_val = interval.get("day", {}).get("value", "*")
-    if not _field_matches_value(day_val, now.day):
-        return False
-
-    month_val = interval.get("month", {}).get("value", "*")
-    if not _field_matches_value(month_val, now.month):
-        return False
-
-    year_val = interval.get("year", {}).get("value", "*")
-    if not _field_matches_value(year_val, now.year):
-        return False
-
-    dow = interval.get("dayOfWeek", [])
-    if dow:
-        # Python weekday(): Mon=0 .. Sun=6
-        dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        current_dow = dow_names[now.weekday()]
-        # Normalize incoming DOW entries to 3-char Title case
-        normalized_dow = [str(d).strip()[:3].title() for d in dow]
-        if current_dow not in normalized_dow:
-            return False
-
-    return True
-
-
-def _count_specificity(interval: dict) -> int:
-    """Count non-wildcard fields. Higher = more specific."""
-    count = 0
-    for field in ("minute", "hour", "day", "month", "year"):
-        val = str(interval.get(field, {}).get("value", "*")).strip()
-        if val != "*":
-            count += 1
-    if interval.get("dayOfWeek", []):
-        count += 1
-    return count
-
-
-def match_current_tier(intervals: list, now: datetime.datetime) -> int:
-    """
-    Given schedule intervals and current time, return the index of the most
-    specific matching interval.  Falls back to 0 if nothing matches.
-    """
-    matched = []
-    for idx, interval in enumerate(intervals):
-        if _interval_matches_time(interval, now):
-            specificity = _count_specificity(interval)
-            matched.append((idx, specificity))
-
-    if not matched:
-        return 0  # fallback to first interval
-
-    # Most specific wins; on tie, prefer the higher index (more specialized)
-    matched.sort(key=lambda x: (x[1], x[0]), reverse=True)
-    return matched[0][0]
-
-
-def load_schedule_json(path: str):
-    """Load the schedule JSON file. Returns the parsed dict or None."""
-    if not path:
-        return None
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Warning: could not read schedule JSON at {path}: {e}")
-        return None
 
 
 def get_dest_ports(transfer_method: str):
@@ -569,7 +418,7 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
     return bytes_sent
 
 
-def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
+def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port=22):
     prop = f"written@{snapshot_fullname}"
     base_cmd = ["zfs", "get", "-H", "-p", "-o", "value", prop, dataset]
 
@@ -632,12 +481,12 @@ def format_bytes(n):
     return f"{n / (1024**4):.1f} TiB"
 
 
-def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None, tier_tag=""):
+def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None):
     command = ["zfs", "snapshot"]
     if is_recursive:
         command.append("-r")
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{timestamp}{_retention_suffix()}"
+    timestamp = datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{task_name}-{timestamp}"
     command.append(new_snap)
 
     notifier.notify(f"STATUS=Creating snapshot {new_snap}…")
@@ -671,9 +520,9 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     return new_snap
 
 
-def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_tag=""):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{timestamp}{_retention_suffix()}"
+def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port):
+    timestamp = datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    new_snap = f"{filesystem}@{(custom_name + '-') if custom_name else ''}{task_name}-{timestamp}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -721,12 +570,10 @@ def prune_snapshots_by_retention(
     excluded_snapshot_name,
     remote_user=None,
     remote_host=None,
-    remote_port="22",
+    remote_port=22,
     transferMethod="ssh",
     progress_base=0,
     progress_span=100,
-    tier_idx=None,
-    custom_name="",
 ):
     if remote_host:
         snapshots = get_remote_snapshots(remote_user, remote_host, remote_port, filesystem)
@@ -778,7 +625,7 @@ def prune_snapshots_by_retention(
     excluded_suffix = excluded_snapshot_name.split("@", 1)[-1] if excluded_snapshot_name else None
 
     for snapshot in snapshots:
-        if is_task_snapshot(snapshot.name, task_name, custom_name=custom_name, tier_idx=tier_idx):
+        if is_task_snapshot(snapshot.name, task_name):
             snap_suffix = snapshot_suffix(snapshot.name)
             if excluded_suffix and snap_suffix == excluded_suffix:
                 continue
@@ -844,7 +691,7 @@ def send_snapshot_push(
     recvHost="",
     recvSshPort="22",
     recvHostUser="",
-    mBufferSize="1",
+    mBufferSize=1,
     mBufferUnit="G",
     forceOverwrite=False,
     transferMethod="",
@@ -1100,7 +947,7 @@ def send_snapshot_pull(
     remoteHost="",
     remoteSshPort="22",
     remoteUser="root",
-    mBufferSize="1",
+    mBufferSize=1,
     mBufferUnit="G",
     forceOverwrite=False,
     recursive=False,
@@ -1202,7 +1049,7 @@ def send_snapshot_pull(
         print(stdout)
 
 
-def get_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None, remote_port="22"):
+def get_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None, remote_port=22):
     base_args = ["zfs", "get", "-H", "-o", "value", "receive_resume_token", dest_filesystem]
     if remote_host:
         p = ssh_run_args(remote_user, remote_host, remote_port, base_args, capture_output=True, check=False, text=True)
@@ -1218,7 +1065,7 @@ def get_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None
     return "" if token in ("", "-") else token
 
 
-def clear_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None, remote_port="22"):
+def clear_receive_resume_token(dest_filesystem, remote_user=None, remote_host=None, remote_port=22):
     base_cmd = ["zfs", "receive", "-A", dest_filesystem]
     if remote_host:
         p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
@@ -1240,7 +1087,7 @@ def resume_receive_push(
     recvHost="",
     recvSshPort="22",
     recvHostUser="",
-    mBufferSize="1",
+    mBufferSize=1,
     mBufferUnit="G",
     transferMethod="ssh",
     recvDataPort=None,
@@ -1374,7 +1221,7 @@ def resume_receive_pull(
     remoteHost="",
     remoteSshPort="22",
     remoteUser="root",
-    mBufferSize="1",
+    mBufferSize=1,
     mBufferUnit="G",
 ):
     notifier.notify("STATUS=Resuming ZFS pull pipeline from resume token…")
@@ -1432,9 +1279,9 @@ def resume_receive_pull(
 def snapshot_exists_on_destination(
     dest_filesystem: str,
     snapshot_suffix_name: str,
-    remote_user=None,
-    remote_host=None,
-    remote_port="22",
+    remote_user: str = None,
+    remote_host: str = None,
+    remote_port: str = "22",
 ):
     target_name = f"{dest_filesystem}@{snapshot_suffix_name}"
     if remote_host:
@@ -1669,52 +1516,11 @@ def main():
         
         mBufferSize, mBufferUnit = clamp_mbuffer(mBufferSize, mBufferUnit)
 
-        # --- Task-level (default) retention from env ---
         sourceRetentionTime = os.environ.get("zfsRepConfig_snapshotRetention_source_retentionTime", 0)
         sourceRetentionUnit = os.environ.get("zfsRepConfig_snapshotRetention_source_retentionUnit", "")
 
         destinationRetentionTime = os.environ.get("zfsRepConfig_snapshotRetention_destination_retentionTime", 0)
         destinationRetentionUnit = os.environ.get("zfsRepConfig_snapshotRetention_destination_retentionUnit", "")
-
-        # --- Multi-interval tier support ---
-        tier_tag = ""   # empty = legacy snapshot naming
-        tier_idx = None # None = legacy pruning (all task snapshots)
-        schedule_json_path = os.environ.get("scheduleJsonPath", "")
-        schedule_data = load_schedule_json(schedule_json_path)
-
-        if schedule_data and isinstance(schedule_data.get("intervals"), list):
-            intervals = schedule_data["intervals"]
-            has_per_interval_retention = any(
-                isinstance(iv.get("retention"), dict) for iv in intervals
-            )
-            if has_per_interval_retention and len(intervals) > 1:
-                now = datetime.datetime.now()
-                tier_idx = match_current_tier(intervals, now)
-                tier_tag = f"-t{tier_idx}"
-                dbg(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
-
-                # Override retention from the matched interval if it has per-interval values
-                matched_iv = intervals[tier_idx]
-                iv_ret = matched_iv.get("retention", {}) or {}
-
-                src_ret = iv_ret.get("source", {}) or {}
-                if src_ret.get("retentionTime", 0) > 0:
-                    sourceRetentionTime = src_ret["retentionTime"]
-                    sourceRetentionUnit = src_ret.get("retentionUnit", sourceRetentionUnit)
-
-                dst_ret = iv_ret.get("destination", {}) or {}
-                if dst_ret.get("retentionTime", 0) > 0:
-                    destinationRetentionTime = dst_ret["retentionTime"]
-                    destinationRetentionUnit = dst_ret.get("retentionUnit", destinationRetentionUnit)
-
-                dbg_kv("tier_retention", {
-                    "tier_idx": tier_idx,
-                    "tier_tag": tier_tag,
-                    "sourceRetentionTime": sourceRetentionTime,
-                    "sourceRetentionUnit": sourceRetentionUnit,
-                    "destinationRetentionTime": destinationRetentionTime,
-                    "destinationRetentionUnit": destinationRetentionUnit,
-                })
 
         srcPool = os.environ.get("zfsRepConfig_sourceDataset_pool", "")
         srcDs = os.environ.get("zfsRepConfig_sourceDataset_dataset", "")
@@ -2102,7 +1908,6 @@ def main():
                 remoteUser,
                 remoteHost,
                 sshPort,
-                tier_tag=tier_tag,
             )
             exists, dest_snap_name = snapshot_exists_on_destination(
                 destFilesystem,
@@ -2136,7 +1941,7 @@ def main():
                 recursive=isRecursiveSnap,
             )
         else:
-            newSnap = create_snapshot_local(sourceFilesystem, isRecursiveSnap, taskName, customName, tier_tag=tier_tag)
+            newSnap = create_snapshot_local(sourceFilesystem, isRecursiveSnap, taskName, customName)
             exists, dest_snap_name = snapshot_exists_on_destination(
                 destFilesystem,
                 snapshot_suffix(newSnap),
@@ -2189,8 +1994,6 @@ def main():
                 transferMethod,
                 progress_base=current_pct,
                 progress_span=50,
-                tier_idx=tier_idx,
-                custom_name=customName,
             )
             current_pct = prune_snapshots_by_retention(
                 destFilesystem,
@@ -2200,8 +2003,6 @@ def main():
                 newSnap,
                 progress_base=current_pct,
                 progress_span=50,
-                tier_idx=tier_idx,
-                custom_name=customName,
             )
         else:
             # Push: source local, destination maybe remote
@@ -2213,8 +2014,6 @@ def main():
                 newSnap,
                 progress_base=current_pct,
                 progress_span=50,
-                tier_idx=tier_idx,
-                custom_name=customName,
             )
             current_pct = prune_snapshots_by_retention(
                 destFilesystem,
@@ -2228,77 +2027,9 @@ def main():
                 transferMethod,
                 progress_base=current_pct,
                 progress_span=50,
-                tier_idx=tier_idx,
-                custom_name=customName,
             )
 
         final_pct = min(100, int(current_pct))
-
-        # Fix #3: Clean up legacy (pre-tier) untagged snapshots that would
-        # otherwise be orphaned forever once multi-tier tagging is active.
-        # Use tier_idx=None (matches untagged) with the LONGEST retention
-        # window across all tiers so we don't prune too aggressively.
-        if tier_idx is not None and schedule_data and isinstance(schedule_data.get("intervals"), list):
-            _unit_secs = {
-                "minutes": 60, "hours": 3600, "days": 86400,
-                "weeks": 604800, "months": 2592000, "years": 31536000,
-            }
-            max_src_secs = 0
-            max_src_time = 0
-            max_src_unit = ""
-            max_dst_secs = 0
-            max_dst_time = 0
-            max_dst_unit = ""
-            for iv in schedule_data["intervals"]:
-                iv_ret = (iv.get("retention") or {})
-                sr = iv_ret.get("source") or {}
-                dr = iv_ret.get("destination") or {}
-                st = sr.get("retentionTime", 0) or 0
-                su = sr.get("retentionUnit", "")
-                dt_val = dr.get("retentionTime", 0) or 0
-                du = dr.get("retentionUnit", "")
-                s_secs = int(st) * _unit_secs.get(su, 0)
-                d_secs = int(dt_val) * _unit_secs.get(du, 0)
-                if s_secs > max_src_secs:
-                    max_src_secs = s_secs
-                    max_src_time = st
-                    max_src_unit = su
-                if d_secs > max_dst_secs:
-                    max_dst_secs = d_secs
-                    max_dst_time = dt_val
-                    max_dst_unit = du
-
-            if max_src_secs > 0:
-                if direction == "pull":
-                    prune_snapshots_by_retention(
-                        sourceFilesystem, taskName, max_src_time, max_src_unit, newSnap,
-                        remoteUser, remoteHost, sshPort, transferMethod,
-                        progress_base=0, progress_span=0, tier_idx=None,
-                        custom_name=customName,
-                    )
-                else:
-                    prune_snapshots_by_retention(
-                        sourceFilesystem, taskName, max_src_time, max_src_unit, newSnap,
-                        progress_base=0, progress_span=0, tier_idx=None,
-                        custom_name=customName,
-                    )
-            if max_dst_secs > 0:
-                if direction == "pull":
-                    prune_snapshots_by_retention(
-                        destFilesystem, taskName, max_dst_time, max_dst_unit, newSnap,
-                        progress_base=0, progress_span=0, tier_idx=None,
-                        custom_name=customName,
-                    )
-                else:
-                    prune_snapshots_by_retention(
-                        destFilesystem, taskName, max_dst_time, max_dst_unit, newSnap,
-                        remoteUser if remoteHost else None,
-                        remoteHost if remoteHost else None,
-                        sshPort, transferMethod,
-                        progress_base=0, progress_span=0, tier_idx=None,
-                        custom_name=customName,
-                    )
-
         notifier.notify(f"STATUS=ZFS replication task completed. {final_pct}% complete")
 
     except Exception as e:
