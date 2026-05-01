@@ -160,12 +160,11 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         sys.exit(1)
 
     ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    # Snapshot names are kept clean — tier info is stored in ZFS property
-    # com.45drives_scheduler:retention_tier, and task ownership in com.45drives_scheduler:task_name.
+    tier_tag = f"-t{tier_idx}" if tier_idx is not None else ""
     if custom_name:
-        snapname = f"{filesystem}@{custom_name}-{ts}"
+        snapname = f"{filesystem}@{custom_name}{tier_tag}-{ts}"
     else:
-        snapname = f"{filesystem}@{task_name}-{ts}"
+        snapname = f"{filesystem}@{task_name}{tier_tag}-{ts}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:
@@ -313,10 +312,14 @@ def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str 
     if not tn:
         return False
 
-    # New format: customName-timestamp (custom name is full override)
+    # New format with tier tag: name-tN-timestamp
+    if cn and re.match(rf'^{re.escape(cn)}-t\d+-\d{{4}}', suf):
+        return True
+    if re.match(rf'^{re.escape(tn)}-t\d+-\d{{4}}', suf):
+        return True
+    # Format without tier tag: name-timestamp
     if cn and suf.startswith(f"{cn}-"):
         return True
-    # Default (no custom name): taskName-timestamp
     if suf.startswith(f"{tn}-"):
         return True
     # Legacy format: customName-taskName-timestamp

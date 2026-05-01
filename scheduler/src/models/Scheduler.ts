@@ -957,10 +957,61 @@ export class Scheduler implements SchedulerType {
             const children = taskInstance.parameters?.children;
             const pathParam = children?.find((child: any) => child.key === 'filePath');
             const commandParam = children?.find((child: any) => child.key === 'command');
+            const scriptsParam = children?.find((child: any) => child.key === 'scripts');
+            const execModeParam = children?.find((child: any) => child.key === 'executionMode');
             const commandValue = commandParam?.value || '';
+            const scriptsValue = scriptsParam?.value || '';
+            const execModeValue = execModeParam?.value || 'sequential';
 
-            // Multi-line script: write to a file and point filePath at it
-            if (commandValue && commandValue.includes('\n')) {
+            // Multi-script mode: scripts is a JSON array of entries
+            if (scriptsValue) {
+                const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
+                await runCommand(['mkdir', '-p', scriptDir], { superuser: 'try' });
+
+                let scripts: any[];
+                try {
+                    scripts = JSON.parse(scriptsValue);
+                } catch { scripts = []; }
+
+                // Process each script entry: write multi-line scripts to files
+                const processedScripts: any[] = [];
+                for (let i = 0; i < scripts.length; i++) {
+                    const entry = scripts[i];
+                    const content = (entry.command || '').trim();
+                    const fp = (entry.filePath || '').trim();
+
+                    if (fp) {
+                        // External file path — use directly
+                        processedScripts.push({ filePath: fp });
+                    } else if (content.includes('\n')) {
+                        // Multi-line: write to a script file
+                        const scriptFilePath = `${scriptDir}/${taskInstance.name}_${i}.sh`;
+                        let scriptContent = content;
+                        if (!scriptContent.startsWith('#!')) {
+                            scriptContent = '#!/bin/bash\n' + scriptContent;
+                        }
+                        const scriptFile = new File(server, scriptFilePath);
+                        await unwrap(scriptFile.write(scriptContent, { superuser: 'try' }));
+                        await runCommand(['chmod', '+x', scriptFilePath], { superuser: 'try' });
+                        processedScripts.push({ filePath: scriptFilePath });
+                    } else if (content) {
+                        // Single-line command
+                        processedScripts.push({ command: `/bin/bash -c "${content.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` });
+                    }
+                }
+
+                envObject['customTaskConfig_scripts'] = JSON.stringify(processedScripts);
+                envObject['customTaskConfig_executionMode'] = execModeValue;
+                // Clear legacy single-command fields
+                envObject['customTaskConfig_filePath'] = '';
+                envObject['customTaskConfig_filePath_flag'] = 'false';
+                envObject['customTaskConfig_command'] = '';
+                envObject['customTaskConfig_command_flag'] = 'false';
+                // In multi-script mode, ExecStart just invokes the wrapper with no args
+                // (the wrapper reads scripts from env)
+                scriptPath = '/opt/45drives/houston/scheduler/scripts/run-custom-task.py';
+            } else if (commandValue && commandValue.includes('\n')) {
+                // Legacy single multi-line script: write to a file and point filePath at it
                 const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
                 const scriptFilePath = `${scriptDir}/${taskInstance.name}.sh`;
 
@@ -1097,10 +1148,52 @@ export class Scheduler implements SchedulerType {
             const children = taskInstance.parameters?.children;
             const pathParam = children?.find((c: any) => c.key === 'filePath');
             const commandParam = children?.find((c: any) => c.key === 'command');
+            const scriptsParam = children?.find((c: any) => c.key === 'scripts');
+            const execModeParam = children?.find((c: any) => c.key === 'executionMode');
             const commandValue = commandParam?.value || '';
+            const scriptsValue = scriptsParam?.value || '';
+            const execModeValue = execModeParam?.value || 'sequential';
 
-            // Multi-line script: write to a file and point filePath at it
-            if (commandValue && commandValue.includes('\n')) {
+            // Multi-script mode
+            if (scriptsValue) {
+                const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
+                await runCommand(['mkdir', '-p', scriptDir], { superuser: 'try' });
+
+                let scripts: any[];
+                try { scripts = JSON.parse(scriptsValue); } catch { scripts = []; }
+
+                const processedScripts: any[] = [];
+                for (let i = 0; i < scripts.length; i++) {
+                    const entry = scripts[i];
+                    const content = (entry.command || '').trim();
+                    const fp = (entry.filePath || '').trim();
+
+                    if (fp) {
+                        processedScripts.push({ filePath: fp });
+                    } else if (content.includes('\n')) {
+                        const scriptFilePath = `${scriptDir}/${taskInstance.name}_${i}.sh`;
+                        let scriptContent = content;
+                        if (!scriptContent.startsWith('#!')) {
+                            scriptContent = '#!/bin/bash\n' + scriptContent;
+                        }
+                        const scriptFile = new File(server, scriptFilePath);
+                        await unwrap(scriptFile.write(scriptContent, { superuser: 'try' }));
+                        await runCommand(['chmod', '+x', scriptFilePath], { superuser: 'try' });
+                        processedScripts.push({ filePath: scriptFilePath });
+                    } else if (content) {
+                        processedScripts.push({ command: `/bin/bash -c "${content.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` });
+                    }
+                }
+
+                envObject['customTaskConfig_scripts'] = JSON.stringify(processedScripts);
+                envObject['customTaskConfig_executionMode'] = execModeValue;
+                envObject['customTaskConfig_filePath'] = '';
+                envObject['customTaskConfig_filePath_flag'] = 'false';
+                envObject['customTaskConfig_command'] = '';
+                envObject['customTaskConfig_command_flag'] = 'false';
+                scriptPath = '/opt/45drives/houston/scheduler/scripts/run-custom-task.py';
+            } else if (commandValue && commandValue.includes('\n')) {
+                // Legacy single multi-line script
                 const scriptDir = '/opt/45drives/houston/scheduler/user_scripts';
                 const scriptFilePath = `${scriptDir}/${taskInstance.name}.sh`;
 

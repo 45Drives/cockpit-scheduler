@@ -8,60 +8,121 @@
     </div>
 
     <div v-else class="grid gap-2 my-2">
-        <!-- Script path (optional) -->
-        <div class="border border-default rounded-md p-2 bg-accent">
-            <div class="flex flex-row justify-between items-center">
-                <div class="flex items-center gap-1">
-                    <label class="block text-sm font-medium leading-6 text-default">Script File Path</label>
-                    <InfoTile class="ml-1"
-                        title="Optional — point to an existing .sh, .bash, or .py script on the system. Its contents will load into the editor below. Leave empty to write a new command or script." />
-                </div>
-                <ExclamationCircleIcon v-if="scriptPathErrorTag" class="w-5 h-5 text-danger" />
+        <!-- Execution Mode (shown when multiple scripts) -->
+        <div v-if="scriptEntries.length > 1" class="border border-default rounded-md p-2 bg-accent">
+            <div class="flex items-center gap-2">
+                <label class="block text-sm font-medium leading-6 text-default">Execution Mode</label>
+                <InfoTile class="ml-1"
+                    title="Sequential: scripts run one after another — if one fails, the rest are skipped. Parallel: all scripts start at the same time." />
             </div>
-            <div class="flex items-center gap-2 mt-1">
-                <div class="grow">
-                    <PathAutoComplete v-model="scriptPath" :error="scriptPathErrorTag"
-                        placeholder="(optional) Path to existing script file" />
-                </div>
-                <button v-if="scriptPath && !loadingScript" @click.stop="loadScriptFromPath" type="button"
-                    class="btn btn-secondary h-fit whitespace-nowrap">Load</button>
-                <span v-if="loadingScript" class="text-xs text-muted italic">Loading…</span>
+            <div class="flex items-center gap-4 mt-1">
+                <label class="flex items-center gap-1.5 text-sm text-default cursor-pointer">
+                    <input type="radio" v-model="executionMode" value="sequential"
+                        class="w-4 h-4 text-success border-default focus:ring-green-500" />
+                    Sequential
+                </label>
+                <label class="flex items-center gap-1.5 text-sm text-default cursor-pointer">
+                    <input type="radio" v-model="executionMode" value="parallel"
+                        class="w-4 h-4 text-success border-default focus:ring-green-500" />
+                    Parallel
+                </label>
             </div>
-            <p v-if="scriptPath && scriptLoaded" class="text-xs text-success mt-1">Script loaded from file — edit below if needed.</p>
-            <p v-if="loadScriptError" class="text-xs text-danger mt-1">{{ loadScriptError }}</p>
+            <p v-if="executionMode === 'sequential'" class="text-xs text-muted mt-1">Scripts will run in order. If any script fails, the remaining scripts will be skipped.</p>
+            <p v-else class="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ All scripts will run simultaneously. This may impact system performance if scripts are resource-intensive.</p>
         </div>
 
-        <!-- Command / Script editor (always visible) -->
-        <div class="border border-default rounded-md p-2 bg-accent">
-            <div class="flex flex-row justify-between items-center">
+        <!-- Script entries -->
+        <div v-for="(entry, idx) in scriptEntries" :key="idx"
+            class="border border-default rounded-md p-2 bg-accent">
+            <div class="flex flex-row justify-between items-center mb-1">
                 <div class="flex items-center gap-1">
-                    <label class="block text-sm font-medium leading-6 text-default">Command / Script</label>
-                    <InfoTile class="ml-1"
-                        title="Enter a single command or write a multi-line bash script. Multi-line scripts are saved as a script file and executed by the scheduler. Single-line commands are executed directly." />
+                    <label class="block text-sm font-medium leading-6 text-default">
+                        Script {{ scriptEntries.length > 1 ? `#${idx + 1}` : '' }}
+                    </label>
+                    <InfoTile v-if="idx === 0" class="ml-1"
+                        title="Enter a command, write a multi-line script, or point to an existing script file. Use the (+) button below to add additional scripts that will run in sequence or parallel." />
                 </div>
-                <ExclamationCircleIcon v-if="commandErrorTag" class="w-5 h-5 text-danger" />
+                <div class="flex items-center gap-1">
+                    <ExclamationCircleIcon v-if="entry.errorTag" class="w-5 h-5 text-danger" />
+                    <button v-if="scriptEntries.length > 1" @click.stop="removeEntry(idx)" type="button"
+                        class="text-danger hover:text-red-700 dark:hover:text-red-400 p-0.5" title="Remove this script">
+                        <XMarkIcon class="w-5 h-5" />
+                    </button>
+                </div>
             </div>
-            <textarea v-model="scriptContent" rows="8" :class="[
+
+            <!-- Script file path (optional) -->
+            <div class="flex items-center gap-2">
+                <div class="grow">
+                    <PathAutoComplete v-model="entry.filePath" :error="entry.pathErrorTag"
+                        placeholder="(optional) Path to existing script file" />
+                </div>
+                <button v-if="entry.filePath && !entry.loadingScript" @click.stop="loadScriptForEntry(idx)" type="button"
+                    class="btn btn-secondary h-fit whitespace-nowrap text-xs">Load</button>
+                <span v-if="entry.loadingScript" class="text-xs text-muted italic">Loading…</span>
+            </div>
+            <p v-if="entry.filePath && entry.scriptLoaded" class="text-xs text-success mt-0.5">Loaded from file.</p>
+            <p v-if="entry.loadError" class="text-xs text-danger mt-0.5">{{ entry.loadError }}</p>
+
+            <!-- Command / Script editor -->
+            <textarea v-model="entry.content" rows="5" :class="[
                 'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default font-mono',
-                commandErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-            ]" placeholder="Enter command(s) — supports multiple lines&#10;#!/bin/bash&#10;echo 'Hello'&#10;date"></textarea>
-            <p class="text-xs text-muted mt-1">Single-line commands are executed directly. Multi-line input is saved as a bash script.</p>
-            <div class="flex justify-end mt-2">
-                <button @click.stop="clearAll" type="button" class="btn btn-danger h-fit">Clear</button>
-            </div>
+                entry.errorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+            ]" placeholder="Enter command or script&#10;#!/bin/bash&#10;echo 'Hello'"></textarea>
+        </div>
+
+        <!-- Add script (+) button -->
+        <button @click.stop="addEntry" type="button"
+            class="btn btn-secondary h-fit w-full flex items-center justify-center gap-1.5">
+            <PlusIcon class="w-4 h-4" />
+            Add Script
+        </button>
+        <p class="text-xs text-muted -mt-1">
+            {{ scriptEntries.length > 1
+                ? `${scriptEntries.length} scripts configured — they will run in ${executionMode} order.`
+                : 'Add additional scripts to run multiple operations in a single task.' }}
+        </p>
+
+        <!-- Clear all -->
+        <div class="flex justify-end">
+            <button @click.stop="clearAll" type="button" class="btn btn-danger h-fit">Clear All</button>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
 
-import { ref, Ref, onMounted, inject } from 'vue';
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
+import { ref, reactive, Ref, onMounted, inject } from 'vue';
+import { ExclamationCircleIcon, XMarkIcon, PlusIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import PathAutoComplete from '../../common/PathAutoComplete.vue';
 import InfoTile from '../../common/InfoTile.vue';
 import { ParameterNode, ZfsDatasetParameter, IntParameter, StringParameter, BoolParameter } from '../../../models/Parameters';
 import { server, unwrap, File } from '@45drives/houston-common-lib';
+
+interface ScriptEntry {
+    filePath: string;
+    content: string;
+    externalPath: string;  // original external path if loaded from file
+    scriptLoaded: boolean;
+    loadingScript: boolean;
+    loadError: string;
+    errorTag: boolean;
+    pathErrorTag: boolean;
+}
+
+function createEmptyEntry(): ScriptEntry {
+    return {
+        filePath: '',
+        content: '',
+        externalPath: '',
+        scriptLoaded: false,
+        loadingScript: false,
+        loadError: '',
+        errorTag: false,
+        pathErrorTag: false,
+    };
+}
 
 interface CustomTaskParamsProps {
     parameterSchema: ParameterNodeType;
@@ -73,30 +134,26 @@ const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
 const errorList = inject<Ref<string[]>>('errors')!;
 
-const scriptPath = ref('');
-const scriptContent = ref('');
-const scriptPathErrorTag = ref(false);
-const commandErrorTag = ref(false);
-const loadingScript = ref(false);
-const scriptLoaded = ref(false);
-const loadScriptError = ref('');
-const wrapCommand = ref('');
-
-// Track whether this task was originally using an external script path (not user_scripts)
-const externalScriptPath = ref('');
+const scriptEntries = reactive<ScriptEntry[]>([createEmptyEntry()]);
+const executionMode = ref<'sequential' | 'parallel'>('sequential');
 
 const initialParameters = ref({});
 
 const USER_SCRIPTS_DIR = '/opt/45drives/houston/scheduler/user_scripts/';
 
+function addEntry() {
+    scriptEntries.push(createEmptyEntry());
+}
+
+function removeEntry(idx: number) {
+    if (scriptEntries.length > 1) {
+        scriptEntries.splice(idx, 1);
+    }
+}
+
 function clearAll() {
-    scriptPath.value = '';
-    scriptContent.value = '';
-    externalScriptPath.value = '';
-    scriptLoaded.value = false;
-    loadScriptError.value = '';
-    scriptPathErrorTag.value = false;
-    commandErrorTag.value = false;
+    scriptEntries.splice(0, scriptEntries.length, createEmptyEntry());
+    executionMode.value = 'sequential';
 }
 
 async function readScriptFile(path: string): Promise<string> {
@@ -105,21 +162,21 @@ async function readScriptFile(path: string): Promise<string> {
     return String(raw ?? '');
 }
 
-async function loadScriptFromPath() {
-    if (!scriptPath.value) return;
-    loadingScript.value = true;
-    loadScriptError.value = '';
-    scriptLoaded.value = false;
+async function loadScriptForEntry(idx: number) {
+    const entry = scriptEntries[idx];
+    if (!entry.filePath) return;
+    entry.loadingScript = true;
+    entry.loadError = '';
+    entry.scriptLoaded = false;
     try {
-        let content = await readScriptFile(scriptPath.value);
-        scriptContent.value = content;
-        scriptLoaded.value = true;
-        externalScriptPath.value = scriptPath.value;
+        let content = await readScriptFile(entry.filePath);
+        entry.content = content;
+        entry.scriptLoaded = true;
+        entry.externalPath = entry.filePath;
     } catch (e: any) {
-        loadScriptError.value = `Could not read file: ${e?.message || e}`;
-        console.warn('Could not read script file:', e);
+        entry.loadError = `Could not read file: ${e?.message || e}`;
     } finally {
-        loadingScript.value = false;
+        entry.loadingScript = false;
     }
 }
 
@@ -128,46 +185,67 @@ const initializeParameters = async () => {
         loading.value = true;
         const params = props.task.parameters.children;
 
+        const scriptsValue = params.find(param => param.key === 'scripts')?.value || '';
+        const execModeValue = params.find(param => param.key === 'executionMode')?.value || 'sequential';
         const commandValue = params.find(param => param.key === 'command')?.value || '';
         const filePathValue = params.find(param => param.key === 'filePath')?.value || '';
 
-        if (filePathValue) {
-            // Task has a file path — try to read and populate the editor
+        if (scriptsValue) {
+            // Multi-script mode: parse the JSON array
+            try {
+                const scripts = JSON.parse(scriptsValue);
+                executionMode.value = execModeValue as 'sequential' | 'parallel';
+                scriptEntries.splice(0, scriptEntries.length);
+
+                for (const s of scripts) {
+                    const entry = createEmptyEntry();
+                    if (s.filePath) {
+                        entry.filePath = s.filePath;
+                        try {
+                            let content = await readScriptFile(s.filePath);
+                            if (s.filePath.startsWith(USER_SCRIPTS_DIR) && content.startsWith('#!/bin/bash\n')) {
+                                content = content.slice('#!/bin/bash\n'.length);
+                            }
+                            entry.content = content;
+                            entry.scriptLoaded = true;
+                            entry.externalPath = s.filePath.startsWith(USER_SCRIPTS_DIR) ? '' : s.filePath;
+                        } catch {
+                            entry.content = '';
+                        }
+                    } else if (s.command) {
+                        entry.content = unwrapCommand(s.command);
+                    }
+                    scriptEntries.push(entry);
+                }
+
+                if (scriptEntries.length === 0) {
+                    scriptEntries.push(createEmptyEntry());
+                }
+            } catch {
+                scriptEntries.splice(0, scriptEntries.length, createEmptyEntry());
+            }
+        } else if (filePathValue) {
+            // Legacy single-file mode
+            const entry = scriptEntries[0];
             try {
                 let content = await readScriptFile(filePathValue);
-
-                if (filePathValue.startsWith(USER_SCRIPTS_DIR)) {
-                    // User script — strip shebang we added, show as editable content
-                    if (content.startsWith('#!/bin/bash\n')) {
-                        content = content.slice('#!/bin/bash\n'.length);
-                    }
-                    scriptContent.value = content;
-                    scriptPath.value = filePathValue;
-                    scriptLoaded.value = true;
-                } else {
-                    // External script — show path and load content
-                    scriptPath.value = filePathValue;
-                    scriptContent.value = content;
-                    externalScriptPath.value = filePathValue;
-                    scriptLoaded.value = true;
+                if (filePathValue.startsWith(USER_SCRIPTS_DIR) && content.startsWith('#!/bin/bash\n')) {
+                    content = content.slice('#!/bin/bash\n'.length);
                 }
-            } catch (e) {
-                // Can't read — just show the path
-                console.warn('Could not read script file on edit:', e);
-                scriptPath.value = filePathValue;
-                scriptContent.value = '';
+                entry.filePath = filePathValue;
+                entry.content = content;
+                entry.scriptLoaded = true;
+                entry.externalPath = filePathValue.startsWith(USER_SCRIPTS_DIR) ? '' : filePathValue;
+            } catch {
+                entry.filePath = filePathValue;
+                entry.content = '';
             }
         } else if (commandValue) {
-            // Inline command — unwrap and show in editor
-            scriptContent.value = unwrapCommand(commandValue);
-            scriptPath.value = '';
+            // Legacy inline command
+            scriptEntries[0].content = unwrapCommand(commandValue);
         }
 
-        initialParameters.value = {
-            scriptContent: scriptContent.value,
-            scriptPath: scriptPath.value,
-        };
-
+        initialParameters.value = serializeForComparison();
         loading.value = false;
     }
 };
@@ -175,79 +253,47 @@ const initializeParameters = async () => {
 onMounted(initializeParameters);
 
 function isValidFilePath(filePath: string): boolean {
-    if (filePath === '') return false;
     filePath = filePath.trim();
-
-    if (/[:<>?*"|]/.test(filePath)) {
-        errorList.value.push("File path contains invalid characters.");
-        return false;
-    }
-    if (/^[ ]|[ ]$/.test(filePath)) {
-        errorList.value.push("File path cannot start or end with a space.");
-        return false;
-    }
-    const validPathPattern = /^((\/[a-zA-Z0-9_.-]+)+|\.[a-zA-Z0-9_.-]+)$/;
-    if (!validPathPattern.test(filePath)) {
-        errorList.value.push("File path has an invalid structure.");
-        return false;
-    }
-    if (filePath.includes('//')) {
-        errorList.value.push("File path cannot contain consecutive slashes.");
-        return false;
-    }
-    if (filePath === '/') {
-        errorList.value.push("Root directory access is not allowed.");
-        return false;
-    }
-    if (!filePath.endsWith('.py') && !filePath.endsWith('.sh') && !filePath.endsWith('.bash')) {
-        errorList.value.push("File path must end with .py, .sh, or .bash.");
-        return false;
-    }
+    if (!filePath) return false;
+    if (/[:<>?*"|]/.test(filePath)) return false;
+    if (/^[ ]|[ ]$/.test(filePath)) return false;
+    if (filePath.includes('//')) return false;
+    if (filePath === '/') return false;
+    if (!filePath.endsWith('.py') && !filePath.endsWith('.sh') && !filePath.endsWith('.bash')) return false;
     return true;
 }
 
 function validateParams() {
-    validateCustomTask();
+    clearErrorTags();
+    let hasErrors = false;
 
-    if (errorList.value.length === 0) {
-        const content = scriptContent.value.trim();
-        const isMultiLine = content.includes('\n');
+    for (let i = 0; i < scriptEntries.length; i++) {
+        const entry = scriptEntries[i];
+        const hasPath = entry.filePath.trim() !== '';
+        const hasContent = entry.content.trim() !== '';
 
-        if (isMultiLine) {
-            // Multi-line: store raw script, backend will write to user_scripts/
-            wrapCommand.value = content;
-        } else {
-            // Single-line: wrap with bash -c
-            wrapCommand.value = wrapCommandWithBash(content);
+        if (hasPath && !hasContent) {
+            if (!isValidFilePath(entry.filePath)) {
+                entry.pathErrorTag = true;
+                errorList.value.push(`Script #${i + 1}: Invalid file path. Must end with .py, .sh, or .bash.`);
+                hasErrors = true;
+            }
+        } else if (!hasContent) {
+            entry.errorTag = true;
+            errorList.value.push(`Script #${i + 1}: A command or script is required.`);
+            hasErrors = true;
         }
+    }
 
+    if (!hasErrors) {
         setParams();
     }
 }
 
-function validateCustomTask() {
-    const hasPath = scriptPath.value.trim() !== '';
-    const hasContent = scriptContent.value.trim() !== '';
-
-    if (hasPath && !hasContent) {
-        // Path provided but not loaded — validate the path
-        if (!isValidFilePath(scriptPath.value)) {
-            scriptPathErrorTag.value = true;
-        }
-    } else if (!hasContent) {
-        errorList.value.push("A command or script is required.");
-        commandErrorTag.value = true;
-    }
-}
-
 function unwrapCommand(wrappedCommand: string): string {
-    if (wrappedCommand.includes('\n')) {
-        return wrappedCommand;
-    }
+    if (wrappedCommand.includes('\n')) return wrappedCommand;
     const prefix = '/bin/bash -c "';
-    if (!wrappedCommand.startsWith(prefix) || !wrappedCommand.endsWith('"')) {
-        return wrappedCommand;
-    }
+    if (!wrappedCommand.startsWith(prefix) || !wrappedCommand.endsWith('"')) return wrappedCommand;
     const commandPart = wrappedCommand.slice(prefix.length, -1);
     return commandPart
         .replace(/\\\\/g, '\\')
@@ -266,35 +312,72 @@ function wrapCommandWithBash(userCommand: string): string {
 }
 
 function setParams() {
-    const content = scriptContent.value.trim();
-    const isMultiLine = content.includes('\n');
-    const hasExternalPath = !!externalScriptPath.value && scriptPath.value === externalScriptPath.value;
+    if (scriptEntries.length === 1) {
+        // Single script: use legacy format for backward compatibility
+        const entry = scriptEntries[0];
+        const content = entry.content.trim();
+        const isMultiLine = content.includes('\n');
+        const hasExternalPath = !!entry.externalPath && entry.filePath === entry.externalPath;
+        const useFilePath = hasExternalPath && !isMultiLine;
 
-    // If user loaded an external script and didn't modify, use the path directly
-    const useFilePath = hasExternalPath && !isMultiLine;
+        let command = '';
+        if (!useFilePath) {
+            command = isMultiLine ? content : wrapCommandWithBash(content);
+        }
 
-    const newParams = new ParameterNode("Custom Task Config", "customTaskConfig")
-        .addChild(new BoolParameter("FilePath_flag", "filePath_flag", useFilePath))
-        .addChild(new BoolParameter("Command_flag", "command_flag", !useFilePath))
-        .addChild(new StringParameter('FilePath', 'filePath', useFilePath ? scriptPath.value : ''))
-        .addChild(new StringParameter('Command', 'command', wrapCommand.value));
+        const newParams = new ParameterNode("Custom Task Config", "customTaskConfig")
+            .addChild(new BoolParameter("FilePath_flag", "filePath_flag", useFilePath))
+            .addChild(new BoolParameter("Command_flag", "command_flag", !useFilePath))
+            .addChild(new StringParameter('FilePath', 'filePath', useFilePath ? entry.filePath : ''))
+            .addChild(new StringParameter('Command', 'command', command))
+            .addChild(new StringParameter('Scripts', 'scripts', ''))
+            .addChild(new StringParameter('Execution Mode', 'executionMode', 'sequential'));
 
-    parameters.value = newParams;
+        parameters.value = newParams;
+    } else {
+        // Multi-script: serialize as JSON array
+        const scripts: any[] = [];
+        for (const entry of scriptEntries) {
+            const content = entry.content.trim();
+            const hasExternalPath = !!entry.externalPath && entry.filePath === entry.externalPath;
+
+            if (hasExternalPath && !content.includes('\n')) {
+                scripts.push({ filePath: entry.filePath });
+            } else {
+                scripts.push({ command: content });
+            }
+        }
+
+        const newParams = new ParameterNode("Custom Task Config", "customTaskConfig")
+            .addChild(new BoolParameter("FilePath_flag", "filePath_flag", false))
+            .addChild(new BoolParameter("Command_flag", "command_flag", false))
+            .addChild(new StringParameter('FilePath', 'filePath', ''))
+            .addChild(new StringParameter('Command', 'command', ''))
+            .addChild(new StringParameter('Scripts', 'scripts', JSON.stringify(scripts)))
+            .addChild(new StringParameter('Execution Mode', 'executionMode', executionMode.value));
+
+        parameters.value = newParams;
+    }
 }
 
 function clearErrorTags() {
-    scriptPathErrorTag.value = false;
-    commandErrorTag.value = false;
-    loadScriptError.value = '';
+    for (const entry of scriptEntries) {
+        entry.errorTag = false;
+        entry.pathErrorTag = false;
+        entry.loadError = '';
+    }
     errorList.value = [];
 }
 
+function serializeForComparison() {
+    return JSON.stringify({
+        entries: scriptEntries.map(e => ({ content: e.content, filePath: e.filePath })),
+        executionMode: executionMode.value,
+    });
+}
+
 function hasChanges() {
-    const currentParams = {
-        scriptContent: scriptContent.value,
-        scriptPath: scriptPath.value,
-    };
-    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
+    return serializeForComparison() !== JSON.stringify(initialParameters.value);
 }
 
 defineExpose({

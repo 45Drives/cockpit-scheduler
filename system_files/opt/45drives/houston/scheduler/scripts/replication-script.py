@@ -233,10 +233,14 @@ def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "")
     if not tn:
         return False
 
-    # New format: customName-timestamp (custom name is full override)
+    # New format with tier tag: name-tN-timestamp
+    if cn and re.match(rf'^{re.escape(cn)}-t\d+-\d{{4}}', suf):
+        return True
+    if re.match(rf'^{re.escape(tn)}-t\d+-\d{{4}}', suf):
+        return True
+    # Format without tier tag: name-timestamp
     if cn and suf.startswith(f"{cn}-"):
         return True
-    # Default (no custom name): taskName-timestamp
     if suf.startswith(f"{tn}-"):
         return True
     # Legacy format: customName-taskName-timestamp
@@ -825,12 +829,11 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     if is_recursive:
         command.append("-r")
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    # Snapshot names are kept clean — tier info is stored in ZFS property
-    # com.45drives_scheduler:retention_tier, and task ownership in com.45drives_scheduler:task_name.
+    tier_tag = f"-t{tier_idx}" if tier_idx is not None else ""
     if custom_name:
-        new_snap = f"{filesystem}@{custom_name}-{timestamp}"
+        new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
     else:
-        new_snap = f"{filesystem}@{task_name}-{timestamp}"
+        new_snap = f"{filesystem}@{task_name}{tier_tag}-{timestamp}"
     command.append(new_snap)
 
     notifier.notify(f"STATUS=Creating snapshot {new_snap}…")
@@ -879,12 +882,11 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
 
 def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_idx=None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    # Snapshot names are kept clean — tier info stored in ZFS properties
-    # (com.45drives_scheduler:retention_tier and com.45drives_scheduler:task_name).
+    tier_tag = f"-t{tier_idx}" if tier_idx is not None else ""
     if custom_name:
-        new_snap = f"{filesystem}@{custom_name}-{timestamp}"
+        new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
     else:
-        new_snap = f"{filesystem}@{task_name}-{timestamp}"
+        new_snap = f"{filesystem}@{task_name}{tier_tag}-{timestamp}"
 
     cmd = ["zfs", "snapshot"]
     if is_recursive:

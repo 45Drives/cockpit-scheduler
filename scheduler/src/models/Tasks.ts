@@ -165,6 +165,8 @@ export class CustomTaskTemplate extends TaskTemplate {
         .addChild(new BoolParameter("Command_flag","command_flag",false))
         .addChild(new StringParameter('FilePath', 'filePath', ''))
         .addChild(new StringParameter('Command', 'command', ''))
+        .addChild(new StringParameter('Scripts', 'scripts', ''))
+        .addChild(new StringParameter('Execution Mode', 'executionMode', 'sequential'))
 
         super(name, parameterSchema);
     }
