@@ -499,30 +499,28 @@ def main():
                 dbg(f"scheduleJsonPath not in env; using derived path: {derived_path}")
         schedule_data = load_schedule_json(schedule_json_path)
 
-        tier_idx = None # None = legacy pruning (all task snapshots)
+        tier_idx = None # None = no tier tagging
 
         if schedule_data and isinstance(schedule_data.get("intervals"), list):
             intervals = schedule_data["intervals"]
-            has_per_interval_retention = any(
-                isinstance(iv.get("retention"), dict) for iv in intervals
-            )
-
-            if has_per_interval_retention and len(intervals) > 1:
+            
+            # Always tag with tier index when there are multiple intervals
+            if len(intervals) > 1:
                 now = dt.datetime.now()
                 tier_idx = match_current_tier(intervals, now)
                 print(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
                 dbg(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
-
-                matched_iv = intervals[tier_idx]
-                iv_ret = matched_iv.get("retention", {}) or {}
+            
+            # Extract retention settings from the matched (or only) interval if available
+            has_per_interval_retention = any(
+                isinstance(iv.get("retention"), dict) for iv in intervals
+            )
+            
+            if has_per_interval_retention:
+                # Use the matched interval if multi-tier, otherwise use the single interval
+                interval_to_use = intervals[tier_idx] if tier_idx is not None else intervals[0]
+                iv_ret = interval_to_use.get("retention", {}) or {}
                 # AutoSnap only has one location — check source first, then destination
-                snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
-                if snap_ret.get("retentionTime", 0) > 0:
-                    rt = snap_ret["retentionTime"]
-                    ru = snap_ret.get("retentionUnit", ru)
-            elif has_per_interval_retention and len(intervals) == 1:
-                # Single interval with per-interval retention
-                iv_ret = intervals[0].get("retention", {}) or {}
                 snap_ret = iv_ret.get("source", {}) or iv_ret.get("destination", {}) or {}
                 if snap_ret.get("retentionTime", 0) > 0:
                     rt = snap_ret["retentionTime"]

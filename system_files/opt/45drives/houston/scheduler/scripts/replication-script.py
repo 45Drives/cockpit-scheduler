@@ -1951,7 +1951,7 @@ def main():
         destinationRetentionUnit = os.environ.get("zfsRepConfig_snapshotRetention_destination_retentionUnit", "")
 
         # --- Multi-interval tier support ---
-        tier_idx = None # None = legacy pruning (all task snapshots)
+        tier_idx = None # None = no tier tagging
         schedule_json_path = os.environ.get("scheduleJsonPath", "")
         # Fallback: derive schedule JSON path from task name if env var is missing
         if not schedule_json_path and taskName:
@@ -1963,17 +1963,22 @@ def main():
 
         if schedule_data and isinstance(schedule_data.get("intervals"), list):
             intervals = schedule_data["intervals"]
-            has_per_interval_retention = any(
-                isinstance(iv.get("retention"), dict) for iv in intervals
-            )
-            if has_per_interval_retention and len(intervals) > 1:
+            
+            # Always tag with tier index when there are multiple intervals
+            if len(intervals) > 1:
                 now = datetime.datetime.now()
                 tier_idx = match_current_tier(intervals, now)
                 dbg(f"Multi-tier: matched tier {tier_idx} of {len(intervals)}")
-
-                # Override retention from the matched interval if it has per-interval values
-                matched_iv = intervals[tier_idx]
-                iv_ret = matched_iv.get("retention", {}) or {}
+            
+            # Extract retention settings from the matched (or only) interval if available
+            has_per_interval_retention = any(
+                isinstance(iv.get("retention"), dict) for iv in intervals
+            )
+            
+            if has_per_interval_retention:
+                # Use the matched interval if multi-tier, otherwise use the single interval
+                interval_to_use = intervals[tier_idx] if tier_idx is not None else intervals[0]
+                iv_ret = interval_to_use.get("retention", {}) or {}
 
                 src_ret = iv_ret.get("source", {}) or {}
                 if src_ret.get("retentionTime", 0) > 0:
@@ -1992,17 +1997,6 @@ def main():
                     "destinationRetentionTime": destinationRetentionTime,
                     "destinationRetentionUnit": destinationRetentionUnit,
                 })
-            elif has_per_interval_retention and len(intervals) == 1:
-                # Single interval with per-interval retention
-                iv_ret = intervals[0].get("retention", {}) or {}
-                src_ret = iv_ret.get("source", {}) or {}
-                if src_ret.get("retentionTime", 0) > 0:
-                    sourceRetentionTime = src_ret["retentionTime"]
-                    sourceRetentionUnit = src_ret.get("retentionUnit", sourceRetentionUnit)
-                dst_ret = iv_ret.get("destination", {}) or {}
-                if dst_ret.get("retentionTime", 0) > 0:
-                    destinationRetentionTime = dst_ret["retentionTime"]
-                    destinationRetentionUnit = dst_ret.get("retentionUnit", destinationRetentionUnit)
 
         # --- Manual-run detection ---
         # When the task is started via "Run Now" (legacy-run-task-now.py),
