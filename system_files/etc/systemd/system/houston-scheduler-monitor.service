@@ -1,0 +1,18 @@
+[Unit]
+Description=Houston Task Scheduler Monitor for Cockpit Alerts
+After=network.target houston-dbus.service
+Wants=houston-dbus.service
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/45drives/houston/scheduler/scripts/scheduler-monitor.py
+Restart=always
+RestartSec=5
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=houston-scheduler-monitor
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

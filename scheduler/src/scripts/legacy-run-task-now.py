@@ -2,14 +2,20 @@ import subprocess
 import sys
 import os
 
+MANUAL_MARKER_DIR = "/run/houston-scheduler-manual"
+
 def run_task_now(unit_name):
     try:
-        # Reload systemd to recognize new or changed units
-        # subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        
-        # Start the service 
-        # subprocess.run(['sudo', 'systemctl', 'start', f'{unit_name}.service'], check=True)
-        
+        # Drop a marker so the task script knows this is a manual invocation
+        # (used to skip tier-tagging on snapshots).
+        try:
+            os.makedirs(MANUAL_MARKER_DIR, exist_ok=True)
+            marker = os.path.join(MANUAL_MARKER_DIR, unit_name)
+            with open(marker, "w") as f:
+                f.write("")
+        except Exception:
+            pass  # best-effort; non-fatal if /run is read-only etc.
+
         # Start the service (do not queue a second run if one is already starting)
         subprocess.run(['sudo', 'systemctl', 'start', '--job-mode=fail', f'{unit_name}.service'], check=True)
 

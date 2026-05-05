@@ -135,14 +135,14 @@
 
     <div v-if="showSettings">
         <component :is="settingsComponent" :showSettings="showSettings" @close="showSettings = false"
-            @update:showSettings="(val) => showSettings = val" />
+            @update:showSettings="(val) => showSettings = val" @clearBadge="clearErrorBadge" />
     </div>
 
 </template>
 
 <script setup lang="ts">
 import "@45drives/houston-common-css/src/index.css";
-import { computed, ref, provide } from 'vue';
+import { computed, ref, provide, onMounted, onUnmounted, watch } from 'vue';
 import { ArrowPathIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from "../components/common/CustomLoadingSpinner.vue";
 import TaskInstanceTableRow from '../components/table/TaskInstanceTableRow.vue';
@@ -150,6 +150,7 @@ import { TaskExecutionLog } from '../models/TaskLog';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
+import { useLiveTaskStatus } from '../composables/useLiveTaskStatus';
 
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
@@ -158,6 +159,64 @@ const myTaskLog = new TaskExecutionLog([]);
 const selectedTask = ref<TaskInstanceType>();
 const selectedRowIndex = ref<number | null>(null);
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
+
+/* ── Global failure monitoring + cockpit nav badge ── */
+const badgeManuallyCleared = ref(false);
+
+function updateCockpitBadge(count: number) {
+    try {
+        const cockpit = (window as any).cockpit;
+        if (!cockpit?.transport?.control) return;
+        cockpit.transport.control('notify', {
+            page_status: count > 0
+                ? { type: 'error', title: `${count} failed task${count > 1 ? 's' : ''}` }
+                : null,
+        });
+    } catch (e) {
+        console.debug('Could not update cockpit page_status badge:', e);
+    }
+}
+
+function clearErrorBadge() {
+    badgeManuallyCleared.value = true;
+    updateCockpitBadge(0);
+}
+
+const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
+    intervalMs: 5000, // lighter poll rate — table rows have their own 1.5s polling
+    onFailure: (task, statusText) => {
+        // A genuinely new failure resets the manual-clear flag
+        badgeManuallyCleared.value = false;
+        const name = task?.name ?? 'Unknown task';
+        pushNotification(
+            new Notification(
+                'Task Failed',
+                `Task "${name}" has failed.`,
+                'error',
+                10000
+            )
+        );
+        // Update badge immediately on failure
+        updateCockpitBadge(globalLive.failedCount());
+    },
+});
+
+// Keep cockpit badge in sync whenever statuses change
+watch(globalLive.statusMap, () => {
+    if (!badgeManuallyCleared.value) {
+        updateCockpitBadge(globalLive.failedCount());
+    }
+}, { deep: true });
+
+onMounted(() => {
+    globalLive.start();
+});
+
+onUnmounted(() => {
+    globalLive.stop();
+    // Clear badge when leaving the page
+    updateCockpitBadge(0);
+});
 
 async function updateStatusAndTime(task: TaskInstanceType, rowIndex: number) {
     const target = taskTableRow.value[rowIndex];

@@ -66,6 +66,8 @@ const inputEl = ref<HTMLInputElement>();
 const listEl = ref<HTMLElement>();
 const itemRefs: Record<number, HTMLElement> = {};
 
+const ac = usePathAutoComplete(internalPath, { dirsOnly: props.dirsOnly });
+
 watch(() => props.modelValue, (val) => {
     internalPath.value = val;
 });
@@ -74,8 +76,6 @@ watch(() => props.modelValue, (val) => {
 watch(() => ac.suggestions.value, () => {
     highlightIndex.value = -1;
 });
-
-const ac = usePathAutoComplete(internalPath, { dirsOnly: props.dirsOnly });
 
 function handleInput(event: Event) {
     const val = (event.target as HTMLInputElement).value;

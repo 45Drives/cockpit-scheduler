@@ -39,6 +39,11 @@ def generate_exec_start(templateName, parameters, scriptPath):
     custom_task_wrapper = "python3 -u /opt/45drives/houston/scheduler/scripts/run-custom-task.py"
     
     if(templateName=="CustomTask"):
+        # Multi-script mode: wrapper reads scripts from env, no args needed
+        scripts_json = parameters.get('customTaskConfig_scripts', '')
+        if scripts_json:
+            return custom_task_wrapper
+
         file_path = parameters.get('customTaskConfig_filePath', '')
         if not file_path:
             command = parameters.get('customTaskConfig_command', 'No command provided')

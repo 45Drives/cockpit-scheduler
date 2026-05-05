@@ -36,6 +36,51 @@
                     </div>
                 </div>
 
+                <!-- Notifications Section -->
+                <div class="border border-default rounded-md p-4 bg-accent">
+                    <h4 class="text-sm font-semibold text-default mb-3">Notifications</h4>
+
+                    <!-- cockpit-alerts installed -->
+                    <template v-if="alertsInstalled">
+                        <p class="text-xs text-muted mb-3">
+                            Email notifications are available for task failures and completions via Cockpit Alerts.
+                        </p>
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-center gap-3">
+                                <button class="btn btn-primary h-fit" @click="openAlertsPage">
+                                    Open Alerts Settings
+                                </button>
+                                <span class="text-xs text-muted">Configure email recipients and alert levels</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <button class="btn btn-secondary h-fit" @click="clearBadge">
+                                    Clear Error Badge
+                                </button>
+                                <span class="text-xs text-muted">Removes the badge until a new failure is detected</span>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- cockpit-alerts NOT installed -->
+                    <template v-else>
+                        <p class="text-xs text-muted mb-3">
+                            Install <strong>cockpit-alerts</strong> to get email notifications for task failures, completions, and other events.
+                        </p>
+                        <div class="flex items-center gap-3">
+                            <button class="btn btn-primary h-fit" @click="installAlerts" :disabled="installingAlerts">
+                                {{ installingAlerts ? 'Installing...' : 'Install cockpit-alerts' }}
+                            </button>
+                            <span v-if="installAlertsError" class="text-xs text-danger">{{ installAlertsError }}</span>
+                        </div>
+                        <div class="flex items-center gap-3 mt-3">
+                            <button class="btn btn-secondary h-fit" @click="clearBadge">
+                                Clear Error Badge
+                            </button>
+                            <span class="text-xs text-muted">Removes the badge until a new failure is detected</span>
+                        </div>
+                    </template>
+                </div>
+
                 <!-- Backup & Restore Section -->
                 <div class="border border-default rounded-md p-4 bg-accent">
                     <h4 class="text-sm font-semibold text-default mb-3">Backup & Restore</h4>
@@ -104,19 +149,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { injectWithCheck } from '../../composables/utility';
 import { schedulerInjectionKey, loadingInjectionKey } from '../../keys/injection-keys';
 import { TaskExecutionLog } from '../../models/TaskLog';
+import { runCommand } from '../../models/Scheduler';
 
 interface SchedulerSettingsProps {
     showSettings: boolean;
 }
 
 const props = defineProps<SchedulerSettingsProps>();
-const emit = defineEmits(['close', 'update:showSettings']);
+const emit = defineEmits(['close', 'update:showSettings', 'clearBadge']);
 
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 const myTaskLog = new TaskExecutionLog([]);
@@ -131,6 +177,67 @@ const importResult = ref<{ imported: string[]; skipped: string[]; renamed: strin
 const fileInput = ref<HTMLInputElement>();
 const busy = computed(() => exporting.value || importing.value);
 
+// --- Notifications / cockpit-alerts ---
+const alertsInstalled = ref(false);
+const installingAlerts = ref(false);
+const installAlertsError = ref('');
+const packageManager = ref<'dnf' | 'apt'>('dnf');
+
+async function detectAlerts() {
+    // Check if cockpit-alerts is installed
+    try {
+        await runCommand(['test', '-d', '/usr/share/cockpit/alerts']);
+        alertsInstalled.value = true;
+        return;
+    } catch { /* not found */ }
+    try {
+        await runCommand(['dnf', 'list', 'installed', 'cockpit-alerts']);
+        alertsInstalled.value = true;
+        return;
+    } catch { /* not RPM or not installed */ }
+    try {
+        await runCommand(['dpkg', '-l', 'cockpit-alerts']);
+        alertsInstalled.value = true;
+        return;
+    } catch { /* not installed */ }
+    alertsInstalled.value = false;
+
+    // Detect package manager for install button
+    try {
+        await runCommand(['which', 'apt']);
+        packageManager.value = 'apt';
+    } catch {
+        packageManager.value = 'dnf';
+    }
+}
+
+function openAlertsPage() {
+    const cockpit = (window as any).cockpit;
+    if (cockpit?.jump) {
+        cockpit.jump('/alerts');
+    } else {
+        window.open('/cockpit/@localhost/alerts/index.html', '_blank');
+    }
+}
+
+async function installAlerts() {
+    installingAlerts.value = true;
+    installAlertsError.value = '';
+    try {
+        const cmd = packageManager.value === 'apt'
+            ? ['apt', 'install', '-y', 'cockpit-alerts']
+            : ['dnf', 'install', '-y', 'cockpit-alerts'];
+        await runCommand(cmd, { superuser: 'require' });
+        alertsInstalled.value = true;
+        pushNotification(new Notification('Installed', 'cockpit-alerts installed successfully. Restart Cockpit to activate.', 'success', 5000));
+    } catch (e: any) {
+        installAlertsError.value = e?.message || String(e);
+        pushNotification(new Notification('Install Failed', installAlertsError.value, 'error', 8000));
+    } finally {
+        installingAlerts.value = false;
+    }
+}
+
 const showVacuumConfirmation = ref(false);
 const confirmationComponent = ref();
 const confirmationTitle = ref('');
@@ -140,9 +247,18 @@ const confirmationNo = ref<() => Promise<void>>(async () => {});
 const confirmationOperation = ref('');
 const confirmationOperating = computed(() => vacuuming.value || vacuumingJournal.value);
 
+onMounted(() => {
+    detectAlerts();
+});
+
 function closeModal() {
     emit('update:showSettings', false);
     emit('close');
+}
+
+function clearBadge() {
+    emit('clearBadge');
+    pushNotification(new Notification('Badge Cleared', 'Error badge has been cleared.', 'success', 3000));
 }
 
 async function showConfirmation(title: string, message: string, operation: string, onConfirm: () => Promise<void>) {

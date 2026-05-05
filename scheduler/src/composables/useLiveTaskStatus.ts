@@ -14,6 +14,7 @@ export function useLiveTaskStatus(
         intervalMs?: number;
         formatMs?: (ms: number) => string;
         completedWindowMs?: number; // how long to show "Completed" before reverting
+        onFailure?: (task: AnyTask, statusText: string) => void;
     }
 ) {
     const statusMap = ref<Record<string, string>>({});
@@ -23,6 +24,8 @@ export function useLiveTaskStatus(
     const polling = ref(false);
     let intervalId: number | undefined;
     let progressIntervalId: number | undefined;
+    // Track tasks already reported as failed to avoid duplicate notifications
+    const notifiedFailures = new Set<string>();
 
     async function refreshOne(t: AnyTask) {
         const id = taskId(t);
@@ -213,6 +216,18 @@ export function useLiveTaskStatus(
 
             statusMap.value[id] = finalStatusText;
             lastRunMap.value[id] = label || lastRunMap.value[id] || "Task hasn't run yet.";
+
+            // Notify on newly-detected failures
+            if (finalStatusText.toLowerCase().includes('failed')) {
+                if (!notifiedFailures.has(id)) {
+                    notifiedFailures.add(id);
+                    opts?.onFailure?.(t, finalStatusText);
+                }
+            } else {
+                // Clear so the next failure triggers a new notification
+                notifiedFailures.delete(id);
+            }
+
             return;
         } catch (e) {
             console.debug('[useLiveTaskStatus] getDisplayMeta failed; falling back:', e);
@@ -298,6 +313,17 @@ export function useLiveTaskStatus(
                     }
                     statusMap.value[id] = finalStatusText;
                     lastRunMap.value[id] = label;
+
+                    // Notify on newly-detected failures (fallback path)
+                    if (finalStatusText.toLowerCase().includes('failed')) {
+                        if (!notifiedFailures.has(id)) {
+                            notifiedFailures.add(id);
+                            opts?.onFailure?.(t, finalStatusText);
+                        }
+                    } else {
+                        notifiedFailures.delete(id);
+                    }
+
                     return;
                 }
             }
@@ -413,6 +439,19 @@ export function useLiveTaskStatus(
         return lower.includes('inactive') || lower.includes('disabled');
     }
 
+    function failedCount(): number {
+        return Object.values(statusMap.value).filter(
+            s => s && s.toLowerCase().includes('failed')
+        ).length;
+    }
+
+    function failedTaskNames(): string[] {
+        const tasks = tasksRef.value ?? [];
+        return tasks
+            .filter(t => isFailed(t))
+            .map(t => t?.name ?? taskId(t));
+    }
+
     onUnmounted(stop);
     watch(tasksRef, () => { if (polling.value) refreshAll(); }, { deep: true });
 
@@ -431,6 +470,8 @@ export function useLiveTaskStatus(
         isRunningNow,
         isFailed,
         isInactive,
+        failedCount,
+        failedTaskNames,
     };
 }
 

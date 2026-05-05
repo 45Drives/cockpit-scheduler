@@ -873,6 +873,20 @@ function saveInterval(interval) {
             }
         }
 
+        // Check for duplicate intervals (same schedule fields, ignoring retention)
+        const dupIdx = findDuplicateInterval(clone, selectedIndex.value);
+        if (dupIdx !== -1) {
+            pushNotification(
+                new Notification(
+                    'Duplicate Interval',
+                    `This interval is identical to existing interval #${dupIdx + 1}. Each interval must have a unique schedule so they don't fire at the same time.`,
+                    'error',
+                    8000
+                )
+            );
+            return;
+        }
+
         if (selectedIndex.value !== undefined) {
             localIntervals.value[selectedIndex.value] = clone;
         } else {
@@ -881,6 +895,33 @@ function saveInterval(interval) {
        
         clearFields();
     } 
+}
+
+/**
+ * Compare two intervals by their scheduling fields (hour, minute, day, month, year, dayOfWeek).
+ * Returns true if they would fire at the same times.
+ */
+function intervalsAreEqual(a: any, b: any): boolean {
+    const fieldVal = (iv: any, key: string) => String(iv?.[key]?.value ?? iv?.[key] ?? '*').trim();
+    for (const key of ['hour', 'minute', 'day', 'month', 'year']) {
+        if (fieldVal(a, key) !== fieldVal(b, key)) return false;
+    }
+    const dowA = [...(a?.dayOfWeek ?? [])].sort().join(',');
+    const dowB = [...(b?.dayOfWeek ?? [])].sort().join(',');
+    return dowA === dowB;
+}
+
+/**
+ * Find a duplicate interval in the current list.
+ * Returns the index of the duplicate, or -1 if none.
+ * skipIndex is excluded from comparison (for updates to existing intervals).
+ */
+function findDuplicateInterval(candidate: any, skipIndex?: number): number {
+    for (let i = 0; i < localIntervals.value.length; i++) {
+        if (i === skipIndex) continue;
+        if (intervalsAreEqual(candidate, localIntervals.value[i])) return i;
+    }
+    return -1;
 }
 
 function clearSelectedInterval() {
