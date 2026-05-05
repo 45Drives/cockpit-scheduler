@@ -1400,6 +1400,7 @@ function setParams() {
             .addChild(new StringParameter('Files From', 'include_from_path', includeFromPath.value))
             .addChild(new StringParameter('Exclude From', 'exclude_from_path', excludeFromPath.value))
             .addChild(new IntParameter('Max Transfer Size', 'max_transfer_size', maxTransferSize.value))
+            .addChild(new StringParameter('Max Transfer Size Unit', 'max_transfer_size_unit', maxTransferSizeUnit.value))
             .addChild(new SelectionParameter('Cutoff Mode', 'cutoff_mode', cutoffMode.value))
             .addChild(new BoolParameter('No Traverse', 'no_traverse_flag', noTraverse.value))
         );

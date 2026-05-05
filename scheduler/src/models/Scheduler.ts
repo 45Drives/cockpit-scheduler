@@ -199,6 +199,9 @@ export class Scheduler implements SchedulerType {
             // If the service is clearly running or failed, always show that
             if (s.active === 'active' && s.sub === 'running') return serviceOut;
             if (s.active === 'failed' || s.sub === 'failed') return serviceOut;
+            // During auto-restart after failure, or any non-success result, prefer the service
+            if (s.active === 'activating' && s.sub === 'auto-restart') return serviceOut;
+            if (s.result && s.result !== 'success' && s.result !== '') return serviceOut;
 
             // Otherwise, default: timer for scheduled tasks, service for unscheduled
             return preferTimer ? timerOut : serviceOut;
@@ -1577,6 +1580,7 @@ export class Scheduler implements SchedulerType {
 
                 if (s.active === 'active' && s.sub === 'waiting') return 'Active (Pending)';
                 if (s.active === 'active' && s.sub === 'running') return 'Active (Running)';
+                if (s.active === 'activating' && s.sub === 'auto-restart') return 'Failed (Restarting)';
 
                 if (s.active === 'inactive' && s.sub === 'dead') {
                     const hasRun = !!s.serviceStartUSec; // non-zero only after the service has actually started

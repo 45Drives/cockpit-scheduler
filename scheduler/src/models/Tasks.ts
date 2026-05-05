@@ -251,7 +251,7 @@ export class CloudSyncTaskTemplate extends TaskTemplate {
                 .addChild(new StringParameter('Files From', 'include_from_path', ''))
                 .addChild(new StringParameter('Exclude From', 'exclude_from_path', ''))
                 .addChild(new IntParameter('Max Transfer Size', 'max_transfer_size', 0))
-                .addChild(new IntParameter('Max Transfer Size Unit', 'max_transfer_size_unit', 0))
+                .addChild(new StringParameter('Max Transfer Size Unit', 'max_transfer_size_unit', 'MiB'))
                 .addChild(new SelectionParameter('Cutoff Mode', 'cutoff_mode', 'HARD', cutoffModeSelection))
                 .addChild(new BoolParameter('No Traverse', 'no_traverse_flag', false))
             )

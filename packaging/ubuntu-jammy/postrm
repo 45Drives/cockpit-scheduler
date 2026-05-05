@@ -3,6 +3,11 @@ set -e
 
 case "$1" in
     remove|purge)
+        # Stop and disable the scheduler monitor
+        systemctl stop houston-scheduler-monitor.service 2>/dev/null || true
+        systemctl disable houston-scheduler-monitor.service 2>/dev/null || true
+        systemctl daemon-reload || true
+
         # Always remove the creds file on package removal
         rm -f /etc/45drives/houston/scheduler/cloud-sync-client-creds.json || true
         ;;

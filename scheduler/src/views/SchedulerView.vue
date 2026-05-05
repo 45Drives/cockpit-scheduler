@@ -135,7 +135,7 @@
 
     <div v-if="showSettings">
         <component :is="settingsComponent" :showSettings="showSettings" @close="showSettings = false"
-            @update:showSettings="(val) => showSettings = val" />
+            @update:showSettings="(val) => showSettings = val" @clearBadge="clearErrorBadge" />
     </div>
 
 </template>
@@ -161,13 +161,15 @@ const selectedRowIndex = ref<number | null>(null);
 const taskTableRow = ref<Array<typeof TaskInstanceTableRow>>([]);
 
 /* ── Global failure monitoring + cockpit nav badge ── */
+const badgeManuallyCleared = ref(false);
+
 function updateCockpitBadge(count: number) {
     try {
         const cockpit = (window as any).cockpit;
         if (!cockpit?.transport?.control) return;
         cockpit.transport.control('notify', {
             page_status: count > 0
-                ? { type: 'warning', title: `${count} failed task${count > 1 ? 's' : ''}` }
+                ? { type: 'error', title: `${count} failed task${count > 1 ? 's' : ''}` }
                 : null,
         });
     } catch (e) {
@@ -175,9 +177,16 @@ function updateCockpitBadge(count: number) {
     }
 }
 
+function clearErrorBadge() {
+    badgeManuallyCleared.value = true;
+    updateCockpitBadge(0);
+}
+
 const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
     intervalMs: 5000, // lighter poll rate — table rows have their own 1.5s polling
     onFailure: (task, statusText) => {
+        // A genuinely new failure resets the manual-clear flag
+        badgeManuallyCleared.value = false;
         const name = task?.name ?? 'Unknown task';
         pushNotification(
             new Notification(
@@ -194,7 +203,9 @@ const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
 
 // Keep cockpit badge in sync whenever statuses change
 watch(globalLive.statusMap, () => {
-    updateCockpitBadge(globalLive.failedCount());
+    if (!badgeManuallyCleared.value) {
+        updateCockpitBadge(globalLive.failedCount());
+    }
 }, { deep: true });
 
 onMounted(() => {

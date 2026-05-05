@@ -8,6 +8,11 @@ case "$1" in
         if [ -x /usr/bin/python3 ] && [ -f "$MIGRATE_SCRIPT" ]; then
             python3 "$MIGRATE_SCRIPT" || true
         fi
+
+        # Enable the scheduler monitor (only starts if houston-dbus is available)
+        systemctl daemon-reload || true
+        systemctl enable houston-scheduler-monitor.service 2>/dev/null || true
+        systemctl restart houston-scheduler-monitor.service 2>/dev/null || true
         ;;
 esac
 

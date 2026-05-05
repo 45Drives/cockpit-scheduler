@@ -72,13 +72,7 @@ def dbg(msg: str):
 ZFS_DESTROY_TIMEOUT = int(os.environ.get("ZFS_DESTROY_TIMEOUT", "120"))
 
 TASK_PROP = "com.45drives_scheduler:task_name"
-TIER_PROP = "com.45drives_scheduler:retention_tier"
-# Legacy property names — read for backward compat with existing snapshots
-LEGACY_TASK_PROP = "com.45drives:task"
-LEGACY_TIER_PROP = "com.45drives:tier"
-LEGACY_NAME_RE = re.compile(r'@(?:[^@]+-)?(?P<task>[^@]+)-\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$')
-LEGACY_TIER_RE = re.compile(r'-t(\d+)-\d{4}')
-ENABLE_LEGACY_FALLBACK = True
+TIER_PROP = "com.45drives_scheduler:scheduler_interval_tier"
 
 class Snapshot:
     def __init__(self, name: str, guid: str, creation_epoch: int, task_tag: Optional[str], tier_tag: Optional[str] = None):
@@ -86,7 +80,7 @@ class Snapshot:
         self.guid = guid
         self.creation_epoch = creation_epoch
         self.task_tag = task_tag
-        self.tier_tag = tier_tag  # value of retention_tier property (tN format)
+        self.tier_tag = tier_tag  # value of scheduler_interval_tier property (tN format)
 
 def send_dbus_notification(payload, debug_log="/tmp/snapshot_debug.log"):
     try:
@@ -231,15 +225,10 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
             pairs.append((parts[0], parts[1]))
 
     # Batch get creation as epoch (-p) and our tag properties
-    # Note: zfs get can accept multiple properties
-    # We query both new and legacy property names for backward compat
     try:
         props_out = run(["zfs", "get", "-H", "-p", "-r", "-o", "name,property,value", "creation", filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
         tag_out  = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TASK_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
         tier_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", TIER_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
-        # Legacy property reads (may return nothing on new snapshots)
-        legacy_tag_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", LEGACY_TASK_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
-        legacy_tier_out = run(["zfs", "get", "-H", "-r", "-o", "name,property,value", LEGACY_TIER_PROP, filesystem], timeout=ZFS_LIST_TIMEOUT).stdout.splitlines()
     except subprocess.TimeoutExpired:
         print(f"ERROR: Timed out after {ZFS_LIST_TIMEOUT}s fetching snapshot properties on {filesystem}. The pool may be degraded or unresponsive.", file=sys.stderr)
         dbg(f"ERROR: Timed out fetching snapshot properties on {filesystem}")
@@ -255,15 +244,8 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
         except ValueError:
             continue
 
-    # Build tag map: legacy first, then new props override
+    # Build tag map from ZFS properties
     tag_map = {}
-    for line in legacy_tag_out:
-        try:
-            name, prop, value = line.split("\t")
-            if prop == LEGACY_TASK_PROP and value != "-":
-                tag_map[name] = value
-        except ValueError:
-            continue
     for line in tag_out:
         try:
             name, prop, value = line.split("\t")
@@ -272,16 +254,8 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
         except ValueError:
             continue
 
-    # Build tier map: legacy first (normalize to tN format), then new props override
+    # Build tier map from ZFS properties
     tier_map = {}
-    for line in legacy_tier_out:
-        try:
-            name, prop, value = line.split("\t")
-            if prop == LEGACY_TIER_PROP and value != "-":
-                # Normalize old numeric value to tN format
-                tier_map[name] = value if value.startswith("t") else f"t{value}"
-        except ValueError:
-            continue
     for line in tier_out:
         try:
             name, prop, value = line.split("\t")
@@ -366,23 +340,12 @@ def prune_snapshots_by_retention(filesystem: str, task_name: str, retention_time
         if not belongs and not s.task_tag:
             belongs = _is_autosnap_task_snapshot(s.name, task_name, custom_name)
 
-        if not belongs and not s.task_tag and tier_idx is None and ENABLE_LEGACY_FALLBACK:
-            m = LEGACY_NAME_RE.search(s.name)
-            if m and m.group('task') == task_name:
-                belongs = True
-
         if not belongs:
             continue
 
-        # Tier filtering: use retention_tier property (primary),
-        # fall back to -tN in the snapshot name for old snapshots.
-        # tier_tag is now normalized to tN format during reading.
+        # Tier filtering: use scheduler_interval_tier property
         if tier_idx is not None:
-            snap_tier = s.tier_tag  # from ZFS property (already tN format)
-            if snap_tier is None:
-                # Legacy fallback: parse -tN from name
-                m = LEGACY_TIER_RE.search(s.name)
-                snap_tier = f"t{m.group(1)}" if m else None
+            snap_tier = s.tier_tag  # from ZFS property (tN format)
             if snap_tier is not None and snap_tier != f"t{tier_idx}":
                 continue  # belongs to a different tier
         
@@ -566,6 +529,20 @@ def main():
                     ru = snap_ret.get("retentionUnit", ru)
 
         dbg(f"retention: time={rt} unit={ru}")
+
+        # --- Manual-run detection ---
+        # When the task is started via "Run Now" (legacy-run-task-now.py),
+        # a marker file is placed under /run/houston-scheduler-manual/.
+        # If present, skip tier tagging so manual snapshots get plain names.
+        manual_marker = f"/run/houston-scheduler-manual/houston_scheduler_AutomatedSnapshotTask_{task_name}"
+        is_manual_run = os.path.isfile(manual_marker)
+        if is_manual_run:
+            try:
+                os.remove(manual_marker)
+            except OSError:
+                pass
+            dbg("Manual run detected — skipping tier tag")
+            tier_idx = None
 
         notifier.notify("STATUS=Starting snapshot task…")
         notifier.notify("READY=1")

@@ -52,6 +52,7 @@ rm -f "$TEMPLATE"
 %dir /etc/45drives
 %dir /etc/45drives/houston
 %config(noreplace) /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
+/etc/systemd/system/houston-scheduler-monitor.service
 
 %post
 # Migrate existing task service files to pick up new ExecStart logic
@@ -60,9 +61,19 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$MIGRATE_SCRIPT" ]; then
     python3 "$MIGRATE_SCRIPT" || true
 fi
 
+# Enable the scheduler monitor (only starts if houston-dbus is available)
+systemctl daemon-reload || true
+systemctl enable houston-scheduler-monitor.service 2>/dev/null || true
+systemctl restart houston-scheduler-monitor.service 2>/dev/null || true
+
 %postun
 # $1 == 0 when the package is being erased (not upgraded)
 if [ "$1" -eq 0 ]; then
+    # Stop and disable the monitor
+    systemctl stop houston-scheduler-monitor.service 2>/dev/null || true
+    systemctl disable houston-scheduler-monitor.service 2>/dev/null || true
+    systemctl daemon-reload || true
+
     # Remove the creds file explicitly
     rm -f /etc/45drives/houston/scheduler/cloud-sync-client-creds.json
 

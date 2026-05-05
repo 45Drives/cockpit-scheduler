@@ -177,7 +177,7 @@
                             </div>
 
                             <!-- Dynamic advanced options in a disclosure -->
-                            <Disclosure v-if="dynamicAdvancedOptions.length > 0" v-slot="{ open }" class="col-span-2 mt-3">
+                            <Disclosure v-if="dynamicAdvancedOptions.length > 0" as="div" v-slot="{ open }" class="col-span-2 mt-3">
                                 <DisclosureButton class="bg-default w-full justify-start text-center rounded-md flex flex-row">
                                     <div class="m-1">
                                         <ChevronUpIcon class="h-6 w-6 text-default transition-all duration-200 transform"
@@ -332,7 +332,9 @@ function populateValues(selectedRemote: CloudSyncRemote) {
         console.error("authParams is undefined in selectedRemote");
     }
 
-    // Initialize dynamic values with ALL rclone options, using existing remote values where present
+    // Initialize dynamic values: use existing remote values where present, otherwise empty.
+    // Do NOT pre-populate rclone defaults — rclone applies them internally.
+    // Writing defaults to rclone.conf can cause parse errors and scope conflicts.
     const typeKey = getRcloneTypeKey(selectedRemote.provider);
     const sub = getSubProvider(selectedRemote.provider);
     if (typeKey) {
@@ -340,14 +342,12 @@ function populateValues(selectedRemote: CloudSyncRemote) {
         const existingParams = selectedRemote.authParams?.parameters ?? {};
         for (const opt of allOpts) {
             if (opt.name === 'token' || opt.name === 'provider') continue;
-            // Use existing remote value if present, otherwise rclone default
+            // Only carry forward values that actually exist in the current remote config
             const existing = existingParams[opt.name];
             if (existing !== undefined && existing.value !== undefined) {
                 dynamicValues[opt.name] = existing.value;
-            } else if (opt.type === 'bool') {
-                dynamicValues[opt.name] = opt.default ?? false;
             } else {
-                dynamicValues[opt.name] = opt.default ?? '';
+                dynamicValues[opt.name] = opt.type === 'bool' ? false : '';
             }
         }
     }

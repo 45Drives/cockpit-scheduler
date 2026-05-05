@@ -309,11 +309,7 @@ const emit = defineEmits([
 
 
 async function runTaskBtn() {
-	// Mark this as a manual run so wording reflects that
-	markManualRun();
 	emit('runTask', taskInstance.value);
-	refreshAll();
-	updateProgress(taskInstance.value);
 }
 
 async function stopTaskBtn() {
