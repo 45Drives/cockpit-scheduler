@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.3-2bookworm) bookworm; urgency=medium
+
+  * Fixes retention interval tag logic
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 05 May 2026 08:33:41 -0300
+
 cockpit-scheduler (1.6.3-1bookworm) bookworm; urgency=medium
 
   * Fixes issues with notifications, adds cockpit-alerts email alert support, add
