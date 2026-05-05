@@ -1,3 +1,12 @@
+cockpit-scheduler (1.6.3-1jammy) jammy; urgency=medium
+
+  * Fixes issues with notifications, adds cockpit-alerts email alert support, add
+    multi-scripts to custom tasks, update snapshot interval in snapshot name + task
+    interval tag, makes schedule intervals unique, fixes bugs with cloud-sync task
+    params
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 05 May 2026 08:22:29 -0300
+
 cockpit-scheduler (1.6.2-2jammy) jammy; urgency=medium
 
   * Fixes several issues identified in testing: Log view not updating, @reboot schedule
