@@ -1,3 +1,3 @@
-## task scheduler 1.6.3-2
+## task scheduler 1.6.4-1
 
-* Fixes retention interval tag logic
+* Updates notification logic/handling and adds configurable Restart values for tasks service files for better UI/UX
