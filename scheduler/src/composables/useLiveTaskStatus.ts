@@ -24,8 +24,13 @@ export function useLiveTaskStatus(
     const polling = ref(false);
     let intervalId: number | undefined;
     let progressIntervalId: number | undefined;
-    // Track tasks already reported as failed to avoid duplicate notifications
-    const notifiedFailures = new Set<string>();
+    // Track tasks already reported as failed to avoid duplicate notifications.
+    // Maps task id → the "Failed at <timestamp>" label so we re-fire when a
+    // NEW failure occurs (different timestamp) even if we never saw "running".
+    const notifiedFailures = new Map<string, string>();
+    // Suppress notifications on the very first poll (page load) so existing
+    // failures don't pop a toast — only new transitions do.
+    let initialPollDone = false;
 
     async function refreshOne(t: AnyTask) {
         const id = taskId(t);
@@ -114,10 +119,14 @@ export function useLiveTaskStatus(
             const lowerScheduler = schedulerStatusText.toLowerCase();
 
             // If currently running → show live and bail early
+            // But don't treat "Failed (Restarting)" as running
             if (
-                lowerScheduler.includes('active (running)') ||
-                lowerScheduler.includes('starting') ||
-                lowerScheduler.includes('running')
+                !lowerScheduler.includes('failed') &&
+                (
+                    lowerScheduler.includes('active (running)') ||
+                    lowerScheduler.includes('starting') ||
+                    lowerScheduler.includes('running')
+                )
             ) {
                 statusMap.value[id] = schedulerStatusText;
                 lastRunMap.value[id] = 'Running now...';
@@ -219,12 +228,17 @@ export function useLiveTaskStatus(
 
             // Notify on newly-detected failures
             if (finalStatusText.toLowerCase().includes('failed')) {
-                if (!notifiedFailures.has(id)) {
-                    notifiedFailures.add(id);
-                    opts?.onFailure?.(t, finalStatusText);
+                const failKey = label || finalStatusText;
+                const prev = notifiedFailures.get(id);
+                if (prev !== failKey) {
+                    notifiedFailures.set(id, failKey);
+                    // Only fire callback after initial poll (don't toast on page load)
+                    if (initialPollDone) {
+                        opts?.onFailure?.(t, finalStatusText);
+                    }
                 }
             } else {
-                // Clear so the next failure triggers a new notification
+                // Clear so next failure triggers a notification
                 notifiedFailures.delete(id);
             }
 
@@ -316,9 +330,13 @@ export function useLiveTaskStatus(
 
                     // Notify on newly-detected failures (fallback path)
                     if (finalStatusText.toLowerCase().includes('failed')) {
-                        if (!notifiedFailures.has(id)) {
-                            notifiedFailures.add(id);
-                            opts?.onFailure?.(t, finalStatusText);
+                        const failKey = label || finalStatusText;
+                        const prev = notifiedFailures.get(id);
+                        if (prev !== failKey) {
+                            notifiedFailures.set(id, failKey);
+                            if (initialPollDone) {
+                                opts?.onFailure?.(t, finalStatusText);
+                            }
                         }
                     } else {
                         notifiedFailures.delete(id);
@@ -347,6 +365,10 @@ export function useLiveTaskStatus(
     async function refreshAll() {
         const tasks = tasksRef.value ?? [];
         await Promise.all(tasks.map(refreshOne));
+        // Only mark initial poll done once we've actually processed tasks.
+        // This prevents the case where start() fires on an empty tasksRef,
+        // sets the flag, and then the watch-triggered refresh fires toasts.
+        if (!initialPollDone && tasks.length > 0) initialPollDone = true;
     }
 
     async function refreshProgress() {
@@ -420,6 +442,8 @@ export function useLiveTaskStatus(
         const s = statusFor(t);
         if (!s) return false;
         const lower = s.toLowerCase();
+        // Don't treat "Failed (Restarting)" as running
+        if (lower.includes('failed')) return false;
         return (
             lower.includes('active (running)') ||
             lower.includes('starting') ||

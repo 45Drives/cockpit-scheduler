@@ -236,9 +236,12 @@ const isRunning = computed(() => {
 	const now = Date.now();
 	const manualWindowActive = !enabled && now < manualRunUntil.value;
 
+	// If the task has failed, never show as running
+	if (liveIsFailed(taskInstance.value)) return false;
+
 	if (liveIsRunning(taskInstance.value)) return true;
 
-	if (manualWindowActive && !liveIsCompleted(taskInstance.value)) {
+	if (manualWindowActive && !liveIsCompleted(taskInstance.value) && !liveIsFailed(taskInstance.value)) {
 		return true;
 	}
 
