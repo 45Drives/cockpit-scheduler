@@ -185,6 +185,8 @@ function clearErrorBadge() {
 const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
     intervalMs: 5000, // lighter poll rate — table rows have their own 1.5s polling
     onFailure: (task, statusText) => {
+        // Skip toast if a manual Run Now is handling notifications for this task
+        if (task?.name && task.name === manualRunTaskName.value) return;
         // A genuinely new failure resets the manual-clear flag
         badgeManuallyCleared.value = false;
         const name = task?.name ?? 'Unknown task';
@@ -293,6 +295,7 @@ async function loadViewNotesComponent(){
 const showRunNowPrompt = ref(false);
 const runNowDialog = ref();
 const running = ref(false);
+const manualRunTaskName = ref<string | null>(null);
 
 function runTaskBtn(task, rowIndex: number) {
     selectedTask.value = task;
@@ -326,6 +329,7 @@ const runNowYes: ConfirmationCallback = async () => {
     running.value = true;
     const task = selectedTask.value;
     const rowIndex = selectedRowIndex.value;
+    manualRunTaskName.value = task.name;
 
     pushNotification(
         new Notification('Task Started', `Task ${task.name} has started running.`, 'info', 6000)
@@ -418,7 +422,11 @@ const runNowYes: ConfirmationCallback = async () => {
             )
         );
     } finally {
+        // Refresh so notifiedFailures gets seeded while the guard is still active,
+        // preventing the next regular poll from firing a duplicate toast.
+        await globalLive.refreshAll();
         running.value = false;
+        manualRunTaskName.value = null;
     }
 };
 

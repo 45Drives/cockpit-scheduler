@@ -1,11 +1,32 @@
 import re
 import subprocess
 import argparse
+import configparser
 import json
 import os
 import logging
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+SCHEDULER_CONF_PATH = "/opt/45drives/houston/scheduler/scheduler.conf"
+
+RETRY_DEFAULTS = {
+    "restart_sec": 5,
+    "start_limit_burst": 2,
+    "start_limit_interval_sec": 15,
+}
+
+
+def get_retry_settings():
+    """Read retry settings from scheduler.conf, falling back to defaults."""
+    config = configparser.ConfigParser()
+    if os.path.exists(SCHEDULER_CONF_PATH):
+        config.read(SCHEDULER_CONF_PATH)
+    return {
+        "restart_sec": config.getint("retry", "restart_sec", fallback=RETRY_DEFAULTS["restart_sec"]),
+        "start_limit_burst": config.getint("retry", "start_limit_burst", fallback=RETRY_DEFAULTS["start_limit_burst"]),
+        "start_limit_interval_sec": config.getint("retry", "start_limit_interval_sec", fallback=RETRY_DEFAULTS["start_limit_interval_sec"]),
+    }
 
 def read_template_file(template_file_path):
     logging.debug(f'Reading template file: {template_file_path}')
@@ -175,7 +196,13 @@ def create_task(template_name, script_path, param_env_path):
     exec_start_command = generate_exec_start(template_name, parameters, script_path)
     service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
-    # service_template_content = service_template_content.replace("{ExecStart}", exec_start_command)
+
+    # Apply retry settings from global config
+    retry = get_retry_settings()
+    service_template_content = service_template_content.replace("{restart_sec}", str(retry["restart_sec"]))
+    service_template_content = service_template_content.replace("{start_limit_burst}", str(retry["start_limit_burst"]))
+    service_template_content = service_template_content.replace("{start_limit_interval_sec}", str(retry["start_limit_interval_sec"]))
+
     locked_exec = (
         "/bin/sh -c 'exec 9>/run/%n.lock && flock -n 9 || "
         "{ echo \"Already running, skipping.\" >&2; "

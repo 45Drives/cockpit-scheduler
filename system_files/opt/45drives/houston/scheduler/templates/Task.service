@@ -1,7 +1,7 @@
 [Unit]
 Description=Service for {task_name}
-StartLimitBurst=2
-StartLimitIntervalSec=80
+StartLimitBurst={start_limit_burst}
+StartLimitIntervalSec={start_limit_interval_sec}
 
 [Service]
 Type=notify
@@ -12,7 +12,7 @@ StandardError=journal
 EnvironmentFile={env_path}
 ExecStart={ExecStart}
 Restart=on-failure
-RestartSec=30sec
+RestartSec={restart_sec}sec
 TimeoutStartSec=0
 TimeoutStopSec=90
 

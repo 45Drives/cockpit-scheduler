@@ -81,6 +81,44 @@
                     </template>
                 </div>
 
+                <!-- Retry Settings Section -->
+                <div class="border border-default rounded-md p-4 bg-accent">
+                    <h4 class="text-sm font-semibold text-default mb-3">Retry on Failure</h4>
+                    <p class="text-xs text-muted mb-3">
+                        Control how quickly failed tasks are retried and how many attempts are allowed.
+                        Changes apply to new tasks immediately. Use "Apply to Existing" to update all current tasks.
+                    </p>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-default whitespace-nowrap w-44">Retry Delay</label>
+                            <input type="number" v-model.number="retrySettings.restart_sec" min="1" max="300"
+                                class="w-20 text-default input-textlike bg-default" />
+                            <span class="text-sm text-muted">seconds</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-default whitespace-nowrap w-44">Max Attempts</label>
+                            <input type="number" v-model.number="retrySettings.start_limit_burst" min="1" max="10"
+                                class="w-20 text-default input-textlike bg-default" />
+                            <span class="text-sm text-muted">attempts (including first run)</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-default whitespace-nowrap w-44">Burst Window</label>
+                            <input type="number" v-model.number="retrySettings.start_limit_interval_sec" min="5" max="600"
+                                class="w-20 text-default input-textlike bg-default" />
+                            <span class="text-sm text-muted">seconds</span>
+                        </div>
+                        <div class="flex items-center gap-3 mt-2">
+                            <button class="btn btn-primary h-fit" @click="saveRetrySettings" :disabled="savingRetry">
+                                {{ savingRetry ? 'Saving...' : 'Save' }}
+                            </button>
+                            <button class="btn btn-secondary h-fit" @click="migrateRetrySettings" :disabled="migratingRetry">
+                                {{ migratingRetry ? 'Applying...' : 'Apply to Existing Tasks' }}
+                            </button>
+                        </div>
+                        <p v-if="retryMigrateResult" class="text-xs text-success">{{ retryMigrateResult }}</p>
+                    </div>
+                </div>
+
                 <!-- Backup & Restore Section -->
                 <div class="border border-default rounded-md p-4 bg-accent">
                     <h4 class="text-sm font-semibold text-default mb-3">Backup & Restore</h4>
@@ -249,6 +287,7 @@ const confirmationOperating = computed(() => vacuuming.value || vacuumingJournal
 
 onMounted(() => {
     detectAlerts();
+    loadRetrySettings();
 });
 
 function closeModal() {
@@ -370,6 +409,66 @@ async function handleImportFile(event: Event) {
         importing.value = false;
         // Reset file input so the same file can be selected again
         if (fileInput.value) fileInput.value.value = '';
+    }
+}
+
+// --- Retry Settings ---
+const MIGRATE_SCRIPT = '/opt/45drives/houston/scheduler/scripts/migrate-retry-settings.py';
+
+const retrySettings = ref({
+    restart_sec: 5,
+    start_limit_burst: 2,
+    start_limit_interval_sec: 15,
+});
+const savingRetry = ref(false);
+const migratingRetry = ref(false);
+const retryMigrateResult = ref('');
+
+async function loadRetrySettings() {
+    try {
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--get'], { superuser: 'try' });
+        const parsed = JSON.parse(stdout.trim());
+        retrySettings.value = { ...retrySettings.value, ...parsed };
+    } catch {
+        // Use defaults silently
+    }
+}
+
+async function saveRetrySettings() {
+    savingRetry.value = true;
+    retryMigrateResult.value = '';
+    try {
+        const payload = JSON.stringify(retrySettings.value);
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--set', payload], { superuser: 'require' });
+        const result = JSON.parse(stdout.trim());
+        if (result.success) {
+            pushNotification(new Notification('Retry Settings Saved', 'New tasks will use these settings.', 'success', 4000));
+        }
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', e?.message || String(e), 'error', 5000));
+    } finally {
+        savingRetry.value = false;
+    }
+}
+
+async function migrateRetrySettings() {
+    migratingRetry.value = true;
+    retryMigrateResult.value = '';
+    try {
+        // Save first to ensure config is up to date
+        const payload = JSON.stringify(retrySettings.value);
+        await runCommand(['python3', MIGRATE_SCRIPT, '--set', payload], { superuser: 'require' });
+        // Then migrate
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--migrate'], { superuser: 'require' });
+        const result = JSON.parse(stdout.trim());
+        if (result.success) {
+            retryMigrateResult.value = `Updated ${result.patched} of ${result.total} service file(s).`;
+            pushNotification(new Notification('Migration Complete', retryMigrateResult.value, 'success', 5000));
+        }
+    } catch (e: any) {
+        pushNotification(new Notification('Migration Failed', e?.message || String(e), 'error', 5000));
+    } finally {
+        migratingRetry.value = false;
     }
 }
 </script>

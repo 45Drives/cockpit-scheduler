@@ -75,6 +75,7 @@ all: default
 
 .PHONY: default all install clean help install-local install-remote install \
         houston-common bootstrap-yarn \
+        postinstall-install postinstall-install-local postinstall-install-remote \
 # 		remote-postinstall clean-remote
 
 bootstrap-yarn: .yarnrc.yml
@@ -106,7 +107,7 @@ endif
 # system install, requires `systemctl restart cockpit.socket`
 # runs plugin-install-* for each plugin
 .SECONDEXPANSION:
-install install-local install-remote: $$(OUTPUTS) $$(addprefix plugin-$$@-, $$(PLUGIN_SRCS)) system-files-$$@
+install install-local install-remote: $$(OUTPUTS) $$(addprefix plugin-$$@-, $$(PLUGIN_SRCS)) system-files-$$@ postinstall-$$@
 ifeq ($(RESTART_COCKPIT), 1)
 ifndef DESTDIR
 	$(SSH) systemctl stop cockpit.socket
@@ -115,19 +116,18 @@ endif
 endif
 
 install-remote : SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
-# install-remote: remote-postinstall
 
-# remote-postinstall:
-# 	$(SSH) mkdir -p /var/lib/45drives/houston/scheduler
+# Post-install: reload systemd units and restart the scheduler monitor
+postinstall-install:
+	systemctl daemon-reload
+	-systemctl restart houston-scheduler-monitor
 
-# 	$(SSH) \
-# 	  GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" \
-# 	  GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
-# 	  DROPBOX_CLIENT_ID="$(DROPBOX_CLIENT_ID)" \
-# 	  DROPBOX_CLIENT_SECRET="$(DROPBOX_CLIENT_SECRET)" \
-# 	  /opt/45drives/houston/scheduler/scripts/generate_creds_json.sh \
-# 	      /etc/45drives/houston/scheduler/cloud-sync-client-creds-template.json \
-# 	      /etc/45drives/houston/cloud-sync-client-creds.json
+postinstall-install-local:
+	systemctl daemon-reload
+	-systemctl restart houston-scheduler-monitor
+
+postinstall-install-remote:
+	ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'systemctl daemon-reload && systemctl restart houston-scheduler-monitor 2>/dev/null; true'
 
 plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo -e $(call cyantext,Installing $*)
@@ -176,19 +176,6 @@ clean: FORCE
 clean-all: clean FORCE
 	rm .yarnrc.yml .yarn/ -rf
 	find . -name node_modules -type d -exec rm -rf {} \; -prune
-
-# Stop/disable the service if present
-# Remove scheduler binary and systemd/dbus/polkit bits
-# Remove scheduler code/data and creds
-# Remove the cockpit plugin installed with -test suffix for the remote user
-# clean-remote: SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
-# clean-remote:
-# 	$(SSH) rm -rf /opt/45drives/houston/scheduler || true
-# 	$(SSH) rm -rf /etc/45drives/houston/scheduler || true
-# 	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds.json || true
-# 	$(SSH) rm -f /etc/45drives/houston/cloud-sync-client-creds-template.json || true
-
-# 	$(SSH) sh -lc 'rm -rf "$$HOME/.local/share/cockpit/scheduler-test" 2>/dev/null || true'
 
 help:
 	@echo 'make usage'
