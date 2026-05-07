@@ -1,3 +1,3 @@
-## task scheduler 1.6.4-2
+## task scheduler 1.6.4-3
 
-* Update Makefile to fix build errors (remove postinstall step)
+* Updates task failure notification + retry logic/backend/frontend

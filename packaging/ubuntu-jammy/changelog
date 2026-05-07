@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.4-3jammy) jammy; urgency=medium
+
+  * Updates task failure notification + retry logic/backend/frontend
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 07 May 2026 08:02:23 -0300
+
 cockpit-scheduler (1.6.4-2jammy) jammy; urgency=medium
 
   * Update Makefile to fix build errors (remove postinstall step)
