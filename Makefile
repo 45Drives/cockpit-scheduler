@@ -107,7 +107,9 @@ endif
 # system install, requires `systemctl restart cockpit.socket`
 # runs plugin-install-* for each plugin
 .SECONDEXPANSION:
-install install-local install-remote: $$(OUTPUTS) $$(addprefix plugin-$$@-, $$(PLUGIN_SRCS)) system-files-$$@ postinstall-$$@
+install: $$(OUTPUTS) $$(addprefix plugin-$$@-, $$(PLUGIN_SRCS)) system-files-$$@
+
+install-local install-remote: $$(OUTPUTS) $$(addprefix plugin-$$@-, $$(PLUGIN_SRCS)) system-files-$$@ postinstall-$$@
 ifeq ($(RESTART_COCKPIT), 1)
 ifndef DESTDIR
 	$(SSH) systemctl stop cockpit.socket
@@ -118,16 +120,16 @@ endif
 install-remote : SSH=ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST)
 
 # Post-install: reload systemd units and restart the scheduler monitor
+# Empty for plain 'install' target (used by package builds)
 postinstall-install:
-	systemctl daemon-reload
-	-systemctl restart houston-scheduler-monitor
 
 postinstall-install-local:
 	systemctl daemon-reload
-	-systemctl restart houston-scheduler-monitor
+	systemctl enable houston-scheduler-monitor
+	systemctl restart houston-scheduler-monitor
 
 postinstall-install-remote:
-	ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'systemctl daemon-reload && systemctl restart houston-scheduler-monitor 2>/dev/null; true'
+	ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'systemctl daemon-reload && systemctl enable houston-scheduler-monitor && systemctl restart houston-scheduler-monitor'
 
 plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo -e $(call cyantext,Installing $*)
