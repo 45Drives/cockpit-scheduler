@@ -184,24 +184,68 @@ function clearErrorBadge() {
 
 const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
     intervalMs: 5000, // lighter poll rate — table rows have their own 1.5s polling
-    onFailure: (task, statusText) => {
-        // Skip toast if a manual Run Now is handling notifications for this task
+    onFailure: (task, _statusText) => {
+        // First failure detection via polling → "retrying" toast
+        // Skip if a manual Run Now is handling this task's notifications
         if (task?.name && task.name === manualRunTaskName.value) return;
-        // A genuinely new failure resets the manual-clear flag
         badgeManuallyCleared.value = false;
         const name = task?.name ?? 'Unknown task';
         pushNotification(
             new Notification(
-                'Task Failed',
-                `Task "${name}" has failed.`,
-                'error',
-                10000
+                'Task Failed — Retrying',
+                `Task "${name}" has failed. Retrying...`,
+                'warning',
+                8000
             )
         );
-        // Update badge immediately on failure
         updateCockpitBadge(globalLive.failedCount());
     },
 });
+
+// Subscribe to Houston D-Bus signals for the final failure notification.
+// When the monitor sends the definitive "scheduler_task_failure" after all retries
+// are exhausted, it goes through houston-notify → ForwardMessage → DB + email + signal.
+// We catch the signal here and show the final toast with retry count.
+let houstonDbusClient: any = null;
+
+function initHoustonDbusSubscription() {
+    const cockpit = (window as any).cockpit;
+    if (!cockpit?.dbus) return;
+    try {
+        houstonDbusClient = cockpit.dbus('org._45drives.Houston', { bus: 'system' });
+        houstonDbusClient.subscribe(
+            { interface: 'org._45drives.Houston', member: 'Message' },
+            (_path: string, _iface: string, _signal: string, args: any[]) => {
+                try {
+                    const msg = typeof args[0] === 'string' ? JSON.parse(args[0]) : args[0];
+                    const event = msg?.event;
+                    const taskName = msg?.taskName ?? 'Unknown task';
+
+                    if (event === 'scheduler_task_failure') {
+                        // Skip if Run Now is handling this task's notifications
+                        if (taskName === manualRunTaskName.value) return;
+                        const retries = msg?.retryCount ?? 0;
+                        const retryText = retries > 0
+                            ? ` after ${retries} ${retries === 1 ? 'retry' : 'retries'}`
+                            : '';
+                        pushNotification(
+                            new Notification(
+                                'Task Failed',
+                                `Task "${taskName}" has failed${retryText}.`,
+                                'error',
+                                10000
+                            )
+                        );
+                    }
+                } catch (e) {
+                    console.debug('[SchedulerView] Error parsing Houston D-Bus signal:', e);
+                }
+            }
+        );
+    } catch (e) {
+        console.debug('[SchedulerView] Could not subscribe to Houston D-Bus:', e);
+    }
+}
 
 // Keep cockpit badge in sync whenever statuses change
 watch(globalLive.statusMap, () => {
@@ -212,10 +256,15 @@ watch(globalLive.statusMap, () => {
 
 onMounted(() => {
     globalLive.start();
+    initHoustonDbusSubscription();
 });
 
 onUnmounted(() => {
     globalLive.stop();
+    if (houstonDbusClient) {
+        try { houstonDbusClient.close(); } catch {}
+        houstonDbusClient = null;
+    }
     // Clear badge when leaving the page
     updateCockpitBadge(0);
 });

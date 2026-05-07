@@ -72,14 +72,18 @@
 			<TaskInstanceDetails :task="taskInstance" />
 
 			<div class="flex flex-wrap gap-2 justify-center mt-4 pt-4 border-t border-default">
-				<button v-if="!isRunning" @click="runTaskBtn()"
+				<button v-if="isRunning" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+					Stop Now
+					<StopIcon class="h-5 ml-2 mt-0.5" />
+				</button>
+				<button v-else-if="isFailed" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+					Stop Retries
+					<StopIcon class="h-5 ml-2 mt-0.5" />
+				</button>
+				<button v-else @click="runTaskBtn()"
 					class="flex flex-row min-h-fit flex-nowrap btn btn-success">
 					Run Now
 					<PlayIcon class="h-5 ml-2 mt-0.5" />
-				</button>
-				<button v-else @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
-					Stop Now
-					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
 				<button @click="editTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-secondary">
 					Edit Task

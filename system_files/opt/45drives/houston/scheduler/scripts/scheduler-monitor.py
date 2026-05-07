@@ -36,7 +36,7 @@ TASK_TYPE_LABELS = {
 }
 
 # Track units currently in a failure/retry cycle.
-# unit -> {"retrying_notified": bool}
+# unit -> {"retrying_notified": bool, "retry_count": int}
 # Present in dict = we saw "Failed with result" and are waiting for outcome.
 _pending_failures = {}
 
@@ -122,8 +122,9 @@ def send_notification(payload):
         print(f"[scheduler-monitor] houston-notify failed: {e}", file=sys.stderr, flush=True)
 
 
-def send_final_notification(unit):
-    """Send a final success or failure notification for a completed unit."""
+def send_final_notification(unit, retry_count=0):
+    """Send a final success or failure notification for a completed unit.
+    This notification persists to the alerts DB and triggers email."""
     task_type, task_name = parse_unit_name(unit)
     if task_type in SELF_NOTIFYING_TYPES:
         return
@@ -150,12 +151,14 @@ def send_final_notification(unit):
     else:
         event = "scheduler_task_failure"
         log_tail = get_journal_tail(unit)
+        retry_info = f" after {retry_count} {'retry' if retry_count == 1 else 'retries'}" if retry_count > 0 else ""
         subject = f"Task Failed: {type_label} - {task_name} ({hostname})"
         body = (
-            f"Task '{task_name}' ({type_label}) has failed.\n\n"
+            f"Task '{task_name}' ({type_label}) has failed{retry_info}.\n\n"
             f"Server: {hostname} ({ip})\n"
             f"Result: {result}\n"
             f"Exit Code: {exit_code}\n"
+            f"Retries attempted: {retry_count}\n"
             f"Started: {started}\n"
             f"Finished: {finished}\n"
         )
@@ -168,48 +171,23 @@ def send_final_notification(unit):
         "taskName": task_name,
         "taskType": task_type,
         "severity": "error" if result != "success" else "info",
-        "errors": f"Exit code: {exit_code}" if result != "success" else None,
+        "errors": f"Exit code: {exit_code} (after {retry_count} {'retry' if retry_count == 1 else 'retries'})" if result != "success" and retry_count > 0
+                  else (f"Exit code: {exit_code}" if result != "success" else None),
         "subject": subject,
         "email_message": body,
+        "retryCount": retry_count,
     }
 
     send_notification(payload)
-    print(f"[scheduler-monitor] Notification sent: {event} for {task_name} ({type_label})", flush=True)
+    print(f"[scheduler-monitor] Notification sent: {event} for {task_name} ({type_label}) retries={retry_count}", flush=True)
 
 
 def send_retrying_notification(unit):
-    """Send a 'Failed — Retrying' notification."""
+    """Log that a retry is happening. No houston-notify call — the UI handles
+    the 'retrying' toast via its own status polling."""
     task_type, task_name = parse_unit_name(unit)
-    if task_type in SELF_NOTIFYING_TYPES:
-        return
-
     type_label = TASK_TYPE_LABELS.get(task_type, task_type)
-    timestamp = datetime.now(timezone.utc).isoformat()
-    hostname, ip = _get_server_identity()
-
-    log_tail = get_journal_tail(unit, lines=15)
-
-    subject = f"Task Failed — Retrying: {type_label} - {task_name} ({hostname})"
-    body = (
-        f"Task '{task_name}' ({type_label}) has failed and will be retried.\n\n"
-        f"Server: {hostname} ({ip})\n"
-    )
-    if log_tail:
-        body += f"\n--- Log output ---\n{log_tail}\n"
-
-    payload = {
-        "timestamp": timestamp,
-        "event": "scheduler_task_failure",
-        "taskName": task_name,
-        "taskType": task_type,
-        "severity": "warning",
-        "errors": "Task failed — retrying automatically",
-        "subject": subject,
-        "email_message": body,
-    }
-
-    send_notification(payload)
-    print(f"[scheduler-monitor] Retry notification sent for {task_name} ({type_label})", flush=True)
+    print(f"[scheduler-monitor] Task retrying: {task_name} ({type_label})", flush=True)
 
 
 def main():
@@ -267,19 +245,21 @@ def main():
                     continue
                 # Just record that this unit has failed. Don't send anything yet.
                 if unit not in _pending_failures:
-                    _pending_failures[unit] = {"retrying_notified": False}
+                    _pending_failures[unit] = {"retrying_notified": False, "retry_count": 0}
                 continue
 
             # --- Systemd is scheduling a retry ---
             if "Scheduled restart job" in message:
                 state = _pending_failures.get(unit)
-                if state and not state["retrying_notified"]:
-                    state["retrying_notified"] = True
-                    try:
-                        send_retrying_notification(unit)
-                    except Exception as e:
-                        print(f"[scheduler-monitor] Error sending retry notif for {unit}: {e}",
-                              file=sys.stderr, flush=True)
+                if state:
+                    state["retry_count"] = state.get("retry_count", 0) + 1
+                    if not state["retrying_notified"]:
+                        state["retrying_notified"] = True
+                        try:
+                            send_retrying_notification(unit)
+                        except Exception as e:
+                            print(f"[scheduler-monitor] Error sending retry notif for {unit}: {e}",
+                                  file=sys.stderr, flush=True)
                 continue
 
             # --- Systemd gave up retrying (final failure) ---
@@ -288,11 +268,12 @@ def main():
                 # the burst of messages systemd emits)
                 if unit not in _pending_failures:
                     continue
+                retry_count = _pending_failures[unit].get("retry_count", 0)
                 _pending_failures.pop(unit, None)
                 _recently_finalized[unit] = time.monotonic()
                 time.sleep(0.5)
                 try:
-                    send_final_notification(unit)
+                    send_final_notification(unit, retry_count=retry_count)
                 except Exception as e:
                     print(f"[scheduler-monitor] Error handling final failure {unit}: {e}",
                           file=sys.stderr, flush=True)

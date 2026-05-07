@@ -12,20 +12,24 @@ SCHEDULER_CONF_PATH = "/opt/45drives/houston/scheduler/scheduler.conf"
 
 RETRY_DEFAULTS = {
     "restart_sec": 5,
-    "start_limit_burst": 2,
-    "start_limit_interval_sec": 15,
+    "start_limit_burst": 3,
 }
 
 
 def get_retry_settings():
-    """Read retry settings from scheduler.conf, falling back to defaults."""
+    """Read retry settings from scheduler.conf, falling back to defaults.
+    StartLimitIntervalSec is auto-calculated to always be large enough."""
     config = configparser.ConfigParser()
     if os.path.exists(SCHEDULER_CONF_PATH):
         config.read(SCHEDULER_CONF_PATH)
+    restart_sec = config.getint("retry", "restart_sec", fallback=RETRY_DEFAULTS["restart_sec"])
+    start_limit_burst = config.getint("retry", "start_limit_burst", fallback=RETRY_DEFAULTS["start_limit_burst"])
+    # Auto-calculate: window must be large enough to contain all burst attempts
+    start_limit_interval_sec = (start_limit_burst + 1) * restart_sec
     return {
-        "restart_sec": config.getint("retry", "restart_sec", fallback=RETRY_DEFAULTS["restart_sec"]),
-        "start_limit_burst": config.getint("retry", "start_limit_burst", fallback=RETRY_DEFAULTS["start_limit_burst"]),
-        "start_limit_interval_sec": config.getint("retry", "start_limit_interval_sec", fallback=RETRY_DEFAULTS["start_limit_interval_sec"]),
+        "restart_sec": restart_sec,
+        "start_limit_burst": start_limit_burst,
+        "start_limit_interval_sec": start_limit_interval_sec,
     }
 
 def read_template_file(template_file_path):

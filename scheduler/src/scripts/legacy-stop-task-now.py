@@ -4,10 +4,15 @@ import os
 
 def stop_task_now(unit_name):
     try:
-        subprocess.run(['sudo', 'systemctl', 'stop', f'{unit_name}.service'], check=True)
+        service = f'{unit_name}.service'
+        # Stop the service AND reset its failure state so systemd won't
+        # schedule any more automatic restarts (Restart=on-failure).
+        subprocess.run(['sudo', 'systemctl', 'stop', service], check=True)
+        subprocess.run(['sudo', 'systemctl', 'reset-failed', service],
+                       check=False)  # non-fatal if not in failed state
 
     except subprocess.CalledProcessError as e:
-        print(f"Failed to run task: {e}")
+        print(f"Failed to stop task: {e}")
         sys.exit(1)
         
 def check_for_service_file(unit_name):

@@ -101,12 +101,6 @@
                                 class="w-20 text-default input-textlike bg-default" />
                             <span class="text-sm text-muted">attempts (including first run)</span>
                         </div>
-                        <div class="flex items-center gap-3">
-                            <label class="text-sm text-default whitespace-nowrap w-44">Burst Window</label>
-                            <input type="number" v-model.number="retrySettings.start_limit_interval_sec" min="5" max="600"
-                                class="w-20 text-default input-textlike bg-default" />
-                            <span class="text-sm text-muted">seconds</span>
-                        </div>
                         <div class="flex items-center gap-3 mt-2">
                             <button class="btn btn-primary h-fit" @click="saveRetrySettings" :disabled="savingRetry">
                                 {{ savingRetry ? 'Saving...' : 'Save' }}
@@ -417,8 +411,7 @@ const MIGRATE_SCRIPT = '/opt/45drives/houston/scheduler/scripts/migrate-retry-se
 
 const retrySettings = ref({
     restart_sec: 5,
-    start_limit_burst: 2,
-    start_limit_interval_sec: 15,
+    start_limit_burst: 3,
 });
 const savingRetry = ref(false);
 const migratingRetry = ref(false);

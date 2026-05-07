@@ -237,8 +237,11 @@ export function useLiveTaskStatus(
                         opts?.onFailure?.(t, finalStatusText);
                     }
                 }
-            } else {
-                // Clear so next failure triggers a notification
+            } else if (
+                finalStatusText.toLowerCase().includes('completed') ||
+                finalStatusText.toLowerCase().includes('success')
+            ) {
+                // Only clear on genuine success so retry cycles don't re-fire the toast
                 notifiedFailures.delete(id);
             }
 
@@ -338,7 +341,10 @@ export function useLiveTaskStatus(
                                 opts?.onFailure?.(t, finalStatusText);
                             }
                         }
-                    } else {
+                    } else if (
+                        finalStatusText.toLowerCase().includes('completed') ||
+                        finalStatusText.toLowerCase().includes('success')
+                    ) {
                         notifiedFailures.delete(id);
                     }
 

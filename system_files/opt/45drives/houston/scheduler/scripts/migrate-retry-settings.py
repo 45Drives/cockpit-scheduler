@@ -27,27 +27,32 @@ SERVICE_GLOB = "/etc/systemd/system/houston_scheduler_*.service"
 
 DEFAULTS = {
     "restart_sec": 5,
-    "start_limit_burst": 2,
-    "start_limit_interval_sec": 15,
+    "start_limit_burst": 3,
 }
 
 
 def read_config():
-    """Read retry settings from scheduler.conf, falling back to defaults."""
+    """Read retry settings from scheduler.conf, falling back to defaults.
+    StartLimitIntervalSec is auto-calculated."""
     config = configparser.ConfigParser()
     if os.path.exists(CONF_PATH):
         config.read(CONF_PATH)
 
     section = "retry"
+    restart_sec = config.getint(section, "restart_sec", fallback=DEFAULTS["restart_sec"])
+    start_limit_burst = config.getint(section, "start_limit_burst", fallback=DEFAULTS["start_limit_burst"])
+    # Auto-calculate: window must be large enough to contain all burst attempts
+    start_limit_interval_sec = (start_limit_burst + 1) * restart_sec
+
     return {
-        "restart_sec": config.getint(section, "restart_sec", fallback=DEFAULTS["restart_sec"]),
-        "start_limit_burst": config.getint(section, "start_limit_burst", fallback=DEFAULTS["start_limit_burst"]),
-        "start_limit_interval_sec": config.getint(section, "start_limit_interval_sec", fallback=DEFAULTS["start_limit_interval_sec"]),
+        "restart_sec": restart_sec,
+        "start_limit_burst": start_limit_burst,
+        "start_limit_interval_sec": start_limit_interval_sec,
     }
 
 
 def write_config(settings):
-    """Write retry settings to scheduler.conf."""
+    """Write retry settings to scheduler.conf (only restart_sec and start_limit_burst)."""
     config = configparser.ConfigParser()
     if os.path.exists(CONF_PATH):
         config.read(CONF_PATH)
@@ -57,7 +62,9 @@ def write_config(settings):
 
     config.set("retry", "restart_sec", str(settings["restart_sec"]))
     config.set("retry", "start_limit_burst", str(settings["start_limit_burst"]))
-    config.set("retry", "start_limit_interval_sec", str(settings["start_limit_interval_sec"]))
+    # Remove stale start_limit_interval_sec if present (now auto-calculated)
+    if config.has_option("retry", "start_limit_interval_sec"):
+        config.remove_option("retry", "start_limit_interval_sec")
 
     os.makedirs(os.path.dirname(CONF_PATH), exist_ok=True)
     with open(CONF_PATH, "w") as f:
@@ -133,6 +140,8 @@ def main():
             if key not in settings:
                 settings[key] = DEFAULTS[key]
             settings[key] = max(1, int(settings[key]))
+        # Auto-calculate interval
+        settings["start_limit_interval_sec"] = (settings["start_limit_burst"] + 1) * settings["restart_sec"]
         write_config(settings)
         print(json.dumps({"success": True, "settings": settings}))
     elif args.migrate:

@@ -1721,14 +1721,19 @@ export class Scheduler implements SchedulerType {
 
         try {
             const timerName = `${fullTaskName}.timer`;
+            const serviceName = `${fullTaskName}.service`;
 
-            // Only stop and disable the timer — don't touch the service.
-            // If a task is currently running, it will finish naturally;
-            // the disabled timer simply prevents future scheduled runs.
+            // Stop and disable the timer to prevent future scheduled runs.
             await runCommand(['systemctl', 'stop', timerName], { superuser: 'try' });
             await runCommand(['systemctl', 'disable', timerName], { superuser: 'try' });
 
-            console.log(`${timerName} has been stopped and disabled`);
+            // Also stop the service and reset its failure state so any
+            // in-progress retry cycle is halted immediately.
+            // These are non-fatal — service may not be loaded if it never ran.
+            try { await runCommand(['systemctl', 'stop', serviceName], { superuser: 'try' }); } catch {}
+            try { await runCommand(['systemctl', 'reset-failed', serviceName], { superuser: 'try' }); } catch {}
+
+            console.log(`${timerName} and ${serviceName} have been stopped and disabled`);
             taskInstance.schedule.enabled = false;
 
             await this.updateSchedule(taskInstance);
