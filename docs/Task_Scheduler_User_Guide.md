@@ -18,28 +18,18 @@ It is based on the current `cockpit-scheduler` project structure and behavior in
 8. [Task Types](#8-task-types)
 9. [Cloud Sync Remotes and OAuth](#9-cloud-sync-remotes-and-oauth)
 10. [Permissions](#10-permissions)
-11. [Tips and Troubleshooting](#11-tips-and-troubleshooting)
+11. [Cockpit-Alerts Integration](#11-cockpit-alerts-integration)
+12. [Settings](#12-settings)
+13. [Tips and Troubleshooting](#13-tips-and-troubleshooting)
 
 ---
 
 ## 1. What the Module Does
 
-The Task Scheduler module is used to automate recurring server jobs from the Cockpit web interface.
-
-Common examples include:
-
-- Creating recurring ZFS snapshots
 - Replicating ZFS datasets locally or to another server
 - Copying files with rsync
 - Running ZFS pool scrubs
-- Starting SMART disk tests
-- Syncing data to or from cloud storage with rclone
-- Running your own scripts or shell commands
-
-Each task can be:
-
 - Saved without a schedule and run manually when needed
-- Assigned one or more schedule intervals
 - Enabled or disabled without deleting it
 - Viewed in detail from the dashboard
 - Logged and viewable from the interface
@@ -57,6 +47,7 @@ At a high level, the module works like this:
 4. The scheduler creates the background schedule entries needed to run it automatically.
 5. When the task runs, the matching task handler performs the actual work.
 6. Status and logs are read back into the Cockpit interface so you can monitor the task.
+7. When the module is upgraded, existing tasks are automatically migrated to the new scheduling and retention model so previously configured tasks continue to work (see **Managing Schedules**).
 
 ### What happens in the background
 
@@ -69,6 +60,8 @@ The module handles the task lifecycle for you:
 - it runs the task at the chosen times
 - it records logs you can review in **View Logs**
 - for Cloud Sync tasks, it uses the saved remote you selected
+
+The backend has been hardened in recent releases: command execution paths are more robust, snapshot/replication handling has been improved to reduce the risk of task hangs, and task runs produce richer debug output. The scheduler also records task metadata on created ZFS snapshots using ZFS user properties so tasks and per-interval retention can be tracked reliably.
 
 That means:
 
@@ -248,6 +241,10 @@ The **Manage Schedule** dialog is where you add, edit, preview, enable, disable,
 
 ![Manage schedule dialog](images/task-scheduler/05-manage-schedule.png)
 
+New in recent releases: the schedule editor supports Cron expressions and a per-interval `Run at system startup/reboot` option. You can enter a cron string (or switch the editor into Cron mode) for advanced schedules. The dialog now detects and prevents duplicate or conflicting intervals — the UI warns you and blocks exact duplicates to avoid multiple triggers for the same time window. Use the Interval Preview to verify cron rules visually.
+
+![Manage schedule - cron & startup options](images/task-scheduler/05-manage-schedule-cron-startup.png)
+
 ### Schedule presets
 
 The preset list provides quick starting points:
@@ -407,6 +404,12 @@ When **Show All** is enabled:
 - live view pauses
 - older log history is displayed instead
 
+#### Log cleanup and debug details
+
+The log viewer now offers improved debug output (when enabled) and a **Clean Up Logs** control so administrators can purge or archive old task logs from the UI. You can also schedule log retention cleanup from this dialog in supported deployments. The live log view has received fixes so continuous output from long-running tasks is more stable and less likely to pause or skip.
+
+![Task log viewer - cleanup](images/task-scheduler/08-task-log-view-cleanup.png)
+
 ### Remove
 
 **Remove** permanently deletes the task and its associated scheduler artifacts.
@@ -432,7 +435,7 @@ Typical use cases:
 - push-style replication to a remote destination
 - pull-style replication from a remote source
 
-![ZFS Replication Task form placeholder](images/task-scheduler/task-type-zfs-replication.png)
+![ZFS Replication Task form](images/task-scheduler/task-type-zfs-replication.png)
 
 #### Main layout
 
@@ -541,6 +544,8 @@ Retention rules:
 - if the schedule is disabled for longer than the retention window and later re-enabled, older snapshots may be removed on the next run
 - when multiple intervals exist, the backend determines which interval triggered the current run and applies only that interval's retention policy
 
+Note: the backend uses ZFS user properties on created snapshots to tag the originating task and the schedule/interval that created them. This makes pruning and identification of task-owned snapshots reliable even when multiple intervals and tasks exist.
+
 #### Overwrite and resume behavior
 
 These options matter when the destination already has data:
@@ -568,7 +573,7 @@ Start conservative:
 
 Use this task to create scheduled ZFS snapshots on a dataset.
 
-![Automated Snapshot Task form placeholder](images/task-scheduler/task-type-automated-snapshot.png)
+![Automated Snapshot Task form](images/task-scheduler/task-type-automated-snapshot.png)
 
 #### Main fields
 
@@ -605,7 +610,11 @@ When **Recursive Snapshots** is enabled, the task snapshots the selected dataset
 
 #### Custom snapshot names
 
-If enabled, the custom name is used as part of the generated snapshot name, together with the task name and timestamp.
+If enabled, custom snapshot names no longer include the task name or task-type prefix. The new snapshot naming format is:
+
+pool/dataset@customname_timestamp
+
+The backend records task metadata and the triggering interval on snapshots using ZFS user properties (tags). This allows the scheduler to identify snapshots created by a specific task and apply the correct per-interval retention and pruning rules.
 
 #### Good use cases
 
@@ -619,7 +628,7 @@ If enabled, the custom name is used as part of the generated snapshot name, toge
 
 Use this task to copy files locally or over SSH using `rsync`.
 
-![Rsync Task form placeholder](images/task-scheduler/task-type-rsync.png)
+![Rsync Task form](images/task-scheduler/task-type-rsync.png)
 
 #### What it can do
 
@@ -705,7 +714,7 @@ The advanced area adds:
 
 Use this task to start a ZFS scrub on a pool.
 
-![Scrub Task form placeholder](images/task-scheduler/task-type-scrub.png)
+![Scrub Task form](images/task-scheduler/task-type-scrub.png)
 
 #### Main field
 
@@ -729,7 +738,7 @@ This task is useful for routine data-integrity maintenance on a calendar.
 
 Use this task to start SMART self-tests on one or more disks.
 
-![SMART Test form placeholder](images/task-scheduler/task-type-smart-test.png)
+![SMART Test form](images/task-scheduler/task-type-smart-test.png)
 
 #### Disk selection
 
@@ -771,7 +780,7 @@ Use your normal SMART reporting tools to review final SMART results later.
 
 Use this task to transfer data between the local system and cloud storage through **rclone**.
 
-![Cloud Sync Task form placeholder](images/task-scheduler/task-type-cloud-sync.png)
+![Cloud Sync Task form](images/task-scheduler/task-type-cloud-sync.png)
 
 #### Main fields
 
@@ -879,45 +888,39 @@ That means long-lived Google Drive, Dropbox, and Google Cloud tasks can keep wor
 
 Use this task when the built-in templates do not match your workflow.
 
-![Custom Task form placeholder](images/task-scheduler/task-type-custom.png)
+![Custom Task form](images/task-scheduler/task-type-custom.png)
 
-You choose one of two execution styles:
+You can choose one of several execution styles to suit different workflows:
 
-- **Script file path**
-- **Custom command**
+- **Script file path**: run a single script file by path.
+- **Script list (multiple scripts)**: provide an ordered list of script file paths to run sequentially; useful when a task needs multiple steps implemented as separate scripts.
+- **Custom command**: a freeform command editor that now supports multi-line scripts and complex shell logic.
 
 #### Script file path mode
 
-In this mode, you provide a script path.
-
-The UI expects the path to:
+Provide a script path. The UI validates basic constraints:
 
 - be a valid file path
 - not be the root directory
 - avoid invalid filename characters
-- end with one of:
-  - `.py`
-  - `.sh`
-  - `.bash`
+- end with one of the common script extensions (e.g., `.py`, `.sh`, `.bash`) where applicable
 
-#### Custom command mode
+#### Script list mode
 
-In this mode, you type a one-line shell command.
+Provide multiple script file paths (one per line or via the UI list). Scripts are executed in order; the task groups logs per-script so you can inspect which step produced which output. This mode is useful for separating concerns into discrete files while keeping them under one task.
 
-The module wraps the command with:
+#### Custom command mode (multi-line)
 
-```bash
-/bin/bash -c "your command here"
-```
+The command editor now accepts multi-line shell input. The task executes the provided shell content in a controlled bash context, so multi-line scripts and compound commands are supported. As always, be mindful of quoting, dependencies, and side effects.
 
-This makes Custom Tasks flexible, but it also means you are responsible for:
+This makes Custom Tasks flexible, but you remain responsible for:
 
 - command safety
 - quoting
 - dependencies
 - side effects
 
-Use Custom Tasks only when the purpose is clear and the command has been tested manually.
+Test commands and scripts manually before adding them to a scheduled task.
 
 ---
 
@@ -1063,7 +1066,60 @@ This helps keep more sensitive system-level tasks restricted to administrative u
 
 ---
 
-## 11. Tips and Troubleshooting
+## 11. Cockpit-Alerts Integration
+
+The Task Scheduler integrates with the **cockpit-alerts** module so tasks can send email notifications and other alerts when configured. When cockpit-alerts is installed and enabled, you can turn on **Task Email Notifications** from the alerts settings and select which events should generate messages (for example: **On Failure**, **On Completion**, **On Start**). Notification recipients, templates and delivery settings are managed by the cockpit-alerts configuration.
+
+Screenshot placeholder: Task notification settings and recipient selection
+![Task email notifications - cockpit-alerts](images/task-scheduler/11-task-alerts-email.png)
+
+Note: delivery (SMTP, external provider, or integrations) is configured in the cockpit-alerts module — consult that module's settings to ensure outbound mail is permitted in your environment.
+
+---
+
+## 12. Settings
+
+The Settings modal centralizes administrative maintenance and task-level utilities used to manage scheduler behavior, logs, and task migration. Open it from the module toolbar or from the host Settings page.
+
+![Settings modal overview](images/task-scheduler/12-settings-overview.png)
+
+Settings modal features:
+
+- **Task export / import (JSON)**: Export selected tasks (parameters and schedules) to JSON for migration or backup. Import JSON on another system to recreate tasks; secrets and provider tokens are not exported and must be reconfigured after import.
+
+  ![Task export/import](images/task-scheduler/12-settings-export-import.png)
+
+- **Debug log cleanup tools**: Purge, archive, or apply retention rules to task logs. The modal lets you run immediate cleanup, schedule recurring cleanup, and configure per-task log retention thresholds so logs do not consume excessive disk space.
+
+  ![Settings - debug log cleanup](images/task-scheduler/12-settings-debug-cleanup.png)
+
+- **journalctl vacuum (system-wide)**: Optionally run a safe `journalctl` vacuum action (by size or time) from the UI to reclaim systemd journal disk usage. This requires administrator privileges and is scoped to the host.
+
+- **Log retention scheduling**: Configure automatic retention policies for scheduler logs and old run artifacts; combine with manual cleanup when you need immediate reclamation.
+
+- **Task notifications**: Configure default notification behavior for tasks when integrated with cockpit-alerts. Set which events trigger notifications (On Start, On Completion, On Failure) and define default recipients. Task-level overrides can be configured per task.
+
+  ![Settings - notification defaults](images/task-scheduler/12-settings-notifications.png)
+
+- **Retry on failure**: Configure automatic retry behavior when tasks fail. Set retry attempts, delay intervals, and backoff strategies. This helps recover from transient errors without manual intervention.
+
+  ![Settings - retry on failure](images/task-scheduler/12-settings-retry.png)
+
+- **Other administrative toggles**: Enable/disable enhanced debug logging, control live log buffering behavior, and set limits for archived log storage.
+
+Use the Settings modal to prepare systems for migration, control log growth, reduce operational risk during upgrades, and configure default task behavior.
+
+---
+
+## 13. Tips and Troubleshooting
+
+### Upgrades and automatic migration
+
+When the module is upgraded, existing tasks are automatically migrated to the new scheduling/retention model in the background. In most cases no action is required — migrated tasks keep their previous behavior but will appear in **Manage Schedule** as intervals. If you see unexpected changes after an upgrade, open **Manage Schedule** for the task and verify the intervals and retention windows.
+
+### Duplicate or conflicting intervals
+
+The schedule editor prevents creating exact duplicate intervals. If you try to add an interval that conflicts with an existing one the UI will warn you. Review the intervals list in **Manage Schedule** to avoid overlapping intervals that would run the same task multiple times at the same moment.
 
 ### The schedule toggle is disabled
 
@@ -1144,4 +1200,3 @@ If you want the task to keep everything:
 - Use per-interval retention to apply different retention windows across schedules within a single task
 - Be very careful with destructive options such as **Delete Files**, **Sync**, and ZFS overwrite/rollback behavior
 
----
