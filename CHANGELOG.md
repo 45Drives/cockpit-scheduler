@@ -1,3 +1,3 @@
-## task scheduler 1.6.5-1
+## task scheduler 1.6.5-2
 
-* Updates task logs to be truly live, adjusts organization of some rclone remote params for better UX
+* Build #2 - updating task script file used in migration of old tasks
