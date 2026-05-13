@@ -46,8 +46,8 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
             project_number: { value: "", type: 'string', defaultValue: "" },
             service_account_file: { value: "", type: 'string', defaultValue: "" },
             anonymous: { value: false, type: 'bool', defaultValue: false },
-            object_acl: { value: "private", type: 'select', allowedValues: ["authenticatedRead", "bucketOwnerFullControl", "bucketOwnerRead", "private", "projectPrivate", "publicRead"], defaultValue: "private" },
-            bucket_acl: { value: "private", type: 'select', allowedValues: ["authenticatedRead", "private", "projectPrivate", "publicRead", "publicReadWrite"], defaultValue: "private" }
+            object_acl: { value: "", type: 'select', allowedValues: ["", "authenticatedRead", "bucketOwnerFullControl", "bucketOwnerRead", "private", "projectPrivate", "publicRead"], defaultValue: "Default (private)" },
+            bucket_acl: { value: "", type: 'select', allowedValues: ["", "authenticatedRead", "private", "projectPrivate", "publicRead", "publicReadWrite"], defaultValue: "Default (private)" }
         },
         oAuthSupported: true
     }),

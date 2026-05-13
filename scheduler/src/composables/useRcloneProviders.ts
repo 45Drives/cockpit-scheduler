@@ -4,6 +4,8 @@ import { server, unwrap, Command } from '@45drives/houston-common-lib';
 //@ts-ignore
 import getRcloneProviderOptionsScript from '../scripts/get-rclone-provider-options.py?raw';
 
+import { cloudSyncProviders } from '../models/CloudSync';
+
 const textDecoder = new TextDecoder('utf-8');
 
 async function runCommand(
@@ -97,14 +99,48 @@ export function useRcloneProviders() {
     }
   }
 
+  // Build a map from rclone provider prefix → Set of parameter names defined in CloudSync.ts.
+  // Options matching these names are shown as "basic"; everything else is "advanced".
+  // Mapping: rclone prefix → CloudSync.ts key(s) for that provider type.
+  const prefixToCloudSyncKeys: Record<string, string[]> = {
+    'dropbox': ['dropbox'],
+    'drive': ['drive'],
+    'gcs': ['google cloud storage'],
+    'azureblob': ['azureblob'],
+    'b2': ['b2'],
+    's3': ['s3-Wasabi', 's3-AWS', 's3-Ceph', 's3-IDrive'],
+    'storj': ['storj'],
+  };
+
+  function getBasicParamNames(providerType: string): Set<string> {
+    const keys = prefixToCloudSyncKeys[providerType] ?? [];
+    const names = new Set<string>();
+    for (const key of keys) {
+      const provider = cloudSyncProviders[key];
+      if (provider) {
+        for (const paramName of Object.keys(provider.providerParams.parameters)) {
+          names.add(paramName);
+        }
+      }
+    }
+    return names;
+  }
+
   function getProviderOptions(providerType: string, subProvider?: string): RcloneOption[] {
     const opts = allProviders.value[providerType]?.options ?? [];
-    if (!subProvider) return opts;
-    // Filter options: include those with no sub-provider restriction,
-    // or those that list this sub-provider
-    return opts.filter(o => {
-      if (!o.providers || o.providers.length === 0) return true;
-      return o.providers.some(p => p.toLowerCase() === subProvider.toLowerCase());
+    const filtered = subProvider
+      ? opts.filter(o => {
+          if (!o.providers || o.providers.length === 0) return true;
+          return o.providers.some(p => p.toLowerCase() === subProvider.toLowerCase());
+        })
+      : opts;
+    // Override advanced flag: options defined in CloudSync.ts are basic, all others are advanced
+    const basicNames = getBasicParamNames(providerType);
+    return filtered.map(o => {
+      if (basicNames.has(o.name)) {
+        return o.advanced ? { ...o, advanced: false } : o;
+      }
+      return o.advanced ? o : { ...o, advanced: true };
     });
   }
 

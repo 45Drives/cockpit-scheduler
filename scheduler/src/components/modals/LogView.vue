@@ -184,7 +184,7 @@ import { Switch } from '@headlessui/vue';
 import Modal from '../../components/common/Modal.vue';
 import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../../composables/utility'
-import { logInjectionKey } from '../../keys/injection-keys';
+import { logInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface LogViewProps {
@@ -196,6 +196,7 @@ const props = defineProps<LogViewProps>();
 const emit = defineEmits(['close']);
 const showLogView = inject<Ref<boolean>>('show-log-view')!;
 const myTaskLog = injectWithCheck(logInjectionKey, "log not provided!");
+const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 const loadingLogs = ref(false);
 const loadingMoreLogs = ref(false);
 const taskInstance = ref(props.task);
@@ -211,7 +212,26 @@ const cleaningLogs = ref(false);
 const showCleanConfirmation = ref(false);
 const cleanConfirmationComponent = ref();
 
-const taskIsActive = computed(() => props.task.schedule.enabled);
+const taskIsRunning = ref(false);
+const taskIsActive = computed(() => props.task.schedule.enabled || taskIsRunning.value);
+
+async function checkRunningStatus() {
+    try {
+        const status = await myScheduler.getServiceStatus(taskInstance.value);
+        if (status) {
+            const lower = status.toLowerCase();
+            taskIsRunning.value =
+                (lower.includes('active (running)') ||
+                lower.includes('starting') ||
+                lower.includes('running')) &&
+                !lower.includes('failed');
+        } else {
+            taskIsRunning.value = false;
+        }
+    } catch {
+        taskIsRunning.value = false;
+    }
+}
 
 const closeModal = () => {
     showLogView.value = false;
@@ -323,6 +343,7 @@ const fetchLatestLog = async () => {
         const latestLog = await myTaskLog.getLatestEntryFor(taskInstance.value);
         if (latestLog) {
             thisLogEntry.value = latestLog;
+            autoScrollToBottom();
         }
     } catch (error) {
         console.error("Failed to fetch logs:", error);
@@ -349,6 +370,21 @@ const fetchAllLogs = async () => {
 
 const logContainer = ref<HTMLElement | null>(null);
 
+const isNearBottom = () => {
+    if (!logContainer.value) return true;
+    const { scrollTop, scrollHeight, clientHeight } = logContainer.value;
+    return scrollHeight - scrollTop - clientHeight < 80;
+};
+
+const autoScrollToBottom = () => {
+    if (!isNearBottom()) return;
+    nextTick(() => {
+        if (logContainer.value) {
+            logContainer.value.scrollTop = logContainer.value.scrollHeight;
+        }
+    });
+};
+
 const preserveScrollPosition = async (fetchFunction: () => Promise<void>) => {
     const previousScrollHeight = logContainer.value?.scrollHeight ?? 0;
     const previousScrollTop = logContainer.value?.scrollTop ?? 0;
@@ -366,13 +402,19 @@ const preserveScrollPosition = async (fetchFunction: () => Promise<void>) => {
 const startPolling = () => {
     stopPolling(); // Ensure no duplicate intervals
 
-    if (!taskIsActive.value) return; // Don't poll for inactive tasks
+    pollInterval.value = setInterval(async () => {
+        await checkRunningStatus();
 
-    pollInterval.value = setInterval(() => {
         if (!viewMoreLogs.value) {
-            fetchLatestLog(); // Keep polling latest logs
+            await fetchLatestLog(); // Keep polling latest logs
         }
-    }, 5000);
+
+        // If task is no longer active (not running and not scheduled), stop and do a final refresh
+        if (!taskIsActive.value) {
+            stopPolling();
+            await refreshLogs();
+        }
+    }, 2000);
 };
 
 const stopPolling = () => {
@@ -415,6 +457,7 @@ watch(viewMoreLogs, async (newVal) => {
         stopPolling(); // Stop polling when viewing all logs
         await preserveScrollPosition(refreshLogs); // Use the better refresh logic
     } else {
+        await checkRunningStatus();
         if (taskIsActive.value) {
             startPolling(); // Resume polling when viewing only the latest log (and task is active)
         }
@@ -428,10 +471,16 @@ onMounted(async () => {
         if (latestLog) {
             thisLogEntry.value = latestLog;
         }
+        await checkRunningStatus();
     } catch (error) {
         console.error("Failed to fetch initial logs:", error);
     } finally {
         loadingLogs.value = false;
+        nextTick(() => {
+            if (logContainer.value) {
+                logContainer.value.scrollTop = logContainer.value.scrollHeight;
+            }
+        });
     }
     if (taskIsActive.value) {
         startPolling();
