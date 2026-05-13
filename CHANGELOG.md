@@ -1,3 +1,3 @@
-## task scheduler 1.6.4-3
+## task scheduler 1.6.5-1
 
-* Updates task failure notification + retry logic/backend/frontend
+* Updates task logs to be truly live, adjusts organization of some rclone remote params for better UX
