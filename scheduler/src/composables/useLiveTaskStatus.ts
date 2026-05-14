@@ -368,29 +368,31 @@ export function useLiveTaskStatus(
         }
     }
 
-    let refreshAllInFlight = false;
+    let refreshAllInFlight: Promise<void> | null = null;
     async function refreshAll() {
-        if (refreshAllInFlight) return;
-        refreshAllInFlight = true;
-        try {
-            const tasks = tasksRef.value ?? [];
-            await Promise.all(tasks.map(refreshOne));
-            // Only mark initial poll done once we've actually processed tasks.
-            // This prevents the case where start() fires on an empty tasksRef,
-            // sets the flag, and then the watch-triggered refresh fires toasts.
-            if (!initialPollDone && tasks.length > 0) initialPollDone = true;
-        } finally {
-            refreshAllInFlight = false;
-        }
+        // If already in-flight, coalesce: return the active promise so direct
+        // callers (e.g. after user actions) still await the running refresh
+        // instead of silently no-oping.
+        if (refreshAllInFlight) return refreshAllInFlight;
+        refreshAllInFlight = (async () => {
+            try {
+                const tasks = tasksRef.value ?? [];
+                await Promise.all(tasks.map(refreshOne));
+                if (!initialPollDone && tasks.length > 0) initialPollDone = true;
+            } finally {
+                refreshAllInFlight = null;
+            }
+        })();
+        return refreshAllInFlight;
     }
 
-    let refreshProgressInFlight = false;
+    let refreshProgressInFlight: Promise<void> | null = null;
     async function refreshProgress() {
-        if (refreshProgressInFlight) return;
-        refreshProgressInFlight = true;
-        try {
-            const tasks = tasksRef.value ?? [];
-            await Promise.allSettled(tasks.map(async (t) => {
+        if (refreshProgressInFlight) return refreshProgressInFlight;
+        refreshProgressInFlight = (async () => {
+            try {
+                const tasks = tasksRef.value ?? [];
+                await Promise.allSettled(tasks.map(async (t) => {
             const id = taskId(t);
             // Only poll progress for running tasks
             const s = statusMap.value[id];
@@ -411,9 +413,11 @@ export function useLiveTaskStatus(
                 progressMap.value[id] = null;
             }
         }));
-        } finally {
-            refreshProgressInFlight = false;
-        }
+            } finally {
+                refreshProgressInFlight = null;
+            }
+        })();
+        return refreshProgressInFlight;
     }
 
     function start() {

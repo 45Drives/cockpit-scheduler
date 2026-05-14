@@ -272,6 +272,7 @@ function closeLogView() {
 const fetching = ref(false);
 const everLoaded = ref(false);
 const cachedRows = ref<any[]>([]);
+let isActive = true;
 
 const isBusy = computed(() => fetching.value || loading.value);
 const showInitialSpinner = computed(() => !everLoaded.value && isBusy.value);
@@ -283,16 +284,20 @@ const boot = async () => {
     try {
         await myScheduler.loadTaskInstances();
         await live.refreshAll();
-        live.start();
+        // Only start polling if the view is still active — a deactivation
+        // may have fired while we were awaiting the loads above.
+        if (isActive) {
+            live.start();
+        }
     } finally {
         fetching.value = false;
     }
 };
 
-onMounted(boot);
-onActivated(boot);
-onDeactivated(() => live.stop());
-onUnmounted(() => live.stop());
+onMounted(() => { isActive = true; boot(); });
+onActivated(() => { isActive = true; boot(); });
+onDeactivated(() => { isActive = false; live.stop(); });
+onUnmounted(() => { isActive = false; live.stop(); });
 
 // Only remote backups (Rsync Task + Cloud Sync Task + ZFS Replication Task)
 const remoteTasks = computed(() =>
