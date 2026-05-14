@@ -368,18 +368,29 @@ export function useLiveTaskStatus(
         }
     }
 
+    let refreshAllInFlight = false;
     async function refreshAll() {
-        const tasks = tasksRef.value ?? [];
-        await Promise.all(tasks.map(refreshOne));
-        // Only mark initial poll done once we've actually processed tasks.
-        // This prevents the case where start() fires on an empty tasksRef,
-        // sets the flag, and then the watch-triggered refresh fires toasts.
-        if (!initialPollDone && tasks.length > 0) initialPollDone = true;
+        if (refreshAllInFlight) return;
+        refreshAllInFlight = true;
+        try {
+            const tasks = tasksRef.value ?? [];
+            await Promise.all(tasks.map(refreshOne));
+            // Only mark initial poll done once we've actually processed tasks.
+            // This prevents the case where start() fires on an empty tasksRef,
+            // sets the flag, and then the watch-triggered refresh fires toasts.
+            if (!initialPollDone && tasks.length > 0) initialPollDone = true;
+        } finally {
+            refreshAllInFlight = false;
+        }
     }
 
+    let refreshProgressInFlight = false;
     async function refreshProgress() {
-        const tasks = tasksRef.value ?? [];
-        await Promise.allSettled(tasks.map(async (t) => {
+        if (refreshProgressInFlight) return;
+        refreshProgressInFlight = true;
+        try {
+            const tasks = tasksRef.value ?? [];
+            await Promise.allSettled(tasks.map(async (t) => {
             const id = taskId(t);
             // Only poll progress for running tasks
             const s = statusMap.value[id];
@@ -400,6 +411,9 @@ export function useLiveTaskStatus(
                 progressMap.value[id] = null;
             }
         }));
+        } finally {
+            refreshProgressInFlight = false;
+        }
     }
 
     function start() {
