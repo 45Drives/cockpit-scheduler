@@ -13,7 +13,7 @@ export interface SchedulerNotification {
 let _dbus: ReturnType<typeof cockpit.dbus> | null = null;
 function getHoustonDbus() {
   if (!_dbus) {
-    const dbus = cockpit.dbus("org._45drives.Houston");
+    const dbus = cockpit.dbus("org._45drives.Houston", { bus: "system" });
     dbus.addEventListener("close", () => {
       if (_dbus === dbus) {
         _dbus = null;
@@ -52,8 +52,11 @@ export const schedulerNotificationStore = reactive<{
       const parsed = JSON.parse(message) as SchedulerNotification;
       if (!isSchedulerEvent(parsed.event)) return;
 
-      const existing = schedulerNotificationStore.notifications.find(n => n.id === parsed.id);
-      if (existing) return;
+      // Dedupe by id if present; live signals may lack an id
+      if (parsed.id != null) {
+        const existing = schedulerNotificationStore.notifications.find(n => n.id === parsed.id);
+        if (existing) return;
+      }
 
       schedulerNotificationStore.notifications.unshift(parsed);
       this.notificationsCount += 1;

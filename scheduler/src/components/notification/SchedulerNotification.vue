@@ -102,6 +102,7 @@ const loadMoreTrigger = ref<HTMLElement | null>(null);
 const offset = ref(0);
 const limit = 50;
 const loading = ref(false);
+let active = true;
 
 async function loadMore() {
   if (loading.value) return;
@@ -166,7 +167,7 @@ function stopDbusListener() {
 onMounted(async () => {
   await store.countMissedNotifications();
   await loadMore();
-  startDbusListener();
+  if (active) startDbusListener();
 });
 
 onBeforeUnmount(() => {
@@ -176,10 +177,12 @@ onBeforeUnmount(() => {
 
 // KeepAlive support — pause/resume D-Bus listener
 onActivated(() => {
+  active = true;
   startDbusListener();
 });
 
 onDeactivated(() => {
+  active = false;
   stopDbusListener();
   detachObserver();
 });
