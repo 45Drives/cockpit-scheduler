@@ -73,6 +73,7 @@
             <!-- Dismiss -->
             <button
               class="shrink-0 p-0.5 text-gray-500 hover:text-red-500"
+              :aria-label="n.taskName ? `Dismiss notification for ${n.taskName}` : `Dismiss ${n.event === 'scheduler_task_success' ? 'task succeeded' : 'task failed'} notification`"
               @click.stop="store.markNotificationAsRead(n.id)"
             >
               <XMarkIcon class="w-4 h-4" />
