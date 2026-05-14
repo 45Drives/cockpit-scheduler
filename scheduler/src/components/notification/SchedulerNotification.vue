@@ -176,8 +176,10 @@ onBeforeUnmount(() => {
 });
 
 // KeepAlive support — pause/resume D-Bus listener
-onActivated(() => {
+onActivated(async () => {
   active = true;
+  await store.countMissedNotifications();
+  await loadMore();
   startDbusListener();
 });
 
