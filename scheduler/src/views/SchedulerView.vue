@@ -19,6 +19,7 @@
                 <button @click="settingsBtn()" class="btn btn-secondary h-fit" title="Scheduler Settings">
                     <Cog6ToothIcon class="w-5 h-5 m-0.5" />
                 </button>
+                <SchedulerNotification />
             </div>
         </div>
 
@@ -151,6 +152,7 @@ import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { useLiveTaskStatus } from '../composables/useLiveTaskStatus';
+import SchedulerNotification from '../components/notification/SchedulerNotification.vue';
 
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
