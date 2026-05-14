@@ -380,7 +380,8 @@ export function useLiveTaskStatus(
     async function refreshAll(fromTimer = false) {
         if (refreshAllInFlight) {
             if (fromTimer) return refreshAllInFlight;   // timer: coalesce
-            await refreshAllInFlight;                   // explicit: wait, then fall through to fresh refresh
+            await refreshAllInFlight;                   // explicit: wait for current refresh to finish
+            if (refreshAllInFlight) return refreshAllInFlight; // another explicit caller already started fresh refresh
         }
         refreshAllInFlight = (async () => {
             try {
