@@ -202,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onActivated, onUnmounted, onMounted, watch, provide } from 'vue';
+import { computed, ref, onActivated, onDeactivated, onUnmounted, onMounted, watch, provide } from 'vue';
 import { ArrowPathIcon, PlusIcon, PlayIcon, StopIcon, DocumentTextIcon, PencilSquareIcon, TrashIcon, CircleStackIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
@@ -291,6 +291,7 @@ const boot = async () => {
 
 onMounted(boot);
 onActivated(boot);
+onDeactivated(() => live.stop());
 onUnmounted(() => live.stop());
 
 // Only remote backups (Rsync Task + Cloud Sync Task + ZFS Replication Task)
