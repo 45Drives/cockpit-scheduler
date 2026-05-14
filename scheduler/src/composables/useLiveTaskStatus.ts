@@ -369,11 +369,19 @@ export function useLiveTaskStatus(
     }
 
     let refreshAllInFlight: Promise<void> | null = null;
-    async function refreshAll() {
-        // If already in-flight, coalesce: return the active promise so direct
-        // callers (e.g. after user actions) still await the running refresh
-        // instead of silently no-oping.
-        if (refreshAllInFlight) return refreshAllInFlight;
+    /**
+     * Refresh status for all tasks.
+     * @param fromTimer - true when called by setInterval; these calls
+     *   coalesce (return the active promise) to avoid stacking polls.
+     *   Explicit (non-timer) calls wait for any in-flight poll to finish,
+     *   then perform a fresh refresh so the caller always sees post-action
+     *   state.
+     */
+    async function refreshAll(fromTimer = false) {
+        if (refreshAllInFlight) {
+            if (fromTimer) return refreshAllInFlight;   // timer: coalesce
+            await refreshAllInFlight;                   // explicit: wait, then fall through to fresh refresh
+        }
         refreshAllInFlight = (async () => {
             try {
                 const tasks = tasksRef.value ?? [];
@@ -425,7 +433,7 @@ export function useLiveTaskStatus(
         polling.value = true;
         refreshAll();
         refreshProgress();
-        intervalId = window.setInterval(refreshAll, opts?.intervalMs ?? 1500);
+        intervalId = window.setInterval(() => refreshAll(true), opts?.intervalMs ?? 1500);
         progressIntervalId = window.setInterval(refreshProgress, 5000);
     }
 
@@ -501,7 +509,7 @@ export function useLiveTaskStatus(
     }
 
     onUnmounted(stop);
-    watch(tasksRef, () => { if (polling.value) refreshAll(); }, { deep: true });
+    watch(tasksRef, () => { if (polling.value) refreshAll(true); }, { deep: true });
 
     return {
         start,
