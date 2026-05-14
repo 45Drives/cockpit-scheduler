@@ -1,3 +1,3 @@
-## task scheduler 1.6.4-3
+## task scheduler 1.6.5-2
 
-* Updates task failure notification + retry logic/backend/frontend
+* Build #2 - updating task script file used in migration of old tasks

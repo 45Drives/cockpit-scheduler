@@ -1,3 +1,16 @@
+cockpit-scheduler (1.6.5-2bookworm) bookworm; urgency=medium
+
+  * Build #2 - updating task script file used in migration of old tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 13 May 2026 12:16:08 -0300
+
+cockpit-scheduler (1.6.5-1bookworm) bookworm; urgency=medium
+
+  * Updates task logs to be truly live, adjusts organization of some rclone remote
+    params for better UX
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 13 May 2026 05:41:20 -0300
+
 cockpit-scheduler (1.6.4-3bookworm) bookworm; urgency=medium
 
   * Updates task failure notification + retry logic/backend/frontend
