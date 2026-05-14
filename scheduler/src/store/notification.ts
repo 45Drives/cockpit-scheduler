@@ -102,16 +102,12 @@ export const schedulerNotificationStore = reactive<{
   async clearAllNotifications() {
     try {
       const dbus = getHoustonDbus();
-      // Mark each scheduler notification as read individually
-      // (MarkAllNotificationsAsRead is global and would affect other modules)
-      const ids = schedulerNotificationStore.notifications.map(n => n.id);
-      await Promise.allSettled(
-        ids.map(id => dbus.call(
-          "/org/_45drives/Houston",
-          "org._45drives.Houston",
-          "MarkNotificationAsRead",
-          [id]
-        ))
+      // Mark all scheduler-scoped notifications as read in one call
+      await dbus.call(
+        "/org/_45drives/Houston",
+        "org._45drives.Houston",
+        "MarkAllNotificationsByEventsAsRead",
+        [SCHEDULER_EVENTS_JSON]
       );
       schedulerNotificationStore.notifications = [];
       this.notificationsCount = 0;
@@ -141,18 +137,24 @@ async function updateSidebar(): Promise<void> {
   const count = schedulerNotificationStore.notificationsCount;
   const dbus = getHoustonDbus();
   try {
-    const [severity] = await dbus.call(
-      "/org/_45drives/Houston",
-      "org._45drives.Houston",
-      "GetHighestMissedSeverityByEvents",
-      [SCHEDULER_EVENTS_JSON]
-    );
-    (cockpit.transport as any).control("notify", {
-      page_status: {
-        type: count > 0 ? severity : null,
-        title: cockpit.gettext(`${count} Notifications available`)
-      }
-    });
+    if (count > 0) {
+      const [severity] = await dbus.call(
+        "/org/_45drives/Houston",
+        "org._45drives.Houston",
+        "GetHighestMissedSeverityByEvents",
+        [SCHEDULER_EVENTS_JSON]
+      );
+      (cockpit.transport as any).control("notify", {
+        page_status: {
+          type: severity,
+          title: cockpit.gettext(`${count} Notifications available`)
+        }
+      });
+    } else {
+      (cockpit.transport as any).control("notify", {
+        page_status: null
+      });
+    }
   } catch {
     // ignore
   }

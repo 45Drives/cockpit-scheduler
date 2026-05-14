@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from "vue";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
 import { BellIcon, XMarkIcon } from "@heroicons/vue/24/outline";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/vue/24/outline";
@@ -95,8 +95,7 @@ import { schedulerNotificationStore as store } from "../../store/notification";
 
 // D-Bus listener for real-time notifications
 let dbusClient: ReturnType<typeof cockpit.dbus> | null = null;
-let dbusProxy: any = null;
-let messageHandler: ((event: any, message: any) => void) | null = null;
+let subscription: { remove(): void } | null = null;
 
 const loadMoreTrigger = ref<HTMLElement | null>(null);
 const offset = ref(0);
@@ -113,49 +112,74 @@ async function loadMore() {
 
 let observer: IntersectionObserver | null = null;
 
-onMounted(async () => {
-  // Initial count + first page
-  await store.countMissedNotifications();
-  await loadMore();
+function attachObserver(el: HTMLElement | null) {
+  if (!el || observer) return;
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0]?.isIntersecting) loadMore();
+    },
+    { threshold: 1.0 }
+  );
+  observer.observe(el);
+}
 
-  // Set up D-Bus listener for real-time notifications
+function detachObserver() {
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+}
+
+// Watch for the sentinel element to appear (MenuItems only renders when menu is open)
+watch(loadMoreTrigger, (el) => {
+  if (el) attachObserver(el);
+  else detachObserver();
+});
+
+function startDbusListener() {
+  if (dbusClient) return; // already running
   try {
-    dbusClient = cockpit.dbus("org._45drives.Houston");
-    dbusProxy = await dbusClient.proxy("org._45drives.Houston", "/org/_45drives/Houston");
-    messageHandler = (_, message) => {
-      store.addNotification(message);
-    };
-    dbusProxy.addEventListener("Message", messageHandler);
+    dbusClient = cockpit.dbus("org._45drives.Houston", { bus: "system" });
+    subscription = dbusClient.subscribe(
+      { interface: "org._45drives.Houston", member: "Message" },
+      (_path: string, _iface: string, _signal: string, args: any[]) => {
+        if (typeof args[0] === "string") store.addNotification(args[0]);
+      }
+    );
   } catch (error) {
     console.error("Error setting up scheduler notification listener:", error);
   }
+}
 
-  // Infinite scroll
-  if (loadMoreTrigger.value) {
-    observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMore();
-      },
-      { threshold: 1.0 }
-    );
-    observer.observe(loadMoreTrigger.value);
-  }
-});
-
-onBeforeUnmount(() => {
-  if (dbusProxy && messageHandler) {
-    try { dbusProxy.removeEventListener("Message", messageHandler); } catch {}
+function stopDbusListener() {
+  if (subscription) {
+    try { subscription.remove(); } catch {}
+    subscription = null;
   }
   if (dbusClient) {
     try { dbusClient.close(); } catch {}
     dbusClient = null;
   }
-  dbusProxy = null;
-  messageHandler = null;
+}
 
-  if (observer) {
-    observer.disconnect();
-    observer = null;
-  }
+onMounted(async () => {
+  await store.countMissedNotifications();
+  await loadMore();
+  startDbusListener();
+});
+
+onBeforeUnmount(() => {
+  stopDbusListener();
+  detachObserver();
+});
+
+// KeepAlive support — pause/resume D-Bus listener
+onActivated(() => {
+  startDbusListener();
+});
+
+onDeactivated(() => {
+  stopDbusListener();
+  detachObserver();
 });
 </script>
