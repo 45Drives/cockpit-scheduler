@@ -368,29 +368,40 @@ export function useLiveTaskStatus(
         }
     }
 
-    let refreshAllInFlight = false;
-    async function refreshAll() {
-        if (refreshAllInFlight) return;
-        refreshAllInFlight = true;
-        try {
-            const tasks = tasksRef.value ?? [];
-            await Promise.all(tasks.map(refreshOne));
-            // Only mark initial poll done once we've actually processed tasks.
-            // This prevents the case where start() fires on an empty tasksRef,
-            // sets the flag, and then the watch-triggered refresh fires toasts.
-            if (!initialPollDone && tasks.length > 0) initialPollDone = true;
-        } finally {
-            refreshAllInFlight = false;
+    let refreshAllInFlight: Promise<void> | null = null;
+    /**
+     * Refresh status for all tasks.
+     * @param fromTimer - true when called by setInterval; these calls
+     *   coalesce (return the active promise) to avoid stacking polls.
+     *   Explicit (non-timer) calls wait for any in-flight poll to finish,
+     *   then perform a fresh refresh so the caller always sees post-action
+     *   state.
+     */
+    async function refreshAll(fromTimer = false) {
+        if (refreshAllInFlight) {
+            if (fromTimer) return refreshAllInFlight;   // timer: coalesce
+            await refreshAllInFlight;                   // explicit: wait for current refresh to finish
+            if (refreshAllInFlight) return refreshAllInFlight; // another explicit caller already started fresh refresh
         }
+        refreshAllInFlight = (async () => {
+            try {
+                const tasks = tasksRef.value ?? [];
+                await Promise.all(tasks.map(refreshOne));
+                if (!initialPollDone && tasks.length > 0) initialPollDone = true;
+            } finally {
+                refreshAllInFlight = null;
+            }
+        })();
+        return refreshAllInFlight;
     }
 
-    let refreshProgressInFlight = false;
+    let refreshProgressInFlight: Promise<void> | null = null;
     async function refreshProgress() {
-        if (refreshProgressInFlight) return;
-        refreshProgressInFlight = true;
-        try {
-            const tasks = tasksRef.value ?? [];
-            await Promise.allSettled(tasks.map(async (t) => {
+        if (refreshProgressInFlight) return refreshProgressInFlight;
+        refreshProgressInFlight = (async () => {
+            try {
+                const tasks = tasksRef.value ?? [];
+                await Promise.allSettled(tasks.map(async (t) => {
             const id = taskId(t);
             // Only poll progress for running tasks
             const s = statusMap.value[id];
@@ -411,9 +422,11 @@ export function useLiveTaskStatus(
                 progressMap.value[id] = null;
             }
         }));
-        } finally {
-            refreshProgressInFlight = false;
-        }
+            } finally {
+                refreshProgressInFlight = null;
+            }
+        })();
+        return refreshProgressInFlight;
     }
 
     function start() {
@@ -421,7 +434,7 @@ export function useLiveTaskStatus(
         polling.value = true;
         refreshAll();
         refreshProgress();
-        intervalId = window.setInterval(refreshAll, opts?.intervalMs ?? 1500);
+        intervalId = window.setInterval(() => refreshAll(true), opts?.intervalMs ?? 1500);
         progressIntervalId = window.setInterval(refreshProgress, 5000);
     }
 
@@ -497,7 +510,7 @@ export function useLiveTaskStatus(
     }
 
     onUnmounted(stop);
-    watch(tasksRef, () => { if (polling.value) refreshAll(); }, { deep: true });
+    watch(tasksRef, () => { if (polling.value) refreshAll(true); }, { deep: true });
 
     return {
         start,

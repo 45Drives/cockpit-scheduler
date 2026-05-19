@@ -1,3 +1,15 @@
+cockpit-scheduler (1.6.6-2focal) focal; urgency=medium
+
+  * Updating testing package
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 14 May 2026 10:35:53 -0300
+
+cockpit-scheduler (1.6.6-1focal) focal; urgency=medium
+
+  * Testing package for dbus/polling leak fixes
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 14 May 2026 06:57:27 -0300
+
 cockpit-scheduler (1.6.5-2focal) focal; urgency=medium
 
   * Build #2 - updating task script file used in migration of old tasks
