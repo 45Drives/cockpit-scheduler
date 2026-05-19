@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.6-3jammy) jammy; urgency=medium
+
+  * New package with backend dbus leaks fixed
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 19 May 2026 12:46:41 -0300
+
 cockpit-scheduler (1.6.6-2jammy) jammy; urgency=medium
 
   * Updating testing package

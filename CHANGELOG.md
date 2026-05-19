@@ -1,3 +1,3 @@
-## task scheduler 1.6.6-2
+## task scheduler 1.6.6-3
 
-* Updating testing package
+* New package with backend dbus leaks fixed
