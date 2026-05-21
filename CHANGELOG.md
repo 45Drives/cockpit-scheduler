@@ -1,3 +1,3 @@
-## task scheduler 1.6.6-3
+## task scheduler 1.6.7-1
 
-* New package with backend dbus leaks fixed
+* Hotfix for issue: non-root user with elevated/superuser status not being able to see all task types

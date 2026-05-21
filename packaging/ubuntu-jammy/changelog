@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.7-1jammy) jammy; urgency=medium
+
+  * Hotfix for issue: non-root user with elevated/superuser status not being able
+    to see all task types
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 21 May 2026 08:58:53 -0300
+
 cockpit-scheduler (1.6.6-3jammy) jammy; urgency=medium
 
   * New package with backend dbus leaks fixed
