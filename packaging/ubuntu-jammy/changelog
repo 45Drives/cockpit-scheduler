@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.7-2jammy) jammy; urgency=medium
+
+  * Fixes secondary permission object race condition by removing and using one singular
+    permission object now
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 21 May 2026 10:05:29 -0300
+
 cockpit-scheduler (1.6.7-1jammy) jammy; urgency=medium
 
   * Hotfix for issue: non-root user with elevated/superuser status not being able

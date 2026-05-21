@@ -744,15 +744,15 @@ export async function currentUserIsPrivileged(): Promise<boolean> {
 	const result = isAdminByPermission || isAdminByGroup;
 	
 	// Debug logging
-	console.log('[Task Scheduler] Privilege check:', {
-		username: u?.name,
-		uid: u?.id,
-		groups,
-		permissionAllowed: perm.allowed,
-		isAdminByPermission,
-		isAdminByGroup,
-		finalResult: result
-	});
+	// console.log('[Task Scheduler] Privilege check:', {
+	// 	username: u?.name,
+	// 	uid: u?.id,
+	// 	groups,
+	// 	permissionAllowed: perm.allowed,
+	// 	isAdminByPermission,
+	// 	isAdminByGroup,
+	// 	finalResult: result
+	// });
 	
 	return result;
 }
