@@ -36,7 +36,7 @@ import {
 import { RemoteManager } from './models/RemoteManager';
 import { CloudSyncRemote } from './models/CloudSync';
 import { router } from './router';
-import { currentUserIsPrivileged } from './composables/utility';
+import { currentUserIsPrivileged, getAdminPermission } from './composables/utility';
 
 const appVersion = __APP_VERSION__;
 
@@ -117,7 +117,8 @@ onMounted(async () => {
 	taskTemplates.splice(0, taskTemplates.length, ...filtered);
 
 	// Listen for permission changes (e.g., when user elevates to admin)
-	const perm = (window as any).cockpit.permission({ admin: true });
+	// Use the SAME permission object that currentUserIsPrivileged() uses
+	const perm = getAdminPermission();
 	const onPermissionChanged = async () => {
 		const isAdminNow = await currentUserIsPrivileged();
 		const newFiltered = filterTemplatesForPrivilege(initializeTaskTemplates(), isAdminNow);

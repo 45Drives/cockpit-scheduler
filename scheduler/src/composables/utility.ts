@@ -698,6 +698,9 @@ export async function testOrSetupSSH(opts: {
 	}
 }
 
+// Shared permission object for admin privilege checking
+let adminPermission: any = null;
+
 // Helper: wait for the permission object to resolve its initial state
 async function waitForPermission(perm: any): Promise<void> {
 	return new Promise(resolve => {
@@ -717,21 +720,41 @@ async function waitForPermission(perm: any): Promise<void> {
 	});
 }
 
+export function getAdminPermission(): any {
+	if (!adminPermission) {
+		adminPermission = (window as any).cockpit.permission({ admin: true });
+	}
+	return adminPermission;
+}
+
 export async function currentUserIsPrivileged(): Promise<boolean> {
 	const u = await (window as any).cockpit.user();
 	const groups: string[] = u?.groups || [];
 	
-	// Create a permission object for "admin" actions
-	const perm = (window as any).cockpit.permission({ admin: true });
+	// Use shared permission object for "admin" actions
+	const perm = getAdminPermission();
 	
 	// Give the permission object a beat to populate .allowed (handles async refresh)
 	await waitForPermission(perm);
 	
-	// Check both cockpit permission (for elevated users) and group membership
+	// Prefer cockpit permission (detects sudo/polkit), fallback to group membership
 	const isAdminByPermission = !!perm.allowed;
 	const isAdminByGroup = (u?.id === 0) || groups.includes('wheel') || groups.includes('sudo') || groups.includes('admin') || groups.includes('adm');
 	
-	return isAdminByPermission || isAdminByGroup;
+	const result = isAdminByPermission || isAdminByGroup;
+	
+	// Debug logging
+	console.log('[Task Scheduler] Privilege check:', {
+		username: u?.name,
+		uid: u?.id,
+		groups,
+		permissionAllowed: perm.allowed,
+		isAdminByPermission,
+		isAdminByGroup,
+		finalResult: result
+	});
+	
+	return result;
 }
 
 
