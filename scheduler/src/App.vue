@@ -111,9 +111,19 @@ onMounted(async () => {
 
 	loading.value = true;
 
+	// Initial privilege check and filter
 	const isAdmin = await currentUserIsPrivileged();
 	const filtered = filterTemplatesForPrivilege([...taskTemplates], isAdmin);
 	taskTemplates.splice(0, taskTemplates.length, ...filtered);
+
+	// Listen for permission changes (e.g., when user elevates to admin)
+	const perm = (window as any).cockpit.permission({ admin: true });
+	const onPermissionChanged = async () => {
+		const isAdminNow = await currentUserIsPrivileged();
+		const newFiltered = filterTemplatesForPrivilege(initializeTaskTemplates(), isAdminNow);
+		taskTemplates.splice(0, taskTemplates.length, ...newFiltered);
+	};
+	perm.addEventListener?.('changed', onPermissionChanged);
 
 	await myScheduler.init();
 

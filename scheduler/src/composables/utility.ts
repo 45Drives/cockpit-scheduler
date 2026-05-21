@@ -698,10 +698,40 @@ export async function testOrSetupSSH(opts: {
 	}
 }
 
+// Helper: wait for the permission object to resolve its initial state
+async function waitForPermission(perm: any): Promise<void> {
+	return new Promise(resolve => {
+		// If the library has already determined .allowed, resolve on next tick
+		if (typeof perm.allowed !== "undefined") {
+			resolve();
+			return;
+		}
+		// Otherwise wait for the first 'changed' event
+		const onChanged = () => {
+			perm.removeEventListener?.("changed", onChanged);
+			resolve();
+		};
+		perm.addEventListener?.("changed", onChanged);
+		// Some cockpit versions also expose .watch; fall back to a microtask if events aren't available
+		setTimeout(resolve, 0);
+	});
+}
+
 export async function currentUserIsPrivileged(): Promise<boolean> {
 	const u = await (window as any).cockpit.user();
 	const groups: string[] = u?.groups || [];
-	return (u?.id === 0) || groups.includes('wheel') || groups.includes('sudo');
+	
+	// Create a permission object for "admin" actions
+	const perm = (window as any).cockpit.permission({ admin: true });
+	
+	// Give the permission object a beat to populate .allowed (handles async refresh)
+	await waitForPermission(perm);
+	
+	// Check both cockpit permission (for elevated users) and group membership
+	const isAdminByPermission = !!perm.allowed;
+	const isAdminByGroup = (u?.id === 0) || groups.includes('wheel') || groups.includes('sudo') || groups.includes('admin') || groups.includes('adm');
+	
+	return isAdminByPermission || isAdminByGroup;
 }
 
 
