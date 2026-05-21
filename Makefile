@@ -24,8 +24,8 @@ endif
 PLUGIN_SRCS=scheduler
 
 # For installing to a remote machine for testing with `make install-remote`
-REMOTE_TEST_HOST=172.19.121.17
-REMOTE_TEST_USER=trev
+REMOTE_TEST_HOST=192.168.123.5
+REMOTE_TEST_USER=root
 
 # Restarts cockpit after install
 RESTART_COCKPIT?=0
