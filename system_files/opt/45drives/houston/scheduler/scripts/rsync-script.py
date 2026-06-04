@@ -81,7 +81,7 @@ def normalize_dest_path_for_file_copy(dest_path):
 
 def build_rsync_command(options):
     # Base rsync options: human-readable with progress
-    command = ['rsync', '-h', '--progress', '--info=progress2', '--stats']
+    command = ['rsync', '-h', '--protect-args', '--progress', '--info=progress2', '--stats']
 
     custom = options.get('customArgs') or ''
     custom_parts = []
@@ -150,13 +150,13 @@ def build_rsync_command(options):
     if options['targetHost']:
         if options['targetPort'] and int(options['targetPort']) != 22:
             remote_command = f"ssh -p {options['targetPort']}"
-            command.append(f"-e {remote_command}")
+            command.extend(['-e', remote_command])
         else:
-            command.append("-e ssh")
+            command.extend(['-e', 'ssh'])
 
     if options['targetHost'] and options['direction'] == 'push':
         remote_parent = os.path.dirname(options['targetPath'].rstrip('/'))
-        rsync_path_cmd = f"mkdir -p '{remote_parent}' && rsync"
+        rsync_path_cmd = f"mkdir -p {shlex.quote(remote_parent)} && rsync"
         command.append(f"--rsync-path={rsync_path_cmd}")
 
     command.extend(custom_parts)
@@ -212,10 +212,18 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
         if not os.path.isdir(src.rstrip('/')):
             print("Error: Parallel mode requires the source to be a directory.")
             sys.exit(2)
+        if '--delete' in command:
+            print("Error: Parallel mode is not compatible with --delete.")
+            sys.exit(2)
             
         print(f'Transferring using {parallelThreads} parallel threads from {src} to {dest}')
-        rsync_command = " ".join(command)
-        parallel_command = f'ls -1 {src} | xargs -I {{}} -P {parallelThreads} -n 1 {rsync_command} {src} {dest}'
+
+        src_root = src.rstrip('/')
+        rsync_command = shlex_join(command)
+        parallel_command = (
+            f'find {shlex.quote(src_root)} -mindepth 1 -maxdepth 1 -print0 | '
+            f'xargs -0 -I {{}} -P {parallelThreads} -n 1 {rsync_command} "{{}}" {shlex.quote(dest)}'
+        )
 
         print(f'Executing command: {parallel_command}')
 
