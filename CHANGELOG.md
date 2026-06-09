@@ -1,3 +1,3 @@
-## task scheduler 1.6.7-2
+## task scheduler 1.6.8-1
 
-* Fixes secondary permission object race condition by removing and using one singular permission object now
+* Updates some python scripts for backwards compatibility
