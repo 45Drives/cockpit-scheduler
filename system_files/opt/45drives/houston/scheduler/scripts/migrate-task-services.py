@@ -94,7 +94,12 @@ def main():
             "-sP", script_path,
             "-e", env_path,
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
         if result.returncode != 0:
             err_msg = result.stderr.strip() or result.stdout.strip()
             errors.append((service_name, err_msg))

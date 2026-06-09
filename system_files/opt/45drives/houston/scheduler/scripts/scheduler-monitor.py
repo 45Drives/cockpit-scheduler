@@ -86,7 +86,10 @@ def get_service_result(unit):
                 "systemctl", "show", unit,
                 "-p", "Result,ExecMainStatus,ActiveEnterTimestamp,InactiveEnterTimestamp",
             ],
-            capture_output=True, text=True, timeout=5,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=5,
         )
         props = {}
         for line in result.stdout.strip().split("\n"):
@@ -104,7 +107,10 @@ def get_journal_tail(unit, lines=30):
     try:
         result = subprocess.run(
             ["journalctl", "-u", unit, "--no-pager", "-n", str(lines), "--output=cat"],
-            capture_output=True, text=True, timeout=10,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=10,
         )
         return result.stdout.strip()
     except Exception:
@@ -206,7 +212,7 @@ def main():
             "SYSLOG_IDENTIFIER=systemd",
         ],
         stdout=subprocess.PIPE,
-        text=True,
+        universal_newlines=True,
     )
 
     try:

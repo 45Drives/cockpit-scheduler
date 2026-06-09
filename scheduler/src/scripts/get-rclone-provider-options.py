@@ -35,7 +35,10 @@ def get_rclone_providers(filter_types=None):
     try:
         result = subprocess.run(
             ["rclone", "config", "providers"],
-            capture_output=True, text=True, timeout=30
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=30
         )
         if result.returncode != 0:
             print(json.dumps({"error": f"rclone failed: {result.stderr.strip()}"}))
