@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.9-1jammy) jammy; urgency=medium
+
+  * Improves pipe errors failing ungracefully + status updates/progress
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 12 Jun 2026 08:59:24 -0300
+
 cockpit-scheduler (1.6.8-1jammy) jammy; urgency=medium
 
   * Updates some python scripts for backwards compatibility

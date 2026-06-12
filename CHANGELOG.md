@@ -1,3 +1,3 @@
-## task scheduler 1.6.8-1
+## task scheduler 1.6.9-1
 
-* Updates some python scripts for backwards compatibility
+* Improves pipe errors failing ungracefully + status updates/progress
