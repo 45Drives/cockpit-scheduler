@@ -1643,7 +1643,7 @@ export class Scheduler implements SchedulerType {
         }
     }
 
-    async getTaskProgress(taskInstance: TaskInstanceType): Promise<number | null> {
+    async getTaskProgress(taskInstance: TaskInstanceType): Promise<{ percent: number | null; label: string | null }> {
         await this.ensureBackend();
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
@@ -1653,10 +1653,11 @@ export class Scheduler implements SchedulerType {
                 const st: any = await daemon.getStatus(templateName, taskInstance.name);
                 const txt = String(st?.service || '');
 
-                const match = txt.match(/(\d+)%/);
-                return match ? parseInt(match[1], 10) : null;
+                const match = txt.match(/(\d+(?:\.\d+)?)%/);
+                if (match) return { percent: parseFloat(match[1]), label: null };
+                return { percent: null, label: txt || null };
             } catch {
-                return null;
+                return { percent: null, label: null };
             }
         }
 
@@ -1670,10 +1671,11 @@ export class Scheduler implements SchedulerType {
                 { superuser: 'try' }
             );
             const txt = (stdout || '').trim();
-            const match = txt.match(/(\d+)%/);
-            return match ? parseInt(match[1], 10) : null;
+            const match = txt.match(/(\d+(?:\.\d+)?)%/);
+            if (match) return { percent: parseFloat(match[1]), label: null };
+            return { percent: null, label: txt || null };
         } catch {
-            return null;
+            return { percent: null, label: null };
         }
     }
 

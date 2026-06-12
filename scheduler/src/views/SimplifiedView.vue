@@ -172,7 +172,7 @@
                             class="h-full bg-primary rounded-full animate-pulse w-full" />
                     </div>
                     <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
-                        {{ row.progress != null ? Math.round(row.progress) + '%' : 'Running…' }}
+                        {{ row.progress != null ? row.progress.toFixed(1) + '%' : (row.progressLabel || 'Running…') }}
                     </span>
                 </div>
             </div>
@@ -495,6 +495,7 @@ const rows = computed(() => {
             details: detailsFor(t),
             status: live.statusFor(t) ?? '—',
             progress: live.progressFor(t),
+            progressLabel: live.progressLabelFor(t),
             isRunning: live.isRunningNow(t),
             schedule: getSchedule(t),
             lastRun: live.lastRunFor(t) ?? getLastRun(t),

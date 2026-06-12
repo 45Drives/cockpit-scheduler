@@ -61,8 +61,8 @@
 					<div v-else class="h-2 rounded w-full animate-pulse bg-slate-400 dark:bg-slate-500"></div>
 				</div>
 				<div class="text-xs mt-1">
-					<span v-if="!isIndeterminate">{{ Math.round(progress ?? 0) }}%</span>
-					<span v-else>Running…</span>
+					<span v-if="!isIndeterminate">{{ (progress ?? 0).toFixed(1) }}%</span>
+					<span v-else>{{ progressLabel || 'Running…' }}</span>
 				</div>
 			</div>
 		</td>
@@ -258,20 +258,24 @@ const isInactive = computed(() => liveIsInactive(taskInstance.value));
 
 // Progress tracking (separate from status)
 const progress = ref<number | null>(null);
+const progressLabel = ref<string | null>(null);
 const showProgressBar = computed(() => isRunning.value);
 const isIndeterminate = computed(() => isRunning.value && progress.value === null);
 
 async function updateProgress(task: TaskInstanceType) {
 	try {
-		const p = await myScheduler.getTaskProgress(task);
-		if (typeof p === 'number' && Number.isFinite(p)) {
-			progress.value = p;
+		const result = await myScheduler.getTaskProgress(task);
+		if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
+			progress.value = result.percent;
+			progressLabel.value = null;
 		} else {
 			progress.value = null;
+			progressLabel.value = result?.label ?? null;
 		}
 	} catch (e) {
 		console.error('Failed to get progress:', e);
 		progress.value = null;
+		progressLabel.value = null;
 	}
 }
 

@@ -128,7 +128,7 @@ def main():
         start_scrub(pool)
 
         # Poll progress until scrub is done
-        last_pct_int = None
+        last_pct = None
         while True:
             state, pct = get_scrub_progress(pool)
             if state is None:
@@ -138,10 +138,10 @@ def main():
 
             if "in progress" in state or "resilver" in state:
                 if pct is not None:
-                    pct_int = int(pct)
-                    if pct_int != last_pct_int:
-                        last_pct_int = pct_int
-                        notifier.notify(f"STATUS=Scrubbing {pool}… {pct_int}% complete")
+                    pct_rounded = round(pct, 1)
+                    if pct_rounded != last_pct:
+                        last_pct = pct_rounded
+                        notifier.notify(f"STATUS=Scrubbing {pool}… {pct_rounded:.1f}% complete")
                 else:
                     notifier.notify(f"STATUS=Scrubbing {pool}… in progress")
                 time.sleep(10)

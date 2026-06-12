@@ -489,10 +489,12 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
         out = (p.stdout or b"")
         if isinstance(out, str):
             out = out.encode()
-        for line in out.decode(errors="replace").splitlines():
+        for raw_line in out.split(b"\n"):
+            line = raw_line.decode(errors="replace")
             snap = parse_snapshot_line(line)
             if snap:
                 snapshots.append(snap)
+        del out  # free raw bytes early
 
         # Fetch task tags from remote for ownership tracking
         tag_map = {}
@@ -504,13 +506,14 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
                 tag_out = (tag_p.stdout or b"")
                 if isinstance(tag_out, str):
                     tag_out = tag_out.encode()
-                for line in tag_out.decode(errors="replace").splitlines():
+                for raw_line in tag_out.split(b"\n"):
                     try:
-                        name, prop, value = line.split("\t")
-                        if prop == TASK_PROP and value != "-":
-                            tag_map[name] = value
-                    except ValueError:
+                        parts = raw_line.decode(errors="replace").split("\t")
+                        if len(parts) >= 3 and parts[1] == TASK_PROP and parts[2] != "-":
+                            tag_map[parts[0]] = parts[2]
+                    except (ValueError, IndexError):
                         continue
+                del tag_out
         except Exception:
             pass
         try:
@@ -520,13 +523,14 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
                 tier_out = (tier_p.stdout or b"")
                 if isinstance(tier_out, str):
                     tier_out = tier_out.encode()
-                for line in tier_out.decode(errors="replace").splitlines():
+                for raw_line in tier_out.split(b"\n"):
                     try:
-                        name, prop, value = line.split("\t")
-                        if prop == TIER_PROP and value != "-":
-                            tier_map[name] = value
-                    except ValueError:
+                        parts = raw_line.decode(errors="replace").split("\t")
+                        if len(parts) >= 3 and parts[1] == TIER_PROP and parts[2] != "-":
+                            tier_map[parts[0]] = parts[2]
+                    except (ValueError, IndexError):
                         continue
+                del tier_out
         except Exception:
             pass
         for s in snapshots:
@@ -586,74 +590,127 @@ class StreamCapture:
         return b"".join(self._lines).decode(errors="replace")
 
 
+def _parse_send_size_output(raw: bytes):
+    """Parse zfs send -nP output and return total estimated bytes.
+
+    For non-recursive sends, looks for a 'size' summary line.
+    For recursive (-R) sends, sums the last numeric field of each
+    'full' or 'incremental' line.
+    """
+    total = 0
+    found_size_line = False
+    for raw_line in raw.split(b"\n"):
+        line = raw_line.decode(errors="replace").strip()
+        if not line:
+            continue
+        # Prefer explicit "size" summary line (non-recursive sends)
+        if "size" in line.lower():
+            m = re.search(r"\bsize\b\s*=?\s*(\d+)", line, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+        # Sum per-stream sizes for recursive sends
+        if line.startswith("full") or line.startswith("incremental"):
+            parts = line.split("\t")
+            if parts:
+                try:
+                    total += int(parts[-1])
+                    found_size_line = True
+                except (ValueError, IndexError):
+                    pass
+    return total if found_size_line and total > 0 else None
+
+
 def estimate_send_size(send_cmd):
     try:
         cmd = list(send_cmd)
         if len(cmd) < 2 or cmd[0] != "zfs" or cmd[1] != "send":
             return None
         cmd.insert(2, "-nP")
-        # p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p = run_logged(cmd, text=False)
-        
+
         if p.returncode != 0:
             return None
-        text = (p.stdout or b"") + (p.stderr or b"")
-        out = text.decode(errors="replace")
-        for line in out.splitlines():
-            if "size" in line.lower():
-                m = re.search(r"\bsize\b\s*=?\s*(\d+)", line, re.IGNORECASE)
-                if m:
-                    return int(m.group(1))
-        nums = re.findall(r"\b\d+\b", out)
-        if len(nums) == 1:
-            return int(nums[0])
+        raw = (p.stdout or b"") + (p.stderr or b"")
+        return _parse_send_size_output(raw)
     except Exception:
         return None
-    return None
 
 
 def estimate_send_size_remote(remote_user, remote_host, remote_port, send_cmd):
+    """Estimate total send size by running a dry-run via SSH.
+
+    Uses Popen to stream output line-by-line, avoiding unbounded memory
+    usage for large recursive sends with many child datasets.
+    """
     try:
         cmd = list(send_cmd)
         if len(cmd) < 2 or cmd[0] != "zfs" or cmd[1] != "send":
             return None
         cmd.insert(2, "-nP")
 
-        p = ssh_run_args(remote_user, remote_host, remote_port, cmd, capture_output=True, check=False, text=False)
+        ssh_cmd = ["ssh"] + SSH_BASE_OPTS
+        if str(remote_port) != "22":
+            ssh_cmd += ["-p", str(remote_port)]
+        ssh_cmd.append(f"{remote_user}@{remote_host}")
+        ssh_cmd.append(" ".join(shlex.quote(str(a)) for a in cmd))
+
+        dbg(f"RUN ssh (estimate): {_fmt_cmd(ssh_cmd)}")
+        start = time.time()
+        p = subprocess.Popen(
+            ssh_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        total = 0
+        found_size_line = False
+        found_summary = False
+
+        # Read stdout line-by-line to avoid buffering hundreds of MB
+        for raw_line in p.stdout:
+            line = raw_line.decode(errors="replace").strip()
+            if not line:
+                continue
+            # Prefer explicit "size" summary line (non-recursive sends)
+            if not found_summary and "size" in line.lower():
+                m = re.search(r"\bsize\b\s*=?\s*(\d+)", line, re.IGNORECASE)
+                if m:
+                    total = int(m.group(1))
+                    found_summary = True
+                    continue
+            # Sum per-stream sizes for recursive sends
+            if line.startswith("full") or line.startswith("incremental"):
+                parts = line.split("\t")
+                if parts:
+                    try:
+                        total += int(parts[-1])
+                        found_size_line = True
+                    except (ValueError, IndexError):
+                        pass
+
+        p.wait()
+        dur = time.time() - start
+        dbg(f"RC ssh (estimate)={p.returncode} dur={dur:.2f}s total_bytes={total}")
 
         if p.returncode != 0:
             return None
-
-        outb = (p.stdout or b"")
-        errb = (p.stderr or b"")
-        if isinstance(outb, str):
-            outb = outb.encode()
-        if isinstance(errb, str):
-            errb = errb.encode()
-
-        out = (outb + errb).decode(errors="replace")
-
-        for line in out.splitlines():
-            if "size" in line.lower():
-                m = re.search(r"\bsize\b\s*=?\s*(\d+)", line, re.IGNORECASE)
-                if m:
-                    return int(m.group(1))
-        nums = re.findall(r"\b\d+\b", out)
-        if len(nums) == 1:
-            return int(nums[0])
+        if found_summary:
+            return total
+        return total if found_size_line and total > 0 else None
     except Exception:
         return None
-    return None
 
 
 def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interval=1.0):
+    """Returns (bytes_sent, pipe_broken) tuple."""
     bytes_sent = 0
-    last_pct = -1
+    pipe_broken = False
+    last_pct = -1.0
     last_emit = 0.0
     last_dbg = 0.0
 
     if total_bytes:
-        notifier.notify(f"STATUS={label}… 0% complete")
+        notifier.notify(f"STATUS={label}… 0.0% complete")
     else:
         notifier.notify(f"STATUS={label}…")
 
@@ -664,14 +721,17 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
         try:
             dst.write(chunk)
         except (BrokenPipeError, ValueError):
+            safe_print(f"WARNING: {label} pipe broken after {bytes_sent/(1024*1024):.1f} MiB — downstream process likely exited.")
+            dbg(f"{label} BrokenPipeError after bytes_sent={bytes_sent}")
+            pipe_broken = True
             break
         bytes_sent += len(chunk)
         now = time.time()
 
         if total_bytes:
-            pct = min(int(bytes_sent * 100 / total_bytes), 100)
+            pct = min(round(bytes_sent * 100.0 / total_bytes, 1), 100.0)
             if pct > last_pct and (now - last_emit) >= min_interval:
-                notifier.notify(f"STATUS={label}… {pct}% complete")
+                notifier.notify(f"STATUS={label}… {pct:.1f}% complete")
                 last_pct = pct
                 last_emit = now
         else:
@@ -691,8 +751,8 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
     except Exception:
         pass
 
-    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
-    return bytes_sent
+    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) pipe_broken={pipe_broken}")
+    return bytes_sent, pipe_broken
 
 
 def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
@@ -1149,13 +1209,21 @@ def send_snapshot_push(
         if process_send.stdout is None or process_recv.stdin is None:
             raise RuntimeError("Failed to initialize send/recv pipes.")
 
-        stream_with_progress(process_send.stdout, process_recv.stdin, total_bytes, label="Transferring")
+        _, pipe_broken = stream_with_progress(process_send.stdout, process_recv.stdin, total_bytes, label="Transferring")
         try:
             process_recv.stdin.close()
             process_recv.stdin = None
         except Exception:
             pass
 
+        if pipe_broken:
+            process_send.terminate()
+            process_recv.terminate()
+            notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
+            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            sys.exit(1)
+
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         process_send.wait()
 
@@ -1206,18 +1274,29 @@ def send_snapshot_push(
             stderr=subprocess.PIPE,
             universal_newlines=False,
         )
+        # Close parent's copy so SIGPIPE propagates if recv dies
+        process_m_buff.stdout.close()
         dbg(f"PIPE mbuffer pid={process_m_buff.pid} cmd={_fmt_cmd(m_buff_cmd)}")
         dbg(f"PIPE remote_recv pid={process_remote_recv.pid} recv={recvHostUser}@{recvHost}:{recvName} port={recvSshPort}")
 
         if process_send.stdout is None or process_m_buff.stdin is None:
             raise RuntimeError("Failed to initialize send/mbuffer pipes.")
 
-        stream_with_progress(process_send.stdout, process_m_buff.stdin, total_bytes, label="Transferring")
+        _, pipe_broken = stream_with_progress(process_send.stdout, process_m_buff.stdin, total_bytes, label="Transferring")
         try:
             process_m_buff.stdin.close()
         except Exception:
             pass
 
+        if pipe_broken:
+            process_send.terminate()
+            process_m_buff.terminate()
+            process_remote_recv.terminate()
+            notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
+            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            sys.exit(1)
+
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         process_send.wait()
         process_m_buff.wait()
@@ -1287,16 +1366,28 @@ def send_snapshot_push(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # Close parent's copy so SIGPIPE propagates if nc/recv dies
+        process_mbuffer.stdout.close()
 
         if process_send.stdout is None or process_mbuffer.stdin is None:
             raise RuntimeError("Failed to initialize send/mbuffer pipes.")
 
-        stream_with_progress(process_send.stdout, process_mbuffer.stdin, total_bytes, label="Transferring")
+        _, pipe_broken = stream_with_progress(process_send.stdout, process_mbuffer.stdin, total_bytes, label="Transferring")
         try:
             process_mbuffer.stdin.close()
         except Exception:
             pass
 
+        if pipe_broken:
+            process_send.terminate()
+            process_mbuffer.terminate()
+            process_nc.terminate()
+            ssh_process_listener.terminate()
+            notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
+            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            sys.exit(1)
+
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         process_send.wait()
         process_mbuffer.wait()
@@ -1419,17 +1510,28 @@ def send_snapshot_pull(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    # Close parent's copy so SIGPIPE propagates if recv dies
+    process_m_buff.stdout.close()
 
     if process_remote_send.stdout is None or process_m_buff.stdin is None:
         raise RuntimeError("Failed to initialize send/mbuffer pipes.")
 
-    stream_with_progress(process_remote_send.stdout, process_m_buff.stdin, total_bytes, label="Transferring")
+    _, pipe_broken = stream_with_progress(process_remote_send.stdout, process_m_buff.stdin, total_bytes, label="Transferring")
     try:
         process_m_buff.stdin.close()
     except Exception:
         pass
 
+    if pipe_broken:
+        process_remote_send.terminate()
+        process_m_buff.terminate()
+        process_local_recv.terminate()
+        notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
+        safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+        sys.exit(1)
+
     # Wait for send -> mbuffer -> recv chain to settle
+    notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
     remote_out, remote_err = process_remote_send.communicate()
     remote_err = remote_err.decode(errors="replace") if remote_err else ""
     process_m_buff.wait()
@@ -1524,6 +1626,8 @@ def resume_receive_push(
             stderr=subprocess.PIPE,
             universal_newlines=True,
         )
+        # Close parent's copy so SIGPIPE propagates if recv dies
+        process_send.stdout.close()
         stdout, stderr = process_recv.communicate()
         if process_recv.returncode != 0:
             notifier.notify("STATUS=Local resume receive failed.")
@@ -1563,12 +1667,16 @@ def resume_receive_push(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # Close parent's copy so SIGPIPE propagates through the chain
+        process_send.stdout.close()
         process_nc = subprocess.Popen(
             nc_cmd,
             stdin=process_mbuffer.stdout,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # Close parent's copy so SIGPIPE propagates if nc/recv dies
+        process_mbuffer.stdout.close()
 
         _, nc_stderr = process_nc.communicate()
 
@@ -1610,6 +1718,8 @@ def resume_receive_push(
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+    # Close parent's copy so SIGPIPE propagates through the chain
+    process_send.stdout.close()
 
     recv_args = ["zfs", "recv", "-s"]
     if forceOverwrite:
@@ -1625,6 +1735,8 @@ def resume_receive_push(
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+    # Close parent's copy so SIGPIPE propagates if recv dies
+    process_m_buff.stdout.close()
 
     stdout, stderr = process_remote_recv.communicate()
     if process_remote_recv.returncode != 0:
@@ -1667,7 +1779,7 @@ def resume_receive_pull(
     m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
     process_m_buff = subprocess.Popen(
         m_buff_cmd,
-        stdin=process_remote_send.stdout,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -1683,18 +1795,48 @@ def resume_receive_pull(
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+    # Close parent's copy so SIGPIPE propagates if recv dies
+    process_m_buff.stdout.close()
+
+    if process_remote_send.stdout is None or process_m_buff.stdin is None:
+        raise RuntimeError("Failed to initialize send/mbuffer pipes for resume.")
+
+    # Resume sends don't support -nP so we can't estimate total size; progress shows MiB sent
+    _, pipe_broken = stream_with_progress(process_remote_send.stdout, process_m_buff.stdin, None, label="Resuming")
+    try:
+        process_m_buff.stdin.close()
+    except Exception:
+        pass
+
+    if pipe_broken:
+        process_remote_send.terminate()
+        process_m_buff.terminate()
+        process_local_recv.terminate()
+        notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+        err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+        safe_print(err_msg)
+        return False, err_msg
+
+    notifier.notify("STATUS=Finalizing resume receive… waiting for pipeline to complete.")
+    remote_out, remote_err = process_remote_send.communicate()
+    remote_err = remote_err.decode(errors="replace") if remote_err else ""
+    process_m_buff.wait()
 
     stdout, stderr = process_local_recv.communicate()
+    stderr = stderr if isinstance(stderr, str) else (stderr.decode(errors="replace") if stderr else "")
+
     if process_local_recv.returncode != 0:
         notifier.notify("STATUS=Local resume receive (pull) failed.")
         err_msg = f"ERROR: local recv error: {stderr}"
         print(err_msg)
-        remote_err = process_remote_send.stderr.read().decode(errors="replace") if process_remote_send.stderr else ""
-        mbuf_err = process_m_buff.stderr.read().decode(errors="replace") if process_m_buff.stderr else ""
         if remote_err:
             print(f"[Remote zfs send stderr]\n{remote_err}")
-        if mbuf_err:
-            print(f"[mbuffer stderr]\n{mbuf_err}")
+        return False, err_msg
+
+    if process_remote_send.returncode != 0:
+        notifier.notify("STATUS=Resume send failed.")
+        err_msg = f"ERROR: remote send error: {remote_err}"
+        print(err_msg)
         return False, err_msg
 
     notifier.notify("STATUS=Pull resume receive completed.")

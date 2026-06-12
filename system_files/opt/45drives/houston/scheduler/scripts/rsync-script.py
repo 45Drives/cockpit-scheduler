@@ -281,7 +281,7 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
                 pct = int(m.group(1))
                 if pct != last_percent:
                     last_percent = pct
-                    notifier.notify(f"STATUS=Transferring… {pct}% complete")
+                    notifier.notify(f"STATUS=Transferring… {pct:.1f}% complete")
 
         process.wait()
     finally:

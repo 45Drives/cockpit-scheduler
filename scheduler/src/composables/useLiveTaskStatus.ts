@@ -2,8 +2,26 @@ import { ref, onUnmounted, watch } from 'vue';
 
 type AnyTask = any;
 
+const STATUS_REFRESH_CONCURRENCY = 8;
+
 function taskId(t: AnyTask) {
     return t?.id ?? t?.uuid ?? t?.name;
+}
+
+async function mapWithConcurrency<T>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<void>
+) {
+    const workerCount = Math.max(1, Math.min(concurrency, items.length));
+    let nextIndex = 0;
+
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+        while (nextIndex < items.length) {
+            const item = items[nextIndex++];
+            await fn(item);
+        }
+    }));
 }
 
 export function useLiveTaskStatus(
@@ -21,6 +39,7 @@ export function useLiveTaskStatus(
     const lastRunMap = ref<Record<string, string>>({});
     const lastCompletedAtMap = ref<Record<string, number>>({});
     const progressMap = ref<Record<string, number | null>>({});
+    const progressLabelMap = ref<Record<string, string | null>>({});
     const polling = ref(false);
     let intervalId: number | undefined;
     let progressIntervalId: number | undefined;
@@ -386,7 +405,7 @@ export function useLiveTaskStatus(
         refreshAllInFlight = (async () => {
             try {
                 const tasks = tasksRef.value ?? [];
-                await Promise.all(tasks.map(refreshOne));
+                await mapWithConcurrency(tasks, STATUS_REFRESH_CONCURRENCY, refreshOne);
                 if (!initialPollDone && tasks.length > 0) initialPollDone = true;
             } finally {
                 refreshAllInFlight = null;
@@ -401,27 +420,30 @@ export function useLiveTaskStatus(
         refreshProgressInFlight = (async () => {
             try {
                 const tasks = tasksRef.value ?? [];
-                await Promise.allSettled(tasks.map(async (t) => {
-            const id = taskId(t);
-            // Only poll progress for running tasks
-            const s = statusMap.value[id];
-            if (!s) return;
-            const lower = s.toLowerCase();
-            const running = lower.includes('running') || lower.includes('starting');
-            if (!running) {
-                // Clear stale progress when task is no longer running
-                if (progressMap.value[id] !== undefined) {
-                    progressMap.value[id] = null;
-                }
-                return;
-            }
-            try {
-                const p = await scheduler.getTaskProgress(t);
-                progressMap.value[id] = (typeof p === 'number' && Number.isFinite(p)) ? p : null;
-            } catch {
-                progressMap.value[id] = null;
-            }
-        }));
+                await mapWithConcurrency(tasks, STATUS_REFRESH_CONCURRENCY, async (t) => {
+                    const id = taskId(t);
+                    // Only poll progress for running tasks
+                    const s = statusMap.value[id];
+                    if (!s) return;
+                    const lower = s.toLowerCase();
+                    const running = lower.includes('running') || lower.includes('starting');
+                    if (!running) {
+                        // Clear stale progress when task is no longer running
+                        if (progressMap.value[id] !== undefined) {
+                            progressMap.value[id] = null;
+                        }
+                        progressLabelMap.value[id] = null;
+                        return;
+                    }
+                    try {
+                        const result = await scheduler.getTaskProgress(t);
+                        progressMap.value[id] = (typeof result?.percent === 'number' && Number.isFinite(result.percent)) ? result.percent : null;
+                        progressLabelMap.value[id] = result?.label ?? null;
+                    } catch {
+                        progressMap.value[id] = null;
+                        progressLabelMap.value[id] = null;
+                    }
+                });
             } finally {
                 refreshProgressInFlight = null;
             }
@@ -465,6 +487,7 @@ export function useLiveTaskStatus(
     function statusFor(t: AnyTask) { return statusMap.value[taskId(t)]; }
     function lastRunFor(t: AnyTask) { return lastRunMap.value[taskId(t)]; }
     function progressFor(t: AnyTask): number | null { return progressMap.value[taskId(t)] ?? null; }
+    function progressLabelFor(t: AnyTask): string | null { return progressLabelMap.value[taskId(t)] ?? null; }
 
     function isCompleted(t: AnyTask): boolean {
         const s = statusFor(t);
@@ -520,9 +543,11 @@ export function useLiveTaskStatus(
         statusFor,
         lastRunFor,
         progressFor,
+        progressLabelFor,
         statusMap,
         lastRunMap,
         progressMap,
+        progressLabelMap,
         isCompleted,
         isRunningNow,
         isFailed,
