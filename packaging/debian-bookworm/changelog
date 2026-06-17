@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.10-1bookworm) bookworm; urgency=medium
+
+  * hotfix for edit task potentially creating empty json file and breaking task list
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 17 Jun 2026 11:04:01 -0300
+
 cockpit-scheduler (1.6.9-1bookworm) bookworm; urgency=medium
 
   * Improves pipe errors failing ungracefully + status updates/progress
