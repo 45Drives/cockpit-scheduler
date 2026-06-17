@@ -42,7 +42,10 @@ def read_env_parameters(env_path):
 
 def read_json_schedule(json_path):
     with open(json_path, 'r') as json_file:
-        return json.load(json_file)
+        try:
+            return json.load(json_file)
+        except json.JSONDecodeError:
+            return None
 
 def read_txt_notes(txt_path):
     with open(txt_path, 'r') as txt_file:
@@ -101,7 +104,10 @@ def create_task_instances(system_dir, valid_files):
                 if '.json' in file_dict:
                     json_file_name = file_dict['.json']
                     schedule_data = read_json_schedule(os.path.join(system_dir, json_file_name))
-                    schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'], schedule_data.get('runOnBoot', False))
+                    if schedule_data:
+                        schedule = TaskSchedule(schedule_data['enabled'], schedule_data['intervals'], schedule_data.get('runOnBoot', False))
+                    else:
+                        schedule = TaskSchedule(False, [])
                 else:
                     schedule = TaskSchedule(False, [])
                 

@@ -1104,7 +1104,16 @@ export class Scheduler implements SchedulerType {
             const jsonFile = new File(server, jsonFilePath);
             const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
             await unwrap(jsonFile.write(jsonString, { superuser: 'try' }));
-            console.log('json file created and content written successfully');
+            
+            // Validate the write succeeded
+            const written = await unwrap(jsonFile.read());
+            try {
+                JSON.parse(String(written));
+                console.log('json file created and content written successfully');
+            } catch (e) {
+                console.error('JSON validation failed after write:', e);
+                throw new Error('Failed to write valid schedule JSON');
+            }
         }
 
         if (taskInstance.schedule.intervals.length < 1) {
@@ -1261,13 +1270,9 @@ export class Scheduler implements SchedulerType {
         const envFilePath = `/etc/systemd/system/${baseName}.env`;
         const jsonFilePath = `/etc/systemd/system/${baseName}.json`;
 
-        // Update schedule JSON if the task has intervals or runOnBoot
-        if (taskInstance.schedule.intervals.length > 0 || taskInstance.schedule.runOnBoot) {
-            const jsonFile = new File(server, jsonFilePath);
-            const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
-            await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
-            console.log('schedule json file updated successfully');
-        }
+        // NOTE: Schedule JSON is NOT updated here - use updateSchedule() for that.
+        // We only update the env file and regenerate the service files from it.
+        // This prevents unnecessary and risky file replace operations when editing task parameters.
 
         // Update env file (include scheduleJsonPath for tasks with intervals or runOnBoot)
         let finalEnvString = envKeyValuesString;
@@ -1275,7 +1280,7 @@ export class Scheduler implements SchedulerType {
             finalEnvString += `\nscheduleJsonPath=${jsonFilePath}`;
         }
         const envFile = new File(server, envFilePath);
-        await unwrap(envFile.replace(finalEnvString, { superuser: 'try' }));
+        await unwrap(envFile.replace(finalEnvString, { superuser: 'try', backup: true }));
         console.log('env file updated successfully');
 
         // Regenerate the systemd units from the env
@@ -1780,8 +1785,17 @@ export class Scheduler implements SchedulerType {
 
         const jsonFile = new File(server, jsonFilePath);
         const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
-        await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
-        console.log('json file created and content written successfully');
+        await unwrap(jsonFile.replace(jsonString, { superuser: 'try', backup: true }));
+        
+        // Validate the write succeeded
+        const written = await unwrap(jsonFile.read());
+        try {
+            JSON.parse(String(written));
+            console.log('json file created and content written successfully');
+        } catch (e) {
+            console.error('JSON validation failed after write:', e);
+            throw new Error('Failed to write valid schedule JSON - backup available at ' + jsonFilePath + '~');
+        }
 
         if (taskInstance.schedule.enabled) {
             await createScheduleForTask(fullTaskName, templateTimerPath, jsonFilePath);
