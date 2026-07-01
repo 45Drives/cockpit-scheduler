@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Migrate existing task service files to pick up new ExecStart logic
+        MIGRATE_SCRIPT="/opt/45drives/houston/scheduler/scripts/migrate-task-services.py"
+        if [ -x /usr/bin/python3 ] && [ -f "$MIGRATE_SCRIPT" ]; then
+            python3 "$MIGRATE_SCRIPT" || true
+        fi
+
+        # Enable the scheduler monitor (only starts if houston-dbus is available)
+        systemctl daemon-reload || true
+        systemctl enable houston-scheduler-monitor.service 2>/dev/null || true
+        systemctl restart houston-scheduler-monitor.service 2>/dev/null || true
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

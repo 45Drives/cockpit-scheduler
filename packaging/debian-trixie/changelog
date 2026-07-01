@@ -1,0 +1,298 @@
+cockpit-scheduler (1.6.7-2trixie) trixie; urgency=medium
+
+  * Fixes secondary permission object race condition by removing and using one singular
+    permission object now
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 21 May 2026 10:05:29 -0300
+
+cockpit-scheduler (1.6.7-1trixie) trixie; urgency=medium
+
+  * Hotfix for issue: non-root user with elevated/superuser status not being able
+    to see all task types
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 21 May 2026 08:58:53 -0300
+
+cockpit-scheduler (1.6.6-3trixie) trixie; urgency=medium
+
+  * New package with backend dbus leaks fixed
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 19 May 2026 12:46:41 -0300
+
+cockpit-scheduler (1.6.6-2trixie) trixie; urgency=medium
+
+  * Updating testing package
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 14 May 2026 10:35:53 -0300
+
+cockpit-scheduler (1.6.6-1trixie) trixie; urgency=medium
+
+  * Testing package for dbus/polling leak fixes
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 14 May 2026 06:57:27 -0300
+
+cockpit-scheduler (1.6.5-2trixie) trixie; urgency=medium
+
+  * Build #2 - updating task script file used in migration of old tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 13 May 2026 12:16:08 -0300
+
+cockpit-scheduler (1.6.5-1trixie) trixie; urgency=medium
+
+  * Updates task logs to be truly live, adjusts organization of some rclone remote
+    params for better UX
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 13 May 2026 05:41:20 -0300
+
+cockpit-scheduler (1.6.4-3trixie) trixie; urgency=medium
+
+  * Updates task failure notification + retry logic/backend/frontend
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 07 May 2026 08:02:23 -0300
+
+cockpit-scheduler (1.6.4-2trixie) trixie; urgency=medium
+
+  * Update Makefile to fix build errors (remove postinstall step)
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 07 May 2026 05:51:01 -0300
+
+cockpit-scheduler (1.6.4-1trixie) trixie; urgency=medium
+
+  * Updates notification logic/handling and adds configurable Restart values for
+    tasks service files for better UI/UX
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 06 May 2026 12:36:47 -0300
+
+cockpit-scheduler (1.6.3-2trixie) trixie; urgency=medium
+
+  * Fixes retention interval tag logic
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 05 May 2026 08:33:41 -0300
+
+cockpit-scheduler (1.6.3-1trixie) trixie; urgency=medium
+
+  * Fixes issues with notifications, adds cockpit-alerts email alert support, add
+    multi-scripts to custom tasks, update snapshot interval in snapshot name + task
+    interval tag, makes schedule intervals unique, fixes bugs with cloud-sync task
+    params
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 05 May 2026 08:22:29 -0300
+
+cockpit-scheduler (1.6.2-2trixie) trixie; urgency=medium
+
+  * Fixes several issues identified in testing: Log view not updating, @reboot schedule
+    toggle not working, updates zfs snapshot property tagging for clarity
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 27 Apr 2026 08:50:58 -0300
+
+cockpit-scheduler (1.6.2-1trixie) trixie; urgency=medium
+
+  * Fixes snapshot retention pruning for replication
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 23 Apr 2026 12:38:39 -0300
+
+cockpit-scheduler (1.6.1-1trixie) trixie; urgency=medium
+
+  * Revamps custom task UI, adds warnings about conflicting schedule intervals, fixes
+    some data repopulation bugs for cron expressions and custom tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 22 Apr 2026 08:32:49 -0300
+
+cockpit-scheduler (1.6.0-1trixie) trixie; urgency=medium
+
+  * Overhauls replication/snapshot backend retention/custom name logic and adds several
+    new features/improvements to app overall
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 20 Apr 2026 09:15:07 -0300
+
+cockpit-scheduler (1.5.1-1trixie) trixie; urgency=medium
+
+  * Fixes bug with multiple retention/snapshot intervals conflicting
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 13 Apr 2026 09:19:10 -0300
+
+cockpit-scheduler (1.5.0-1trixie) trixie; urgency=medium
+
+  * Updates task table UI for better UX
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 09 Apr 2026 09:11:30 -0300
+
+cockpit-scheduler (1.4.9-1trixie) trixie; urgency=medium
+
+  * Improves ZFS Replication/AutoSnapshot tasks to support multiple retention intervals
+    per task
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 08 Apr 2026 12:32:42 -0300
+
+cockpit-scheduler (1.4.8-2trixie) trixie; urgency=medium
+
+  * Updating package to stable
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 09 Mar 2026 07:24:52 -0300
+
+cockpit-scheduler (1.4.8-1trixie) trixie; urgency=medium
+
+  * Updates ssh permission bugfix in replication script
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 09 Mar 2026 07:16:22 -0300
+
+cockpit-scheduler (1.4.7-2trixie) trixie; urgency=medium
+
+  * Trying to fix github permissions issue
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 12 Feb 2026 12:02:05 -0400
+
+cockpit-scheduler (1.4.7-1trixie) trixie; urgency=medium
+
+  * Adds refresh button to replication remote dest in UI and adjusts replication
+    script logic to properly handle refresh token and arguments over ssh
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 12 Feb 2026 11:30:01 -0400
+
+cockpit-scheduler (1.4.6-1trixie) trixie; urgency=medium
+
+  * Adds support for zfs replication resume tokens when transfers fail
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 04 Feb 2026 13:02:06 -0400
+
+cockpit-scheduler (1.4.5-1trixie) trixie; urgency=medium
+
+  * Fixes some dependency issues with older python version (3.6) and some zfs/rsync
+    task param UI issues
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 23 Dec 2025 11:46:42 -0400
+
+cockpit-scheduler (1.4.4-1trixie) trixie; urgency=medium
+
+  * Improves ZFS replication to properly handle common snapshots, destination data
+    divergence with F flag, adds Pull option (reverse replication)
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 17 Dec 2025 12:01:06 -0400
+
+cockpit-scheduler (1.4.3-2trixie) trixie; urgency=medium
+
+  * Updates replication-script snapshot detection/sorting logic to better handle
+    discovering last common snapshot
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 16 Dec 2025 05:57:54 -0400
+
+cockpit-scheduler (1.4.3-1trixie) trixie; urgency=medium
+
+  * fixes zfs replication  breaking when datasets had spaces in name (from old module,
+    new one prevents spaces in dataset names)
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 15 Dec 2025 08:16:53 -0400
+
+cockpit-scheduler (1.4.2-2trixie) trixie; urgency=medium
+
+  * Updates rclone client id/secret support in create/update remote logic & fixes
+    task status when unscheduled/not yet ran
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 11 Dec 2025 10:56:55 -0400
+
+cockpit-scheduler (1.4.2-1trixie) trixie; urgency=medium
+
+  * Updates cloudsync task to properly handle mututally exclusive rclone options
+    + notify user, fixes dry-run tasks notifying errors, adds logic to handle verbosity
+    flags in rsync/rclone commands
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 10 Dec 2025 11:22:45 -0400
+
+cockpit-scheduler (1.4.1-2trixie) trixie; urgency=medium
+
+  * Updates rules file to properly build ubuntu packages
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 09 Dec 2025 07:40:25 -0400
+
+cockpit-scheduler (1.4.1-1trixie) trixie; urgency=medium
+
+  * Fixes bug with creating schedule failing on a task after task already created
+    without schedule, also custom task script path not being used properly
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 03 Dec 2025 07:50:01 -0400
+
+cockpit-scheduler (1.4.0-2trixie) trixie; urgency=medium
+
+  * incrementing build for sanity check
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Nov 2025 16:18:32 -0400
+
+cockpit-scheduler (1.4.0-1trixie) trixie; urgency=medium
+
+  * Major overhaul - Updates task status + logging, adds progress tracking, fixes
+    rclone token expiry after 1hr for long transfers, among numerous other QoL improvements
+    and bugfixes
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 21 Nov 2025 10:34:29 -0400
+
+cockpit-scheduler (1.3.9-6trixie) trixie; urgency=medium
+
+  * Setting release to stable since testing package building seems to be broken/cannot
+    fix update-repos build step's errors
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 19 Nov 2025 07:26:40 -0400
+
+cockpit-scheduler (1.3.9-5trixie) trixie; urgency=medium
+
+  * Incrementing build to try again (update-repositories step failing due to conflicts)
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 19 Nov 2025 04:56:37 -0400
+
+cockpit-scheduler (1.3.9-4trixie) trixie; urgency=medium
+
+  * Testing bugfixes and feature additions
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 18 Nov 2025 12:18:22 -0400
+
+cockpit-scheduler (1.3.9-3trixie) trixie; urgency=medium
+
+  * Updates test package build - functions were lost during merge
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 22 Sep 2025 10:31:27 -0300
+
+cockpit-scheduler (1.3.9-2trixie) trixie; urgency=medium
+
+  * Testing package for new replication snapshot handling
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 22 Sep 2025 09:42:05 -0300
+
+cockpit-scheduler (1.3.9-1trixie) trixie; urgency=medium
+
+  * Updates simplified UI to better mesh with Setup Wizard webview
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 26 Aug 2025 07:28:02 -0300
+
+cockpit-scheduler (1.3.8-1trixie) trixie; urgency=medium
+
+  * Adds new Simple UI for use in Setup Wizard client app.
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 18 Aug 2025 12:39:19 -0300
+
+cockpit-scheduler (1.3.7-1trixie) trixie; urgency=medium
+
+  * TESTING -> Adds simple UI for use in Setup Wizard's Remote Backup Tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 14 Aug 2025 12:32:24 -0300
+
+cockpit-scheduler (1.3.6-1trixie) trixie; urgency=medium
+
+  * Fixes syntax issue in autosnap-script.py so it works on Python 3.8+
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 04 Aug 2025 10:42:28 -0300
+
+cockpit-scheduler (1.3.5-3trixie) trixie; urgency=medium
+
+  * Fixes bug with notes not editing properly for Cloud task
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 15 Apr 2025 11:14:32 -0300
+
+cockpit-scheduler (1.3.5-2trixie) trixie; urgency=medium
+
+  * Updated ToolTip for CloudSync Target Path. Rebuilding package with build v2 process
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 15 Apr 2025 08:24:20 -0300
+
+cockpit-scheduler (1.2.7-1trixie) focal; urgency=medium
+
+  * Initial build for trixie
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 04 Feb 2025 06:52:11 -0400cockpit-scheduler (1.3.5-1trixie) trixie; urgency=medium
