@@ -1,4 +1,3 @@
-## task scheduler 1.6.10-3
+## task scheduler 1.6.11-1
 
-* Add Debian Trixie packaging support
-* Fix source format for native packages
+* Adds configurable resume timeout parameter to ZFSReplicationTasks, and fixes CloudSyncTask progress hanging
