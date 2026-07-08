@@ -263,6 +263,13 @@ const showProgressBar = computed(() => isRunning.value);
 const isIndeterminate = computed(() => isRunning.value && progress.value === null);
 
 async function updateProgress(task: TaskInstanceType) {
+	// Only poll progress when the task is actually running to avoid
+	// reading stale StatusText values from a previous completed run.
+	if (!isRunning.value) {
+		progress.value = null;
+		progressLabel.value = null;
+		return;
+	}
 	try {
 		const result = await myScheduler.getTaskProgress(task);
 		if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
