@@ -695,6 +695,82 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
     return bytes_sent
 
 
+class StallTimeout(Exception):
+    """Raised when no data flows for longer than the stall timeout."""
+    pass
+
+
+def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_interval=1.0, stall_timeout=3600):
+    """Like stream_with_progress but raises StallTimeout if no data arrives for stall_timeout seconds.
+    If stall_timeout is 0 or None, stall detection is disabled (behaves like stream_with_progress)."""
+    import select as _select
+
+    bytes_sent = 0
+    last_pct = -1
+    last_emit = 0.0
+    last_dbg = 0.0
+    last_data_time = time.time()
+    stall_enabled = bool(stall_timeout and stall_timeout > 0)
+
+    if total_bytes:
+        notifier.notify(f"STATUS={label}… 0% complete")
+    else:
+        notifier.notify(f"STATUS={label}…")
+
+    fd = src.fileno()
+
+    while True:
+        if stall_enabled:
+            # Wait for data with a timeout chunk (check every 30s)
+            poll_interval = min(30.0, stall_timeout)
+            ready, _, _ = _select.select([fd], [], [], poll_interval)
+            if not ready:
+                elapsed = time.time() - last_data_time
+                if elapsed >= stall_timeout:
+                    mib = bytes_sent / (1024 * 1024)
+                    raise StallTimeout(
+                        f"No data received for {int(elapsed)}s (stall timeout: {stall_timeout}s). "
+                        f"Transferred {mib:.1f} MiB before stall."
+                    )
+                continue
+
+        chunk = src.read(1024 * 1024)
+        if not chunk:
+            break
+        last_data_time = time.time()
+        try:
+            dst.write(chunk)
+        except (BrokenPipeError, ValueError):
+            break
+        bytes_sent += len(chunk)
+        now = time.time()
+
+        if total_bytes:
+            pct = min(int(bytes_sent * 100 / total_bytes), 100)
+            if pct > last_pct and (now - last_emit) >= min_interval:
+                notifier.notify(f"STATUS={label}… {pct}% complete")
+                last_pct = pct
+                last_emit = now
+        else:
+            if (now - last_emit) >= max(5.0, min_interval):
+                mib = bytes_sent / (1024 * 1024)
+                notifier.notify(f"STATUS={label}… {mib:.1f} MiB sent")
+                safe_print(f"{label}… {mib:.1f} MiB sent")
+                last_emit = now
+
+        if (now - last_dbg) >= 10.0:
+            dbg(f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
+            last_dbg = now
+
+    try:
+        dst.flush()
+    except Exception:
+        pass
+
+    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
+    return bytes_sent
+
+
 def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
     prop = f"written@{snapshot_fullname}"
     base_cmd = ["zfs", "get", "-H", "-p", "-o", "value", prop, dataset]
@@ -1495,6 +1571,24 @@ def clear_receive_resume_token(dest_filesystem, remote_user=None, remote_host=No
         return True, ""
 
 
+def _kill_procs(*procs):
+    """Terminate and wait on a list of subprocesses (best effort)."""
+    for p in procs:
+        if p is None:
+            continue
+        try:
+            p.kill()
+        except Exception:
+            pass
+    for p in procs:
+        if p is None:
+            continue
+        try:
+            p.wait(timeout=10)
+        except Exception:
+            pass
+
+
 def resume_receive_push(
     resume_token,
     recvName,
@@ -1506,10 +1600,19 @@ def resume_receive_push(
     transferMethod="ssh",
     recvDataPort=None,
     forceOverwrite=False,
+    stall_timeout=3600,
 ):
     notifier.notify("STATUS=Resuming ZFS send/recv pipeline from resume token…")
 
     send_cmd = ["zfs", "send", "-t", resume_token]
+
+    # Estimate resume send size for progress reporting
+    total_bytes = estimate_send_size(send_cmd)
+    if total_bytes:
+        dbg(f"Resume send estimated size: {total_bytes} bytes ({total_bytes/(1024*1024):.1f} MiB)")
+    else:
+        dbg("Resume send size estimation unavailable; progress will be indeterminate.")
+
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if transferMethod == "local" or not recvHost:
@@ -1519,20 +1622,50 @@ def resume_receive_push(
         recv_cmd.append(recvName)
         process_recv = subprocess.Popen(
             recv_cmd,
-            stdin=process_send.stdout,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
         )
-        stdout, stderr = process_recv.communicate()
+
+        if process_send.stdout is None or process_recv.stdin is None:
+            raise RuntimeError("Failed to initialize resume send/recv pipes.")
+
+        try:
+            stream_with_progress_stall(
+                process_send.stdout, process_recv.stdin, total_bytes,
+                label="Resuming", stall_timeout=stall_timeout,
+            )
+        except StallTimeout as e:
+            notifier.notify(f"STATUS=Resume stalled: {e}")
+            print(f"ERROR: {e}")
+            _kill_procs(process_send, process_recv)
+            return False, str(e)
+
+        try:
+            process_recv.stdin.close()
+        except Exception:
+            pass
+
+        send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
+        process_send.wait()
+
+        recv_stdout, recv_stderr = process_recv.communicate()
+        recv_stdout = recv_stdout.decode(errors="replace") if recv_stdout else ""
+        recv_stderr = recv_stderr.decode(errors="replace") if recv_stderr else ""
+
+        if process_send.returncode != 0:
+            notifier.notify("STATUS=Local resume send failed.")
+            err_msg = f"send error: {send_stderr}"
+            print(err_msg)
+            return False, err_msg
         if process_recv.returncode != 0:
             notifier.notify("STATUS=Local resume receive failed.")
-            err_msg = f"recv error: {stderr}"
+            err_msg = f"recv error: {recv_stderr}"
             print(err_msg)
             return False, err_msg
         notifier.notify("STATUS=Local resume receive completed.")
-        if stdout:
-            print(stdout)
+        if recv_stdout:
+            print(recv_stdout)
         return True, ""
 
     if transferMethod == "netcat":
@@ -1555,20 +1688,38 @@ def resume_receive_push(
         time.sleep(2)
 
         mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
-        nc_cmd = ["nc", recvHost, data_port]
-
         process_mbuffer = subprocess.Popen(
             mbuffer_cmd,
-            stdin=process_send.stdout,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        nc_cmd = ["nc", recvHost, data_port]
         process_nc = subprocess.Popen(
             nc_cmd,
             stdin=process_mbuffer.stdout,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+
+        if process_send.stdout is None or process_mbuffer.stdin is None:
+            raise RuntimeError("Failed to initialize resume netcat pipes.")
+
+        try:
+            stream_with_progress_stall(
+                process_send.stdout, process_mbuffer.stdin, total_bytes,
+                label="Resuming (netcat)", stall_timeout=stall_timeout,
+            )
+        except StallTimeout as e:
+            notifier.notify(f"STATUS=Resume stalled: {e}")
+            print(f"ERROR: {e}")
+            _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
+            return False, str(e)
+
+        try:
+            process_mbuffer.stdin.close()
+        except Exception:
+            pass
 
         _, nc_stderr = process_nc.communicate()
 
@@ -1605,10 +1756,9 @@ def resume_receive_push(
     m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
     process_m_buff = subprocess.Popen(
         m_buff_cmd,
-        stdin=process_send.stdout,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        universal_newlines=True,
     )
 
     recv_args = ["zfs", "recv", "-s"]
@@ -1623,10 +1773,41 @@ def resume_receive_push(
         stdin=process_m_buff.stdout,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        universal_newlines=True,
+        universal_newlines=False,
     )
 
+    if process_send.stdout is None or process_m_buff.stdin is None:
+        raise RuntimeError("Failed to initialize resume SSH pipes.")
+
+    try:
+        stream_with_progress_stall(
+            process_send.stdout, process_m_buff.stdin, total_bytes,
+            label="Resuming", stall_timeout=stall_timeout,
+        )
+    except StallTimeout as e:
+        notifier.notify(f"STATUS=Resume stalled: {e}")
+        print(f"ERROR: {e}")
+        _kill_procs(process_send, process_m_buff, process_remote_recv)
+        return False, str(e)
+
+    try:
+        process_m_buff.stdin.close()
+    except Exception:
+        pass
+
+    send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
+    process_send.wait()
+    process_m_buff.wait()
+
     stdout, stderr = process_remote_recv.communicate()
+    stdout = stdout.decode(errors="replace") if stdout else ""
+    stderr = stderr.decode(errors="replace") if stderr else ""
+
+    if process_send.returncode != 0:
+        notifier.notify("STATUS=Remote resume send failed.")
+        err_msg = f"send error: {send_stderr}"
+        print(err_msg)
+        return False, err_msg
     if process_remote_recv.returncode != 0:
         notifier.notify("STATUS=Remote resume receive failed.")
         err_msg = f"ERROR: remote recv error: {stderr}"
@@ -1647,11 +1828,20 @@ def resume_receive_pull(
     mBufferSize="1",
     mBufferUnit="G",
     forceOverwrite=False,
+    stall_timeout=3600,
 ):
     notifier.notify("STATUS=Resuming ZFS pull pipeline from resume token…")
 
     if not remoteHost:
         raise RuntimeError("Pull replication requires a remote host.")
+
+    # Estimate resume send size for progress reporting
+    send_cmd = ["zfs", "send", "-t", resume_token]
+    total_bytes = estimate_send_size_remote(remoteUser, remoteHost, remoteSshPort, send_cmd)
+    if total_bytes:
+        dbg(f"Resume pull send estimated size: {total_bytes} bytes ({total_bytes/(1024*1024):.1f} MiB)")
+    else:
+        dbg("Resume pull send size estimation unavailable; progress will be indeterminate.")
 
     process_remote_send = ssh_popen_args(
         remoteUser,
@@ -1667,7 +1857,7 @@ def resume_receive_pull(
     m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
     process_m_buff = subprocess.Popen(
         m_buff_cmd,
-        stdin=process_remote_send.stdout,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -1683,6 +1873,28 @@ def resume_receive_pull(
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+
+    if process_remote_send.stdout is None or process_m_buff.stdin is None:
+        raise RuntimeError("Failed to initialize resume pull pipes.")
+
+    try:
+        stream_with_progress_stall(
+            process_remote_send.stdout, process_m_buff.stdin, total_bytes,
+            label="Resuming (pull)", stall_timeout=stall_timeout,
+        )
+    except StallTimeout as e:
+        notifier.notify(f"STATUS=Resume stalled: {e}")
+        print(f"ERROR: {e}")
+        _kill_procs(process_remote_send, process_m_buff, process_local_recv)
+        return False, str(e)
+
+    try:
+        process_m_buff.stdin.close()
+    except Exception:
+        pass
+
+    process_remote_send.wait()
+    process_m_buff.wait()
 
     stdout, stderr = process_local_recv.communicate()
     if process_local_recv.returncode != 0:
@@ -1924,6 +2136,15 @@ def main():
             default=False,
         )
 
+        # Resume stall timeout: how long (seconds) to wait with no data before aborting a resume.
+        # Default 3600s (1 hour). 0 disables stall detection.
+        try:
+            resumeStallTimeout = int(os.environ.get("zfsRepConfig_sendOptions_resumeStallTimeout", "3600"))
+        except (ValueError, TypeError):
+            resumeStallTimeout = 3600
+        if resumeStallTimeout <= 0:
+            resumeStallTimeout = 0  # 0 means disabled (no timeout)
+
         remoteUser = os.environ.get("zfsRepConfig_destDataset_user", "root")
         remoteHost = os.environ.get("zfsRepConfig_destDataset_host", "")
 
@@ -2148,6 +2369,7 @@ def main():
                     mBufferSize=str(mBufferSize),
                     mBufferUnit=mBufferUnit,
                     forceOverwrite=allowOverwrite,
+                    stall_timeout=resumeStallTimeout,
                 )
                 if ok:
                     return
@@ -2235,6 +2457,7 @@ def main():
                     transferMethod=transferMethod if transferMethod else "ssh",
                     recvDataPort=dataPort,
                     forceOverwrite=allowOverwrite,
+                    stall_timeout=resumeStallTimeout,
                 )
                 if ok:
                     return
