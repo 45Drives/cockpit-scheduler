@@ -4,7 +4,7 @@
     "title": "task scheduler",
     "description": "task scheduler for automating server tasks",
     "version": "1.6.10",
-    "build_number": "1",
+    "build_number": "3",
     "stable": true,
     "author": "Jordan Keough <jkeough@45drives.com>",
     "git_url": "https://github.com/45Drives/cockpit-scheduler",
@@ -48,7 +48,7 @@
         {
             "group": "debian",
             "os_name": "debian-bookworm",
-            "image": "ci.cr.45d.io/ci/scheduler/ubuntu-jammy-scheduler:1"
+            "image": "ci.cr.45d.io/ci/simple/debian-bookworm:1"
         },
         {
             "group": "debian",
@@ -88,7 +88,7 @@
     "changelog": {
         "urgency": "medium",
         "version": "1.6.10",
-        "build_number": "1",
+        "build_number": "3",
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
         "changes": []

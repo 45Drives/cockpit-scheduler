@@ -1,3 +1,4 @@
-## task scheduler 1.6.10-1
+## task scheduler 1.6.10-3
 
-* hotfix for edit task potentially creating empty json file and breaking task list
+* Add Debian Trixie packaging support
+* Fix source format for native packages

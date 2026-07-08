@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.10-3trixie) trixie; urgency=medium
+
+  * Add Debian Trixie packaging support
+  * Fix source format for native packages
+
+ -- Rachit Hans <rhans@45drives.com>  Wed, 08 Jul 2026 08:46:09 -0300
+
 cockpit-scheduler (1.6.7-2trixie) trixie; urgency=medium
 
   * Fixes secondary permission object race condition by removing and using one singular
