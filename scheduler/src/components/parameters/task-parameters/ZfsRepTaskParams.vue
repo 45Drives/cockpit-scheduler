@@ -351,6 +351,20 @@
                     continue with normal replication. If overwrite is allowed, the task may roll back with
                     <code>zfs receive -F</code>.
                 </p>
+                <div class="flex items-center justify-between mt-2">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        Resume stall timeout (seconds)
+                        <InfoTile class="ml-1"
+                            :title="`If a resumed transfer receives no data for this many seconds, it will be aborted so the next scheduled run can retry. Set to 0 to disable stall detection. Default: 3600 (1 hour).`" />
+                    </label>
+                    <input type="number" v-model.number="resumeStallTimeout" min="0" step="60"
+                        class="w-24 text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="3600" />
+                </div>
+                <p class="mt-1 text-xs text-default/70">
+                    Abort a stalled resume after this many seconds of no data flow. Prevents
+                    hung tasks after network outages. Set to 0 to disable.
+                </p>
             </div>
         </div>
 
@@ -553,6 +567,7 @@ const destUser = ref('root');
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
 const resumeFailAllowOverwrite = ref(false);
+const resumeStallTimeout = ref(3600);
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
 const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);
@@ -663,6 +678,7 @@ watch(useExistingDest, async (on) => {
     } else {
         allowOverwrite.value = false;
         resumeFailAllowOverwrite.value = false;
+        resumeStallTimeout.value = 3600;
         destDatasetErrorTag.value = false;
     }
 });
@@ -762,6 +778,9 @@ async function initializeData() {
         const resumeFailAllowOverwriteParam = sendOptionsParams.find(p => p.key === 'resumeFailAllowOverwrite');
         resumeFailAllowOverwrite.value = resumeFailAllowOverwriteParam ? !!resumeFailAllowOverwriteParam.value : false;
 
+        const resumeStallTimeoutParam = sendOptionsParams.find(p => p.key === 'resumeStallTimeout');
+        resumeStallTimeout.value = resumeStallTimeoutParam ? Number(resumeStallTimeoutParam.value) || 3600 : 3600;
+
         const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
         useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
 
@@ -835,6 +854,7 @@ async function initializeData() {
             transferMethod: transferMethod.value,
             allowOverwrite: allowOverwrite.value,
             resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
+            resumeStallTimeout: resumeStallTimeout.value,
             useExistingDest: useExistingDest.value,
         }));
 
@@ -868,6 +888,7 @@ function hasChanges() {
         customName: customName.value,
         allowOverwrite: allowOverwrite.value,
         resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
+        resumeStallTimeout: resumeStallTimeout.value,
         useExistingDest: useExistingDest.value,
     };
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
@@ -1250,6 +1271,7 @@ function setParams() {
             .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
             .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
+            .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', resumeStallTimeout.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
         );
 
