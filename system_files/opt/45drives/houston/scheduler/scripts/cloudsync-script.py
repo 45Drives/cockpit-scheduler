@@ -498,6 +498,10 @@ def main():
         execute_rclone(options)
 
         notifier.notify(f"STATUS={mode_label} completed successfully")
+        # Give systemd time to process the final STATUS before we exit,
+        # otherwise it may retain the stale progress percentage in StatusText.
+        import time as _time
+        _time.sleep(0.1)
         dbg("=== cloudsync task completed ===")
 
         # Persist last-run timestamp for UI display across disable/enable cycles
