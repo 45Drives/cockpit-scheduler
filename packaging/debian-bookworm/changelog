@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.12-1bookworm) bookworm; urgency=medium
+
+  * fix: use explicit cockpit deps for debian to avoid network-manager
+
+ -- Rachit Hans <rhans@45drives.com>  Wed, 08 Jul 2026 19:27:53 -0300
+
 cockpit-scheduler (1.6.11-1bookworm) bookworm; urgency=medium
 
   * Adds configurable resume timeout parameter to ZFSReplicationTasks, and fixes

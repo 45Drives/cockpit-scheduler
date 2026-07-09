@@ -1,3 +1,3 @@
-## task scheduler 1.6.11-1
+## task scheduler 1.6.12-1
 
-* Adds configurable resume timeout parameter to ZFSReplicationTasks, and fixes CloudSyncTask progress hanging
+* fix: use explicit cockpit deps for debian to avoid network-manager

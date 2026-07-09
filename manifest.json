@@ -3,7 +3,7 @@
     "name": "cockpit-scheduler",
     "title": "task scheduler",
     "description": "task scheduler for automating server tasks",
-    "version": "1.6.11",
+    "version": "1.6.12",
     "build_number": "1",
     "stable": true,
     "author": "Jordan Keough <jkeough@45drives.com>",
@@ -36,6 +36,20 @@
             "smartmontools",
             "mbuffer",
             "rclone >= 1.59",
+            "netcat"
+        ],
+        "debian_common": [
+            "cockpit-ws",
+            "cockpit-bridge",
+            "cockpit-system",
+            "cockpit-storaged",
+            "cockpit-packagekit",
+            "python3",
+            "rsync",
+            "findutils",
+            "smartmontools",
+            "mbuffer",
+            "rclone (>= 1.59)",
             "netcat"
         ]
     },
@@ -87,7 +101,7 @@
     ],
     "changelog": {
         "urgency": "medium",
-        "version": "1.6.11",
+        "version": "1.6.12",
         "build_number": "1",
         "date": null,
         "packager": "Jordan Keough <jkeough@45drives.com>",
