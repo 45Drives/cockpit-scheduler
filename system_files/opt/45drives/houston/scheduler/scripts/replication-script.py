@@ -762,18 +762,20 @@ class StallTimeout(Exception):
 
 def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_interval=1.0, stall_timeout=3600):
     """Like stream_with_progress but raises StallTimeout if no data arrives for stall_timeout seconds.
-    If stall_timeout is 0 or None, stall detection is disabled (behaves like stream_with_progress)."""
+    If stall_timeout is 0 or None, stall detection is disabled (behaves like stream_with_progress).
+    Returns (bytes_sent, pipe_broken) tuple."""
     import select as _select
 
     bytes_sent = 0
-    last_pct = -1
+    pipe_broken = False
+    last_pct = -1.0
     last_emit = 0.0
     last_dbg = 0.0
     last_data_time = time.time()
     stall_enabled = bool(stall_timeout and stall_timeout > 0)
 
     if total_bytes:
-        notifier.notify(f"STATUS={label}… 0% complete")
+        notifier.notify(f"STATUS={label}… 0.0% complete")
     else:
         notifier.notify(f"STATUS={label}…")
 
@@ -801,14 +803,17 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
         try:
             dst.write(chunk)
         except (BrokenPipeError, ValueError):
+            safe_print(f"WARNING: {label} pipe broken after {bytes_sent/(1024*1024):.1f} MiB — downstream process likely exited.")
+            dbg(f"{label} BrokenPipeError after bytes_sent={bytes_sent}")
+            pipe_broken = True
             break
         bytes_sent += len(chunk)
         now = time.time()
 
         if total_bytes:
-            pct = min(int(bytes_sent * 100 / total_bytes), 100)
+            pct = min(round(bytes_sent * 100.0 / total_bytes, 1), 100.0)
             if pct > last_pct and (now - last_emit) >= min_interval:
-                notifier.notify(f"STATUS={label}… {pct}% complete")
+                notifier.notify(f"STATUS={label}… {pct:.1f}% complete")
                 last_pct = pct
                 last_emit = now
         else:
@@ -827,8 +832,8 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
     except Exception:
         pass
 
-    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
-    return bytes_sent
+    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) pipe_broken={pipe_broken}")
+    return bytes_sent, pipe_broken
 
 
 def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
@@ -1711,9 +1716,12 @@ def resume_receive_push(
     # Estimate resume send size for progress reporting
     total_bytes = estimate_send_size(send_cmd)
     if total_bytes:
-        dbg(f"Resume send estimated size: {total_bytes} bytes ({total_bytes/(1024*1024):.1f} MiB)")
+        size_mib = total_bytes / (1024 * 1024)
+        dbg(f"Resume send estimated size: {total_bytes} bytes ({size_mib:.1f} MiB)")
+        print(f"Resuming interrupted transfer to {recvName} (~{size_mib:.0f} MiB remaining). Progress in debug log.")
     else:
         dbg("Resume send size estimation unavailable; progress will be indeterminate.")
+        print(f"Resuming interrupted transfer to {recvName} (size unknown). Progress in debug log.")
 
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -1733,7 +1741,7 @@ def resume_receive_push(
             raise RuntimeError("Failed to initialize resume send/recv pipes.")
 
         try:
-            stream_with_progress_stall(
+            _, pipe_broken = stream_with_progress_stall(
                 process_send.stdout, process_recv.stdin, total_bytes,
                 label="Resuming", stall_timeout=stall_timeout,
             )
@@ -1742,6 +1750,13 @@ def resume_receive_push(
             print(f"ERROR: {e}")
             _kill_procs(process_send, process_recv)
             return False, str(e)
+
+        if pipe_broken:
+            _kill_procs(process_send, process_recv)
+            notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+            err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+            safe_print(err_msg)
+            return False, err_msg
 
         try:
             process_recv.stdin.close()
@@ -1808,7 +1823,7 @@ def resume_receive_push(
             raise RuntimeError("Failed to initialize resume netcat pipes.")
 
         try:
-            stream_with_progress_stall(
+            _, pipe_broken = stream_with_progress_stall(
                 process_send.stdout, process_mbuffer.stdin, total_bytes,
                 label="Resuming (netcat)", stall_timeout=stall_timeout,
             )
@@ -1817,6 +1832,13 @@ def resume_receive_push(
             print(f"ERROR: {e}")
             _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
             return False, str(e)
+
+        if pipe_broken:
+            _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
+            notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+            err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+            safe_print(err_msg)
+            return False, err_msg
 
         try:
             process_mbuffer.stdin.close()
@@ -1862,8 +1884,6 @@ def resume_receive_push(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    # Close parent's copy so SIGPIPE propagates through the chain
-    process_send.stdout.close()
 
     recv_args = ["zfs", "recv", "-s"]
     if forceOverwrite:
@@ -1879,12 +1899,14 @@ def resume_receive_push(
         stderr=subprocess.PIPE,
         universal_newlines=False,
     )
+    # Close parent's copy so SIGPIPE propagates if recv dies
+    process_m_buff.stdout.close()
 
     if process_send.stdout is None or process_m_buff.stdin is None:
         raise RuntimeError("Failed to initialize resume SSH pipes.")
 
     try:
-        stream_with_progress_stall(
+        _, pipe_broken = stream_with_progress_stall(
             process_send.stdout, process_m_buff.stdin, total_bytes,
             label="Resuming", stall_timeout=stall_timeout,
         )
@@ -1893,6 +1915,13 @@ def resume_receive_push(
         print(f"ERROR: {e}")
         _kill_procs(process_send, process_m_buff, process_remote_recv)
         return False, str(e)
+
+    if pipe_broken:
+        _kill_procs(process_send, process_m_buff, process_remote_recv)
+        notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+        err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+        safe_print(err_msg)
+        return False, err_msg
 
     try:
         process_m_buff.stdin.close()
@@ -1943,9 +1972,12 @@ def resume_receive_pull(
     send_cmd = ["zfs", "send", "-t", resume_token]
     total_bytes = estimate_send_size_remote(remoteUser, remoteHost, remoteSshPort, send_cmd)
     if total_bytes:
-        dbg(f"Resume pull send estimated size: {total_bytes} bytes ({total_bytes/(1024*1024):.1f} MiB)")
+        size_mib = total_bytes / (1024 * 1024)
+        dbg(f"Resume pull send estimated size: {total_bytes} bytes ({size_mib:.1f} MiB)")
+        print(f"Resuming interrupted transfer to {localRecvFs} (~{size_mib:.0f} MiB remaining). Progress in debug log.")
     else:
         dbg("Resume pull send size estimation unavailable; progress will be indeterminate.")
+        print(f"Resuming interrupted transfer to {localRecvFs} (size unknown). Progress in debug log.")
 
     process_remote_send = ssh_popen_args(
         remoteUser,
@@ -1982,7 +2014,7 @@ def resume_receive_pull(
         raise RuntimeError("Failed to initialize resume pull pipes.")
 
     try:
-        stream_with_progress_stall(
+        _, pipe_broken = stream_with_progress_stall(
             process_remote_send.stdout, process_m_buff.stdin, total_bytes,
             label="Resuming (pull)", stall_timeout=stall_timeout,
         )
@@ -1992,11 +2024,19 @@ def resume_receive_pull(
         _kill_procs(process_remote_send, process_m_buff, process_local_recv)
         return False, str(e)
 
+    if pipe_broken:
+        _kill_procs(process_remote_send, process_m_buff, process_local_recv)
+        notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+        err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+        safe_print(err_msg)
+        return False, err_msg
+
     try:
         process_m_buff.stdin.close()
     except Exception:
         pass
 
+    remote_err = process_remote_send.stderr.read().decode(errors="replace") if process_remote_send.stderr else ""
     process_remote_send.wait()
     process_m_buff.wait()
 
