@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.13-1jammy) jammy; urgency=medium
+
+  * Fixes cloud sync hung progress with timeout param, fixes bug in replication script
+    for resume progress
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 10 Jul 2026 09:37:02 -0300
+
 cockpit-scheduler (1.6.12-1jammy) jammy; urgency=medium
 
   * fix: use explicit cockpit deps for debian to avoid network-manager

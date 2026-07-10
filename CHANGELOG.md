@@ -1,3 +1,3 @@
-## task scheduler 1.6.12-1
+## task scheduler 1.6.13-1
 
-* fix: use explicit cockpit deps for debian to avoid network-manager
+* Fixes cloud sync hung progress with timeout param, fixes bug in replication script for resume progress
