@@ -471,7 +471,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="col-span-3 grid grid-cols-3 grid-rows-2 gap-2">
+                                    <div class="col-span-3 grid grid-cols-3 gap-2">
                                         <div name="options-limit-bw" class="col-span-1">
                                             <label class="mt-1 text-sm leading-6 text-default">
                                                 Limit Bandwidth (Kbps)
@@ -525,9 +525,35 @@
                                                 <option value="CAUTIOUS">CAUTIOUS</option>
                                             </select>
                                         </div>
+                                        <div name="options-stats-interval" class="col-span-1">
+                                            <label class="mt-1 text-sm leading-6 text-default">
+                                                Stats Interval
+                                                <InfoTile class="ml-1"
+                                                    :title="`How often rclone reports progress to the scheduler. Use values like 10s, 1m, or 500ms.\nDefault is 10s.`" />
+                                            </label>
+                                            <ExclamationCircleIcon v-if="errorTags.statsInterval"
+                                                class="mt-1 w-5 h-5 text-danger" />
+                                            <input type="text" v-model="statsInterval"
+                                                :class="[errorTags.statsInterval ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                                placeholder="Default is 10s" />
+                                        </div>
+                                        <div name="options-stall-timeout" class="col-span-1">
+                                            <label class="mt-1 text-sm leading-6 text-default">
+                                                Stall Timeout (seconds)
+                                                <InfoTile class="ml-1"
+                                                    :title="`Abort rclone if no transfer counters, checks, deletes, process CPU, or process I/O activity changes for this many seconds.\nSet to 0 to disable stall detection. Default is 3600 seconds.`" />
+                                            </label>
+                                            <ExclamationCircleIcon v-if="errorTags.stallTimeoutSeconds"
+                                                class="mt-1 w-5 h-5 text-danger" />
+                                            <input type="number" min="0" v-model.number="stallTimeoutSeconds"
+                                                :class="[errorTags.stallTimeoutSeconds ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '']"
+                                                class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                                                placeholder="Default is 3600" />
+                                        </div>
 
                                         <div
-                                            class="col-span-3 row-start-2 grid grid-cols-2 gap-2 w-full justify-center items-center text-center">
+                                            class="col-span-3 grid grid-cols-2 gap-2 w-full justify-center items-center text-center">
                                             <div name="options-include-files-from-path" class="col-span-1">
                                                 <div class="flex flex-row justify-between items-center">
                                                     <label class="mt-1 block text-sm leading-6 text-default">
@@ -746,6 +772,8 @@ const errorTags = ref({
     multiThreadStreams: false,
     multiThreadWriteBufferSize: false,
     logFilePath: false,
+    statsInterval: false,
+    stallTimeoutSeconds: false,
 });
 
 const localPath = ref('');
@@ -759,6 +787,8 @@ const update = ref(false);
 const ignoreExisting = ref(false);
 const dryRun = ref(false);
 const numberOfTransfers = ref(4);
+const statsInterval = ref('10s');
+const stallTimeoutSeconds = ref(3600);
 const includePattern = ref('');
 const excludePattern = ref('');
 const customArgs = ref('');
@@ -904,6 +934,8 @@ async function initializeData() {
         ignoreExisting.value = rcloneOptions.find(p => p.key === 'ignore_existing_flag')!.value;
         dryRun.value = rcloneOptions.find(p => p.key === 'dry_run_flag')!.value;
         numberOfTransfers.value = rcloneOptions.find(p => p.key === 'transfers')!.value;
+        statsInterval.value = rcloneOptions.find(p => p.key === 'stats_interval')?.value || '10s';
+        stallTimeoutSeconds.value = rcloneOptions.find(p => p.key === 'stall_timeout_seconds')?.value ?? 3600;
         includePattern.value = rcloneOptions.find(p => p.key === 'include_pattern')!.value;
         excludePattern.value = rcloneOptions.find(p => p.key === 'exclude_pattern')!.value;
         customArgs.value = rcloneOptions.find(p => p.key === 'custom_args')!.value;
@@ -947,6 +979,8 @@ async function initializeData() {
             ignoreExisting: ignoreExisting.value,
             dryRun: dryRun.value,
             numberOfTransfers: numberOfTransfers.value,
+            statsInterval: statsInterval.value,
+            stallTimeoutSeconds: stallTimeoutSeconds.value,
             includePattern: includePattern.value,
             excludePattern: excludePattern.value,
             customArgs: customArgs.value,
@@ -983,6 +1017,8 @@ function hasChanges() {
         ignoreExisting: ignoreExisting.value,
         dryRun: dryRun.value,
         numberOfTransfers: numberOfTransfers.value,
+        statsInterval: statsInterval.value,
+        stallTimeoutSeconds: stallTimeoutSeconds.value,
         includePattern: includePattern.value,
         excludePattern: excludePattern.value,
         customArgs: customArgs.value,
@@ -1242,6 +1278,16 @@ async function validateAllValues() {
         errorTags.value.numberOfTransfers = true;
     }
 
+    if (statsInterval.value && !/^\d+(?:ms|s|m|h)$/.test(String(statsInterval.value).trim())) {
+        errorList.value.push("Stats Interval must be a duration like 10s, 1m, 1h, or 500ms.");
+        errorTags.value.statsInterval = true;
+    }
+
+    if (stallTimeoutSeconds.value == null || typeof stallTimeoutSeconds.value !== 'number' || stallTimeoutSeconds.value < 0) {
+        errorList.value.push("Stall Timeout must be 0 or a positive number of seconds.");
+        errorTags.value.stallTimeoutSeconds = true;
+    }
+
     // Validate logFilePath
     if (logFilePath.value && typeof logFilePath.value !== 'string') {
         errorList.value.push("Log File Path must be a string.");
@@ -1383,6 +1429,8 @@ function setParams() {
             .addChild(new BoolParameter('Ignore Existing', 'ignore_existing_flag', ignoreExisting.value))
             .addChild(new BoolParameter('Dry Run', 'dry_run_flag', dryRun.value))
             .addChild(new IntParameter('Number of Transfers', 'transfers', numberOfTransfers.value))
+            .addChild(new StringParameter('Stats Interval', 'stats_interval', statsInterval.value || '10s'))
+            .addChild(new IntParameter('Stall Timeout Seconds', 'stall_timeout_seconds', stallTimeoutSeconds.value))
             .addChild(new StringParameter('Include Pattern', 'include_pattern', includePattern.value))
             .addChild(new StringParameter('Exclude Pattern', 'exclude_pattern', excludePattern.value))
             .addChild(new StringParameter('Additional Custom Arguments', 'custom_args', customArgs.value))

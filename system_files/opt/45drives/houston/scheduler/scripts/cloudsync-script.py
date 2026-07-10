@@ -8,6 +8,7 @@ import requests
 import shlex
 import re
 import traceback
+import time
 from notify import get_notifier
 
 
@@ -55,7 +56,36 @@ def dbg(msg: str):
     except Exception:
         pass
 
-PROGRESS_RE = re.compile(r'(\d+)%')
+def int_from_env(name, default):
+    return int_from_value(os.environ.get(name, str(default)), default)
+
+def int_from_value(value, default):
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+def stats_interval_from_value(value, default):
+    value = str(value or "").strip()
+    if not value:
+        return default
+    if not re.match(r'^\d+(?:ms|s|m|h)$', value):
+        return default
+    return value
+
+PROGRESS_RE = re.compile(r'(\d+(?:\.\d+)?)%')
+BYTE_PROGRESS_RE = re.compile(
+    r'(?P<done>\d+(?:\.\d+)?)\s*(?P<done_unit>[KMGTPE]?i?B|[KMGTPE]?B|B)\s*/\s*'
+    r'(?P<total>\d+(?:\.\d+)?)\s*(?P<total_unit>[KMGTPE]?i?B|[KMGTPE]?B|B)',
+    re.IGNORECASE,
+)
+COUNT_PROGRESS_RE = re.compile(r'\b(?:Checks|Deleted|Renamed|Transferred):\s*(\d+)\s*/\s*(\d+)\b', re.IGNORECASE)
+DEFAULT_STATS_INTERVAL = os.environ.get("CLOUDSYNC_RCLONE_STATS_INTERVAL", "10s")
+DEFAULT_STALL_TIMEOUT_SECONDS = int_from_env("CLOUDSYNC_STALL_TIMEOUT_SECONDS", 3600)
+DEFAULT_PROGRESS_LOG_HEARTBEAT_SECONDS = int_from_env("CLOUDSYNC_PROGRESS_LOG_HEARTBEAT_SECONDS", 60)
+PROCESS_ACTIVITY_CPU_TICKS = 20
 DEFAULT_RCLONE_CONF = '/root/.config/rclone/rclone.conf'
 SERVER_URL = 'https://cloud-sync.45d.io'
 
@@ -323,8 +353,17 @@ def build_rclone_command(options):
     if options.get('transfers', 0) > 0:
         command.append(f'--transfers={options["transfers"]}')
         
-    if '--stats-one-line' not in command:
-        command.extend(['--stats-one-line', '--stats=1s'])
+    def has_flag(parts, *names):
+        return any(arg in names or any(arg.startswith(f"{name}=") for name in names) for arg in parts)
+
+    # Show periodic transfer stats for the UI, but do not force the old 1s
+    # cadence. That flooded journald/Cockpit with identical rclone lines during
+    # long sync checks and Dropbox finalization.
+    all_parts = command + extra_parts
+    if not has_flag(all_parts, '--stats-one-line', '--stats-one-line-date'):
+        command.append('--stats-one-line')
+    if not has_flag(all_parts, '--stats'):
+        command.append(f'--stats={stats_interval_from_value(options.get("stats_interval"), DEFAULT_STATS_INTERVAL)}')
         
     command.extend(extra_parts)
         
@@ -336,7 +375,109 @@ def construct_paths(localPath, direction, targetPath):
     """
     return (localPath, targetPath) if direction == 'push' else (targetPath, localPath)
 
-def execute_command(command, src, dest, log_file_path=None):
+def progress_fingerprint(line, pct):
+    """
+    Return a compact marker for rclone's reported work. Repeated 0 B / 0 B
+    stats produce the same marker, while bytes, checks, deletes, or percent
+    changes produce a new one.
+    """
+    markers = []
+    if pct is not None:
+        markers.append(("pct", pct))
+
+    byte_match = BYTE_PROGRESS_RE.search(line)
+    if byte_match:
+        markers.append((
+            "bytes",
+            byte_match.group("done"),
+            byte_match.group("done_unit").lower(),
+            byte_match.group("total"),
+            byte_match.group("total_unit").lower(),
+        ))
+
+    counters = COUNT_PROGRESS_RE.findall(line)
+    if counters:
+        markers.extend(("counter", done, total) for done, total in counters)
+
+    return tuple(markers) if markers else None
+
+def process_activity_fingerprint(pid):
+    """
+    Capture cheap process-level activity counters. This helps avoid false
+    stall detection during quiet rclone phases that are still burning CPU or
+    issuing syscalls while visible transfer stats remain unchanged.
+    """
+    if not pid:
+        return None
+
+    stat_fingerprint = None
+    try:
+        with open(f"/proc/{pid}/stat", "r") as f:
+            stat = f.read()
+        close_paren = stat.rfind(")")
+        fields = stat[close_paren + 2:].split()
+        if len(fields) >= 15:
+            stat_fingerprint = (int(fields[11]), int(fields[12]))
+    except Exception:
+        pass
+
+    io_fingerprint = None
+    try:
+        io_values = {}
+        with open(f"/proc/{pid}/io", "r") as f:
+            for raw in f:
+                key, _, value = raw.partition(":")
+                if key in ("syscr", "read_bytes"):
+                    io_values[key] = int(value.strip())
+        io_fingerprint = tuple(io_values.get(key, 0) for key in ("syscr", "read_bytes"))
+    except Exception:
+        pass
+
+    if stat_fingerprint is None and io_fingerprint is None:
+        return None
+    return (stat_fingerprint, io_fingerprint)
+
+def process_activity_changed(previous, current):
+    if previous is None or current is None:
+        return False
+
+    previous_stat, previous_io = previous
+    current_stat, current_io = current
+
+    if previous_io is not None and current_io is not None:
+        if current_io != previous_io:
+            return True
+
+    if previous_stat is not None and current_stat is not None:
+        previous_ticks = sum(previous_stat)
+        current_ticks = sum(current_stat)
+        if current_ticks - previous_ticks >= PROCESS_ACTIVITY_CPU_TICKS:
+            return True
+
+    return False
+
+def abort_process(process, reason):
+    print(f"ERROR: {reason}")
+    notifier.notify(f"STATUS={reason}")
+
+    try:
+        process.terminate()
+        process.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=5)
+        except Exception:
+            pass
+
+def execute_command(
+    command,
+    src,
+    dest,
+    log_file_path=None,
+    stall_timeout_seconds=DEFAULT_STALL_TIMEOUT_SECONDS,
+    progress_log_heartbeat_seconds=DEFAULT_PROGRESS_LOG_HEARTBEAT_SECONDS,
+):
     """
     Execute the constructed rclone command with streaming output and
     send progress updates to systemd via sd_notify. If log_file_path is
@@ -357,6 +498,12 @@ def execute_command(command, src, dest, log_file_path=None):
     )
 
     last_percent = None
+    last_journal_percent = None
+    last_progress_log_time = 0.0
+    last_meaningful_progress_time = time.monotonic()
+    last_progress_fingerprint = None
+    last_process_activity_fingerprint = process_activity_fingerprint(process.pid)
+    stalled_reason = None
     log_fh = None
 
     # Open the user log file if one was requested
@@ -376,28 +523,75 @@ def execute_command(command, src, dest, log_file_path=None):
     try:
         assert process.stdout is not None
         for line in process.stdout:
-            # write to optional log file
-            if log_fh:
-                try:
-                    log_fh.write(line)
-                except Exception as e:
-                    # Don't break the transfer if logging fails
-                    print(f"WARNING: Failed to write to log file {log_file_path}: {e}")
-                    log_fh = None
-
-            # keep logs in journal
-            sys.stdout.write(line)
-            sys.stdout.flush()
-
             # simple percent parse: first "<digits>%"
             m = PROGRESS_RE.search(line)
+            pct = float(m.group(1)) if m else None
+            fingerprint = progress_fingerprint(line, pct)
+
+            if fingerprint is not None and fingerprint != last_progress_fingerprint:
+                last_progress_fingerprint = fingerprint
+                last_meaningful_progress_time = time.monotonic()
+            elif fingerprint is not None:
+                activity = process_activity_fingerprint(process.pid)
+                if process_activity_changed(last_process_activity_fingerprint, activity):
+                    last_process_activity_fingerprint = activity
+                    last_meaningful_progress_time = time.monotonic()
+            elif fingerprint is None and line.strip():
+                # Non-stats rclone output usually means active work, retries, or
+                # a concrete error message. Count it as activity so very large
+                # listings/check phases are not killed while they are talking.
+                last_meaningful_progress_time = time.monotonic()
+                last_process_activity_fingerprint = process_activity_fingerprint(process.pid)
+
+            # Keep full detail in the debug log, but avoid repeating the same
+            # transfer percentage in journald/user logs every stats interval.
+            write_progress_line = True
+            if pct is not None:
+                now = time.monotonic()
+                write_progress_line = (
+                    pct != last_journal_percent or
+                    now - last_progress_log_time >= progress_log_heartbeat_seconds
+                )
+                if write_progress_line:
+                    last_journal_percent = pct
+                    last_progress_log_time = now
+
+            dbg(line.rstrip('\n'))
+
+            if pct is None or write_progress_line:
+                # write to optional log file
+                if log_fh:
+                    try:
+                        log_fh.write(line)
+                    except Exception as e:
+                        # Don't break the transfer if logging fails
+                        print(f"WARNING: Failed to write to log file {log_file_path}: {e}")
+                        log_fh = None
+
+                # keep logs in journal
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
             if m:
-                pct = int(m.group(1))
                 if pct != last_percent:
                     last_percent = pct
-                    notifier.notify(f"STATUS=Transferring… {pct:.1f}% complete")
+                    if pct >= 100:
+                        notifier.notify("STATUS=Finalizing transfer...")
+                    else:
+                        notifier.notify(f"STATUS=Transferring... {pct:.1f}% complete")
 
-        process.wait()
+            if stall_timeout_seconds > 0:
+                stalled_for = time.monotonic() - last_meaningful_progress_time
+                if stalled_for >= stall_timeout_seconds:
+                    stalled_reason = f"Transfer stalled for {int(stalled_for)}s with no progress"
+                    abort_process(
+                        process,
+                        stalled_reason
+                    )
+                    break
+
+        if stalled_reason is None:
+            process.wait()
     finally:
         if log_fh:
             try:
@@ -405,16 +599,22 @@ def execute_command(command, src, dest, log_file_path=None):
             except Exception:
                 pass
 
-        if process.returncode == 0:
+        if stalled_reason is not None:
+            notifier.notify("STATUS=Transfer stalled")
+        elif process.returncode == 0:
             notifier.notify("STATUS=Finishing up…")
         else:
             notifier.notify("STATUS=Transfer failed")
 
-        if process.returncode != 0:
-            print(f"Error: rclone exited with code {process.returncode}")
-            sys.exit(process.returncode)
-        else:
-            print("Rclone task execution completed.")
+    if stalled_reason is not None:
+        print(f"Error: {stalled_reason}")
+        sys.exit(124)
+
+    if process.returncode != 0:
+        print(f"Error: rclone exited with code {process.returncode}")
+        sys.exit(process.returncode)
+    else:
+        print("Rclone task execution completed.")
 
 
 def execute_rclone(options):
@@ -431,7 +631,14 @@ def execute_rclone(options):
 
         command = build_rclone_command(options)
         src, dest = construct_paths(options['local_path'], options['direction'], options['target_path'])
-        execute_command(command, src, dest, options.get('log_file_path') or None)
+        execute_command(
+            command,
+            src,
+            dest,
+            options.get('log_file_path') or None,
+            options.get('stall_timeout_seconds', DEFAULT_STALL_TIMEOUT_SECONDS),
+            options.get('progress_log_heartbeat_seconds', DEFAULT_PROGRESS_LOG_HEARTBEAT_SECONDS),
+        )
     except Exception as e:
         print(f"Execution error: {e}")
         sys.exit(1)
@@ -473,6 +680,15 @@ def parse_arguments():
         'cutoff_mode': os.environ.get('cloudSyncConfig_rcloneOptions_cutoff_mode', 'HARD').lower(),
         'no_traverse_flag': str_to_bool(os.environ.get('cloudSyncConfig_rcloneOptions_no_traverse_flag', 'False')),
         'log_file_path': os.environ.get('cloudSyncConfig_rcloneOptions_log_file_path', ''),
+        'stats_interval': stats_interval_from_value(
+            os.environ.get('cloudSyncConfig_rcloneOptions_stats_interval'),
+            DEFAULT_STATS_INTERVAL,
+        ),
+        'stall_timeout_seconds': int_from_value(
+            os.environ.get('cloudSyncConfig_rcloneOptions_stall_timeout_seconds'),
+            DEFAULT_STALL_TIMEOUT_SECONDS,
+        ),
+        'progress_log_heartbeat_seconds': DEFAULT_PROGRESS_LOG_HEARTBEAT_SECONDS,
     }
 
 def str_to_bool(value):

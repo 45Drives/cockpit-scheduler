@@ -658,13 +658,13 @@ export class Scheduler implements SchedulerType {
             let newNode: ParameterNode;
 
             if (node instanceof StringParameter) {
-                newNode = new StringParameter(node.label, node.key);
+                newNode = new StringParameter(node.label, node.key, node.value);
             } else if (node instanceof IntParameter) {
-                newNode = new IntParameter(node.label, node.key);
+                newNode = new IntParameter(node.label, node.key, node.value);
             } else if (node instanceof BoolParameter) {
-                newNode = new BoolParameter(node.label, node.key);
+                newNode = new BoolParameter(node.label, node.key, node.value);
             } else if (node instanceof SelectionParameter) {
-                newNode = new SelectionParameter(node.label, node.key);
+                newNode = new SelectionParameter(node.label, node.key, node.value, node.options);
             } else {
                 newNode = new ParameterNode(node.label, node.key);
             }
@@ -757,6 +757,8 @@ export class Scheduler implements SchedulerType {
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_exclude_pattern');
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_custom_args');
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_transfers');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_stats_interval');
+                formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_stall_timeout_seconds', '', ["''"]);
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_max_transfer_size', '', [0, '0', "''"], ['cloudSyncConfig_rcloneOptions_max_transfer_size_unit']);
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_include_from_path');
                 formatEnvOption(envObject, 'cloudSyncConfig_rcloneOptions_exclude_from_path');
