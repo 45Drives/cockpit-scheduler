@@ -87,7 +87,10 @@ const effectiveTransferMethod = computed(() => {
 
 const sendTypeLabel = computed(() => {
     if (!isRemote.value) return 'Local';
-    if (isPull.value) return 'Pull (Remote via SSH)';
+    if (isPull.value) {
+        if (effectiveTransferMethod.value === 'netcat') return 'Pull (Remote via Netcat)';
+        return 'Pull (Remote via SSH)';
+    }
     if (effectiveTransferMethod.value === 'netcat') return 'Push (Remote via Netcat)';
     if (effectiveTransferMethod.value === 'ssh') return 'Push (Remote via SSH)';
     return 'Push (Remote)';
@@ -95,7 +98,6 @@ const sendTypeLabel = computed(() => {
 
 const remoteLabel = computed(() => (isPull.value ? 'Remote Source' : 'Remote Target'));
 const remoteProtoLabel = computed(() => {
-    if (isPull.value) return 'SSH';
     return effectiveTransferMethod.value === 'netcat' ? 'Netcat' : 'SSH';
 });
 

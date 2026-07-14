@@ -230,15 +230,15 @@
                         <span class="text-default">{{ sourceCardLabel }}</span>
                         <div class="relative flex items-center justify-around">
                             <span
-                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                class="flex items-center">
                                 <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
                             </span>
                             <span
-                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                class="flex items-center">
                                 <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
                             </span>
                             <span
-                                :class="[directionSwitched ? 'rotate-180' : '', 'flex items-center transition-transform duration-200']">
+                                class="flex items-center">
                                 <ChevronDoubleRightIcon class="w-5 h-5 text-muted" />
                             </span>
                         </div>
@@ -376,7 +376,7 @@
                     class="text-default bg-default mt-0 block w-full input-textlike sm:text-sm sm:leading-6"
                     id="method">
                     <option value="ssh">SSH</option>
-                    <option value="netcat" :disabled="isPull">Netcat</option>
+                    <option value="netcat">Netcat</option>
                 </select>
             </div>
 
@@ -717,36 +717,7 @@ watch(directionSwitched, async () => {
     await getTargetPools();
 });
 
-watch(isPull, (on) => {
-    if (on) {
-        if (transferMethod.value === 'netcat') {
-            transferMethod.value = 'ssh';
-        }
-        pushNotification(
-            new Notification(
-                'Netcat Disabled',
-                'Netcat is not available in Pull mode. Pull replication uses SSH only.',
-                'info',
-                6000
-            )
-        );
-    }
-});
-
 watch(transferMethod, (newValue) => {
-    if (isPull.value && newValue === 'netcat') {
-        transferMethod.value = 'ssh';
-        pushNotification(
-            new Notification(
-                'Netcat Disabled',
-                'Netcat is not available in Pull mode. Pull replication uses SSH only.',
-                'info',
-                6000
-            )
-        );
-        return;
-    }
-
     if (newValue === 'netcat' && destPort.value === 22) {
         destPort.value = 31337;
     }

@@ -1537,6 +1537,8 @@ def send_snapshot_pull(
     mBufferUnit="G",
     forceOverwrite=False,
     recursive=False,
+    transferMethod="ssh",
+    recvDataPort=None,
 ):
     notifier.notify("STATUS=Preparing ZFS pull pipeline…")
 
@@ -1560,6 +1562,102 @@ def send_snapshot_pull(
     else:
         print(f"pulling {remoteSnapName} into {localRecvFs}")
 
+    if transferMethod == "netcat":
+        data_port = str(recvDataPort or remoteSshPort or "31337")
+        ssh_port = str(remoteSshPort or "22")
+
+        notifier.notify(f"STATUS=Pulling snapshot {remoteSnapName} via netcat from {remoteUser}@{remoteHost} into {localRecvFs}…")
+
+        # Build the remote command: zfs send | nc -l <port>
+        remote_send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
+        nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port)
+        remote_cmd = f"{remote_send_str} | {nc_listen}"
+        ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
+        ssh_cmd_sender.append(remote_cmd)
+
+        # Start remote zfs send | nc -l via SSH
+        ssh_process_sender = subprocess.Popen(
+            ssh_cmd_sender,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        time.sleep(2)
+
+        # Local: nc <remote> <port> | mbuffer | zfs recv
+        nc_cmd = ["nc", remoteHost, data_port]
+        process_nc = subprocess.Popen(
+            nc_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
+        process_mbuffer = subprocess.Popen(
+            mbuffer_cmd,
+            stdin=process_nc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        mbuf_capture = StreamCapture(process_mbuffer.stderr)
+        # Close parent's copy so SIGPIPE propagates
+        process_nc.stdout.close()
+
+        recv_cmd = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            recv_cmd.append("-F")
+        recv_cmd.append(localRecvFs)
+
+        process_local_recv = subprocess.Popen(
+            recv_cmd,
+            stdin=process_mbuffer.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        # Close parent's copy so SIGPIPE propagates
+        process_mbuffer.stdout.close()
+
+        # Wait for the pipeline to complete
+        notifier.notify("STATUS=Receiving data via netcat… waiting for pipeline to complete.")
+        recv_stdout, recv_stderr = process_local_recv.communicate()
+        recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
+        recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
+
+        process_mbuffer.wait()
+        _, nc_stderr = process_nc.communicate()
+
+        ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
+
+        mbuf_err = mbuf_capture.text()
+
+        if ssh_process_sender.returncode != 0:
+            notifier.notify("STATUS=Remote send via netcat failed.")
+            print(f"[Remote Side] Error during send: {ssh_stderr.strip()}")
+            sys.exit(1)
+
+        if process_nc.returncode != 0:
+            notifier.notify("STATUS=Netcat pull failed.")
+            print(f"[Receiver Side] nc error: {nc_stderr.decode(errors='replace') if isinstance(nc_stderr, bytes) else nc_stderr}")
+            sys.exit(1)
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=Netcat pull failed.")
+            if mbuf_err:
+                print(f"[Receiver Side] mbuffer error: {mbuf_err}")
+            sys.exit(1)
+
+        if process_local_recv.returncode != 0:
+            notifier.notify("STATUS=Local receive (pull via netcat) failed.")
+            print(f"ERROR: local recv error: {recv_stderr}")
+            sys.exit(1)
+
+        notifier.notify("STATUS=Netcat pull receive completed.")
+        if recv_stdout:
+            print(recv_stdout)
+        return
+
+    # SSH transfer (default)
     process_remote_send = ssh_popen_args(
         remoteUser,
         remoteHost,
@@ -1962,6 +2060,8 @@ def resume_receive_pull(
     mBufferUnit="G",
     forceOverwrite=False,
     stall_timeout=3600,
+    transferMethod="ssh",
+    recvDataPort=None,
 ):
     notifier.notify("STATUS=Resuming ZFS pull pipeline from resume token…")
 
@@ -1979,6 +2079,102 @@ def resume_receive_pull(
         dbg("Resume pull send size estimation unavailable; progress will be indeterminate.")
         print(f"Resuming interrupted transfer to {localRecvFs} (size unknown). Progress in debug log.")
 
+    if transferMethod == "netcat":
+        data_port = str(recvDataPort or remoteSshPort or "31337")
+        ssh_port = str(remoteSshPort or "22")
+
+        notifier.notify(f"STATUS=Resuming pull via netcat from {remoteUser}@{remoteHost} into {localRecvFs}…")
+
+        # Remote: zfs send -t <token> | nc -l <port>
+        send_str = f"zfs send -t {shlex.quote(resume_token)}"
+        nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port)
+        remote_cmd = f"{send_str} | {nc_listen}"
+        ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
+        ssh_cmd_sender.append(remote_cmd)
+
+        ssh_process_sender = subprocess.Popen(
+            ssh_cmd_sender,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        time.sleep(2)
+
+        # Local: nc <remote> <port> | mbuffer | zfs recv
+        nc_cmd = ["nc", remoteHost, data_port]
+        process_nc = subprocess.Popen(
+            nc_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
+        process_mbuffer = subprocess.Popen(
+            mbuffer_cmd,
+            stdin=process_nc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        mbuf_capture = StreamCapture(process_mbuffer.stderr)
+        process_nc.stdout.close()
+
+        recv_cmd = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            recv_cmd.append("-F")
+        recv_cmd.append(localRecvFs)
+
+        process_local_recv = subprocess.Popen(
+            recv_cmd,
+            stdin=process_mbuffer.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        process_mbuffer.stdout.close()
+
+        # Wait for pipeline
+        recv_stdout, recv_stderr = process_local_recv.communicate()
+        recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
+        recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
+
+        process_mbuffer.wait()
+        _, nc_stderr = process_nc.communicate()
+
+        ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
+
+        mbuf_err = mbuf_capture.text()
+
+        if ssh_process_sender.returncode != 0:
+            notifier.notify("STATUS=Remote resume send via netcat failed.")
+            err_msg = f"[Remote Side] Error during send: {ssh_stderr.strip()}"
+            print(err_msg)
+            return False, err_msg
+
+        if process_nc.returncode != 0:
+            nc_err = nc_stderr.decode(errors="replace") if isinstance(nc_stderr, bytes) else (nc_stderr or "")
+            notifier.notify("STATUS=Netcat resume pull failed.")
+            err_msg = f"[Receiver Side] nc error: {nc_err}"
+            print(err_msg)
+            return False, err_msg
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=Netcat resume pull failed.")
+            err_msg = f"[Receiver Side] mbuffer error: {mbuf_err}"
+            print(err_msg)
+            return False, err_msg
+
+        if process_local_recv.returncode != 0:
+            notifier.notify("STATUS=Local resume receive (pull via netcat) failed.")
+            err_msg = f"ERROR: local recv error: {recv_stderr}"
+            print(err_msg)
+            return False, err_msg
+
+        notifier.notify("STATUS=Netcat pull resume receive completed.")
+        if recv_stdout:
+            print(recv_stdout)
+        return True, ""
+
+    # SSH transfer (default)
     process_remote_send = ssh_popen_args(
         remoteUser,
         remoteHost,
@@ -2419,7 +2615,7 @@ def main():
             remote_source_fs = sourceFilesystem
             local_target_fs = destFilesystem
 
-            # Treat "local" as invalid for pull; use ssh data path.
+            # Treat "local" as invalid for pull; default to ssh.
             if transferMethod == "local" or not transferMethod:
                 transferMethod = "ssh"
 
@@ -2518,6 +2714,8 @@ def main():
                     mBufferUnit=mBufferUnit,
                     forceOverwrite=allowOverwrite,
                     stall_timeout=resumeStallTimeout,
+                    transferMethod=transferMethod,
+                    recvDataPort=dataPort,
                 )
                 if ok:
                     return
@@ -2838,6 +3036,8 @@ def main():
                 mBufferUnit=mBufferUnit,
                 forceOverwrite=forceOverwrite,
                 recursive=isRecursiveSnap,
+                transferMethod=transferMethod,
+                recvDataPort=dataPort,
             )
         else:
             newSnap = create_snapshot_local(sourceFilesystem, isRecursiveSnap, taskName, customName, tier_idx=tier_idx)

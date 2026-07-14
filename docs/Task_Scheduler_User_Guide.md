@@ -455,8 +455,8 @@ The direction switch changes the meaning of the source and target sides:
 
 Important note:
 
-- **Netcat is not available in Pull mode**
-- Pull replication uses **SSH only**
+- **Netcat is available in both Push and Pull modes**
+- For pull with Netcat, the remote serves data via `nc -l` and the local machine connects to receive
 
 #### Source and destination dataset selection
 
@@ -486,7 +486,7 @@ The transfer method only matters when a remote endpoint is involved.
 Options:
 
 - **SSH**
-- **Netcat** for push replication only
+- **Netcat** for both push and pull replication
 
 Buttons:
 
