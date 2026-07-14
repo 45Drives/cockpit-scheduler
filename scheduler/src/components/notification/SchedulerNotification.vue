@@ -104,6 +104,11 @@ const limit = 50;
 const loading = ref(false);
 let active = true;
 
+// Reset pagination when all notifications are cleared
+watch(() => store.notifications.length, (len) => {
+  if (len === 0) offset.value = 0;
+});
+
 async function loadMore() {
   if (loading.value) return;
   loading.value = true;

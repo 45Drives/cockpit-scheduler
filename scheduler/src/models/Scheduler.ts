@@ -1334,7 +1334,7 @@ export class Scheduler implements SchedulerType {
         console.log('notesFilePath:', notesFilePath);
 
         const notesFile = new File(server, notesFilePath);
-        await unwrap(notesFile.replace(taskInstance.notes ?? '', { superuser: 'try' }));
+        await unwrap(notesFile.write(taskInstance.notes ?? '', { superuser: 'try' }));
         console.log('notes file updated successfully');
     }
 

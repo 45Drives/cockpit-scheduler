@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed, toRef } from 'vue';
 import { usePathAutoComplete, type PathEntry } from '../../composables/usePathAutoComplete';
 
 interface Props {
@@ -47,6 +47,8 @@ interface Props {
     error?: boolean;
     dirsOnly?: boolean;
     inputClass?: string;
+    remoteHost?: string;
+    remoteUser?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -54,6 +56,8 @@ const props = withDefaults(defineProps<Props>(), {
     error: false,
     dirsOnly: false,
     inputClass: '',
+    remoteHost: '',
+    remoteUser: 'root',
 });
 
 const emit = defineEmits<{
@@ -66,7 +70,14 @@ const inputEl = ref<HTMLInputElement>();
 const listEl = ref<HTMLElement>();
 const itemRefs: Record<number, HTMLElement> = {};
 
-const ac = usePathAutoComplete(internalPath, { dirsOnly: props.dirsOnly });
+const remoteHostRef = toRef(props, 'remoteHost');
+const remoteUserRef = toRef(props, 'remoteUser');
+
+const ac = usePathAutoComplete(internalPath, {
+    dirsOnly: props.dirsOnly,
+    remoteHost: remoteHostRef,
+    remoteUser: remoteUserRef,
+});
 
 watch(() => props.modelValue, (val) => {
     internalPath.value = val;

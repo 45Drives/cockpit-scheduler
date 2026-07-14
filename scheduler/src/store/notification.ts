@@ -75,7 +75,12 @@ export const schedulerNotificationStore = reactive<{
         "GetMissedNotificationsByEvents",
         [SCHEDULER_EVENTS_JSON, limit, offset]
       );
-      if (!response) return 0;
+      if (!response) {
+        // Server returned nothing — count should reflect what we actually have
+        schedulerNotificationStore.notificationsCount = schedulerNotificationStore.notifications.length;
+        updateSidebar();
+        return 0;
+      }
 
       const items: SchedulerNotification[] = JSON.parse(response);
       items.forEach((n) => {
@@ -83,10 +88,20 @@ export const schedulerNotificationStore = reactive<{
           schedulerNotificationStore.notifications.push(n);
         }
       });
+
+      // If fewer items returned than limit, we've loaded everything —
+      // sync the badge count with reality
+      if (items.length < limit) {
+        schedulerNotificationStore.notificationsCount = schedulerNotificationStore.notifications.length;
+      }
+
       updateSidebar();
       return items.length;
     } catch (error) {
       console.error("Error fetching scheduler notifications:", error);
+      // On error, sync count with what we actually have displayed
+      schedulerNotificationStore.notificationsCount = schedulerNotificationStore.notifications.length;
+      updateSidebar();
       return 0;
     }
   },
@@ -100,12 +115,12 @@ export const schedulerNotificationStore = reactive<{
         "MarkNotificationAsRead",
         [id]
       );
-      schedulerNotificationStore.notifications = schedulerNotificationStore.notifications.filter(n => n.id !== id);
-      this.notificationsCount = Math.max(0, this.notificationsCount - 1);
-      updateSidebar();
     } catch (error) {
       console.error("Error marking notification as read:", error);
     }
+    schedulerNotificationStore.notifications = schedulerNotificationStore.notifications.filter(n => n.id !== id);
+    schedulerNotificationStore.notificationsCount = Math.max(0, schedulerNotificationStore.notificationsCount - 1);
+    updateSidebar();
   },
 
   async clearAllNotifications() {
@@ -118,12 +133,13 @@ export const schedulerNotificationStore = reactive<{
         "MarkAllNotificationsByEventsAsRead",
         [SCHEDULER_EVENTS_JSON]
       );
-      schedulerNotificationStore.notifications = [];
-      this.notificationsCount = 0;
-      updateSidebar();
     } catch (error) {
       console.error("Error clearing scheduler notifications:", error);
     }
+    // Always clear local state (even if D-Bus failed, user intent is clear)
+    schedulerNotificationStore.notifications = [];
+    schedulerNotificationStore.notificationsCount = 0;
+    updateSidebar();
   },
 
   async countMissedNotifications() {
@@ -135,7 +151,14 @@ export const schedulerNotificationStore = reactive<{
         "GetNotificationCountByEvents",
         [SCHEDULER_EVENTS_JSON]
       );
-      this.notificationsCount = result[0] ?? 0;
+      const serverCount = result[0] ?? 0;
+      // If we already loaded notifications, trust the array length over the
+      // server count to avoid badge/list mismatch
+      if (schedulerNotificationStore.notifications.length > 0) {
+        schedulerNotificationStore.notificationsCount = schedulerNotificationStore.notifications.length;
+      } else {
+        schedulerNotificationStore.notificationsCount = serverCount;
+      }
     } catch {
       // ignore
     }

@@ -56,6 +56,7 @@
             </label>
 
             <PathAutoComplete v-model="destPath" :error="destPathErrorTag"
+                :remote-host="destHost" :remote-user="destUser || 'root'"
                 input-class="mt-1" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
 
             <p class="text-[11px] text-muted mt-1">
@@ -153,6 +154,7 @@
                     </div>
                     <div>
                         <PathAutoComplete v-model="destPath" :error="destPathErrorTag"
+                            :remote-host="destHost" :remote-user="destUser || 'root'"
                             input-class="mt-1" placeholder="Specify target path" />
                     </div>
                 </div>

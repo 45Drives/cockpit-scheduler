@@ -92,14 +92,18 @@
                                 <th class="px-3 py-2 table-header-cell" style="width: 150px;">Schedule</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 140px;">Status</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 190px;">Last Run</th>
+                                <th class="px-3 py-2 table-header-cell" style="width: 80px;">Enabled</th>
                             </tr>
                         </thead>
                         <tbody>
                             <template v-for="row in displayRows" :key="row.id">
                                 <tr class="border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer select-none transition-colors border-l-2"
-                                    :class="isSelected(row.raw)
-                                        ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400'
-                                        : 'border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
+                                    :class="[
+                                        isSelected(row.raw)
+                                            ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400'
+                                            : 'border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
+                                        !row.enabled ? 'opacity-50' : '',
+                                    ]"
                                     @click="toggleSelection(row.raw)">
                                     <td class="px-3 py-1.5" @click.stop>
                                         <input
@@ -137,6 +141,16 @@
                                         </span>
                                     </td>
                                     <td class="px-3 py-1.5 truncate text-gray-500" :title="row.lastRun">{{ row.lastRun }}</td>
+                                    <td class="px-3 py-1.5" @click.stop>
+                                        <button @click="toggleEnabled(row)"
+                                            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                                            :class="row.enabled ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'"
+                                            :disabled="!row.hasSchedule"
+                                            :title="!row.hasSchedule ? 'No schedule configured' : (row.enabled ? 'Disable this task' : 'Enable this task')">
+                                            <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform"
+                                                :class="row.enabled ? 'translate-x-[1.125rem]' : 'translate-x-1'" />
+                                        </button>
+                                    </td>
                                 </tr>
                             </template>
                         </tbody>
@@ -147,6 +161,9 @@
                         {{ displayRows.length }} task{{ displayRows.length !== 1 ? 's' : '' }}
                         <template v-if="runningRows.length > 0">
                             · <span class="text-blue-500">{{ runningRows.length }} running</span>
+                        </template>
+                        <template v-if="disabledRows.length > 0">
+                            · <span class="text-neutral-400">{{ disabledRows.length }} disabled</span>
                         </template>
                     </div>
                 </div>
@@ -188,17 +205,17 @@
     <div v-if="showRunNowPrompt">
         <component :is="confirmDialogComponent" @close="(v: boolean) => showRunNowPrompt = v" :showFlag="showRunNowPrompt"
             title="Run Task" message="Do you wish to run this task now?" :confirmYes="runNowYes"
-            :confirmNo="() => showRunNowPrompt = false" :operating="operating" operation="starting" />
+            :confirmNo="() => showRunNowPrompt = false" :operating="operatingRun" operation="starting" />
     </div>
     <div v-if="showStopNowPrompt">
         <component :is="confirmDialogComponent" @close="(v: boolean) => showStopNowPrompt = v" :showFlag="showStopNowPrompt"
             title="Stop Task" message="Do you wish to stop this task now?" :confirmYes="stopNowYes"
-            :confirmNo="() => showStopNowPrompt = false" :operating="operating" operation="stopping" />
+            :confirmNo="() => showStopNowPrompt = false" :operating="operatingStop" operation="stopping" />
     </div>
     <div v-if="showRemovePrompt">
         <component :is="confirmDialogComponent" @close="(v: boolean) => showRemovePrompt = v" :showFlag="showRemovePrompt"
             title="Remove Task" message="Are you sure you want to remove this task? This cannot be undone."
-            :confirmYes="removeYes" :confirmNo="() => showRemovePrompt = false" :operating="operating"
+            :confirmYes="removeYes" :confirmNo="() => showRemovePrompt = false" :operating="operatingRemove"
             operation="removing" />
     </div>
 </template>
@@ -499,6 +516,8 @@ const rows = computed(() => {
             isRunning: live.isRunningNow(t),
             schedule: getSchedule(t),
             lastRun: live.lastRunFor(t) ?? getLastRun(t),
+            enabled: t?.schedule?.enabled ?? false,
+            hasSchedule: (t?.schedule?.intervals?.length ?? 0) > 0,
             raw: t,
             scope: t.scope
         }));
@@ -518,6 +537,7 @@ const displayRows = computed(() => {
 });
 
 const runningRows = computed(() => displayRows.value.filter((row: any) => row.isRunning));
+const disabledRows = computed(() => displayRows.value.filter((row: any) => !row.enabled && row.hasSchedule));
 
 /**
  * Actions
@@ -536,7 +556,9 @@ const confirmDialogComponent = ref();
 const showRunNowPrompt = ref(false);
 const showStopNowPrompt = ref(false);
 const showRemovePrompt = ref(false);
-const operating = ref(false);
+const operatingRun = ref(false);
+const operatingStop = ref(false);
+const operatingRemove = ref(false);
 
 async function loadConfirmDialog() {
     if (!confirmDialogComponent.value) {
@@ -555,7 +577,7 @@ const runNowYes = async () => {
     const t = selected.value;
     if (!t) { showRunNowPrompt.value = false; return; }
 
-    operating.value = true;
+    operatingRun.value = true;
     showRunNowPrompt.value = false;
 
     pushNotification(new Notification('Task Started', `Task ${t?.name ?? ''} has started running.`, 'info', 6000));
@@ -588,7 +610,7 @@ const runNowYes = async () => {
     } catch {
         pushNotification(new Notification('Task Failed', `Task ${t?.name ?? ''} failed.`, 'error', 6000));
     } finally {
-        operating.value = false;
+        operatingRun.value = false;
         live.refreshAll();
     }
 };
@@ -603,7 +625,7 @@ const stopNowYes = async () => {
     const t = selected.value;
     if (!t) { showStopNowPrompt.value = false; return; }
 
-    operating.value = true;
+    operatingStop.value = true;
     showStopNowPrompt.value = false;
 
     pushNotification(new Notification('Task Stopping', `Task ${t?.name ?? ''} is stopping.`, 'info', 6000));
@@ -614,7 +636,7 @@ const stopNowYes = async () => {
     } catch {
         pushNotification(new Notification('Stop Failed', `Failed to stop task ${t?.name ?? ''}.`, 'error', 6000));
     } finally {
-        operating.value = false;
+        operatingStop.value = false;
         live.refreshAll();
     }
 };
@@ -629,7 +651,7 @@ const removeYes = async () => {
     const t = selected.value;
     if (!t) { showRemovePrompt.value = false; return; }
 
-    operating.value = true;
+    operatingRemove.value = true;
     showRemovePrompt.value = false;
 
     fetching.value = true;
@@ -640,7 +662,7 @@ const removeYes = async () => {
     } catch (e: any) {
         pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 6000));
     } finally {
-        operating.value = false;
+        operatingRemove.value = false;
         fetching.value = false;
     }
 };
@@ -650,6 +672,27 @@ async function edit(t: any) {
     // router.push({ name: 'SimpleEditTask' });
     router.push({ name: 'SimpleEditTask', query: { session: t.id || t.name } });
 
+}
+
+async function toggleEnabled(row: any) {
+    const t = row.raw;
+    if (!t || !row.hasSchedule) return;
+
+    fetching.value = true;
+    try {
+        if (row.enabled) {
+            await myScheduler.disableSchedule(t);
+            pushNotification(new Notification('Schedule Disabled', `"${t.name}" will no longer run on schedule.`, 'info', 5000));
+        } else {
+            await myScheduler.enableSchedule(t);
+            pushNotification(new Notification('Schedule Enabled', `"${t.name}" schedule is now active.`, 'success', 5000));
+        }
+        await myScheduler.loadTaskInstances();
+    } catch (e: any) {
+        pushNotification(new Notification('Error', String(e?.message ?? e), 'error', 6000));
+    } finally {
+        fetching.value = false;
+    }
 }
 
 

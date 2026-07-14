@@ -32,13 +32,27 @@ export interface PathEntry {
   isDir: boolean;
 }
 
-export function usePathAutoComplete(pathRef: Ref<string>, opts?: { dirsOnly?: boolean }) {
+export interface PathAutoCompleteOpts {
+  dirsOnly?: boolean;
+  remoteHost?: Ref<string>;
+  remoteUser?: Ref<string>;
+}
+
+export function usePathAutoComplete(pathRef: Ref<string>, opts?: PathAutoCompleteOpts) {
   const suggestions = ref<PathEntry[]>([]);
   const loading = ref(false);
   const showSuggestions = ref(false);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let lastQuery = '';
+
+  // Reset cache when remote host changes so suggestions re-fetch
+  if (opts?.remoteHost) {
+    watch(opts.remoteHost, () => {
+      lastQuery = '';
+      suggestions.value = [];
+    });
+  }
 
   async function fetchSuggestions(partial: string) {
     if (!partial || !partial.startsWith('/')) {
@@ -47,15 +61,42 @@ export function usePathAutoComplete(pathRef: Ref<string>, opts?: { dirsOnly?: bo
     }
 
     // Don't re-fetch for the same query
-    if (partial === lastQuery) return;
-    lastQuery = partial;
+    const host = opts?.remoteHost?.value || '';
+    const user = opts?.remoteUser?.value || 'root';
+    const queryKey = `${host}:${user}:${partial}`;
+    if (queryKey === lastQuery) return;
+    lastQuery = queryKey;
 
     loading.value = true;
     try {
-      const args = ['/usr/bin/env', 'python3', '-c', listDirectoryScript, partial];
-      if (opts?.dirsOnly) args.push('--dirs-only');
+      let args: string[];
+      if (host) {
+        // Validate host/user don't contain dangerous characters
+        if (/[;&|`$\\"\n]/.test(host) || /[;&|`$\\"\n]/.test(user)) {
+          suggestions.value = [];
+          loading.value = false;
+          return;
+        }
+        // Run the list-directory script on the remote host via SSH
+        const dirsFlag = opts?.dirsOnly ? ' --dirs-only' : '';
+        const sshTarget = `${user}@${host}`;
+        // Shell-escape by replacing ' with '\'' for safe embedding in single-quoted strings
+        const shellEscape = (s: string) => s.replace(/'/g, "'\\''");
+        const escapedScript = shellEscape(listDirectoryScript);
+        const escapedPartial = shellEscape(partial);
+        const remoteCmd = `python3 -c '${escapedScript}' '${escapedPartial}'${dirsFlag}`;
+        args = ['/usr/bin/ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', sshTarget, remoteCmd];
+      } else {
+        args = ['/usr/bin/env', 'python3', '-c', listDirectoryScript, partial];
+        if (opts?.dirsOnly) args.push('--dirs-only');
+      }
 
-      const { stdout } = await runCommand(args, { superuser: 'try' });
+      const { stdout, exitStatus } = await runCommand(args, { superuser: 'try' });
+      if (exitStatus !== 0) {
+        suggestions.value = [];
+        showSuggestions.value = false;
+        return;
+      }
       const parsed = JSON.parse(stdout || '[]');
       suggestions.value = parsed as PathEntry[];
       showSuggestions.value = suggestions.value.length > 0;
