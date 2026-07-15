@@ -71,6 +71,7 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
                 .addChild(new BoolParameter('Raw', 'raw_flag', false))
                 .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
+                .addChild(new BoolParameter('Include Intermediate Snapshots', 'includeIntermediateSnapshots', true))
                 .addChild(new IntParameter('MBuffer Size', 'mbufferSize', 1))
                 .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', 'G'))
                 .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', false))

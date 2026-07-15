@@ -457,6 +457,11 @@
                 <label class="block text-sm leading-6 text-default">Send Recursive</label>
                 <input type="checkbox" v-model="sendRecursive" class="h-4 w-4 rounded" />
             </div>
+            <div name="send-opt-include-intermediates" class="flex flex-row items-center gap-2 mt-2">
+                <label class="block text-sm leading-6 text-default">Include Intermediate Snapshots</label>
+                <input type="checkbox" v-model="includeIntermediateSnapshots" class="h-4 w-4 rounded" />
+                <span class="text-xs text-muted">(sends full snapshot history — disable for faster transfers)</span>
+            </div>
             <div name="send-opt-custom-name mt-2">
                 <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
                     <div class="flex flex-row items-center gap-2 mt-2">
@@ -590,6 +595,7 @@ const hasRemoteEndpoint = computed(() => isPull.value || destHost.value.trim() !
 const sendRaw = ref(false);
 const sendCompressed = ref(false);
 const sendRecursive = ref(false);
+const includeIntermediateSnapshots = ref(true);
 const mbufferSize = ref(1);
 const mbufferUnit = ref('G');
 const useCustomName = ref(false);
@@ -758,6 +764,8 @@ async function initializeData() {
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
         sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
+        const includeIntermediatesParam = sendOptionsParams.find(p => p.key === 'includeIntermediateSnapshots');
+        includeIntermediateSnapshots.value = includeIntermediatesParam ? !!includeIntermediatesParam.value : true;
         mbufferSize.value = sendOptionsParams.find(p => p.key === 'mbufferSize')!.value;
         mbufferUnit.value = sendOptionsParams.find(p => p.key === 'mbufferUnit')!.value;
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
@@ -818,6 +826,7 @@ async function initializeData() {
             sendCompressed: sendCompressed.value,
             sendRaw: sendRaw.value,
             sendRecursive: sendRecursive.value,
+            includeIntermediateSnapshots: includeIntermediateSnapshots.value,
             mbufferSize: mbufferSize.value,
             mbufferUnit: mbufferUnit.value,
             useCustomName: useCustomName.value,
@@ -853,6 +862,7 @@ function hasChanges() {
         sendCompressed: sendCompressed.value,
         sendRaw: sendRaw.value,
         sendRecursive: sendRecursive.value,
+        includeIntermediateSnapshots: includeIntermediateSnapshots.value,
         mbufferSize: mbufferSize.value,
         mbufferUnit: mbufferUnit.value,
         useCustomName: useCustomName.value,
@@ -1235,6 +1245,7 @@ function setParams() {
             .addChild(new BoolParameter('Compressed', 'compressed_flag', sendCompressed.value))
             .addChild(new BoolParameter('Raw', 'raw_flag', sendRaw.value))
             .addChild(new BoolParameter('Recursive', 'recursive_flag', sendRecursive.value))
+            .addChild(new BoolParameter('Include Intermediate Snapshots', 'includeIntermediateSnapshots', includeIntermediateSnapshots.value))
             .addChild(new IntParameter('MBuffer Size', 'mbufferSize', mbufferSize.value))
             .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))

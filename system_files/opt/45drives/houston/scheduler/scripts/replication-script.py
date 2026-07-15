@@ -6,6 +6,7 @@ import time
 import json
 import shlex
 import re
+import socket
 import threading
 import traceback
 from collections import deque
@@ -171,19 +172,39 @@ def _detect_nc_flavour(remote_user=None, remote_host=None, remote_port="22"):
     return "unknown"
 
 
-def build_nc_listen_cmd(port: str, remote_user=None, remote_host=None, remote_port="22"):
+def build_nc_listen_cmd(port: str, remote_user=None, remote_host=None, remote_port="22", bind_address=None, send_only=False):
     """
-    Build a portable `nc -l …` command string for the receiver side.
+    Build a portable `nc -l …` command string for the listener side.
     Handles ncat (Rocky/RHEL) vs netcat-openbsd (Ubuntu/Debian).
+    If bind_address is provided, binds the listener to that IP only.
+    If send_only is True, ncat uses --send-only (for pull: zfs send | nc -l).
+    If send_only is False, ncat uses --recv-only (for push: nc -l | zfs recv).
     """
     flavour = _detect_nc_flavour(remote_user, remote_host, remote_port)
     dbg(f"nc flavour on {'remote' if remote_host else 'local'}: {flavour}")
     port_q = shlex.quote(port)
+    bind_q = shlex.quote(bind_address) if bind_address else None
     if flavour == "openbsd":
-        # netcat-openbsd requires -l -p <port>
+        # netcat-openbsd: nc -l [-s bind] -p <port>
+        if bind_q:
+            return f"nc -l -s {bind_q} -p {port_q}"
         return f"nc -l -p {port_q}"
-    # ncat and unknown default to nc -l <port>
-    return f"nc -l {port_q}"
+    # ncat: nc -l [--send-only|--recv-only] [bind] <port>
+    direction_flag = "--send-only" if send_only else "--recv-only"
+    if bind_q:
+        return f"nc -l {direction_flag} {bind_q} {port_q}"
+    return f"nc -l {direction_flag} {port_q}"
+
+
+def _build_nc_connect_cmd(host: str, port: str, recv_only=True):
+    """Build a local nc connect command with --recv-only or --send-only for ncat.
+    recv_only=True for pull (client receives), False for push (client sends)."""
+    flavour = _detect_nc_flavour()
+    if flavour == "ncat":
+        flag = "--recv-only" if recv_only else "--send-only"
+        return ["nc", flag, host, port]
+    # openbsd and unknown: no direction flags available
+    return ["nc", host, port]
 
 
 def join_zfs_path(pool: str, dataset: str) -> str:
@@ -554,7 +575,270 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
     sys.exit(1)
 
 
-def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw):
+# Configurable mBuffer block size (default 256k; set ZFS_REP_MBUFFER_BLOCK for benchmarking)
+MBUFFER_BLOCK_SIZE = os.environ.get("ZFS_REP_MBUFFER_BLOCK", "256k").strip()
+
+
+def _build_mbuffer_cmd(buf_size, buf_unit):
+    """Build the mbuffer command list with configurable block size."""
+    return ["mbuffer", "-s", MBUFFER_BLOCK_SIZE, "-m", f"{buf_size}{buf_unit}"]
+
+
+# --- Netcat readiness polling ------------------------------------------------
+
+def _wait_for_port(host, port, timeout=30, interval=0.5):
+    """Poll a TCP port until it accepts connections or timeout expires.
+    Returns True if connected, False on timeout.
+    Used to replace sleep(2) for netcat listener readiness.
+    
+    IMPORTANT: For remote netcat listeners, use _wait_for_port_remote() instead.
+    A local TCP connect probe will CONSUME a single-accept nc -l listener."""
+    deadline = time.time() + timeout
+    port_int = int(port)
+    while time.time() < deadline:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(min(interval, deadline - time.time()))
+            s.connect((host, port_int))
+            s.close()
+            dbg(f"_wait_for_port: {host}:{port} ready")
+            return True
+        except (ConnectionRefusedError, socket.timeout, OSError):
+            time.sleep(interval)
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+    dbg(f"_wait_for_port: {host}:{port} timeout after {timeout}s")
+    return False
+
+
+def _wait_for_port_remote(user, host, port, ssh_port="22", timeout=30, interval=0.5):
+    """Check from the REMOTE side whether a port is listening, via SSH + ss.
+    This avoids consuming a single-accept netcat listener with a local TCP probe."""
+    deadline = time.time() + timeout
+    port_str = str(port)
+    check_cmd = f"ss -tln 'sport = :{port_str}' | grep -q ':{port_str}'"
+    while time.time() < deadline:
+        try:
+            ssh_cmd = ssh_base_args(user, host, ssh_port)
+            ssh_cmd.append(check_cmd)
+            rc = subprocess.run(
+                ssh_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=min(5, deadline - time.time()),
+            ).returncode
+            if rc == 0:
+                dbg(f"_wait_for_port_remote: {host}:{port} ready (via ss)")
+                return True
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        time.sleep(interval)
+    dbg(f"_wait_for_port_remote: {host}:{port} timeout after {timeout}s")
+    return False
+
+
+# --- TCP tuning (opt-in via env) ---------------------------------------------
+
+# Netcat bind address: restrict listener to a specific interface IP.
+# Set ZFS_REP_NC_BIND_ADDRESS=<ip> in the systemd unit to use.
+NC_BIND_ADDRESS = os.environ.get("ZFS_REP_NC_BIND_ADDRESS", "").strip() or None
+
+
+def _apply_tcp_tuning():
+    """Apply TCP tuning sysctl values if ZFS_REP_TCP_TUNING=1.
+    Only takes effect as root. Logs but does not fail if sysctls cannot be set.
+    These are non-destructive runtime changes that revert on reboot."""
+    if not as_bool(os.environ.get("ZFS_REP_TCP_TUNING")):
+        return
+
+    tunings = {
+        "net.core.rmem_max": "67108864",
+        "net.core.wmem_max": "67108864",
+        "net.ipv4.tcp_rmem": "4096 87380 33554432",
+        "net.ipv4.tcp_wmem": "4096 87380 33554432",
+    }
+    # Optional: set congestion control if specified
+    cc = os.environ.get("ZFS_REP_TCP_CC", "").strip()
+    if cc:
+        tunings["net.ipv4.tcp_congestion_control"] = cc
+
+    for key, val in tunings.items():
+        try:
+            subprocess.run(
+                ["sysctl", "-w", f"{key}={val}"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            dbg(f"tcp_tuning: {key}={val}")
+        except Exception as e:
+            dbg(f"tcp_tuning: failed to set {key}: {e}")
+
+
+# --- Direct-pipe transfer (eliminates Python copy loop) ----------------------
+
+# Set ZFS_REP_DIRECT_PIPE=1 to use OS-level pipe chaining instead of
+# the Python read/write loop. Progress comes from pv (if available) or
+# mBuffer stderr. Falls back to the Python loop if pv is not installed.
+DIRECT_PIPE_ENABLED = as_bool(os.environ.get("ZFS_REP_DIRECT_PIPE"))
+
+
+def _has_pv():
+    """Check if pv (pipe viewer) is installed."""
+    try:
+        p = subprocess.run(["which", "pv"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+        return p.returncode == 0
+    except Exception:
+        return False
+
+
+def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref):
+    """Read pv stderr output and emit progress notifications.
+    pv -f writes progress lines to stderr like:
+      1.23GiB 0:00:10 [ 126MiB/s] [====>               ] 12%
+    We parse the percentage or byte count for notifications."""
+    last_pct = -1.0
+    last_emit = 0.0
+    try:
+        for raw_line in iter(pv_stderr.readline, b""):
+            line = raw_line.decode(errors="replace").strip()
+            if not line:
+                continue
+            now = time.time()
+            # pv outputs percentage in the form " 12%" or "100%"
+            m = re.search(r'(\d+)%', line)
+            if m:
+                pct = float(m.group(1))
+                if pct > last_pct and (now - last_emit) >= 1.0:
+                    notifier_ref.notify(f"STATUS={label}… {pct:.0f}% complete")
+                    last_pct = pct
+                    last_emit = now
+            # Also log rate info from pv
+            rate_m = re.search(r'\[\s*([\d.]+\s*[KMGT]i?B/s)\s*\]', line)
+            if rate_m and (now - last_emit) >= 10.0:
+                dbg(f"pv {label}: {line}")
+    except Exception:
+        pass
+
+
+def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label,
+                          stderr_captures=None):
+    """Wire src_process.stdout -> pv -> mbuffer -> recv using OS pipes (no Python copy).
+
+    Returns (success: bool, error_msg: str).
+    stderr_captures is an optional dict to store StreamCapture objects for the caller.
+    """
+    if stderr_captures is None:
+        stderr_captures = {}
+
+    procs = []
+    try:
+        # Build pv command for progress monitoring
+        pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
+        if total_bytes:
+            pv_cmd.extend(["-s", str(total_bytes)])
+
+        # Pipeline: src_stdout -> pv -> mbuffer -> recv
+        process_pv = subprocess.Popen(
+            pv_cmd,
+            stdin=src_process.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        procs.append(("pv", process_pv))
+        # Close parent's copy so EOF propagates
+        src_process.stdout.close()
+
+        process_mbuffer = subprocess.Popen(
+            mbuffer_cmd,
+            stdin=process_pv.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        procs.append(("mbuffer", process_mbuffer))
+        stderr_captures["mbuffer"] = StreamCapture(process_mbuffer.stderr)
+        process_pv.stdout.close()
+
+        process_recv = subprocess.Popen(
+            recv_cmd,
+            stdin=process_mbuffer.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        procs.append(("recv", process_recv))
+        process_mbuffer.stdout.close()
+
+        # Monitor pv stderr in a thread for progress
+        pv_thread = threading.Thread(
+            target=_pv_monitor_thread,
+            args=(process_pv.stderr, total_bytes, label, notifier),
+            daemon=True,
+        )
+        pv_thread.start()
+
+        notifier.notify(f"STATUS={label}… pipeline running (direct pipe)")
+        dbg(f"direct_pipe {label}: pv pid={process_pv.pid} mbuffer pid={process_mbuffer.pid} recv pid={process_recv.pid}")
+
+        # Wait for the pipeline to drain (recv finishes last)
+        recv_stdout, recv_stderr = process_recv.communicate()
+        recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
+        recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
+
+        process_mbuffer.wait()
+        process_pv.wait()
+        src_process.wait()
+
+        # Check return codes in pipeline order
+        src_rc = src_process.returncode
+        pv_rc = process_pv.returncode
+        mbuf_rc = process_mbuffer.returncode
+        recv_rc = process_recv.returncode
+
+        dbg(f"direct_pipe {label}: src_rc={src_rc} pv_rc={pv_rc} mbuf_rc={mbuf_rc} recv_rc={recv_rc}")
+
+        src_stderr = ""
+        if src_process.stderr:
+            try:
+                src_stderr = src_process.stderr.read().decode(errors="replace")
+            except Exception:
+                pass
+
+        if src_rc != 0:
+            return False, f"Source process failed (rc={src_rc}): {src_stderr}"
+        if recv_rc != 0:
+            return False, f"Receive failed (rc={recv_rc}): {recv_stderr}"
+        if mbuf_rc != 0:
+            mbuf_err = stderr_captures.get("mbuffer")
+            return False, f"mBuffer failed (rc={mbuf_rc}): {mbuf_err.text() if mbuf_err else ''}"
+        # pv non-zero is not critical (e.g. SIGPIPE after recv closes)
+
+        notifier.notify(f"STATUS={label} completed (direct pipe).")
+        if recv_stdout:
+            print(recv_stdout)
+        return True, ""
+
+    except Exception as e:
+        # Kill everything on unexpected error
+        for name, p in procs:
+            try:
+                p.kill()
+            except Exception:
+                pass
+        try:
+            src_process.kill()
+        except Exception:
+            pass
+        return False, f"Direct pipe error: {e}"
+
+
+def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw, include_intermediates=None):
+    """Build zfs send argument list.
+
+    include_intermediates controls -I vs -i independently of recursive:
+      - None (default): legacy behavior (recursive implies -I)
+      - True: use -I (all intermediate snapshots)
+      - False: use -i (only delta from base to target)
+    """
     args = ["zfs", "send"]
     if recursive:
         args.append("-R")
@@ -563,7 +847,14 @@ def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw):
     if raw:
         args.append("-w")
     if sendName2:
-        args.extend(["-I" if recursive else "-i", sendName2])
+        if include_intermediates is None:
+            # Legacy: recursive implies -I
+            flag = "-I" if recursive else "-i"
+        elif include_intermediates:
+            flag = "-I"
+        else:
+            flag = "-i"
+        args.extend([flag, sendName2])
     args.append(sendName)
     return args
 
@@ -701,21 +992,29 @@ def estimate_send_size_remote(remote_user, remote_host, remote_port, send_cmd):
         return None
 
 
-def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interval=1.0):
+def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interval=1.0, chunk_size=None):
     """Returns (bytes_sent, pipe_broken) tuple."""
     bytes_sent = 0
     pipe_broken = False
     last_pct = -1.0
     last_emit = 0.0
     last_dbg = 0.0
+    start_time = time.time()
+    window_bytes = 0
+    window_start = start_time
+
+    # Default 1 MiB chunk; configurable for benchmarking
+    read_size = chunk_size or int(os.environ.get("ZFS_REP_CHUNK_SIZE", str(1024 * 1024)))
 
     if total_bytes:
         notifier.notify(f"STATUS={label}… 0.0% complete")
+        dbg(f"{label} start: estimated_total={total_bytes} ({format_bytes(total_bytes)}) chunk_size={read_size}")
     else:
         notifier.notify(f"STATUS={label}…")
+        dbg(f"{label} start: estimated_total=unknown chunk_size={read_size}")
 
     while True:
-        chunk = src.read(1024 * 1024)
+        chunk = src.read(read_size)
         if not chunk:
             break
         try:
@@ -726,6 +1025,7 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
             pipe_broken = True
             break
         bytes_sent += len(chunk)
+        window_bytes += len(chunk)
         now = time.time()
 
         if total_bytes:
@@ -741,17 +1041,37 @@ def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interv
                 safe_print(f"{label}… {mib:.1f} MiB sent")
                 last_emit = now
 
-        # debug heartbeat every 10s regardless of size estimation
+        # debug heartbeat every 10s with rate info
         if (now - last_dbg) >= 10.0:
-            dbg(f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
+            elapsed = now - start_time
+            avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
+            window_elapsed = now - window_start
+            current_rate = window_bytes / window_elapsed if window_elapsed > 0 else 0
+            eta_str = ""
+            if total_bytes and avg_rate > 0:
+                remaining = total_bytes - bytes_sent
+                eta_secs = remaining / avg_rate
+                eta_str = f" ETA={int(eta_secs)}s"
+            dbg(
+                f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) "
+                f"current_rate={current_rate/(1024*1024):.1f} MiB/s "
+                f"avg_rate={avg_rate/(1024*1024):.1f} MiB/s{eta_str}"
+            )
             last_dbg = now
+            window_bytes = 0
+            window_start = now
 
     try:
         dst.flush()
     except Exception:
         pass
 
-    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) pipe_broken={pipe_broken}")
+    elapsed = time.time() - start_time
+    avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
+    dbg(
+        f"{label} finished: bytes_sent={bytes_sent} ({format_bytes(bytes_sent)}) "
+        f"elapsed={elapsed:.1f}s avg_rate={avg_rate/(1024*1024):.1f} MiB/s pipe_broken={pipe_broken}"
+    )
     return bytes_sent, pipe_broken
 
 
@@ -772,7 +1092,12 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
     last_emit = 0.0
     last_dbg = 0.0
     last_data_time = time.time()
+    start_time = last_data_time
+    window_bytes = 0
+    window_start = start_time
     stall_enabled = bool(stall_timeout and stall_timeout > 0)
+
+    read_size = int(os.environ.get("ZFS_REP_CHUNK_SIZE", str(1024 * 1024)))
 
     if total_bytes:
         notifier.notify(f"STATUS={label}… 0.0% complete")
@@ -796,7 +1121,7 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
                     )
                 continue
 
-        chunk = src.read(1024 * 1024)
+        chunk = src.read(read_size)
         if not chunk:
             break
         last_data_time = time.time()
@@ -808,6 +1133,7 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
             pipe_broken = True
             break
         bytes_sent += len(chunk)
+        window_bytes += len(chunk)
         now = time.time()
 
         if total_bytes:
@@ -824,15 +1150,35 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
                 last_emit = now
 
         if (now - last_dbg) >= 10.0:
-            dbg(f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB)")
+            elapsed = now - start_time
+            avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
+            window_elapsed = now - window_start
+            current_rate = window_bytes / window_elapsed if window_elapsed > 0 else 0
+            eta_str = ""
+            if total_bytes and avg_rate > 0:
+                remaining = total_bytes - bytes_sent
+                eta_secs = remaining / avg_rate
+                eta_str = f" ETA={int(eta_secs)}s"
+            dbg(
+                f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) "
+                f"current_rate={current_rate/(1024*1024):.1f} MiB/s "
+                f"avg_rate={avg_rate/(1024*1024):.1f} MiB/s{eta_str}"
+            )
             last_dbg = now
+            window_bytes = 0
+            window_start = now
 
     try:
         dst.flush()
     except Exception:
         pass
 
-    dbg(f"{label} finished: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) pipe_broken={pipe_broken}")
+    elapsed = time.time() - start_time
+    avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
+    dbg(
+        f"{label} finished: bytes_sent={bytes_sent} ({format_bytes(bytes_sent)}) "
+        f"elapsed={elapsed:.1f}s avg_rate={avg_rate/(1024*1024):.1f} MiB/s pipe_broken={pipe_broken}"
+    )
     return bytes_sent, pipe_broken
 
 
@@ -983,6 +1329,23 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
         sys.exit(1)
 
     p = ssh_run_args(remote_user, remote_host, ssh_port, cmd, capture_output=True, check=False, text=True)
+
+    # Retry on transient "dataset is busy" errors (e.g. another send/recv just finished)
+    if p.returncode != 0:
+        raw0 = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
+        if "dataset is busy" in raw0.lower():
+            max_retries = 5
+            for attempt in range(1, max_retries + 1):
+                delay = 3 * attempt
+                print(f"Remote snapshot creation got 'dataset is busy' — retrying in {delay}s (attempt {attempt}/{max_retries})")
+                notifier.notify(f"STATUS=Dataset busy, retrying snapshot in {delay}s ({attempt}/{max_retries})…")
+                time.sleep(delay)
+                p = ssh_run_args(remote_user, remote_host, ssh_port, cmd, capture_output=True, check=False, text=True)
+                if p.returncode == 0:
+                    break
+                raw0 = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
+                if "dataset is busy" not in raw0.lower():
+                    break  # Different error, fall through to normal handling
 
     if p.returncode != 0:
         raw = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
@@ -1251,6 +1614,7 @@ def send_snapshot_push(
     transferMethod="",
     recursive=False,
     recvDataPort=None,
+    include_intermediates=None,
 ):
     notifier.notify("STATUS=Preparing ZFS send/recv pipeline…")
 
@@ -1260,6 +1624,7 @@ def send_snapshot_push(
         recursive=recursive,
         compressed=compressed,
         raw=raw,
+        include_intermediates=include_intermediates,
     )
 
     if sendName2:
@@ -1331,7 +1696,109 @@ def send_snapshot_push(
     if transferMethod == "ssh":
         notifier.notify(f"STATUS=Sending snapshot {sendName} to {recvHostUser}@{recvHost}:{recvName} via ssh…")
 
-        m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
+        # --- Direct-pipe path: zfs send -> pv -> mbuffer -> ssh zfs recv ---
+        if DIRECT_PIPE_ENABLED and _has_pv():
+            dbg("push SSH: using direct-pipe transfer (pv)")
+
+            # Build the remote recv command via SSH
+            flags = ["zfs", "recv", "-s"]
+            if forceOverwrite:
+                flags.append("-F")
+            flags.append(recvName)
+
+            # We need mbuffer stdout -> ssh recv.  Build that chain first,
+            # then wire process_send -> pv -> mbuffer.
+            m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
+
+            # For push, the recv side is remote. We build the full pipeline
+            # and let _direct_pipe_transfer handle send -> pv -> mbuffer,
+            # but we need to pipe mbuffer -> ssh_recv separately.
+            # Use a custom approach: pipe process_send through pv+mbuffer,
+            # then ssh recv reads from mbuffer stdout.
+
+            pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
+            if total_bytes:
+                pv_cmd.extend(["-s", str(total_bytes)])
+
+            process_pv = subprocess.Popen(
+                pv_cmd,
+                stdin=process_send.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            process_send.stdout.close()
+
+            process_m_buff = subprocess.Popen(
+                m_buff_cmd,
+                stdin=process_pv.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            mbuf_capture = StreamCapture(process_m_buff.stderr)
+            process_pv.stdout.close()
+
+            process_remote_recv = ssh_popen_args(
+                recvHostUser, recvHost, recvSshPort, flags,
+                stdin=process_m_buff.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=False,
+            )
+            process_m_buff.stdout.close()
+
+            dbg(f"direct_pipe push: pv pid={process_pv.pid} mbuffer pid={process_m_buff.pid} recv pid={process_remote_recv.pid}")
+
+            # Monitor pv in a thread
+            pv_thread = threading.Thread(
+                target=_pv_monitor_thread,
+                args=(process_pv.stderr, total_bytes, "Transferring", notifier),
+                daemon=True,
+            )
+            pv_thread.start()
+
+            notifier.notify("STATUS=Transferring… pipeline running (direct pipe)")
+
+            # Wait for pipeline to complete
+            stdout, stderr = process_remote_recv.communicate()
+            stdout = stdout.decode(errors="replace") if stdout else ""
+            stderr = stderr.decode(errors="replace") if stderr else ""
+
+            process_m_buff.wait()
+            process_pv.wait()
+            process_send.wait()
+
+            send_stderr = ""
+            if process_send.stderr:
+                try:
+                    send_stderr = process_send.stderr.read().decode(errors="replace")
+                except Exception:
+                    pass
+
+            if process_send.returncode != 0:
+                notifier.notify("STATUS=Remote send failed.")
+                if send_stderr:
+                    print(f"[Sender Side] zfs send error: {send_stderr}")
+                sys.exit(1)
+
+            if process_remote_recv.returncode != 0:
+                notifier.notify("STATUS=Remote receive failed.")
+                print(f"ERROR: remote recv error: {stderr}")
+                sys.exit(1)
+
+            mbuf_err = mbuf_capture.text()
+            if process_m_buff.returncode != 0:
+                notifier.notify("STATUS=Remote receive failed.")
+                if mbuf_err:
+                    print(f"[Sender Side] mbuffer error: {mbuf_err}")
+                sys.exit(1)
+
+            notifier.notify("STATUS=Remote receive completed (direct pipe).")
+            if stdout:
+                print(stdout)
+            return
+
+        # --- Standard path: Python copy loop ---
+        m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_m_buff = subprocess.Popen(
             m_buff_cmd,
             stdin=subprocess.PIPE,
@@ -1417,7 +1884,7 @@ def send_snapshot_push(
         notifier.notify(f"STATUS=Sending snapshot {sendName} via netcat to {recvHostUser}@{recvHost}:{recvName}…")
 
         recv_q = shlex.quote(recvName)
-        nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port)
+        nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port, bind_address=NC_BIND_ADDRESS)
         listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
         ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
         ssh_cmd_listener.append(listen_cmd)
@@ -1429,10 +1896,11 @@ def send_snapshot_push(
             universal_newlines=True,
         )
 
-        time.sleep(2)
+        if not _wait_for_port_remote(recvHostUser, recvHost, data_port, ssh_port, timeout=30):
+            safe_print(f"WARNING: netcat listener on {recvHost}:{data_port} not ready after 30s, proceeding anyway")
 
-        mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
-        nc_cmd = ["nc", recvHost, data_port]
+        mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
+        nc_cmd = _build_nc_connect_cmd(recvHost, data_port, recv_only=False)
 
         process_mbuffer = subprocess.Popen(
             mbuffer_cmd,
@@ -1539,6 +2007,7 @@ def send_snapshot_pull(
     recursive=False,
     transferMethod="ssh",
     recvDataPort=None,
+    include_intermediates=None,
 ):
     notifier.notify("STATUS=Preparing ZFS pull pipeline…")
 
@@ -1551,6 +2020,7 @@ def send_snapshot_pull(
         recursive=recursive,
         compressed=compressed,
         raw=raw,
+        include_intermediates=include_intermediates,
     )
 
     total_bytes = estimate_send_size_remote(remoteUser, remoteHost, remoteSshPort, remote_send_args)
@@ -1570,7 +2040,7 @@ def send_snapshot_pull(
 
         # Build the remote command: zfs send | nc -l <port>
         remote_send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
-        nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port)
+        nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port, bind_address=NC_BIND_ADDRESS, send_only=True)
         remote_cmd = f"{remote_send_str} | {nc_listen}"
         ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
         ssh_cmd_sender.append(remote_cmd)
@@ -1583,26 +2053,55 @@ def send_snapshot_pull(
             universal_newlines=True,
         )
 
-        time.sleep(2)
+        if not _wait_for_port_remote(remoteUser, remoteHost, data_port, ssh_port, timeout=30):
+            safe_print(f"WARNING: netcat listener on {remoteHost}:{data_port} not ready after 30s, proceeding anyway")
 
-        # Local: nc <remote> <port> | mbuffer | zfs recv
-        nc_cmd = ["nc", remoteHost, data_port]
+        # Local: nc <remote> <port> | pv | mbuffer | zfs recv
+        nc_cmd = _build_nc_connect_cmd(remoteHost, data_port, recv_only=True)
         process_nc = subprocess.Popen(
             nc_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
-        mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
+        # Insert pv for progress monitoring on pull
+        process_pv = None
+        pv_source = process_nc.stdout
+        if _has_pv():
+            pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
+            if total_bytes:
+                pv_cmd.extend(["-s", str(total_bytes)])
+            process_pv = subprocess.Popen(
+                pv_cmd,
+                stdin=process_nc.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            process_nc.stdout.close()
+            pv_source = process_pv.stdout
+
+        mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_mbuffer = subprocess.Popen(
             mbuffer_cmd,
-            stdin=process_nc.stdout,
+            stdin=pv_source,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         mbuf_capture = StreamCapture(process_mbuffer.stderr)
         # Close parent's copy so SIGPIPE propagates
-        process_nc.stdout.close()
+        if process_pv:
+            process_pv.stdout.close()
+        else:
+            process_nc.stdout.close()
+
+        # Start pv progress monitor thread
+        if process_pv:
+            pv_thread = threading.Thread(
+                target=_pv_monitor_thread,
+                args=(process_pv.stderr, total_bytes, "Transferring", notifier),
+                daemon=True,
+            )
+            pv_thread.start()
 
         recv_cmd = ["zfs", "recv", "-s"]
         if forceOverwrite:
@@ -1625,6 +2124,8 @@ def send_snapshot_pull(
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
 
         process_mbuffer.wait()
+        if process_pv:
+            process_pv.wait()
         _, nc_stderr = process_nc.communicate()
 
         ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
@@ -1669,7 +2170,27 @@ def send_snapshot_pull(
         universal_newlines=False,
     )
 
-    m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
+    # --- Direct-pipe path: SSH stdout -> pv -> mbuffer -> zfs recv (no Python copy) ---
+    if DIRECT_PIPE_ENABLED and _has_pv():
+        dbg("pull SSH: using direct-pipe transfer (pv)")
+        m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
+        recv_cmd = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            recv_cmd.append("-F")
+        recv_cmd.append(localRecvFs)
+
+        ok, err_msg = _direct_pipe_transfer(
+            process_remote_send, m_buff_cmd, recv_cmd, total_bytes,
+            label="Transferring",
+        )
+        if not ok:
+            notifier.notify("STATUS=Local receive (pull) failed.")
+            print(f"ERROR: {err_msg}")
+            sys.exit(1)
+        return
+
+    # --- Standard path: Python copy loop SSH -> mbuffer -> recv ---
+    m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
     process_m_buff = subprocess.Popen(
         m_buff_cmd,
         stdin=subprocess.PIPE,
@@ -1888,7 +2409,7 @@ def resume_receive_push(
         ssh_port = str(recvSshPort or "22")
 
         recv_q = shlex.quote(recvName)
-        nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port)
+        nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port, bind_address=NC_BIND_ADDRESS)
         listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
         ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
         ssh_cmd_listener.append(listen_cmd)
@@ -1900,16 +2421,17 @@ def resume_receive_push(
             universal_newlines=True,
         )
 
-        time.sleep(2)
+        if not _wait_for_port_remote(recvHostUser, recvHost, data_port, ssh_port, timeout=30):
+            safe_print(f"WARNING: netcat listener on {recvHost}:{data_port} not ready after 30s, proceeding anyway")
 
-        mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
+        mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_mbuffer = subprocess.Popen(
             mbuffer_cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        nc_cmd = ["nc", recvHost, data_port]
+        nc_cmd = _build_nc_connect_cmd(recvHost, data_port, recv_only=False)
         process_nc = subprocess.Popen(
             nc_cmd,
             stdin=process_mbuffer.stdout,
@@ -1975,7 +2497,7 @@ def resume_receive_push(
         print("ERROR: Resume tokens are only supported for local, ssh, or netcat transfers in this script.")
         return False, "Resume tokens are only supported for local, ssh, or netcat transfers in this script."
 
-    m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
+    m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
     process_m_buff = subprocess.Popen(
         m_buff_cmd,
         stdin=subprocess.PIPE,
@@ -2087,7 +2609,7 @@ def resume_receive_pull(
 
         # Remote: zfs send -t <token> | nc -l <port>
         send_str = f"zfs send -t {shlex.quote(resume_token)}"
-        nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port)
+        nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port, bind_address=NC_BIND_ADDRESS, send_only=True)
         remote_cmd = f"{send_str} | {nc_listen}"
         ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
         ssh_cmd_sender.append(remote_cmd)
@@ -2099,25 +2621,54 @@ def resume_receive_pull(
             universal_newlines=True,
         )
 
-        time.sleep(2)
+        if not _wait_for_port_remote(remoteUser, remoteHost, data_port, ssh_port, timeout=30):
+            safe_print(f"WARNING: netcat listener on {remoteHost}:{data_port} not ready after 30s, proceeding anyway")
 
-        # Local: nc <remote> <port> | mbuffer | zfs recv
-        nc_cmd = ["nc", remoteHost, data_port]
+        # Local: nc <remote> <port> | pv | mbuffer | zfs recv
+        nc_cmd = _build_nc_connect_cmd(remoteHost, data_port, recv_only=True)
         process_nc = subprocess.Popen(
             nc_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
-        mbuffer_cmd = ["mbuffer", "-s", "256k", "-m", f"{mBufferSize}{mBufferUnit}"]
+        # Insert pv for progress monitoring on pull resume
+        process_pv = None
+        pv_source = process_nc.stdout
+        if _has_pv():
+            pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
+            if total_bytes:
+                pv_cmd.extend(["-s", str(total_bytes)])
+            process_pv = subprocess.Popen(
+                pv_cmd,
+                stdin=process_nc.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            process_nc.stdout.close()
+            pv_source = process_pv.stdout
+
+        mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_mbuffer = subprocess.Popen(
             mbuffer_cmd,
-            stdin=process_nc.stdout,
+            stdin=pv_source,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         mbuf_capture = StreamCapture(process_mbuffer.stderr)
-        process_nc.stdout.close()
+        if process_pv:
+            process_pv.stdout.close()
+        else:
+            process_nc.stdout.close()
+
+        # Start pv progress monitor thread
+        if process_pv:
+            pv_thread = threading.Thread(
+                target=_pv_monitor_thread,
+                args=(process_pv.stderr, total_bytes, "Resuming", notifier),
+                daemon=True,
+            )
+            pv_thread.start()
 
         recv_cmd = ["zfs", "recv", "-s"]
         if forceOverwrite:
@@ -2138,6 +2689,8 @@ def resume_receive_pull(
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
 
         process_mbuffer.wait()
+        if process_pv:
+            process_pv.wait()
         _, nc_stderr = process_nc.communicate()
 
         ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
@@ -2186,7 +2739,7 @@ def resume_receive_pull(
         universal_newlines=False,
     )
 
-    m_buff_cmd = ["mbuffer", "-s", "256k", "-m", str(mBufferSize) + mBufferUnit]
+    m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
     process_m_buff = subprocess.Popen(
         m_buff_cmd,
         stdin=subprocess.PIPE,
@@ -2320,6 +2873,7 @@ def dbg_env():
         "zfsRepConfig_sendOptions_raw_flag",
         "zfsRepConfig_sendOptions_allowOverwrite",
         "zfsRepConfig_sendOptions_useExistingDest",
+        "zfsRepConfig_sendOptions_includeIntermediateSnapshots",
         "zfsRepConfig_destDataset_user",
         "zfsRepConfig_destDataset_host",
         "zfsRepConfig_destDataset_port",
@@ -2328,6 +2882,13 @@ def dbg_env():
         "zfsRepConfig_sourceDataset_dataset",
         "zfsRepConfig_destDataset_pool",
         "zfsRepConfig_destDataset_dataset",
+        "ZFS_REP_SSH_CIPHER",
+        "ZFS_REP_CHUNK_SIZE",
+        "ZFS_REP_MBUFFER_BLOCK",
+        "ZFS_REP_DIRECT_PIPE",
+        "ZFS_REP_TCP_TUNING",
+        "ZFS_REP_TCP_CC",
+        "ZFS_REP_NC_BIND_ADDRESS",
         "HOME",
         "PATH",
     ]
@@ -2375,7 +2936,14 @@ SSH_BASE_OPTS = [
     "-o", "ServerAliveInterval=30",
     "-o", "ServerAliveCountMax=3",
     "-o", "StrictHostKeyChecking=accept-new",
+    "-o", "Compression=no",
 ]
+
+# Configurable SSH cipher via environment. Empty = use system default.
+_SSH_CIPHER = os.environ.get("ZFS_REP_SSH_CIPHER", "").strip()
+if _SSH_CIPHER:
+    SSH_BASE_OPTS.extend(["-o", f"Ciphers={_SSH_CIPHER}"])
+    dbg(f"SSH cipher override: {_SSH_CIPHER}")
 
 def ssh_run_args(user, host, port, args, *, capture_output=True, check=False, text=False, timeout=None):
     ssh_cmd = ["ssh"] + SSH_BASE_OPTS
@@ -2455,9 +3023,25 @@ def main():
             "shell": os.environ.get("SHELL", ""),
         })
         dbg_env()
+
+        # Apply optional TCP tuning before any transfers
+        _apply_tcp_tuning()
+
         notifier.notify("STATUS=Planning replication…")
 
         taskName = os.environ.get("taskName", "")
+
+        # Clear persisted lastrun file at start so it only reflects a FRESH
+        # successful completion.  Without this, a stale .lastrun from a previous
+        # success causes the UI to show "Completed" even after a failed re-run.
+        if taskName:
+            _lastrun_path = f"/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{taskName}.lastrun"
+            try:
+                os.remove(_lastrun_path)
+            except FileNotFoundError:
+                pass
+            except Exception as _e:
+                dbg(f"WARNING: could not remove old lastrun file: {_e}")
 
         direction = (os.environ.get("zfsRepConfig_direction", "push") or "push").strip().lower()
         if direction not in ("push", "pull"):
@@ -2469,6 +3053,15 @@ def main():
 
         isRaw = as_bool(os.environ.get("zfsRepConfig_sendOptions_raw_flag"))
         isCompressed = as_bool(os.environ.get("zfsRepConfig_sendOptions_compressed_flag"))
+
+        # Include intermediate snapshots: None=legacy (recursive implies -I), True=-I, False=-i
+        _include_int_env = os.environ.get("zfsRepConfig_sendOptions_includeIntermediateSnapshots", "").strip().lower()
+        if _include_int_env in ("0", "false", "no", "off"):
+            includeIntermediateSnapshots = False
+        elif _include_int_env in ("1", "true", "yes", "on"):
+            includeIntermediateSnapshots = True
+        else:
+            includeIntermediateSnapshots = None  # legacy behavior
 
         transferMethod = (os.environ.get("zfsRepConfig_sendOptions_transferMethod", "") or "").strip().lower()
         sshPort, dataPort = get_dest_ports(transferMethod)
@@ -2597,9 +3190,12 @@ def main():
             "recursive": isRecursiveSnap,
             "compressed": isCompressed,
             "raw": isRaw,
+            "includeIntermediates": includeIntermediateSnapshots,
             "allowOverwrite": allowOverwrite,
             "useExistingDest": useExistingDest,
             "mbuffer": f"{mBufferSize}{mBufferUnit}",
+            "mbuffer_block": MBUFFER_BLOCK_SIZE,
+            "ssh_cipher": _SSH_CIPHER or "(system default)",
         })
 
         if not sourceFilesystem:
@@ -3038,6 +3634,7 @@ def main():
                 recursive=isRecursiveSnap,
                 transferMethod=transferMethod,
                 recvDataPort=dataPort,
+                include_intermediates=includeIntermediateSnapshots,
             )
         else:
             newSnap = create_snapshot_local(sourceFilesystem, isRecursiveSnap, taskName, customName, tier_idx=tier_idx)
@@ -3074,6 +3671,7 @@ def main():
                 transferMethod,
                 recursive=isRecursiveSnap,
                 recvDataPort=dataPort,
+                include_intermediates=includeIntermediateSnapshots,
             )
 
         notifier.notify("STATUS=Pruning old snapshots on source/destination…")

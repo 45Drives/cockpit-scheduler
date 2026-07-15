@@ -219,7 +219,7 @@ export class Scheduler implements SchedulerType {
                 const s = this.parseShow(serviceOut);
 
                 const source = pickStatusSource(t, s);
-                const statusText = await this.parseTaskStatus(source, u, log, ti);
+                let statusText = await this.parseTaskStatus(source, u, log, ti);
 
                 const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
                 const nextRunUs = t.nextElapseUSec || 0;
@@ -228,6 +228,10 @@ export class Scheduler implements SchedulerType {
                 // Fallback: read persisted .lastrun file if systemd cleared its timestamps
                 if (!lastRunMs) {
                     lastRunMs = await readPersistedLastRunMs();
+                }
+
+                if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
+                    statusText = 'Completed';
                 }
 
                 return {
@@ -281,7 +285,7 @@ export class Scheduler implements SchedulerType {
             const s = this.parseShow(serviceOut);
 
             const source = pickStatusSource(t, s);
-            const statusText = await this.parseTaskStatus(source, unit, log, ti);
+            let statusText = await this.parseTaskStatus(source, unit, log, ti);
 
             const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
             const nextRunUs = t.nextElapseUSec || 0;
@@ -290,6 +294,14 @@ export class Scheduler implements SchedulerType {
             // Fallback: read persisted .lastrun file if systemd cleared its timestamps
             if (!lastRunMs) {
                 lastRunMs = await readPersistedLastRunMs();
+            }
+
+            // If systemd reports "Inactive (Disabled)" but the task has actually
+            // run before (lastrun file proves it and Result=success), treat as Completed.
+            // This handles the case where systemd clears ExecMain timestamps after
+            // reset-failed or on Type=notify services after process exit.
+            if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
+                statusText = 'Completed';
             }
 
             return {
@@ -1590,16 +1602,21 @@ export class Scheduler implements SchedulerType {
                 if (s.active === 'activating' && s.sub === 'auto-restart') return 'Failed (Restarting)';
 
                 if (s.active === 'inactive' && s.sub === 'dead') {
-                    const hasRun = !!s.serviceStartUSec; // non-zero only after the service has actually started
+                    // Result=success is systemd's default for never-run units
+                    // AND the state after `systemctl reset-failed`.  Only trust
+                    // it as "actually completed" when ExecMainStartTimestamp
+                    // proves the service ran.  When timestamps are cleared
+                    // (Type=notify exit, reset-failed), fall through to
+                    // 'Inactive (Disabled)' and let getDisplayMeta's .lastrun
+                    // override handle genuinely-completed tasks.
+                    const hasRun = !!s.serviceStartUSec;
 
-                    // Brand-new / never-run units should *not* be considered completed
-                    if (!hasRun) {
-                        return 'Inactive (Disabled)';
+                    if (s.result === 'success' && hasRun) {
+                        return 'Completed';
                     }
 
-                    // For units that *have* run at least once, trust systemd first
-                    if (s.result === 'success') {
-                        return 'Completed';
+                    if (!hasRun) {
+                        return 'Inactive (Disabled)';
                     }
 
                     let recentlyCompleted = false;

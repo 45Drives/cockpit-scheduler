@@ -215,15 +215,16 @@ const statusText = computed(() => {
 	if (!enabled) {
 		const running = liveIsRunning(taskInstance.value);
 		const completed = liveIsCompleted(taskInstance.value);
+		const hasRun = !!(lastRunFor(taskInstance.value) && !lastRunFor(taskInstance.value)?.includes("hasn't run"));
 
 		// While we're in the manual window, be explicit
 		if (manualWindowActive) {
 			if (running) return 'Running (manual)';
-			if (completed) return 'Completed (manual)';
+			if (completed && hasRun) return 'Completed (manual)';
 		}
 
 		// Outside window, still keep "Completed (manual)" instead of plain "Completed"
-		if (completed) return 'Completed (manual)';
+		if (completed && hasRun) return 'Completed (manual)';
 	}
 
 	return base;
@@ -245,7 +246,7 @@ const isRunning = computed(() => {
 
 	if (liveIsRunning(taskInstance.value)) return true;
 
-	if (manualWindowActive && !liveIsCompleted(taskInstance.value) && !liveIsFailed(taskInstance.value)) {
+	if (manualWindowActive && !liveIsCompleted(taskInstance.value) && !liveIsFailed(taskInstance.value) && !liveIsInactive(taskInstance.value)) {
 		return true;
 	}
 

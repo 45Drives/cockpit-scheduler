@@ -25,6 +25,7 @@
             "findutils",
             "smartmontools",
             "mbuffer",
+            "pv",
             "rclone (>= 1.59)",
             "netcat"
         ],
@@ -35,6 +36,7 @@
             "findutils",
             "smartmontools",
             "mbuffer",
+            "pv",
             "rclone >= 1.59",
             "netcat"
         ],
@@ -49,6 +51,7 @@
             "findutils",
             "smartmontools",
             "mbuffer",
+            "pv",
             "rclone (>= 1.59)",
             "netcat"
         ]
