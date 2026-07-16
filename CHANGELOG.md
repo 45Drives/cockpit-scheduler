@@ -1,3 +1,3 @@
-## task scheduler 1.6.13-1
+## task scheduler 1.6.14-1
 
-* Fixes cloud sync hung progress with timeout param, fixes bug in replication script for resume progress
+* Updates replication for better performance and makes netcat implementation more robust
