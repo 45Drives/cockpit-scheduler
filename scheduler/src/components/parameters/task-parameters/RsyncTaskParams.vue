@@ -27,7 +27,10 @@
             </div>
 
             <!-- select when we have options -->
-            <div v-else-if="opts.length">
+            <div v-else-if="opts.length && !useManualPath">
+                <p class="text-[11px] text-muted mb-1">
+                    Showing directories backed up to this server from your desktop app<span v-if="smbUser"> (SMB user: {{ smbUser }})</span>.
+                </p>
                 <select v-model="sourcePath" class="input-textlike text-sm w-full text-default bg-default rounded-md">
                     <option v-for="opt in opts" :key="opt.value" :value="opt.value">
                         {{ opt.label }}
@@ -38,16 +41,24 @@
                     <span> • Full Path: {{ sourcePath }}</span>
                     <span v-if="smbUser"> • User: {{ smbUser }}</span>
                 </p>
+                <label class="flex items-center gap-2 mt-2 text-xs text-muted cursor-pointer">
+                    <input type="checkbox" v-model="useManualPath" class="h-3.5 w-3.5" />
+                    Enter path manually instead
+                </label>
             </div>
 
             <!-- manual input fallback -->
             <div v-else class="mt-1">
                 <PathAutoComplete v-model="sourcePath" :error="sourcePathErrorTag" :dirs-only="true"
                     input-class="mt-1" placeholder="e.g. /mnt/backup/projects/" />
-                <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
+                <p v-if="!opts.length" class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
                 <p class="text-[11px] text-muted mt-1">
                     Note: In this mode, source must be a folder (end with <code>/</code>).
                 </p>
+                <label v-if="opts.length" class="flex items-center gap-2 mt-2 text-xs text-muted cursor-pointer">
+                    <input type="checkbox" v-model="useManualPath" class="h-3.5 w-3.5" />
+                    Enter path manually instead
+                </label>
             </div>
 
             <label class="block text-sm mt-3 text-default">
@@ -620,7 +631,7 @@ async function handleTestSSH() {
 }
 
 const ctx = useClientContextStore();
-const allowContextFallback = ref(false);
+const allowContextFallback = ref(true);
 
 function parseFromHash(): string {
     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
@@ -650,6 +661,7 @@ const discoveryError = folderList.error;
 const shareRoot = computed(() => folderList.shareRoot.value);
 const smbUser = computed(() => folderList.smbUser.value);
 const isEditMode = computed(() => !!props.task);
+const useManualPath = ref(false);
 
 function prettyLabelFromAbs(abs: string) {
     const root = shareRoot.value || '';

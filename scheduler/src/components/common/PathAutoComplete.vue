@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, toRef } from 'vue';
+import { ref, watch, nextTick, computed, toRef, onMounted } from 'vue';
 import { usePathAutoComplete, type PathEntry } from '../../composables/usePathAutoComplete';
 
 interface Props {
@@ -83,9 +83,11 @@ watch(() => props.modelValue, (val) => {
     internalPath.value = val;
 });
 
-// Reset highlight when suggestions change
-watch(() => ac.suggestions.value, () => {
-    highlightIndex.value = -1;
+// Reset highlight when suggestions change (deferred to avoid TDZ in bundled output)
+onMounted(() => {
+    watch(() => ac.suggestions.value, () => {
+        highlightIndex.value = -1;
+    });
 });
 
 function handleInput(event: Event) {

@@ -82,6 +82,13 @@
                             </details>
                         </SimpleFormCard>
 
+                        <SimpleFormCard v-if="selectedProvider" title="Name your account"
+                            class="p-3 rounded-md border border-default">
+                            <label class="block text-sm text-default">Account name</label>
+                            <input v-model="remoteName" class="input-textlike w-full mt-1"
+                                placeholder="e.g. Team-Drive, Marketing-Dropbox" />
+                        </SimpleFormCard>
+
                         <SimpleFormCard v-if="selectedProvider"
                             :title="`Connect your account -> ${selectedProvider.name}`" :description="oauthBlurb"
                             class="p-3 rounded-md border border-default">
@@ -157,13 +164,6 @@
                                 </div>
                             </details>
 
-                        </SimpleFormCard>
-
-                        <SimpleFormCard v-if="selectedProvider" title="Name your account"
-                            class="p-3 rounded-md border border-default">
-                            <label class="block text-sm text-default">Account name</label>
-                            <input v-model="remoteName" class="input-textlike w-full mt-1"
-                                placeholder="e.g. Team-Drive, Marketing-Dropbox" />
                         </SimpleFormCard>
                     </div>
 

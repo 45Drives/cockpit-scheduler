@@ -24,7 +24,10 @@
             </div>
 
             <!-- select when we have options -->
-            <div v-else-if="opts.length">
+            <div v-else-if="opts.length && !useManualPath">
+                <p class="text-[11px] text-muted mb-1">
+                    Showing directories backed up to this server from your desktop app<span v-if="smbUser"> (SMB user: {{ smbUser }})</span>.
+                </p>
                 <select v-model="localPath" class="input-textlike text-sm w-full text-default bg-default rounded-md">
                     <option v-for="opt in opts" :key="opt.value" :value="opt.value">
                         {{ opt.label }}
@@ -35,16 +38,24 @@
                     <span> • Full Path: {{ localPath }}</span>
                     <span v-if="smbUser"> • User: {{ smbUser }}</span>
                 </p>
+                <label class="flex items-center gap-2 mt-2 text-xs text-muted cursor-pointer">
+                    <input type="checkbox" v-model="useManualPath" class="h-3.5 w-3.5" />
+                    Enter path manually instead
+                </label>
             </div>
 
             <!-- manual input fallback -->
             <div v-else class="mt-1">
                 <PathAutoComplete v-model="localPath" :error="errorTags?.localPath" :dirs-only="true"
                     input-class="mt-1" placeholder="/data/photos/" />
-                <p class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
+                <p v-if="!opts.length" class="text-[11px] text-muted mt-1">No folders found; enter a path manually.</p>
                 <p class="text-[11px] text-muted mt-1">
                     Tip: Local path should end with a <code>/</code>. We’ll add it for you if missing.
                 </p>
+                <label v-if="opts.length" class="flex items-center gap-2 mt-2 text-xs text-muted cursor-pointer">
+                    <input type="checkbox" v-model="useManualPath" class="h-3.5 w-3.5" />
+                    Enter path manually instead
+                </label>
             </div>
 
         </SimpleFormCard>
@@ -830,7 +841,7 @@ watch(selectedRemote, (newVal) => {
 
 // ---------- User-scoped folder discovery (same as Rsync) ----------
 const ctx = useClientContextStore();
-const allowContextFallback = ref(false);
+const allowContextFallback = ref(true);
 
 function parseFromHash(): string {
     const m = (window.location.hash || '').match(/[?&]client_id=([^&#]+)/);
@@ -860,6 +871,7 @@ const discoveryError = folderList.error;
 const shareRoot = computed(() => folderList.shareRoot.value);
 const smbUser = computed(() => folderList.smbUser.value);
 const isEditMode = computed(() => !!props.task);
+const useManualPath = ref(false);
 
 // label builder to hide UUID segment (same as Rsync)
 function prettyLabelFromAbs(abs: string) {

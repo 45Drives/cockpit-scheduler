@@ -24,7 +24,7 @@ endif
 PLUGIN_SRCS=scheduler
 
 # For installing to a remote machine for testing with `make install-remote`
-REMOTE_TEST_HOST=192.168.123.5
+REMOTE_TEST_HOST=192.168.207.49
 REMOTE_TEST_USER=root
 
 # Restarts cockpit after install
@@ -130,7 +130,7 @@ postinstall-install-local:
 	systemctl restart houston-scheduler-monitor
 
 postinstall-install-remote:
-	ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'systemctl daemon-reload && systemctl enable houston-scheduler-monitor && systemctl restart houston-scheduler-monitor'
+	-ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'systemctl daemon-reload && systemctl enable houston-scheduler-monitor && systemctl restart houston-scheduler-monitor'
 
 plugin-install-% plugin-install-local-% plugin-install-remote-%:
 	@echo -e $(call cyantext,Installing $*)
