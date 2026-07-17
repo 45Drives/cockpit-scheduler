@@ -2,50 +2,76 @@
     <div class="h-full flex flex-col bg-well text-default p-3 gap-3">
         <!-- Toolbar: selection actions + new/refresh (matches BackUpListView) -->
         <div class="flex flex-wrap items-center gap-2 min-h-9">
-            <!-- Action buttons (visible when a task is selected) -->
-            <div class="flex flex-wrap items-center gap-2"
-                :class="selectedTask ? '' : 'invisible pointer-events-none'">
-                <span class="text-xs text-gray-500 mr-1">1 selected</span>
+            <!-- Normal mode: single-select action buttons -->
+            <template v-if="!batchDeleteMode">
+                <div class="flex flex-wrap items-center gap-2"
+                    :class="selectedTask ? '' : 'invisible pointer-events-none'">
+                    <span class="text-xs text-gray-500 mr-1">1 selected</span>
 
-                <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
-                    :disabled="!selectedTask || selectedRowRunning"
-                    @click="selectedTask && confirmRunNow(selectedTask)">
-                    <PlayIcon class="w-4 h-4" />
-                    <template v-if="!selectedRowRunning">Run Now</template>
-                    <template v-else>Running…</template>
-                </button>
+                    <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                        :disabled="!selectedTask || selectedRowRunning"
+                        @click="selectedTask && confirmRunNow(selectedTask)">
+                        <PlayIcon class="w-4 h-4" />
+                        <template v-if="!selectedRowRunning">Run Now</template>
+                        <template v-else>Running…</template>
+                    </button>
 
-                <button v-if="selectedRowRunning"
-                    class="btn btn-sm btn-danger h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
-                    @click="selectedTask && confirmStopNow(selectedTask)">
-                    <StopIcon class="w-4 h-4" />
-                    Stop
-                </button>
+                    <button v-if="selectedRowRunning"
+                        class="btn btn-sm btn-danger h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                        @click="selectedTask && confirmStopNow(selectedTask)">
+                        <StopIcon class="w-4 h-4" />
+                        Stop
+                    </button>
 
-                <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
-                    :disabled="!selectedTask" @click="selectedTask && viewLogs(selectedTask)">
-                    <DocumentTextIcon class="w-4 h-4" />
-                    Logs
-                </button>
+                    <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                        :disabled="!selectedTask" @click="selectedTask && viewLogs(selectedTask)">
+                        <DocumentTextIcon class="w-4 h-4" />
+                        Logs
+                    </button>
 
-                <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
-                    :disabled="!selectedTask" @click="selectedTask && edit(selectedTask)">
-                    <PencilSquareIcon class="w-4 h-4" />
-                    Edit
-                </button>
+                    <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                        :disabled="!selectedTask" @click="selectedTask && edit(selectedTask)">
+                        <PencilSquareIcon class="w-4 h-4" />
+                        Edit
+                    </button>
 
-                <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
-                    :disabled="!selectedTask" @click="selectedTask && confirmRemove(selectedTask)">
-                    <TrashIcon class="w-4 h-4" />
-                </button>
-            </div>
+                    <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                        :disabled="!selectedTask" @click="selectedTask && confirmRemove(selectedTask)">
+                        <TrashIcon class="w-4 h-4" />
+                    </button>
+                </div>
+            </template>
+
+            <!-- Batch delete mode: multi-select action bar -->
+            <template v-else>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs text-gray-500 mr-1">{{ batchSelected.size }} selected</span>
+                    <button class="btn btn-sm btn-danger h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                        :disabled="batchSelected.size === 0 || batchDeleting"
+                        @click="confirmBatchDelete">
+                        <TrashIcon class="w-4 h-4" />
+                        {{ batchDeleting ? `Deleting (${batchDeleteProgress}/${batchSelected.size})...` : `Delete (${batchSelected.size})` }}
+                    </button>
+                    <button class="btn btn-sm btn-outline-shadow h-fit shrink-0" :disabled="batchDeleting" @click="exitBatchDeleteMode">
+                        Cancel
+                    </button>
+                </div>
+            </template>
 
             <div class="flex-1" />
 
-            <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5" @click="openAdd" :disabled="loading">
-                <PlusIcon class="w-4 h-4" />
-                New Backup
-            </button>
+            <template v-if="!batchDeleteMode">
+                <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5" @click="openAdd" :disabled="loading">
+                    <PlusIcon class="w-4 h-4" />
+                    New Backup
+                </button>
+
+                <button class="btn btn-sm btn-danger h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                    @click="enterBatchDeleteMode" :disabled="loading || displayRows.length === 0">
+                    <TrashIcon class="w-4 h-4" />
+                    Delete Tasks
+                </button>
+            </template>
 
             <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="Refresh" @click="refresh" :disabled="loading">
                 <ArrowPathIcon class="w-4 h-4" />
@@ -84,7 +110,10 @@
                         <thead class="sticky top-0 bg-neutral-50 dark:bg-neutral-850 z-10">
                             <tr class="border-b border-neutral-200 dark:border-neutral-700">
                                 <th class="px-3 py-2 table-header-cell" style="width: 42px;">
-                                    <span class="sr-only">Select</span>
+                                    <input v-if="batchDeleteMode" type="checkbox"
+                                        :checked="batchAllSelected" @change="toggleBatchSelectAll"
+                                        class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer" />
+                                    <span v-else class="sr-only">Select</span>
                                 </th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 180px;">Name</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 120px;">Type</th>
@@ -99,14 +128,23 @@
                             <template v-for="row in displayRows" :key="row.id">
                                 <tr class="border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer select-none transition-colors border-l-2"
                                     :class="[
-                                        isSelected(row.raw)
-                                            ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400'
-                                            : 'border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
+                                        batchDeleteMode
+                                            ? (batchSelected.has(row.id) ? 'bg-rose-50/50 dark:bg-rose-900/10 border-l-rose-500' : 'border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30')
+                                            : isSelected(row.raw)
+                                                ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400'
+                                                : 'border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
                                         !row.enabled ? 'opacity-50' : '',
                                     ]"
-                                    @click="toggleSelection(row.raw)">
+                                    @click="batchDeleteMode ? toggleBatchSelection(row.id) : toggleSelection(row.raw)">
                                     <td class="px-3 py-1.5" @click.stop>
-                                        <input
+                                        <input v-if="batchDeleteMode"
+                                            type="checkbox"
+                                            class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                            :checked="batchSelected.has(row.id)"
+                                            @change="toggleBatchSelection(row.id)"
+                                            :aria-label="`Select ${row.name} for deletion`"
+                                        />
+                                        <input v-else
                                             type="radio"
                                             name="remote-backup-selection"
                                             class="input-radio pointer-events-none"
@@ -217,6 +255,13 @@
             title="Remove Task" message="Are you sure you want to remove this task? This cannot be undone."
             :confirmYes="removeYes" :confirmNo="() => showRemovePrompt = false" :operating="operatingRemove"
             operation="removing" />
+    </div>
+    <div v-if="showBatchDeletePrompt">
+        <component :is="confirmDialogComponent" @close="(v: boolean) => showBatchDeletePrompt = v" :showFlag="showBatchDeletePrompt"
+            :title="'Delete Selected Tasks'"
+            :message="`Are you sure you want to delete ${batchSelected.size} task${batchSelected.size > 1 ? 's' : ''}? This will stop and remove each task.`"
+            :confirmYes="batchDeleteYes" :confirmNo="() => showBatchDeletePrompt = false"
+            :operating="batchDeleting" operation="deleting" />
     </div>
 </template>
 
@@ -665,6 +710,86 @@ const removeYes = async () => {
         operatingRemove.value = false;
         fetching.value = false;
     }
+};
+
+/* ── Batch Delete Mode ────────────────────────────────── */
+const batchDeleteMode = ref(false);
+const batchSelected = ref<Set<string>>(new Set());
+const batchDeleting = ref(false);
+const batchDeleteProgress = ref(0);
+const showBatchDeletePrompt = ref(false);
+
+const batchAllSelected = computed(() => {
+    if (displayRows.value.length === 0) return false;
+    return displayRows.value.every((row: any) => batchSelected.value.has(row.id));
+});
+
+function enterBatchDeleteMode() {
+    batchDeleteMode.value = true;
+    batchSelected.value = new Set();
+    selectedTask.value = null;
+}
+
+function exitBatchDeleteMode() {
+    batchDeleteMode.value = false;
+    batchSelected.value = new Set();
+}
+
+function toggleBatchSelection(id: string) {
+    const s = new Set(batchSelected.value);
+    if (s.has(id)) { s.delete(id); } else { s.add(id); }
+    batchSelected.value = s;
+}
+
+function toggleBatchSelectAll() {
+    if (batchAllSelected.value) {
+        batchSelected.value = new Set();
+    } else {
+        batchSelected.value = new Set(displayRows.value.map((r: any) => r.id));
+    }
+}
+
+async function confirmBatchDelete() {
+    await loadConfirmDialog();
+    showBatchDeletePrompt.value = true;
+}
+
+const batchDeleteYes = async () => {
+    batchDeleting.value = true;
+    batchDeleteProgress.value = 0;
+    showBatchDeletePrompt.value = false;
+
+    const tasksToDelete = (taskInstances.value ?? []).filter((t: any) => {
+        const id = t?.id ?? t?.uuid ?? `${t?.name}::${t?.template?.name}`;
+        return batchSelected.value.has(id);
+    });
+
+    let deleted = 0;
+    let errors = 0;
+
+    for (const task of tasksToDelete) {
+        try {
+            await myScheduler.unregisterTaskInstance(task);
+            deleted++;
+        } catch (e: any) {
+            errors++;
+            console.error(`Failed to delete task ${task?.name}:`, e);
+        }
+        batchDeleteProgress.value++;
+    }
+
+    if (errors === 0) {
+        pushNotification(new Notification('Tasks Deleted', `Successfully removed ${deleted} task${deleted > 1 ? 's' : ''}.`, 'success', 6000));
+    } else {
+        pushNotification(new Notification('Batch Delete Complete', `Deleted ${deleted}, failed ${errors}.`, 'warning', 8000));
+    }
+
+    batchDeleting.value = false;
+    exitBatchDeleteMode();
+
+    fetching.value = true;
+    await myScheduler.loadTaskInstances();
+    fetching.value = false;
 };
 
 async function edit(t: any) {

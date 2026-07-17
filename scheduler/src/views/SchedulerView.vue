@@ -15,7 +15,16 @@
                 <button @click="refreshBtn()" class="btn btn-secondary h-fit">
                     <ArrowPathIcon class="w-5 h-5 m-0.5" />
                 </button>
-                <button @click="addTaskBtn()" class="btn btn-primary h-fit whitespace-nowrap">Add New Task</button>
+                <button v-if="!deleteMode" @click="addTaskBtn()" class="btn btn-primary h-fit whitespace-nowrap">Add New Task</button>
+                <button v-if="!deleteMode" @click="enterDeleteMode()" class="btn btn-danger h-fit whitespace-nowrap"
+                    :disabled="taskInstances.length === 0">Delete Tasks</button>
+                <template v-if="deleteMode">
+                    <button @click="confirmBatchDelete()" class="btn btn-danger h-fit whitespace-nowrap"
+                        :disabled="selectedForDelete.size === 0 || batchDeleting">
+                        {{ batchDeleting ? `Deleting (${batchDeleteProgress}/${selectedForDelete.size})...` : `Confirm Delete (${selectedForDelete.size})` }}
+                    </button>
+                    <button @click="exitDeleteMode()" class="btn btn-secondary h-fit whitespace-nowrap" :disabled="batchDeleting">Cancel</button>
+                </template>
                 <button @click="settingsBtn()" class="btn btn-secondary h-fit" title="Scheduler Settings">
                     <Cog6ToothIcon class="w-5 h-5 m-0.5" />
                 </button>
@@ -38,7 +47,12 @@
                             <table class="min-w-full divide-y divide-default">
                                 <thead class="bg-well">
                                     <tr class="border border-default border-collapse grid w-full"
-                                        style="grid-template-columns: minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)">
+                                        :style="{ 'grid-template-columns': deleteMode ? 'minmax(0,auto) minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)' : 'minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)' }">
+                                        <th v-if="deleteMode" scope="col"
+                                            class="px-3 py-3.5 text-center text-sm font-semibold text-default border border-default border-collapse">
+                                            <input type="checkbox" :checked="allSelected" @change="toggleSelectAll"
+                                                class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer" />
+                                        </th>
                                         <th scope="col"
                                             class="px-3 py-3.5 text-left text-sm font-semibold text-default border border-default border-collapse">
                                             <button @click="sortBy('name')"
@@ -73,6 +87,9 @@
                                     <TaskInstanceTableRow v-for="(taskInstance, index) in filteredAndSortedTasks"
                                         :key="taskInstance.name" :task="taskInstance"
                                         :isExpanded="expandedTaskName === taskInstance.name"
+                                        :deleteMode="deleteMode"
+                                        :selected="selectedForDelete.has(taskInstance.name)"
+                                        @update:selected="(val) => toggleTaskSelection(taskInstance.name, val)"
                                         @runTask="(task) => runTaskBtn(taskInstance, index)"
                                         @stopTask="(task) => stopTaskBtn(taskInstance, index)"
                                         @editTask="(task) => editTaskBtn(task)"
@@ -117,6 +134,14 @@
         <component :is="stopNowDialog" @close="updateShowStopNowPrompt" :showFlag="showStopNowPrompt"
             :title="'Stop Task'" :message="'Do you wish to stop this task now?'" :confirmYes="stopNowYes"
             :confirmNo="stopNowNo" :operating="stopping" :operation="'stopping'" />
+    </div>
+
+    <div v-if="showBatchDeletePrompt">
+        <component :is="batchDeleteDialog" @close="updateShowBatchDeletePrompt" :showFlag="showBatchDeletePrompt"
+            :title="'Delete Selected Tasks'"
+            :message="`Are you sure you want to delete ${selectedForDelete.size} task${selectedForDelete.size > 1 ? 's' : ''}? This will stop and remove each task.`"
+            :confirmYes="batchDeleteYes" :confirmNo="batchDeleteNo"
+            :operating="batchDeleting" :operation="'deleting'" />
     </div>
 
     <div v-if="showRemoveTaskPrompt">
@@ -588,6 +613,108 @@ const updateShowRemoveTaskPrompt = (newVal) => {
     if (!newVal) {
         removing.value = false;
     }
+}
+
+
+/* Batch Delete Tasks */
+const deleteMode = ref(false);
+const selectedForDelete = ref<Set<string>>(new Set());
+const batchDeleting = ref(false);
+const batchDeleteProgress = ref(0);
+const showBatchDeletePrompt = ref(false);
+const batchDeleteDialog = ref();
+
+function enterDeleteMode() {
+    deleteMode.value = true;
+    selectedForDelete.value = new Set();
+}
+
+function exitDeleteMode() {
+    deleteMode.value = false;
+    selectedForDelete.value = new Set();
+}
+
+function toggleTaskSelection(taskName: string, selected: boolean) {
+    const next = new Set(selectedForDelete.value);
+    if (selected) {
+        next.add(taskName);
+    } else {
+        next.delete(taskName);
+    }
+    selectedForDelete.value = next;
+}
+
+const allSelected = computed(() => {
+    if (filteredAndSortedTasks.value.length === 0) return false;
+    return filteredAndSortedTasks.value.every(t => selectedForDelete.value.has(t.name));
+});
+
+function toggleSelectAll() {
+    if (allSelected.value) {
+        selectedForDelete.value = new Set();
+    } else {
+        selectedForDelete.value = new Set(filteredAndSortedTasks.value.map(t => t.name));
+    }
+}
+
+async function confirmBatchDelete() {
+    await loadConfirmationDialog(batchDeleteDialog);
+    showBatchDeletePrompt.value = true;
+}
+
+const updateShowBatchDeletePrompt = (newVal) => {
+    showBatchDeletePrompt.value = newVal;
+    if (!newVal) {
+        batchDeleting.value = false;
+    }
+}
+
+const batchDeleteNo: ConfirmationCallback = async () => {
+    updateShowBatchDeletePrompt(false);
+}
+
+const batchDeleteYes: ConfirmationCallback = async () => {
+    batchDeleting.value = true;
+    batchDeleteProgress.value = 0;
+    const tasksToDelete = taskInstances.value.filter(t => selectedForDelete.value.has(t.name));
+    const errors: string[] = [];
+
+    for (const task of tasksToDelete) {
+        try {
+            await myScheduler.unregisterTaskInstance(task);
+            batchDeleteProgress.value++;
+        } catch (e: any) {
+            errors.push(`${task.name}: ${e?.message ?? String(e)}`);
+            batchDeleteProgress.value++;
+        }
+    }
+
+    updateShowBatchDeletePrompt(false);
+
+    if (errors.length > 0) {
+        pushNotification(
+            new Notification(
+                'Batch Delete Completed with Errors',
+                `Deleted ${tasksToDelete.length - errors.length} task(s). Errors: ${errors.join('; ')}`,
+                'warning',
+                10000
+            )
+        );
+    } else {
+        pushNotification(
+            new Notification(
+                'Tasks Deleted',
+                `Successfully deleted ${tasksToDelete.length} task${tasksToDelete.length > 1 ? 's' : ''}.`,
+                'success',
+                6000
+            )
+        );
+    }
+
+    exitDeleteMode();
+    loading.value = true;
+    await myScheduler.loadTaskInstances();
+    loading.value = false;
 }
 
 

@@ -208,7 +208,9 @@ def create_task(template_name, script_path, param_env_path):
     service_template_content = service_template_content.replace("{start_limit_interval_sec}", str(retry["start_limit_interval_sec"]))
 
     locked_exec = (
-        "/bin/sh -c 'exec 9>/run/%n.lock && flock -n 9 || "
+        "/bin/sh -c '"
+        # Flock to prevent overlapping runs
+        "exec 9>/run/%n.lock && flock -n 9 || "
         "{ echo \"Already running, skipping.\" >&2; "
         "systemd-notify --status=\"Skipped: previous run still active\" 2>/dev/null; "
         "exit 0; }; exec " + exec_start_command + "'"

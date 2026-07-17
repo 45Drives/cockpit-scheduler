@@ -1,7 +1,12 @@
 <template>
 	<tr :class="isExpanded ? 'border-2 border-red-700 dark:border-red-800 bg-default' : 'border border-default border-collapse '"
 		class="grid w-full text-center items-center rounded-sm p-1"
-		style="grid-template-columns: minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)">
+		:style="{ 'grid-template-columns': deleteMode ? 'minmax(0,auto) minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)' : 'minmax(0,3fr) minmax(0,1.25fr) minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.5fr)' }">
+		<!-- Delete mode checkbox -->
+		<td v-if="deleteMode" class="flex items-center justify-center border-r border-default px-2">
+			<input type="checkbox" :checked="selected" @change="emit('update:selected', !selected)"
+				class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer" />
+		</td>
 		<!-- Name -->
 		<td :title="taskInstance.name"
 			class="min-w-0 truncate text-base font-medium text-default border-r border-default text-left ml-2">
@@ -146,9 +151,14 @@ import { useLiveTaskStatus, taskStatusBadgeClass } from '../../composables/useLi
 interface TaskInstanceTableRowProps {
 	task: TaskInstanceType;
 	isExpanded: boolean;
+	deleteMode?: boolean;
+	selected?: boolean;
 }
 
-const props = defineProps<TaskInstanceTableRowProps>();
+const props = withDefaults(defineProps<TaskInstanceTableRowProps>(), {
+	deleteMode: false,
+	selected: false,
+});
 const taskInstance = ref(props.task);
 
 const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
@@ -324,6 +334,7 @@ const emit = defineEmits([
 	'toggleDetails',
 	'viewNotes',
 	'stopTask',
+	'update:selected',
 ]);
 
 

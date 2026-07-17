@@ -1142,9 +1142,11 @@ export class Scheduler implements SchedulerType {
                 await runCommand(['systemctl', 'enable', `${baseName}.timer`], { superuser: 'try' });
                 await runCommand(['systemctl', 'start', `${baseName}.timer`], { superuser: 'try' });
 
-                // Phase 2: inject OnBootSec=0s AFTER the timer is running so
-                // it doesn't fire immediately. daemon-reload picks up the
-                // on-disk change; it will only trigger on next actual boot.
+                // Phase 2: inject OnBootSec=0s AFTER the timer is running.
+                // Do NOT daemon-reload here — that would cause systemd to
+                // immediately fire the timer (since boot time has already
+                // passed). The on-disk change is picked up on next actual
+                // system boot, which is the correct "run on boot" behavior.
                 if (taskInstance.schedule.runOnBoot) {
                     const timerPath = `/etc/systemd/system/${baseName}.timer`;
                     const timerFile = new File(server, timerPath);
@@ -1153,7 +1155,6 @@ export class Scheduler implements SchedulerType {
                         const updatedContent = currentContent.replace('Persistent=false', 'OnBootSec=0s\nPersistent=false');
                         await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
                     }
-                    await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
                 }
             }
         }
@@ -1823,8 +1824,11 @@ export class Scheduler implements SchedulerType {
             await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
             await runCommand(['systemctl', 'restart', `${fullTaskName}.timer`], { superuser: 'try' });
 
-            // Phase 2: inject OnBootSec=0s AFTER the timer is running so
-            // it doesn't fire immediately — only on next actual boot.
+            // Phase 2: inject OnBootSec=0s AFTER the timer is running.
+            // Do NOT daemon-reload here — that would cause systemd to
+            // immediately fire the timer (since boot time has already
+            // passed). The on-disk change is picked up on next actual
+            // system boot, which is the correct "run on boot" behavior.
             if (taskInstance.schedule.runOnBoot) {
                 const timerPath = `/etc/systemd/system/${fullTaskName}.timer`;
                 const timerFile = new File(server, timerPath);
@@ -1833,7 +1837,6 @@ export class Scheduler implements SchedulerType {
                     const updatedContent = currentContent.replace('Persistent=false', 'OnBootSec=0s\nPersistent=false');
                     await unwrap(timerFile.replace(updatedContent, { superuser: 'try' }));
                 }
-                await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
             }
         }
     }
