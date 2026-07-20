@@ -1,3 +1,4 @@
-## task scheduler 1.6.14-2
+## task scheduler 1.6.14-3
 
-* Updates replication to handle 'pull' for netcat usage, adds pv as a dep for netcat progress, fixes path autocompletion for rsync/cloud tasks, adds bulk delete task option, fixes general progress bugs and removes unneeded task file's backup files generation
+* Adds resume/dry run options to replication and fixes a bug in replication script when checking common snapshots
+* Adds resume/dry run options to replication and fixes a bug in replication script when checking common snapshots

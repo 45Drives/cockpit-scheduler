@@ -1,3 +1,12 @@
+cockpit-scheduler (1.6.14-3focal) focal; urgency=medium
+
+  * Adds resume/dry run options to replication and fixes a bug in replication script
+    when checking common snapshots
+  * Adds resume/dry run options to replication and fixes a bug in replication script
+    when checking common snapshots
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 20 Jul 2026 09:31:13 -0300
+
 cockpit-scheduler (1.6.14-2focal) focal; urgency=medium
 
   * Updates replication to handle 'pull' for netcat usage, adds pv as a dep for netcat
