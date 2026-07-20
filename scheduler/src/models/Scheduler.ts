@@ -1295,7 +1295,7 @@ export class Scheduler implements SchedulerType {
             finalEnvString += `\nscheduleJsonPath=${jsonFilePath}`;
         }
         const envFile = new File(server, envFilePath);
-        await unwrap(envFile.replace(finalEnvString, { superuser: 'try', backup: true }));
+        await unwrap(envFile.replace(finalEnvString, { superuser: 'try' }));
         console.log('env file updated successfully');
 
         // Regenerate the systemd units from the env
@@ -1805,7 +1805,7 @@ export class Scheduler implements SchedulerType {
 
         const jsonFile = new File(server, jsonFilePath);
         const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
-        await unwrap(jsonFile.replace(jsonString, { superuser: 'try', backup: true }));
+        await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
         
         // Validate the write succeeded
         const written = await unwrap(jsonFile.read());
