@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.15-1focal) focal; urgency=medium
+
+  * Updated force resync to destroy snapshots on destination (explicitly) and updates
+    param description/logic
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 20 Jul 2026 10:13:24 -0300
+
 cockpit-scheduler (1.6.14-3focal) focal; urgency=medium
 
   * Adds resume/dry run options to replication and fixes a bug in replication script
