@@ -91,6 +91,8 @@
                                         :selected="selectedForDelete.has(taskInstance.name)"
                                         @update:selected="(val) => toggleTaskSelection(taskInstance.name, val)"
                                         @runTask="(task) => runTaskBtn(taskInstance, index)"
+                                        @dryRunTask="(task) => dryRunTaskBtn(taskInstance, index)"
+                                        @resumeTask="(task) => resumeTaskBtn(taskInstance, index)"
                                         @stopTask="(task) => stopTaskBtn(taskInstance, index)"
                                         @editTask="(task) => editTaskBtn(task)"
                                         @manageSchedule="(task) => manageScheduleBtn(task)"
@@ -503,6 +505,45 @@ const runNowYes: ConfirmationCallback = async () => {
         manualRunTaskName.value = null;
     }
 };
+
+
+/* Dry Run Task */
+async function dryRunTaskBtn(task, rowIndex: number) {
+    pushNotification(
+        new Notification('Dry Run Started', `Dry run for ${task.name} started. Check logs for results.`, 'info', 6000)
+    );
+    const row = taskTableRow.value[rowIndex];
+    row?.markManualRun(60_000);
+    try {
+        await myScheduler.dryRunTask(task);
+        pushNotification(
+            new Notification('Dry Run Complete', `Dry run for ${task.name} finished. View logs for details.`, 'success', 6000)
+        );
+    } catch {
+        pushNotification(
+            new Notification('Dry Run Failed', `Dry run for ${task.name} encountered an error.`, 'error', 6000)
+        );
+    }
+}
+
+/* Resume Task */
+async function resumeTaskBtn(task, rowIndex: number) {
+    pushNotification(
+        new Notification('Resume Started', `Attempting to resume ${task.name}…`, 'info', 6000)
+    );
+    const row = taskTableRow.value[rowIndex];
+    row?.markManualRun(60_000);
+    try {
+        await myScheduler.resumeTask(task);
+        pushNotification(
+            new Notification('Resume Complete', `Resume for ${task.name} finished. View logs for details.`, 'success', 6000)
+        );
+    } catch {
+        pushNotification(
+            new Notification('Resume Failed', `Resume for ${task.name} encountered an error.`, 'error', 6000)
+        );
+    }
+}
 
 
 /* Stop Task Now */

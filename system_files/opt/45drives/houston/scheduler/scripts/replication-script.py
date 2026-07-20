@@ -2861,6 +2861,57 @@ def snapshot_exists_on_destination(
 
     return False, target_name
 
+# --- One-shot flag auto-disable ----------------------------------------------
+
+# Keys that should be reset to false after a single use.
+_ONE_SHOT_KEYS = [
+    "zfsRepConfig_sendOptions_forceFullSend",
+    "zfsRepConfig_sendOptions_dryRun",
+    "zfsRepConfig_sendOptions_resumeOnly",
+]
+
+
+def _clear_one_shot_flags(task_name: str, keys=None):
+    """Reset one-shot flags in the task env file so they only fire once."""
+    if keys is None:
+        keys = _ONE_SHOT_KEYS
+    env_path = f"/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{task_name}.env"
+    try:
+        with open(env_path, "r") as f:
+            lines = f.readlines()
+        new_lines = []
+        changed = False
+        for line in lines:
+            stripped = line.strip()
+            matched = False
+            for key in keys:
+                if stripped.startswith(f"{key}="):
+                    new_lines.append(f"{key}=false\n")
+                    changed = True
+                    matched = True
+                    break
+                # Handle corrupted lines where the key got concatenated onto a previous value
+                if f"{key}=" in stripped and not stripped.startswith(f"{key}="):
+                    # Extract the part before the corrupted key and keep it
+                    idx = stripped.index(f"{key}=")
+                    prefix = stripped[:idx]
+                    new_lines.append(f"{prefix}\n")
+                    new_lines.append(f"{key}=false\n")
+                    changed = True
+                    matched = True
+                    break
+            if not matched:
+                new_lines.append(line)
+        if changed:
+            with open(env_path, "w") as f:
+                f.writelines(new_lines)
+            print("One-shot flags cleared — next run will use normal mode.")
+            subprocess.run(["systemctl", "daemon-reload"], timeout=30)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"WARNING: could not clear one-shot flags: {e}", file=sys.stderr)
+
 # --- Debugging helpers -------------------------------------------------------
 
 DEBUG_LOG = os.environ.get("ZFS_REP_DEBUG_LOG", "/tmp/zfs_rep_debug.log")
@@ -3095,6 +3146,9 @@ def main():
 
         allowOverwrite = as_bool(os.environ.get("zfsRepConfig_sendOptions_allowOverwrite"), default=False)
         useExistingDest = as_bool(os.environ.get("zfsRepConfig_sendOptions_useExistingDest"), default=False)
+        forceFullSend = as_bool(os.environ.get("zfsRepConfig_sendOptions_forceFullSend"), default=False)
+        dryRun = as_bool(os.environ.get("zfsRepConfig_sendOptions_dryRun"), default=False)
+        resumeOnly = as_bool(os.environ.get("zfsRepConfig_sendOptions_resumeOnly"), default=False)
         resumeFailAllowOverwrite = as_bool(
             os.environ.get("zfsRepConfig_sendOptions_resumeFailAllowOverwrite"),
             default=False,
@@ -3485,6 +3539,17 @@ def main():
                     }
                 )
 
+        # Resume-only mode: if no token was found/resumed above, exit cleanly.
+        if resumeOnly:
+            print("RESUME ONLY mode: no resume token found. Nothing to resume.")
+            print("The previous transfer either completed successfully or was never started.")
+            sys.exit(0)
+
+        # Dry-run mode: skip snapshot creation and transfer, just report what would happen.
+        if dryRun:
+            print("\n=== DRY RUN MODE ===")
+            print("No snapshots will be created and no data will be transferred.\n")
+
         # destinationSnapshots semantics:
         # None -> dataset missing
         # []   -> exists, no snaps
@@ -3535,86 +3600,146 @@ def main():
             # Choose common base snapshot.
             # IMPORTANT: if recursive (-R) is enabled, the base snapshot must be from the ROOT dataset
             # (e.g. tank@...), not a child (tank/child@...), otherwise zfs send -R -I can become invalid/no-op.
-            if isRecursiveSnap:
-                src_root_snaps = filter_dataset_snapshots(sourceSnapshots, sourceFilesystem)
-                dst_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
+
+            # Force Full Send: skip common-base detection entirely and do a full send.
+            if forceFullSend:
+                print("FORCE FULL SEND enabled: ignoring common snapshots and performing full send.")
+                forceOverwrite = True
+                incrementalSnapName = ""
             else:
-                src_root_snaps = sourceSnapshots
-                dst_root_snaps = destinationSnapshots
-
-            src_guids = {s.guid for s in src_root_snaps}
-            common_candidates = [d for d in dst_root_snaps if d.guid in src_guids]
-
-            if not common_candidates:
-                print("No common snapshots found on the destination (root dataset).")
-                if allowOverwrite:
-                    print("ALLOW OVERWRITE enabled: proceeding with full send and -F (will roll back dest).")
-                    forceOverwrite = True
-                    incrementalSnapName = ""
+                if isRecursiveSnap:
+                    src_root_snaps = filter_dataset_snapshots(sourceSnapshots, sourceFilesystem)
+                    dst_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
                 else:
-                    print("Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.")
-                    sys.exit(2)
-            else:
-                # Most recent common snapshot by creation time
-                common_candidates.sort(key=lambda s: s.creation_epoch, reverse=True)
-                mostRecentCommonSnap = common_candidates[0]
+                    src_root_snaps = sourceSnapshots
+                    dst_root_snaps = destinationSnapshots
 
-                src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
-                incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
-                print(f"Most recent common snapshot: {incrementalSnapName}")
-                
-                # Determine if destination is ahead of common base
-                destinationSnapshots.sort(key=lambda s: s.creation_epoch)
-                common_idx = -1
-                for i, d in enumerate(destinationSnapshots):
-                    if d.guid == mostRecentCommonSnap.guid:
-                        common_idx = i
-                        break
+                src_guids = {s.guid for s in src_root_snaps}
+                common_candidates = [d for d in dst_root_snaps if d.guid in src_guids]
 
-                destAhead = False
-                if common_idx >= 0:
-                    for d in destinationSnapshots[common_idx + 1 :]:
-                        if d.guid not in src_guids:
-                            destAhead = True
+                if not common_candidates:
+                    print("No common snapshots found on the destination (root dataset).")
+                    if allowOverwrite:
+                        print("ALLOW OVERWRITE enabled: proceeding with full send and -F (will roll back dest).")
+                        forceOverwrite = True
+                        incrementalSnapName = ""
+                    else:
+                        print("Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.")
+                        sys.exit(2)
+                else:
+                    # Most recent common snapshot by creation time
+                    common_candidates.sort(key=lambda s: s.creation_epoch, reverse=True)
+                    mostRecentCommonSnap = common_candidates[0]
+
+                    src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
+                    incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
+                    print(f"Most recent common snapshot: {incrementalSnapName}")
+                    
+                    # Determine if destination is ahead of common base.
+                    # Use the same filtered snapshot list (root-only when recursive)
+                    # so that child-dataset snapshots don't falsely trigger destAhead.
+                    dest_check_snaps = dst_root_snaps if isRecursiveSnap else destinationSnapshots
+                    dest_check_snaps_sorted = sorted(dest_check_snaps, key=lambda s: s.creation_epoch)
+                    common_idx = -1
+                    for i, d in enumerate(dest_check_snaps_sorted):
+                        if d.guid == mostRecentCommonSnap.guid:
+                            common_idx = i
                             break
 
-                if destAhead and not allowOverwrite:
-                    print("Destination has newer snapshots than the common base. Enable Allow Overwrite (-F) or choose a different destination.")
-                    sys.exit(2)
-                if destAhead and allowOverwrite:
-                    print("Destination is ahead; Allow Overwrite enabled: will roll back with -F.")
-                    forceOverwrite = True
+                    destAhead = False
+                    if common_idx >= 0:
+                        for d in dest_check_snaps_sorted[common_idx + 1 :]:
+                            if d.guid not in src_guids:
+                                destAhead = True
+                                break
 
-                # written@SNAP check when overwrite allowed and no newer snaps
-                if (not destAhead) and allowOverwrite:
-                    if direction == "pull":
-                        # destination is local in pull
-                        dest_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
-                        written_remote = None
-                        if dest_root_snaps:
-                            dest_root_snaps.sort(key=lambda s: s.order_key)
-                            dest_latest = dest_root_snaps[-1]
-                            written_remote = get_written_since_snapshot(destFilesystem, dest_latest.name)
-                    else:
-                        # destination may be remote in push
-                        dest_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
-                        written_remote = None
-                        if dest_root_snaps:
-                            dest_root_snaps.sort(key=lambda s: s.order_key)
-                            dest_latest = dest_root_snaps[-1]
-                            written_remote = get_written_since_snapshot(
-                                destFilesystem,
-                                dest_latest.name,
-                                remote_user=remoteUser if remoteHost else None,
-                                remote_host=remoteHost if remoteHost else None,
-                                remote_port=sshPort,
-                            )
-
-                    if written_remote is None:
-                        print("Note: Could not determine written@SNAP; proceeding without forcing -F based on that.")
-                    elif written_remote > 0:
-                        print("Destination modified since latest snapshot; Allow Overwrite enabled: will receive with -F (rollback).")
+                    if destAhead and not allowOverwrite:
+                        print("Destination has newer snapshots than the common base. Enable Allow Overwrite (-F) or choose a different destination.")
+                        sys.exit(2)
+                    if destAhead and allowOverwrite:
+                        print("Destination is ahead; Allow Overwrite enabled: will roll back with -F.")
                         forceOverwrite = True
+
+                    # written@SNAP check when overwrite allowed and no newer snaps
+                    if (not destAhead) and allowOverwrite:
+                        if direction == "pull":
+                            # destination is local in pull
+                            dest_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
+                            written_remote = None
+                            if dest_root_snaps:
+                                dest_root_snaps.sort(key=lambda s: s.order_key)
+                                dest_latest = dest_root_snaps[-1]
+                                written_remote = get_written_since_snapshot(destFilesystem, dest_latest.name)
+                        else:
+                            # destination may be remote in push
+                            dest_root_snaps = filter_dataset_snapshots(destinationSnapshots, destFilesystem)
+                            written_remote = None
+                            if dest_root_snaps:
+                                dest_root_snaps.sort(key=lambda s: s.order_key)
+                                dest_latest = dest_root_snaps[-1]
+                                written_remote = get_written_since_snapshot(
+                                    destFilesystem,
+                                    dest_latest.name,
+                                    remote_user=remoteUser if remoteHost else None,
+                                    remote_host=remoteHost if remoteHost else None,
+                                    remote_port=sshPort,
+                                )
+
+                        if written_remote is None:
+                            print("Note: Could not determine written@SNAP; proceeding without forcing -F based on that.")
+                        elif written_remote > 0:
+                            print("Destination modified since latest snapshot; Allow Overwrite enabled: will receive with -F (rollback).")
+                            forceOverwrite = True
+
+        # --- Dry Run: report what would happen and exit ---
+        if dryRun:
+            print("\n--- Dry Run Summary ---")
+            print(f"  Direction:        {direction}")
+            print(f"  Source:           {sourceFilesystem}")
+            print(f"  Destination:      {destFilesystem}")
+            print(f"  Transfer method:  {transferMethod or 'local'}")
+            print(f"  Recursive:        {isRecursiveSnap}")
+            print(f"  Compressed:       {isCompressed}")
+            print(f"  Raw:              {isRaw}")
+            print(f"  Force overwrite:  {forceOverwrite}")
+            if incrementalSnapName:
+                print(f"  Incremental from: {incrementalSnapName}")
+                print(f"  Mode:             Incremental send")
+            else:
+                print(f"  Mode:             Full send (no common base)")
+
+            # Estimate send size using the most recent source snapshot as a stand-in
+            if sourceSnapshots:
+                sourceSnapshots.sort(key=lambda s: s.creation_epoch)
+                latest_src = sourceSnapshots[-1].name
+                send_cmd = build_zfs_send_args(
+                    latest_src,
+                    incrementalSnapName,
+                    recursive=isRecursiveSnap,
+                    compressed=isCompressed,
+                    raw=isRaw,
+                    include_intermediates=includeIntermediateSnapshots,
+                )
+                if direction == "pull":
+                    est = estimate_send_size_remote(remoteUser, remoteHost, sshPort, send_cmd)
+                else:
+                    est = estimate_send_size(send_cmd)
+                if est:
+                    if est >= 1073741824:
+                        size_str = f"{est / 1073741824:.2f} GiB"
+                    elif est >= 1048576:
+                        size_str = f"{est / 1048576:.2f} MiB"
+                    else:
+                        size_str = f"{est} bytes"
+                    print(f"  Estimated size:   {size_str} ({est} bytes)")
+                else:
+                    print(f"  Estimated size:   Could not determine")
+                print(f"  Latest source snapshot: {latest_src}")
+            else:
+                print("  WARNING: No source snapshots found — nothing to send.")
+
+            print("\n--- End Dry Run (no changes made) ---")
+            sys.exit(0)
 
         notifier.notify("STATUS=Creating source snapshot…")
 
@@ -3854,6 +3979,10 @@ def main():
                 f.write(str(int(time.time())))
         except Exception as e:
             dbg(f"WARNING: failed to write lastrun file: {e}")
+
+        # Auto-disable one-shot flags after successful execution.
+        if taskName and (forceFullSend or dryRun or resumeOnly):
+            _clear_one_shot_flags(taskName)
 
     except Exception as e:
         newSnap = locals().get("newSnap", "unknown")

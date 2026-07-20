@@ -365,6 +365,18 @@
                     Abort a stalled resume after this many seconds of no data flow. Prevents
                     hung tasks after network outages. Set to 0 to disable.
                 </p>
+                <div class="flex items-center justify-between mt-2 border-t border-default pt-2">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        Force full resync (next run only)
+                        <InfoTile class="ml-1"
+                            :title="`Ignores existing common snapshots and performs a complete full send on the next run. The flag is automatically cleared after a successful transfer. Use this to re-seed the destination after pool recovery or data loss.`" />
+                    </label>
+                    <input type="checkbox" v-model="forceFullSend" class="h-4 w-4 rounded" />
+                </div>
+                <p class="mt-1 text-xs text-default/70">
+                    Performs a non-incremental full send on the next scheduled or manual run, then
+                    automatically disables itself. Useful for re-seeding a destination after recovery.
+                </p>
             </div>
         </div>
 
@@ -573,6 +585,7 @@ const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
 const resumeFailAllowOverwrite = ref(false);
 const resumeStallTimeout = ref(3600);
+const forceFullSend = ref(false);
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
 const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);
@@ -685,6 +698,7 @@ watch(useExistingDest, async (on) => {
         allowOverwrite.value = false;
         resumeFailAllowOverwrite.value = false;
         resumeStallTimeout.value = 3600;
+        forceFullSend.value = false;
         destDatasetErrorTag.value = false;
     }
 });
@@ -757,6 +771,9 @@ async function initializeData() {
 
         const resumeStallTimeoutParam = sendOptionsParams.find(p => p.key === 'resumeStallTimeout');
         resumeStallTimeout.value = resumeStallTimeoutParam ? Number(resumeStallTimeoutParam.value) || 3600 : 3600;
+
+        const forceFullSendParam = sendOptionsParams.find(p => p.key === 'forceFullSend');
+        forceFullSend.value = forceFullSendParam ? !!forceFullSendParam.value : false;
 
         const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
         useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
@@ -836,6 +853,7 @@ async function initializeData() {
             resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
             resumeStallTimeout: resumeStallTimeout.value,
             useExistingDest: useExistingDest.value,
+            forceFullSend: forceFullSend.value,
         }));
 
         loading.value = false;
@@ -871,6 +889,7 @@ function hasChanges() {
         resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
         resumeStallTimeout: resumeStallTimeout.value,
         useExistingDest: useExistingDest.value,
+        forceFullSend: forceFullSend.value,
     };
     return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
 }
@@ -1255,6 +1274,7 @@ function setParams() {
             .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
             .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', resumeStallTimeout.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
+            .addChild(new BoolParameter('Force Full Send', 'forceFullSend', forceFullSend.value))
         );
 
     parameters.value = newParams;

@@ -17,6 +17,8 @@ import get_disks_script from "../scripts/get-disk-data.py?raw";
 import ensure_ssh_script from "../scripts/ensure_passwordless_ssh.py?raw";
 //@ts-ignore
 import stop_task_script from "../scripts/legacy-stop-task-now.py?raw";
+//@ts-ignore
+import set_env_flag_script from "../scripts/legacy-set-env-flag.py?raw";
 
 import { inject, InjectionKey, type Ref } from "vue";
 
@@ -292,6 +294,10 @@ export async function runTask(taskName) {
 
 export async function stopTask(taskName) {
 	return executePythonScript(stop_task_script, [taskName]);
+}
+
+export async function setEnvFlag(unitName: string, key: string, value: string) {
+	return executePythonScript(set_env_flag_script, [unitName, key, value]);
 }
 
 //change the first letter of a word to upper case

@@ -1,7 +1,7 @@
 import { server, unwrap, Command, File } from "@45drives/houston-common-lib"
 import { TaskInstance, TaskTemplate, TaskSchedule, ZFSReplicationTaskTemplate, AutomatedSnapshotTaskTemplate, TaskScheduleInterval, RsyncTaskTemplate, ScrubTaskTemplate, SmartTestTemplate, CloudSyncTaskTemplate, CustomTaskTemplate } from './Tasks';
 import { ParameterNode, StringParameter, SelectionParameter, IntParameter, BoolParameter, ObjectParameter } from './Parameters';
-import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName, stopTask } from '../composables/utility';
+import { createStandaloneTask, createTaskFiles, createScheduleForTask, removeTask, runTask, formatTemplateName, stopTask, setEnvFlag } from '../composables/utility';
 import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // commenting out chooseBackend until daemon mode is airtight
 // import { chooseBackend } from '../utils/bootstrapBackend';
@@ -1449,6 +1449,27 @@ export class Scheduler implements SchedulerType {
         console.log(`Stopping ${fullTaskName}...`);
         await stopTask(fullTaskName);
         console.log(`Task ${fullTaskName} stopped.`);
+    }
+
+    /**
+     * Set a one-shot env flag on the task and then start it.
+     * The flag auto-clears after the run completes.
+     */
+    private async runWithFlag(taskInstance: TaskInstanceType, flagKey: string): Promise<string> {
+        const houstonSchedulerPrefix = 'houston_scheduler_';
+        const templateName = this.normalizeTemplateKey(taskInstance.template.name);
+        const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+
+        await setEnvFlag(fullTaskName, flagKey, 'true');
+        return this.runTaskNow(taskInstance);
+    }
+
+    async dryRunTask(taskInstance: TaskInstanceType): Promise<string> {
+        return this.runWithFlag(taskInstance, 'zfsRepConfig_sendOptions_dryRun');
+    }
+
+    async resumeTask(taskInstance: TaskInstanceType): Promise<string> {
+        return this.runWithFlag(taskInstance, 'zfsRepConfig_sendOptions_resumeOnly');
     }
 
     async getTimerStatus(ti: TaskInstanceType): Promise<string | false> {

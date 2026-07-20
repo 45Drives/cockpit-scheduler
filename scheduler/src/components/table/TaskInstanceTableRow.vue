@@ -76,6 +76,7 @@
 		<td v-if="isExpanded" class="col-span-full px-3 py-3 border-t border-default">
 			<TaskInstanceDetails :task="taskInstance" />
 
+			<!-- Primary actions -->
 			<div class="flex flex-wrap gap-2 justify-center mt-4 pt-4 border-t border-default">
 				<button v-if="isRunning" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Stop Now
@@ -111,6 +112,22 @@
 					<TrashIcon class="h-5 ml-2 mt-0.5" />
 				</button>
 			</div>
+			<!-- Replication-specific actions -->
+			<div v-if="isReplicationTask && !isRunning" class="flex flex-wrap gap-2 justify-center mt-2 pt-2 border-t border-default/50">
+				<span class="text-xs text-muted self-center mr-1">Replication:</span>
+				<button @click="dryRunBtn()"
+					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary text-sm"
+					title="Test the replication without transferring data">
+					Dry Run
+					<BeakerIcon class="h-4 ml-1.5 mt-0.5" />
+				</button>
+				<button @click="resumeBtn()"
+					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary text-sm"
+					title="Resume an interrupted transfer from where it left off (exits cleanly if nothing to resume)">
+					Resume Transfer
+					<ArrowPathIcon class="h-4 ml-1.5 mt-0.5" />
+				</button>
+			</div>
 		</td>
 	</tr>
 
@@ -141,6 +158,8 @@ import {
 	TableCellsIcon,
 	PencilSquareIcon,
 	StopIcon,
+	BeakerIcon,
+	ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
 import { Switch } from '@headlessui/vue';
 import { injectWithCheck } from '../../composables/utility';
@@ -327,6 +346,8 @@ const progressBarClass = computed(() => {
 // Emits
 const emit = defineEmits([
 	'runTask',
+	'dryRunTask',
+	'resumeTask',
 	'manageSchedule',
 	'removeTask',
 	'editTask',
@@ -337,9 +358,20 @@ const emit = defineEmits([
 	'update:selected',
 ]);
 
+const isReplicationTask = computed(() => {
+	return taskInstance.value?.template?.name === 'ZFS Replication Task';
+});
 
 async function runTaskBtn() {
 	emit('runTask', taskInstance.value);
+}
+
+async function dryRunBtn() {
+	emit('dryRunTask', taskInstance.value);
+}
+
+async function resumeBtn() {
+	emit('resumeTask', taskInstance.value);
 }
 
 async function stopTaskBtn() {
