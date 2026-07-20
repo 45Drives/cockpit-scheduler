@@ -3702,13 +3702,30 @@ def main():
             print(f"  Compressed:       {isCompressed}")
             print(f"  Raw:              {isRaw}")
             print(f"  Force overwrite:  {forceOverwrite}")
+            print(f"  Source snapshots: {len(sourceSnapshots) if sourceSnapshots else 0}")
+            print(f"  Dest snapshots:   {len(destinationSnapshots) if destinationSnapshots else 0}")
             if incrementalSnapName:
                 print(f"  Incremental from: {incrementalSnapName}")
                 print(f"  Mode:             Incremental send")
             else:
                 print(f"  Mode:             Full send (no common base)")
 
-            # Estimate send size using the most recent source snapshot as a stand-in
+            # Check for resume token
+            if direction == "pull":
+                token = get_receive_resume_token(destFilesystem)
+            else:
+                token = get_receive_resume_token(
+                    destFilesystem,
+                    remote_user=remoteUser if remoteHost else None,
+                    remote_host=remoteHost if remoteHost else None,
+                    remote_port=sshPort,
+                )
+            if token:
+                print(f"  Resume token:     YES (interrupted transfer can be resumed)")
+            else:
+                print(f"  Resume token:     None")
+
+            # Verbose dry-run: zfs send -nvP
             if sourceSnapshots:
                 sourceSnapshots.sort(key=lambda s: s.creation_epoch)
                 latest_src = sourceSnapshots[-1].name
@@ -3720,21 +3737,68 @@ def main():
                     raw=isRaw,
                     include_intermediates=includeIntermediateSnapshots,
                 )
+                # Insert -nvP after 'zfs send' for verbose dry run output
+                verbose_cmd = list(send_cmd)
+                verbose_cmd.insert(2, "-nvP")
+
+                print(f"\n  Latest source snapshot: {latest_src}")
+                print(f"  Send command: {' '.join(shlex.quote(str(a)) for a in verbose_cmd)}")
+                print(f"\n--- zfs send -nvP output ---", flush=True)
+
                 if direction == "pull":
-                    est = estimate_send_size_remote(remoteUser, remoteHost, sshPort, send_cmd)
+                    # Run on remote via SSH
+                    ssh_cmd = ["ssh"] + SSH_BASE_OPTS
+                    if str(sshPort) != "22":
+                        ssh_cmd += ["-p", str(sshPort)]
+                    ssh_cmd.append(f"{remoteUser}@{remoteHost}")
+                    ssh_cmd.append(" ".join(shlex.quote(str(a)) for a in verbose_cmd))
+                    run_cmd = ssh_cmd
                 else:
-                    est = estimate_send_size(send_cmd)
-                if est:
-                    if est >= 1073741824:
-                        size_str = f"{est / 1073741824:.2f} GiB"
-                    elif est >= 1048576:
-                        size_str = f"{est / 1048576:.2f} MiB"
+                    run_cmd = verbose_cmd
+
+                # Stream output line-by-line so it appears live in the log viewer
+                total = 0
+                returncode = -1
+                try:
+                    proc = subprocess.Popen(
+                        run_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                    )
+                    for line in proc.stdout:
+                        line = line.rstrip("\n")
+                        print(f"  {line}", flush=True)
+                        # Parse sizes as we go
+                        stripped = line.strip()
+                        if "size" in stripped.lower():
+                            m = re.search(r"\bsize\b\s*=?\s*(\d+)", stripped, re.IGNORECASE)
+                            if m:
+                                total = int(m.group(1))
+                        elif stripped.startswith("full") or stripped.startswith("incremental"):
+                            parts = stripped.split("\t")
+                            if parts:
+                                try:
+                                    total += int(parts[-1])
+                                except (ValueError, IndexError):
+                                    pass
+                    proc.wait(timeout=120)
+                    returncode = proc.returncode
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    print("\n  WARNING: zfs send -nvP timed out after 120s")
+
+                if returncode != 0:
+                    print(f"\n  WARNING: zfs send -nvP exited with code {returncode}")
+
+                if total > 0:
+                    if total >= 1073741824:
+                        size_str = f"{total / 1073741824:.2f} GiB"
+                    elif total >= 1048576:
+                        size_str = f"{total / 1048576:.2f} MiB"
                     else:
-                        size_str = f"{est} bytes"
-                    print(f"  Estimated size:   {size_str} ({est} bytes)")
-                else:
-                    print(f"  Estimated size:   Could not determine")
-                print(f"  Latest source snapshot: {latest_src}")
+                        size_str = f"{total} bytes"
+                    print(f"\n  Total estimated size: {size_str} ({total} bytes)")
             else:
                 print("  WARNING: No source snapshots found — nothing to send.")
 
@@ -3780,7 +3844,7 @@ def main():
                 for snap in destinationSnapshots:
                     destroy_cmd = ["zfs", "destroy", snap.name]
                     dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
-                    dp = subprocess.run(destroy_cmd, capture_output=True, text=True)
+                    dp = subprocess.run(destroy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                     if dp.returncode != 0:
                         err_out = (dp.stderr or dp.stdout or "").strip()
                         # Tolerate "does not exist" (already gone) but fail on others
@@ -3837,7 +3901,7 @@ def main():
                             ssh_destroy += ["-p", str(sshPort)]
                         ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", snap.name]
                         dbg(f"RUN {_fmt_cmd(ssh_destroy)}")
-                        dp = subprocess.run(ssh_destroy, capture_output=True, text=True)
+                        dp = subprocess.run(ssh_destroy, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                         if dp.returncode != 0:
                             err_out = (dp.stderr or dp.stdout or "").strip()
                             if "does not exist" not in err_out and "could not find" not in err_out:
@@ -3848,7 +3912,7 @@ def main():
                     for snap in destinationSnapshots:
                         destroy_cmd = ["zfs", "destroy", snap.name]
                         dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
-                        dp = subprocess.run(destroy_cmd, capture_output=True, text=True)
+                        dp = subprocess.run(destroy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                         if dp.returncode != 0:
                             err_out = (dp.stderr or dp.stdout or "").strip()
                             if "does not exist" not in err_out and "could not find" not in err_out:
