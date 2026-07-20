@@ -332,11 +332,15 @@
                     <label class="block text-sm leading-6 text-default">
                         Allow overwrite if no common base or destination is ahead
                     </label>
-                    <input type="checkbox" v-model="allowOverwrite" class="h-4 w-4 rounded" />
+                    <input type="checkbox" v-model="allowOverwrite" :disabled="forceFullSend"
+                        class="h-4 w-4 rounded" :class="{ 'opacity-50 cursor-not-allowed': forceFullSend }" />
                 </div>
                 <p class="mt-1 text-xs text-default/70">
                     If destination has diverged from the source, enabling this permits rollback with
                     <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
+                </p>
+                <p v-if="forceFullSend" class="mt-0.5 text-xs text-yellow-500">
+                    Locked on — required by Force Full Resync.
                 </p>
                 <div class="flex items-center justify-between mt-2">
                     <label class="text-sm leading-6 text-default flex items-center">
@@ -344,12 +348,20 @@
                         <InfoTile class="ml-1"
                             :title="`If a resume token exists but the destination changed, this will discard the token and proceed with normal replication. This can trigger a rollback on the destination when overwrite is enabled, which may discard newer snapshots or changes.`" />
                     </label>
-                    <input type="checkbox" v-model="resumeFailAllowOverwrite" class="h-4 w-4 rounded" />
+                    <input type="checkbox" v-model="resumeFailAllowOverwrite"
+                        :disabled="!allowOverwrite || forceFullSend"
+                        class="h-4 w-4 rounded" :class="{ 'opacity-50 cursor-not-allowed': !allowOverwrite || forceFullSend }" />
                 </div>
                 <p class="mt-1 text-xs text-default/70">
                     If a resume token exists but the destination was modified, clear the token and
                     continue with normal replication. If overwrite is allowed, the task may roll back with
                     <code>zfs receive -F</code>.
+                </p>
+                <p v-if="forceFullSend" class="mt-0.5 text-xs text-yellow-500">
+                    Disabled — Force Full Resync destroys all destination snapshots; there is nothing to resume.
+                </p>
+                <p v-else-if="!allowOverwrite" class="mt-0.5 text-xs text-yellow-500">
+                    Requires Allow Overwrite to be enabled.
                 </p>
                 <div class="flex items-center justify-between mt-2">
                     <label class="text-sm leading-6 text-default flex items-center">
@@ -369,13 +381,13 @@
                     <label class="text-sm leading-6 text-default flex items-center">
                         Force full resync (next run only)
                         <InfoTile class="ml-1"
-                            :title="`Ignores existing common snapshots and performs a complete full send on the next run. The flag is automatically cleared after a successful transfer. Use this to re-seed the destination after pool recovery or data loss.`" />
+                            :title="`WARNING: This will destroy ALL existing snapshots on the destination dataset before performing a complete full send. The flag is automatically cleared after a successful transfer. Use this to re-seed the destination after pool recovery or data loss.`" />
                     </label>
                     <input type="checkbox" v-model="forceFullSend" class="h-4 w-4 rounded" />
                 </div>
-                <p class="mt-1 text-xs text-default/70">
-                    Performs a non-incremental full send on the next scheduled or manual run, then
-                    automatically disables itself. Useful for re-seeding a destination after recovery.
+                <p class="mt-1 text-xs text-red-400">
+                    Destroys all snapshots on the destination and performs a non-incremental full send
+                    on the next run. Automatically disables itself after completion.
                 </p>
             </div>
         </div>
@@ -586,6 +598,22 @@ const allowOverwrite = ref(false);
 const resumeFailAllowOverwrite = ref(false);
 const resumeStallTimeout = ref(3600);
 const forceFullSend = ref(false);
+
+// --- Mutual exclusivity constraints ---
+// Force Full Send requires Allow Overwrite (it uses -F and destroys snapshots)
+watch(forceFullSend, (val) => {
+    if (val) {
+        allowOverwrite.value = true;
+        resumeFailAllowOverwrite.value = false;
+    }
+});
+// Disabling Allow Overwrite disables options that depend on it
+watch(allowOverwrite, (val) => {
+    if (!val) {
+        forceFullSend.value = false;
+        resumeFailAllowOverwrite.value = false;
+    }
+});
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
 const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMissing.value);

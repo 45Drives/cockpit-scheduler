@@ -3771,6 +3771,23 @@ def main():
                 print(msg)
                 sys.exit(2)
             notifier.notify("STATUS=Pulling snapshot from remote source to local target…")
+
+            # Force Full Send: destroy destination snapshots before full receive.
+            # ZFS refuses a full receive into a dataset that already has snapshots.
+            if forceFullSend and not incrementalSnapName and destinationSnapshots:
+                print(f"Destroying {len(destinationSnapshots)} snapshot(s) on destination {destFilesystem} for full receive…")
+                notifier.notify(f"STATUS=Destroying destination snapshots for full receive…")
+                for snap in destinationSnapshots:
+                    destroy_cmd = ["zfs", "destroy", snap.name]
+                    dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
+                    dp = subprocess.run(destroy_cmd, capture_output=True, text=True)
+                    if dp.returncode != 0:
+                        err_out = (dp.stderr or dp.stdout or "").strip()
+                        # Tolerate "does not exist" (already gone) but fail on others
+                        if "does not exist" not in err_out and "could not find" not in err_out:
+                            print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+                print("Destination snapshots cleared.")
+
             send_snapshot_pull(
                 remoteSnapName=newSnap,
                 localRecvFs=destFilesystem,
@@ -3808,6 +3825,36 @@ def main():
                 sys.exit(2)
             notifier.notify("STATUS=Sending snapshot to destination…")
             dbg(f"baseSnap={incrementalSnapName} baseDs={dataset_of_snapshot(incrementalSnapName) if incrementalSnapName else ''} newSnap={newSnap} newDs={dataset_of_snapshot(newSnap)} recursive={isRecursiveSnap}")
+
+            # Force Full Send: destroy destination snapshots before full receive.
+            if forceFullSend and not incrementalSnapName and destinationSnapshots:
+                if remoteHost and remoteUser:
+                    print(f"Destroying {len(destinationSnapshots)} snapshot(s) on remote destination {destFilesystem} for full receive…")
+                    notifier.notify(f"STATUS=Destroying remote destination snapshots for full receive…")
+                    for snap in destinationSnapshots:
+                        ssh_destroy = ["ssh"] + SSH_BASE_OPTS
+                        if str(sshPort) != "22":
+                            ssh_destroy += ["-p", str(sshPort)]
+                        ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", snap.name]
+                        dbg(f"RUN {_fmt_cmd(ssh_destroy)}")
+                        dp = subprocess.run(ssh_destroy, capture_output=True, text=True)
+                        if dp.returncode != 0:
+                            err_out = (dp.stderr or dp.stdout or "").strip()
+                            if "does not exist" not in err_out and "could not find" not in err_out:
+                                print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+                else:
+                    print(f"Destroying {len(destinationSnapshots)} snapshot(s) on destination {destFilesystem} for full receive…")
+                    notifier.notify(f"STATUS=Destroying destination snapshots for full receive…")
+                    for snap in destinationSnapshots:
+                        destroy_cmd = ["zfs", "destroy", snap.name]
+                        dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
+                        dp = subprocess.run(destroy_cmd, capture_output=True, text=True)
+                        if dp.returncode != 0:
+                            err_out = (dp.stderr or dp.stdout or "").strip()
+                            if "does not exist" not in err_out and "could not find" not in err_out:
+                                print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+                print("Destination snapshots cleared.")
+
             send_snapshot_push(
                 newSnap,
                 destFilesystem,
