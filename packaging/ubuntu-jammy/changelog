@@ -1,3 +1,12 @@
+cockpit-scheduler (1.6.14-2jammy) jammy; urgency=medium
+
+  * Updates replication to handle 'pull' for netcat usage, adds pv as a dep for netcat
+    progress, fixes path autocompletion for rsync/cloud tasks, adds bulk delete task
+    option, fixes general progress bugs and removes unneeded task file's backup files
+    generation
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 20 Jul 2026 08:20:27 -0300
+
 cockpit-scheduler (1.6.14-1jammy) jammy; urgency=medium
 
   * Updates replication for better performance and makes netcat implementation more
