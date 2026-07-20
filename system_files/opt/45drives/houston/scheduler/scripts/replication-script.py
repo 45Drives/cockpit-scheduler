@@ -1381,6 +1381,33 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
     return new_snap
 
 
+def tag_received_snapshots(dest_filesystem, snap_suffix, task_name, tier_idx=None,
+                           remote_user=None, remote_host=None, remote_port="22"):
+    """
+    After a successful receive, tag the destination snapshot(s) with our custom
+    ZFS properties (task_name, tier). ZFS send/receive does not propagate user
+    properties, so we must set them explicitly on the receive side.
+
+    For recursive receives, tags only the root dataset snapshot (matching the
+    source tagging behavior).
+    """
+    dest_snap = f"{dest_filesystem}@{snap_suffix}"
+    props_to_set = [(TASK_PROP, task_name)]
+    if tier_idx is not None:
+        props_to_set.append((TIER_PROP, f"t{tier_idx}"))
+
+    for prop, value in props_to_set:
+        try:
+            if remote_user and remote_host:
+                ssh_run_args(remote_user, remote_host, remote_port,
+                             ["zfs", "set", f"{prop}={value}", dest_snap],
+                             capture_output=True, check=True, text=True)
+            else:
+                run_logged(["zfs", "set", f"{prop}={value}", dest_snap], check=True, text=True)
+        except Exception as e:
+            print(f"WARNING: failed to tag received snapshot {dest_snap} with {prop}={value}: {e}")
+
+
 # Timeout (seconds) for a single `zfs destroy` call.
 ZFS_DESTROY_TIMEOUT = int(os.environ.get("ZFS_DESTROY_TIMEOUT", "120"))
 
@@ -3672,6 +3699,22 @@ def main():
                 recursive=isRecursiveSnap,
                 recvDataPort=dataPort,
                 include_intermediates=includeIntermediateSnapshots,
+            )
+
+        # Tag received snapshot with custom properties on the destination side.
+        # ZFS send/receive does not propagate user properties, so we set them
+        # explicitly after a successful transfer.
+        snap_suf = snapshot_suffix(newSnap)
+        if direction == "pull":
+            # Pull: destination is local
+            tag_received_snapshots(destFilesystem, snap_suf, taskName, tier_idx=tier_idx)
+        else:
+            # Push: destination is remote (or local if no remoteHost)
+            tag_received_snapshots(
+                destFilesystem, snap_suf, taskName, tier_idx=tier_idx,
+                remote_user=remoteUser if remoteHost else None,
+                remote_host=remoteHost if remoteHost else None,
+                remote_port=sshPort,
             )
 
         notifier.notify("STATUS=Pruning old snapshots on source/destination…")
