@@ -414,6 +414,15 @@ def get_dest_ports(transfer_method: str):
 # Timeout for ZFS list/get commands that can hang on degraded pools (seconds)
 ZFS_LIST_TIMEOUT = 600
 
+# Timeout for post-transfer pipeline finalization (seconds).
+# After all data has been piped, recv/mbuffer should flush and exit.
+# Very generous default (30 min) — only fires if something is truly stuck.
+PIPELINE_FINALIZE_TIMEOUT = int(os.environ.get("ZFS_REP_FINALIZE_TIMEOUT", "1800"))
+
+# Default stall timeout for transfer pipelines (seconds).
+# If no data flows for this long, the pipeline is killed. 0 disables.
+TRANSFER_STALL_TIMEOUT = int(os.environ.get("ZFS_REP_STALL_TIMEOUT", "3600"))
+
 def get_local_snapshots(filesystem):
     cmd = [
         "zfs",
@@ -692,11 +701,13 @@ def _has_pv():
         return False
 
 
-def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref):
+def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activity=None):
     """Read pv stderr output and emit progress notifications.
     pv -f writes progress lines to stderr like:
       1.23GiB 0:00:10 [ 126MiB/s] [====>               ] 12%
-    We parse the percentage or byte count for notifications."""
+    We parse the percentage or byte count for notifications.
+    If last_activity is provided (a single-element list), update it with time.time()
+    on each output line so the caller can detect stalls."""
     last_pct = -1.0
     last_emit = 0.0
     try:
@@ -705,6 +716,8 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref):
             if not line:
                 continue
             now = time.time()
+            if last_activity is not None:
+                last_activity[0] = now
             # pv outputs percentage in the form " 12%" or "100%"
             m = re.search(r'(\d+)%', line)
             if m:
@@ -722,11 +735,12 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref):
 
 
 def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label,
-                          stderr_captures=None):
+                          stderr_captures=None, stall_timeout=3600):
     """Wire src_process.stdout -> pv -> mbuffer -> recv using OS pipes (no Python copy).
 
     Returns (success: bool, error_msg: str).
     stderr_captures is an optional dict to store StreamCapture objects for the caller.
+    stall_timeout: seconds with no pv progress before killing the pipeline (0 to disable).
     """
     if stderr_captures is None:
         stderr_captures = {}
@@ -737,6 +751,9 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
         if total_bytes:
             pv_cmd.extend(["-s", str(total_bytes)])
+
+        # Shared mutable timestamp for stall detection (single-element list for thread safety)
+        last_activity = [time.time()]
 
         # Pipeline: src_stdout -> pv -> mbuffer -> recv
         process_pv = subprocess.Popen(
@@ -768,10 +785,10 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         procs.append(("recv", process_recv))
         process_mbuffer.stdout.close()
 
-        # Monitor pv stderr in a thread for progress
+        # Monitor pv stderr in a thread for progress + stall tracking
         pv_thread = threading.Thread(
             target=_pv_monitor_thread,
-            args=(process_pv.stderr, total_bytes, label, notifier),
+            args=(process_pv.stderr, total_bytes, label, notifier, last_activity),
             daemon=True,
         )
         pv_thread.start()
@@ -779,8 +796,40 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         notifier.notify(f"STATUS={label}… pipeline running (direct pipe)")
         dbg(f"direct_pipe {label}: pv pid={process_pv.pid} mbuffer pid={process_mbuffer.pid} recv pid={process_recv.pid}")
 
-        # Wait for the pipeline to drain (recv finishes last)
-        recv_stdout, recv_stderr = process_recv.communicate()
+        # Wait for recv to finish, with stall detection watchdog
+        stall_enabled = bool(stall_timeout and stall_timeout > 0)
+        poll_interval = min(30.0, stall_timeout) if stall_enabled else None
+
+        while True:
+            try:
+                recv_stdout, recv_stderr = process_recv.communicate(
+                    timeout=poll_interval
+                )
+                break  # recv finished
+            except subprocess.TimeoutExpired:
+                if not stall_enabled:
+                    continue
+                idle = time.time() - last_activity[0]
+                if idle >= stall_timeout:
+                    dbg(f"direct_pipe {label}: STALL detected — no pv activity for {int(idle)}s, killing pipeline")
+                    notifier.notify(f"STATUS={label} stalled — no data flow for {int(idle)}s, aborting.")
+                    for name, p in procs:
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                    try:
+                        src_process.kill()
+                    except Exception:
+                        pass
+                    return False, (
+                        f"Pipeline stalled: no data transferred for {int(idle)}s "
+                        f"(stall timeout: {stall_timeout}s). The transfer may be resumable — "
+                        f"check for a resume token with the Resume Transfer button."
+                    )
+                else:
+                    dbg(f"direct_pipe {label}: watchdog check — last activity {int(idle)}s ago (timeout {stall_timeout}s)")
+                    continue
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
         recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
 
@@ -1682,7 +1731,16 @@ def send_snapshot_push(
         if process_send.stdout is None or process_recv.stdin is None:
             raise RuntimeError("Failed to initialize send/recv pipes.")
 
-        _, pipe_broken = stream_with_progress(process_send.stdout, process_recv.stdin, total_bytes, label="Transferring")
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_send.stdout, process_recv.stdin, total_bytes,
+                label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+            )
+        except StallTimeout as e:
+            _kill_procs(process_send, process_recv)
+            notifier.notify(f"STATUS=Transfer stalled: {e}")
+            print(f"ERROR: {e}")
+            sys.exit(1)
         try:
             process_recv.stdin.close()
             process_recv.stdin = None
@@ -1700,7 +1758,13 @@ def send_snapshot_push(
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         process_send.wait()
 
-        recv_stdout, recv_stderr = process_recv.communicate()
+        try:
+            recv_stdout, recv_stderr = process_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process_recv.kill()
+            notifier.notify("STATUS=Finalization timed out — recv process killed.")
+            print(f"ERROR: zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed.")
+            sys.exit(1)
         recv_stdout = recv_stdout.decode(errors="replace") if recv_stdout else ""
         recv_stderr = recv_stderr.decode(errors="replace") if recv_stderr else ""
 
@@ -1775,18 +1839,46 @@ def send_snapshot_push(
 
             dbg(f"direct_pipe push: pv pid={process_pv.pid} mbuffer pid={process_m_buff.pid} recv pid={process_remote_recv.pid}")
 
-            # Monitor pv in a thread
+            # Shared mutable timestamp for stall detection
+            last_activity = [time.time()]
+
+            # Monitor pv in a thread (with stall tracking)
             pv_thread = threading.Thread(
                 target=_pv_monitor_thread,
-                args=(process_pv.stderr, total_bytes, "Transferring", notifier),
+                args=(process_pv.stderr, total_bytes, "Transferring", notifier, last_activity),
                 daemon=True,
             )
             pv_thread.start()
 
             notifier.notify("STATUS=Transferring… pipeline running (direct pipe)")
 
-            # Wait for pipeline to complete
-            stdout, stderr = process_remote_recv.communicate()
+            # Wait for pipeline with stall detection watchdog
+            stall_timeout = TRANSFER_STALL_TIMEOUT
+            stall_enabled = bool(stall_timeout and stall_timeout > 0)
+            poll_interval = min(30.0, stall_timeout) if stall_enabled else None
+
+            while True:
+                try:
+                    stdout, stderr = process_remote_recv.communicate(timeout=poll_interval)
+                    break
+                except subprocess.TimeoutExpired:
+                    if not stall_enabled:
+                        continue
+                    idle = time.time() - last_activity[0]
+                    if idle >= stall_timeout:
+                        dbg(f"direct_pipe push: STALL detected — no pv activity for {int(idle)}s, killing pipeline")
+                        notifier.notify(f"STATUS=Transfer stalled — no data flow for {int(idle)}s, aborting.")
+                        for p in [process_pv, process_m_buff, process_remote_recv, process_send]:
+                            try:
+                                p.kill()
+                            except Exception:
+                                pass
+                        print(f"ERROR: Pipeline stalled: no data transferred for {int(idle)}s "
+                              f"(stall timeout: {stall_timeout}s). Check destination pool health.")
+                        sys.exit(1)
+                    else:
+                        dbg(f"direct_pipe push: watchdog check — last activity {int(idle)}s ago (timeout {stall_timeout}s)")
+                        continue
             stdout = stdout.decode(errors="replace") if stdout else ""
             stderr = stderr.decode(errors="replace") if stderr else ""
 
@@ -1857,7 +1949,16 @@ def send_snapshot_push(
         if process_send.stdout is None or process_m_buff.stdin is None:
             raise RuntimeError("Failed to initialize send/mbuffer pipes.")
 
-        _, pipe_broken = stream_with_progress(process_send.stdout, process_m_buff.stdin, total_bytes, label="Transferring")
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_send.stdout, process_m_buff.stdin, total_bytes,
+                label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+            )
+        except StallTimeout as e:
+            _kill_procs(process_send, process_m_buff, process_remote_recv)
+            notifier.notify(f"STATUS=Transfer stalled: {e}")
+            print(f"ERROR: {e}")
+            sys.exit(1)
         try:
             process_m_buff.stdin.close()
         except Exception:
@@ -1876,7 +1977,13 @@ def send_snapshot_push(
         process_send.wait()
         process_m_buff.wait()
 
-        stdout, stderr = process_remote_recv.communicate()
+        try:
+            stdout, stderr = process_remote_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process_remote_recv.kill()
+            notifier.notify("STATUS=Finalization timed out — remote recv process killed.")
+            print(f"ERROR: Remote zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed.")
+            sys.exit(1)
         stdout = stdout.decode(errors="replace") if stdout else ""
         stderr = stderr.decode(errors="replace") if stderr else ""
 
@@ -1948,7 +2055,16 @@ def send_snapshot_push(
         if process_send.stdout is None or process_mbuffer.stdin is None:
             raise RuntimeError("Failed to initialize send/mbuffer pipes.")
 
-        _, pipe_broken = stream_with_progress(process_send.stdout, process_mbuffer.stdin, total_bytes, label="Transferring")
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_send.stdout, process_mbuffer.stdin, total_bytes,
+                label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+            )
+        except StallTimeout as e:
+            _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
+            notifier.notify(f"STATUS=Transfer stalled: {e}")
+            print(f"ERROR: {e}")
+            sys.exit(1)
         try:
             process_mbuffer.stdin.close()
         except Exception:
@@ -1968,7 +2084,14 @@ def send_snapshot_push(
         process_send.wait()
         process_mbuffer.wait()
 
-        _, nc_stderr = process_nc.communicate()
+        try:
+            _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process_nc.kill()
+            ssh_process_listener.terminate()
+            notifier.notify("STATUS=Finalization timed out — netcat process killed.")
+            print(f"ERROR: Netcat did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed.")
+            sys.exit(1)
 
         mbuf_stderr = mbuf_capture.text()
 
@@ -2121,11 +2244,12 @@ def send_snapshot_pull(
         else:
             process_nc.stdout.close()
 
-        # Start pv progress monitor thread
+        # Start pv progress monitor thread (with stall tracking)
+        last_activity = [time.time()]
         if process_pv:
             pv_thread = threading.Thread(
                 target=_pv_monitor_thread,
-                args=(process_pv.stderr, total_bytes, "Transferring", notifier),
+                args=(process_pv.stderr, total_bytes, "Transferring", notifier, last_activity),
                 daemon=True,
             )
             pv_thread.start()
@@ -2144,16 +2268,46 @@ def send_snapshot_pull(
         # Close parent's copy so SIGPIPE propagates
         process_mbuffer.stdout.close()
 
-        # Wait for the pipeline to complete
+        # Wait for the pipeline with stall detection
         notifier.notify("STATUS=Receiving data via netcat… waiting for pipeline to complete.")
-        recv_stdout, recv_stderr = process_local_recv.communicate()
+        stall_timeout = TRANSFER_STALL_TIMEOUT
+        stall_enabled = bool(stall_timeout and stall_timeout > 0)
+        poll_interval = min(30.0, stall_timeout) if stall_enabled else None
+
+        while True:
+            try:
+                recv_stdout, recv_stderr = process_local_recv.communicate(timeout=poll_interval)
+                break
+            except subprocess.TimeoutExpired:
+                if not stall_enabled:
+                    continue
+                idle = time.time() - last_activity[0]
+                if idle >= stall_timeout:
+                    dbg(f"netcat pull: STALL detected — no pv activity for {int(idle)}s, killing pipeline")
+                    notifier.notify(f"STATUS=Transfer stalled — no data flow for {int(idle)}s, aborting.")
+                    for p in [process_local_recv, process_mbuffer, process_nc, ssh_process_sender]:
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                    if process_pv:
+                        try:
+                            process_pv.kill()
+                        except Exception:
+                            pass
+                    print(f"ERROR: Pipeline stalled: no data transferred for {int(idle)}s "
+                          f"(stall timeout: {stall_timeout}s).")
+                    sys.exit(1)
+                else:
+                    dbg(f"netcat pull: watchdog check — last activity {int(idle)}s ago (timeout {stall_timeout}s)")
+                    continue
         recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
 
         process_mbuffer.wait()
         if process_pv:
             process_pv.wait()
-        _, nc_stderr = process_nc.communicate()
+        _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
 
         ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
 
@@ -2243,7 +2397,16 @@ def send_snapshot_pull(
     if process_remote_send.stdout is None or process_m_buff.stdin is None:
         raise RuntimeError("Failed to initialize send/mbuffer pipes.")
 
-    _, pipe_broken = stream_with_progress(process_remote_send.stdout, process_m_buff.stdin, total_bytes, label="Transferring")
+    try:
+        _, pipe_broken = stream_with_progress_stall(
+            process_remote_send.stdout, process_m_buff.stdin, total_bytes,
+            label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+        )
+    except StallTimeout as e:
+        _kill_procs(process_remote_send, process_m_buff, process_local_recv)
+        notifier.notify(f"STATUS=Transfer stalled: {e}")
+        print(f"ERROR: {e}")
+        sys.exit(1)
     try:
         process_m_buff.stdin.close()
     except Exception:
@@ -2259,11 +2422,25 @@ def send_snapshot_pull(
 
     # Wait for send -> mbuffer -> recv chain to settle
     notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
-    remote_out, remote_err = process_remote_send.communicate()
+    try:
+        remote_out, remote_err = process_remote_send.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process_remote_send.kill()
+        process_m_buff.kill()
+        process_local_recv.kill()
+        notifier.notify("STATUS=Finalization timed out — remote send process killed.")
+        print(f"ERROR: Remote zfs send did not finish within {PIPELINE_FINALIZE_TIMEOUT}s. Process killed.")
+        sys.exit(1)
     remote_err = remote_err.decode(errors="replace") if remote_err else ""
     process_m_buff.wait()
 
-    stdout, stderr = process_local_recv.communicate()
+    try:
+        stdout, stderr = process_local_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process_local_recv.kill()
+        notifier.notify("STATUS=Finalization timed out — local recv process killed.")
+        print(f"ERROR: Local zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed.")
+        sys.exit(1)
     stdout = stdout.decode(errors="replace") if stdout else ""
     stderr = stderr.decode(errors="replace") if stderr else ""
 
@@ -2412,7 +2589,12 @@ def resume_receive_push(
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         process_send.wait()
 
-        recv_stdout, recv_stderr = process_recv.communicate()
+        try:
+            recv_stdout, recv_stderr = process_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process_recv.kill()
+            notifier.notify("STATUS=Finalization timed out — recv process killed.")
+            return False, f"zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
         recv_stdout = recv_stdout.decode(errors="replace") if recv_stdout else ""
         recv_stderr = recv_stderr.decode(errors="replace") if recv_stderr else ""
 
@@ -2492,7 +2674,12 @@ def resume_receive_push(
         except Exception:
             pass
 
-        _, nc_stderr = process_nc.communicate()
+        try:
+            _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_nc, ssh_process_listener)
+            notifier.notify("STATUS=Finalization timed out — netcat process killed.")
+            return False, f"Netcat did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
 
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         mbuf_stderr = process_mbuffer.stderr.read().decode(errors="replace") if process_mbuffer.stderr else ""
@@ -2579,7 +2766,12 @@ def resume_receive_push(
     process_send.wait()
     process_m_buff.wait()
 
-    stdout, stderr = process_remote_recv.communicate()
+    try:
+        stdout, stderr = process_remote_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process_remote_recv.kill()
+        notifier.notify("STATUS=Finalization timed out — remote recv process killed.")
+        return False, f"Remote zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
     stdout = stdout.decode(errors="replace") if stdout else ""
     stderr = stderr.decode(errors="replace") if stderr else ""
 
@@ -2688,11 +2880,12 @@ def resume_receive_pull(
         else:
             process_nc.stdout.close()
 
-        # Start pv progress monitor thread
+        # Start pv progress monitor thread (with stall tracking)
+        last_activity = [time.time()]
         if process_pv:
             pv_thread = threading.Thread(
                 target=_pv_monitor_thread,
-                args=(process_pv.stderr, total_bytes, "Resuming", notifier),
+                args=(process_pv.stderr, total_bytes, "Resuming", notifier, last_activity),
                 daemon=True,
             )
             pv_thread.start()
@@ -2710,15 +2903,44 @@ def resume_receive_pull(
         )
         process_mbuffer.stdout.close()
 
-        # Wait for pipeline
-        recv_stdout, recv_stderr = process_local_recv.communicate()
+        # Wait for pipeline with stall detection
+        _stall_timeout = stall_timeout or TRANSFER_STALL_TIMEOUT
+        _stall_enabled = bool(_stall_timeout and _stall_timeout > 0)
+        _poll = min(30.0, _stall_timeout) if _stall_enabled else None
+
+        while True:
+            try:
+                recv_stdout, recv_stderr = process_local_recv.communicate(timeout=_poll)
+                break
+            except subprocess.TimeoutExpired:
+                if not _stall_enabled:
+                    continue
+                idle = time.time() - last_activity[0]
+                if idle >= _stall_timeout:
+                    dbg(f"netcat pull resume: STALL detected — no pv activity for {int(idle)}s, killing pipeline")
+                    notifier.notify(f"STATUS=Resume stalled — no data flow for {int(idle)}s, aborting.")
+                    for p in [process_local_recv, process_mbuffer, process_nc, ssh_process_sender]:
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                    if process_pv:
+                        try:
+                            process_pv.kill()
+                        except Exception:
+                            pass
+                    return False, (f"Pipeline stalled: no data transferred for {int(idle)}s "
+                                   f"(stall timeout: {_stall_timeout}s).")
+                else:
+                    dbg(f"netcat pull resume: watchdog check — last activity {int(idle)}s ago (timeout {_stall_timeout}s)")
+                    continue
         recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
 
         process_mbuffer.wait()
         if process_pv:
             process_pv.wait()
-        _, nc_stderr = process_nc.communicate()
+        _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
 
         ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
 
@@ -2816,7 +3038,12 @@ def resume_receive_pull(
     process_remote_send.wait()
     process_m_buff.wait()
 
-    stdout, stderr = process_local_recv.communicate()
+    try:
+        stdout, stderr = process_local_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process_local_recv.kill()
+        notifier.notify("STATUS=Finalization timed out — local recv process killed.")
+        return False, f"Local zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
     stderr = stderr if isinstance(stderr, str) else (stderr.decode(errors="replace") if stderr else "")
 
     if process_local_recv.returncode != 0:
@@ -3154,6 +3381,11 @@ def main():
             default=False,
         )
 
+        # Clear one-shot flags immediately so they don't persist if the script
+        # exits early (e.g. resumeOnly finding no token, dryRun finishing, etc.).
+        if taskName and (forceFullSend or dryRun or resumeOnly):
+            _clear_one_shot_flags(taskName)
+
         # Resume stall timeout: how long (seconds) to wait with no data before aborting a resume.
         # Default 3600s (1 hour). 0 disables stall detection.
         try:
@@ -3296,6 +3528,41 @@ def main():
             if transferMethod == "local" or not transferMethod:
                 transferMethod = "ssh"
 
+            # Resume-only early exit: check for resume token BEFORE fetching
+            # snapshots (which can take minutes with tens of thousands of snaps).
+            if resumeOnly:
+                print(f"Checking for resume token on {local_target_fs}…")
+                notifier.notify(f"STATUS=Checking for resume token on {local_target_fs}…")
+                _resume_token = get_receive_resume_token(local_target_fs)
+                if not _resume_token:
+                    print("RESUME ONLY mode: no resume token found. Nothing to resume.")
+                    print("The previous transfer either completed successfully or was never started.")
+                    sys.exit(0)
+                # Token exists — resume directly without fetching snapshots.
+                print(f"Resume token found on {local_target_fs}. Resuming transfer…")
+                notifier.notify(f"STATUS=Resume token found. Resuming transfer to {local_target_fs}…")
+                ok, err = resume_receive_pull(
+                    _resume_token,
+                    local_target_fs,
+                    remoteHost=remoteHost,
+                    remoteSshPort=sshPort,
+                    remoteUser=remoteUser,
+                    mBufferSize=mBufferSize,
+                    mBufferUnit=mBufferUnit,
+                    forceOverwrite=allowOverwrite,
+                    stall_timeout=resumeStallTimeout,
+                    transferMethod=transferMethod,
+                    recvDataPort=dataPort,
+                )
+                if ok:
+                    print("Resume transfer completed successfully.")
+                    notifier.notify("STATUS=Resume transfer completed. 100% complete")
+                    sys.exit(0)
+                else:
+                    print(f"Resume transfer failed: {err}")
+                    notifier.notify(f"STATUS=Resume transfer failed: {err}")
+                    sys.exit(1)
+
             dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
             dbg(f"remoteUser={remoteUser} remoteHost={remoteHost} sshPort={sshPort}")
 
@@ -3330,6 +3597,46 @@ def main():
 
             if transferMethod == "ssh" and not remoteHost:
                 transferMethod = "local"
+
+            # Resume-only early exit: check for resume token BEFORE fetching
+            # snapshots (which can take minutes with tens of thousands of snaps).
+            if resumeOnly:
+                if remoteHost:
+                    print(f"Checking for resume token on {remoteUser}@{remoteHost}:{target_fs}…")
+                    notifier.notify(f"STATUS=Checking for resume token on {remoteUser}@{remoteHost}:{target_fs}…")
+                    _resume_token = get_receive_resume_token(target_fs, remoteUser, remoteHost, sshPort)
+                else:
+                    print(f"Checking for resume token on {target_fs}…")
+                    notifier.notify(f"STATUS=Checking for resume token on {target_fs}…")
+                    _resume_token = get_receive_resume_token(target_fs)
+                if not _resume_token:
+                    print("RESUME ONLY mode: no resume token found. Nothing to resume.")
+                    print("The previous transfer either completed successfully or was never started.")
+                    sys.exit(0)
+                # Token exists — resume directly without fetching snapshots.
+                print(f"Resume token found on {target_fs}. Resuming transfer…")
+                notifier.notify(f"STATUS=Resume token found. Resuming transfer to {target_fs}…")
+                ok, err = resume_receive_push(
+                    _resume_token,
+                    target_fs,
+                    recvHost=remoteHost or "",
+                    recvSshPort=sshPort,
+                    recvHostUser=remoteUser,
+                    mBufferSize=mBufferSize,
+                    mBufferUnit=mBufferUnit,
+                    transferMethod=transferMethod,
+                    recvDataPort=dataPort,
+                    forceOverwrite=allowOverwrite,
+                    stall_timeout=resumeStallTimeout,
+                )
+                if ok:
+                    print("Resume transfer completed successfully.")
+                    notifier.notify("STATUS=Resume transfer completed. 100% complete")
+                    sys.exit(0)
+                else:
+                    print(f"Resume transfer failed: {err}")
+                    notifier.notify(f"STATUS=Resume transfer failed: {err}")
+                    sys.exit(1)
 
             if remoteHost:
                 dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
@@ -3539,11 +3846,12 @@ def main():
                     }
                 )
 
-        # Resume-only mode: if no token was found/resumed above, exit cleanly.
+        # Resume-only mode: if a token was found but resume failed above,
+        # do not fall through to normal replication.
         if resumeOnly:
-            print("RESUME ONLY mode: no resume token found. Nothing to resume.")
-            print("The previous transfer either completed successfully or was never started.")
-            sys.exit(0)
+            print("RESUME ONLY mode: resume was attempted but did not complete successfully.")
+            print("Run a normal replication (Run Now) to continue, or try Resume Transfer again.")
+            sys.exit(1)
 
         # Dry-run mode: skip snapshot creation and transfer, just report what would happen.
         if dryRun:
@@ -3727,8 +4035,20 @@ def main():
 
             # Verbose dry-run: zfs send -nvP
             if sourceSnapshots:
-                sourceSnapshots.sort(key=lambda s: s.creation_epoch)
-                latest_src = sourceSnapshots[-1].name
+                # For recursive sends, the target snapshot must be on the root
+                # dataset (same filesystem as the incremental base), otherwise
+                # zfs send -R -I fails with "incremental source must be in
+                # same filesystem".
+                if isRecursiveSnap:
+                    dry_run_snaps = filter_dataset_snapshots(sourceSnapshots, sourceFilesystem)
+                else:
+                    dry_run_snaps = list(sourceSnapshots)
+                dry_run_snaps.sort(key=lambda s: s.creation_epoch)
+                if not dry_run_snaps:
+                    print("\n  No snapshots found on root dataset — cannot preview send command.")
+                    print("\n--- End Dry Run (no changes made) ---")
+                    sys.exit(0)
+                latest_src = dry_run_snaps[-1].name
                 send_cmd = build_zfs_send_args(
                     latest_src,
                     incrementalSnapName,
@@ -4090,10 +4410,6 @@ def main():
                 f.write(str(int(time.time())))
         except Exception as e:
             dbg(f"WARNING: failed to write lastrun file: {e}")
-
-        # Auto-disable one-shot flags after successful execution.
-        if taskName and (forceFullSend or dryRun or resumeOnly):
-            _clear_one_shot_flags(taskName)
 
     except Exception as e:
         newSnap = locals().get("newSnap", "unknown")

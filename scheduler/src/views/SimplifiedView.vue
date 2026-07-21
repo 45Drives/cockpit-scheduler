@@ -224,7 +224,7 @@
                             class="h-full bg-primary rounded-full transition-all duration-300"
                             :style="{ width: Math.min(row.progress, 100) + '%' }" />
                         <div v-else
-                            class="h-full bg-primary rounded-full animate-pulse w-full" />
+                            class="h-full bg-blue-500 dark:bg-blue-400 rounded-full animate-indeterminate w-1/4" />
                     </div>
                     <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
                         {{ row.progress != null ? row.progress.toFixed(1) + '%' : (row.progressLabel || 'Running…') }}

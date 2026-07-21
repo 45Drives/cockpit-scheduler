@@ -61,13 +61,13 @@
 		<td v-if="showProgressBar" class="col-span-full h-full px-2 mx-2 py-1 border-t border-default">
 			<div>
 				<div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded overflow-hidden">
-					<div v-if="!isIndeterminate" class="h-2 rounded" :class="progressBarClass"
+					<div v-if="!isIndeterminate" class="h-2 rounded transition-all duration-300" :class="progressBarClass"
 						:style="{ width: Math.min(progress ?? 0, 100) + '%' }"></div>
-					<div v-else class="h-2 rounded w-full animate-pulse bg-slate-400 dark:bg-slate-500"></div>
+					<div v-else class="h-2 rounded w-1/4 animate-indeterminate bg-blue-500 dark:bg-blue-400"></div>
 				</div>
-				<div class="text-xs mt-1">
+				<div class="text-xs mt-1 text-muted">
 					<span v-if="!isIndeterminate">{{ (progress ?? 0).toFixed(1) }}%</span>
-					<span v-else>{{ progressLabel || 'Running…' }}</span>
+					<span v-else class="animate-pulse">{{ progressLabel || 'Running…' }}</span>
 				</div>
 			</div>
 		</td>
