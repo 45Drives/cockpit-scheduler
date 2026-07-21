@@ -3107,32 +3107,35 @@ def _clear_one_shot_flags(task_name: str, keys=None):
         with open(env_path, "r") as f:
             lines = f.readlines()
         new_lines = []
-        changed = False
+        cleared_flags = []
         for line in lines:
             stripped = line.strip()
             matched = False
             for key in keys:
                 if stripped.startswith(f"{key}="):
+                    val = stripped.split("=", 1)[1].strip().lower()
+                    if val not in ("false", "0", "no", "off", ""):
+                        short_name = key.rsplit("_", 1)[-1]
+                        cleared_flags.append(short_name)
                     new_lines.append(f"{key}=false\n")
-                    changed = True
                     matched = True
                     break
                 # Handle corrupted lines where the key got concatenated onto a previous value
                 if f"{key}=" in stripped and not stripped.startswith(f"{key}="):
-                    # Extract the part before the corrupted key and keep it
                     idx = stripped.index(f"{key}=")
                     prefix = stripped[:idx]
                     new_lines.append(f"{prefix}\n")
                     new_lines.append(f"{key}=false\n")
-                    changed = True
+                    short_name = key.rsplit("_", 1)[-1]
+                    cleared_flags.append(short_name)
                     matched = True
                     break
             if not matched:
                 new_lines.append(line)
-        if changed:
+        if cleared_flags:
             with open(env_path, "w") as f:
                 f.writelines(new_lines)
-            print("One-shot flags cleared — next run will use normal mode.")
+            print(f"One-shot flags cleared ({', '.join(cleared_flags)}) — next run will use normal mode.")
             subprocess.run(["systemctl", "daemon-reload"], timeout=30)
     except FileNotFoundError:
         pass
@@ -4049,6 +4052,15 @@ def main():
                     print("\n--- End Dry Run (no changes made) ---")
                     sys.exit(0)
                 latest_src = dry_run_snaps[-1].name
+
+                # Nothing-to-send check: latest source snap IS the common base
+                if incrementalSnapName and latest_src == incrementalSnapName:
+                    print(f"\n  Latest source snapshot: {latest_src}")
+                    print(f"  Already up to date — the most recent source snapshot is the common base.")
+                    print(f"  No new snapshots to transfer.")
+                    print("\n--- End Dry Run (no changes made) ---")
+                    sys.exit(0)
+
                 send_cmd = build_zfs_send_args(
                     latest_src,
                     incrementalSnapName,
