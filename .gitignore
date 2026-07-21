@@ -32,3 +32,4 @@ src/version.js
 packaging/cloud-creds.env
 
 *.dokuwiki.txt
+.claude/CLAUDE.md
