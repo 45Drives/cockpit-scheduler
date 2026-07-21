@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.16-1jammy) jammy; urgency=medium
+
+  * Fixes several issues with replication resume/dry run logic and improves UI feedback
+    when indeterminate progress for task
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 21 Jul 2026 08:57:35 -0300
+
 cockpit-scheduler (1.6.15-1jammy) jammy; urgency=medium
 
   * Updated force resync to destroy snapshots on destination (explicitly) and updates
