@@ -1748,10 +1748,21 @@ def send_snapshot_push(
             pass
 
         if pipe_broken:
+            try:
+                process_recv.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process_recv.terminate()
+            recv_stderr = ""
+            try:
+                recv_stderr = process_recv.stderr.read().decode(errors="replace") if process_recv.stderr else ""
+            except Exception:
+                pass
             process_send.terminate()
-            process_recv.terminate()
             notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
-            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            if recv_stderr:
+                safe_print(f"ERROR: local recv error: {recv_stderr.strip()}")
+            else:
+                safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
             sys.exit(1)
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
@@ -1965,11 +1976,22 @@ def send_snapshot_push(
             pass
 
         if pipe_broken:
+            try:
+                process_remote_recv.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process_remote_recv.terminate()
+            recv_stderr = ""
+            try:
+                recv_stderr = process_remote_recv.stderr.read().decode(errors="replace") if process_remote_recv.stderr else ""
+            except Exception:
+                pass
             process_send.terminate()
             process_m_buff.terminate()
-            process_remote_recv.terminate()
             notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
-            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            if recv_stderr:
+                safe_print(f"ERROR: remote recv error: {recv_stderr.strip()}")
+            else:
+                safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
             sys.exit(1)
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
@@ -2071,12 +2093,24 @@ def send_snapshot_push(
             pass
 
         if pipe_broken:
+            # In netcat push, recv runs on remote via SSH — try to get its stderr
+            try:
+                ssh_process_listener.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                ssh_process_listener.terminate()
+            recv_stderr = ""
+            try:
+                recv_stderr = ssh_process_listener.stderr.read().decode(errors="replace") if ssh_process_listener.stderr else ""
+            except Exception:
+                pass
             process_send.terminate()
             process_mbuffer.terminate()
             process_nc.terminate()
-            ssh_process_listener.terminate()
             notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
-            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            if recv_stderr:
+                safe_print(f"ERROR: remote recv error: {recv_stderr.strip()}")
+            else:
+                safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
             sys.exit(1)
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
@@ -2413,11 +2447,23 @@ def send_snapshot_pull(
         pass
 
     if pipe_broken:
+        # Give recv a moment to flush its stderr before we kill it
+        try:
+            process_local_recv.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process_local_recv.terminate()
+        recv_stderr = ""
+        try:
+            recv_stderr = process_local_recv.stderr.read().decode(errors="replace") if process_local_recv.stderr else ""
+        except Exception:
+            pass
         process_remote_send.terminate()
         process_m_buff.terminate()
-        process_local_recv.terminate()
         notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
-        safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+        if recv_stderr:
+            safe_print(f"ERROR: local recv error: {recv_stderr.strip()}")
+        else:
+            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
         sys.exit(1)
 
     # Wait for send -> mbuffer -> recv chain to settle
