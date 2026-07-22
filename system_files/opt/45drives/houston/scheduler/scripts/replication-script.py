@@ -4216,11 +4216,12 @@ def main():
 
             # Force Full Send: destroy destination snapshots before full receive.
             # ZFS refuses a full receive into a dataset that already has snapshots.
+            # Use -R to also destroy clones/dependents that would block destroy.
             if forceFullSend and not incrementalSnapName and destinationSnapshots:
                 print(f"Destroying {len(destinationSnapshots)} snapshot(s) on destination {destFilesystem} for full receive…")
                 notifier.notify(f"STATUS=Destroying destination snapshots for full receive…")
                 for snap in destinationSnapshots:
-                    destroy_cmd = ["zfs", "destroy", snap.name]
+                    destroy_cmd = ["zfs", "destroy", "-R", snap.name]
                     dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
                     dp = subprocess.run(destroy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                     if dp.returncode != 0:
@@ -4277,7 +4278,7 @@ def main():
                         ssh_destroy = ["ssh"] + SSH_BASE_OPTS
                         if str(sshPort) != "22":
                             ssh_destroy += ["-p", str(sshPort)]
-                        ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", snap.name]
+                        ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", "-R", snap.name]
                         dbg(f"RUN {_fmt_cmd(ssh_destroy)}")
                         dp = subprocess.run(ssh_destroy, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                         if dp.returncode != 0:
@@ -4288,7 +4289,7 @@ def main():
                     print(f"Destroying {len(destinationSnapshots)} snapshot(s) on destination {destFilesystem} for full receive…")
                     notifier.notify(f"STATUS=Destroying destination snapshots for full receive…")
                     for snap in destinationSnapshots:
-                        destroy_cmd = ["zfs", "destroy", snap.name]
+                        destroy_cmd = ["zfs", "destroy", "-R", snap.name]
                         dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
                         dp = subprocess.run(destroy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                         if dp.returncode != 0:

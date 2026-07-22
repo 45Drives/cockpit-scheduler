@@ -79,7 +79,9 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new StringParameter('Transfer Method', 'transferMethod', ''))
                 .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', false))
                 .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', false))
-                .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', false)) 
+                .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', 3600))
+                .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', false))
+                .addChild(new BoolParameter('Force Full Send', 'forceFullSend', false))
             );
         super(name, parameterSchema);
     }

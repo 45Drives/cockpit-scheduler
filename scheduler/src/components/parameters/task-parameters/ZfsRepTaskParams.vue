@@ -1033,13 +1033,11 @@ const handleDestPoolChange = async (newVal: string) => {
 watch(sourcePool, handleSourcePoolChange);
 watch(destPool, handleDestPoolChange);
 
-// If transfer method changes, remote queries may need different control-plane port assumptions
-watch(transferMethod, async (newValue) => {
+// If transfer method changes, adjust port default (netcat uses a data port, not SSH port)
+watch(transferMethod, (newValue) => {
     if (newValue === 'netcat' && destPort.value === 22) {
         destPort.value = 31337;
     }
-    await getSourcePools();
-    await getTargetPools();
 });
 
 /* ---------------- Validation ---------------- */

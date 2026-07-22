@@ -11,7 +11,6 @@
                     </span>
                 </div>
                 <div class="flex items-center mx-2 mb-0.5 flex-shrink-0"
-                    :class="isPull ? 'rotate-180' : ''"
                     :title="isPull ? 'Pull' : 'Push'">
                     <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
                     <ChevronDoubleRightIcon class="w-4 h-4 text-muted" />
