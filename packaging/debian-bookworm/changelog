@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.16-4bookworm) bookworm; urgency=medium
+
+  * Fixes netcat detection bug with conflicting port/listen flags
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 22 Jul 2026 06:58:14 -0300
+
 cockpit-scheduler (1.6.16-3bookworm) bookworm; urgency=medium
 
   * Fixes issues with Replication: full send needing recursive destroy, clear one-shot

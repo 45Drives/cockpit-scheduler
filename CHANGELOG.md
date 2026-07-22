@@ -1,3 +1,3 @@
-## task scheduler 1.6.16-3
+## task scheduler 1.6.16-4
 
-* Fixes issues with Replication: full send needing recursive destroy, clear one-shot flag message logic, push/pull arrows, dataset refresh on netcat/ssh switch
+* Fixes netcat detection bug with conflicting port/listen flags
