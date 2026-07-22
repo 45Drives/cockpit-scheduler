@@ -1,3 +1,3 @@
-## task scheduler 1.6.16-2
+## task scheduler 1.6.16-3
 
-* Forces new build to update package on repo
+* Fixes issues with Replication: full send needing recursive destroy, clear one-shot flag message logic, push/pull arrows, dataset refresh on netcat/ssh switch

@@ -1,3 +1,10 @@
+cockpit-scheduler (1.6.16-3jammy) jammy; urgency=medium
+
+  * Fixes issues with Replication: full send needing recursive destroy, clear one-shot
+    flag message logic, push/pull arrows, dataset refresh on netcat/ssh switch
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 22 Jul 2026 05:11:10 -0300
+
 cockpit-scheduler (1.6.16-2jammy) jammy; urgency=medium
 
   * Forces new build to update package on repo

@@ -84,6 +84,9 @@ if [ "$1" -eq 0 ]; then
 fi
 
 %changelog
+* Wed Jul 22 2026 Jordan Keough <jkeough@45drives.com> 1.6.16-3
+- Fixes issues with Replication: full send needing recursive destroy, clear one-shot
+  flag message logic, push/pull arrows, dataset refresh on netcat/ssh switch
 * Tue Jul 21 2026 Jordan Keough <jkeough@45drives.com> 1.6.16-2
 - Forces new build to update package on repo
 * Tue Jul 21 2026 Jordan Keough <jkeough@45drives.com> 1.6.16-1
