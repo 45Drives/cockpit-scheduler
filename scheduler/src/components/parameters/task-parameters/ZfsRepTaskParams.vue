@@ -1319,13 +1319,11 @@ function setParams() {
 
 /* ---------------- Wire Wizard ---------------- */
 
+const emit = defineEmits<{ 'open-wire-wizard': [] }>();
+
 function openWireWizard() {
-    const cockpit = (window as any).cockpit;
-    if (cockpit?.jump) {
-        cockpit.jump('/wire-wizard');
-    } else {
-        window.open('/cockpit/@localhost/wire-wizard/index.html', '_blank');
-    }
+    setParams(); // sync current form values to the shared parameters ref
+    emit('open-wire-wizard');
 }
 
 /* ---------------- Test buttons ---------------- */
@@ -1392,6 +1390,7 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
-    hasChanges
+    hasChanges,
+    setParams
 });
 </script>

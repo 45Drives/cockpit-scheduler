@@ -58,7 +58,8 @@
                         <!-- Parameters -->
                         <div v-if="selectedTemplate" class="min-h-0">
                             <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
-                                :selectedTemplate="selectedTemplate" :simple="true" :task="originalTask || undefined" />
+                                :selectedTemplate="selectedTemplate" :simple="true" :task="originalTask || undefined"
+                                @open-wire-wizard="handleOpenWireWizard" />
                         </div>
                     </div>
                 </div>
@@ -149,7 +150,28 @@ watch(isEditMode, (edit) => {
 
 onMounted(async () => {
     await nextTick();
-
+    // Check for saved draft from Wire Wizard round-trip
+    const savedDraft = sessionStorage.getItem('scheduler-task-draft');
+    if (savedDraft && !isEditMode.value) {
+        sessionStorage.removeItem('scheduler-task-draft');
+        try {
+            const snap = JSON.parse(savedDraft);
+            newTaskName.value = snap.name ?? '';
+            const found = taskTemplates.find((t: any) => t.name === snap.templateName);
+            if (found) selectedTemplate.value = found;
+            const localSchema = makeLocalSchemaByName(snap.templateName);
+            parameters.value = localSchema ? hydrateSchemaWithRaw(localSchema, snap.parameters) : snap.parameters;
+            notesTask.value = snap.notes ?? '';
+            if (snap.schedule) {
+                // Restore Date objects from serialized strings
+                const sched = snap.schedule;
+                if (sched.startDate) sched.startDate = new Date(sched.startDate);
+                uiSchedule.value = sched;
+            }
+            paramInputKey.value++;
+            return; // skip default initialization
+        } catch { /* ignore corrupt data, fall through to defaults */ }
+    }
     if (isEditMode.value && originalTask.value) {
         // Editing: load the task’s existing schedule + other fields
         uiSchedule.value = toUISchedule(originalTask.value.schedule);
@@ -430,6 +452,26 @@ const isDirty = computed(() => {
 
 // ---- navigation ----
 function goBack() { router.push({ name: 'SimpleTasks' }); }
+
+function handleOpenWireWizard() {
+    // Snapshot form state to sessionStorage before jumping to Wire Wizard
+    const snapshot = {
+        name: newTaskName.value,
+        templateName: selectedTemplate.value?.name ?? '',
+        parameters: parameters.value ? JSON.parse(JSON.stringify(parameters.value)) : null,
+        notes: notesTask.value,
+        schedule: uiSchedule.value ? JSON.parse(JSON.stringify(uiSchedule.value)) : null,
+    };
+    sessionStorage.setItem('scheduler-task-draft', JSON.stringify(snapshot));
+    sessionStorage.setItem('wirewizard-return', 'scheduler');
+
+    const cockpit = (window as any).cockpit;
+    if (cockpit?.jump) {
+        cockpit.jump('/wire-wizard-test');
+    } else {
+        window.open('/cockpit/@localhost/wire-wizard-test/index.html', '_blank');
+    }
+}
 
 // ---- actions ----
 async function saveAll() {

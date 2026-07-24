@@ -623,13 +623,11 @@ const tooltips = {
         "Number of parallel workers. Higher can be faster but uses more CPU, disk, and network."
 } as const;
 
+const emit = defineEmits<{ 'open-wire-wizard': [] }>();
+
 function openWireWizard() {
-    const cockpit = (window as any).cockpit;
-    if (cockpit?.jump) {
-        cockpit.jump('/wire-wizard');
-    } else {
-        window.open('/cockpit/@localhost/wire-wizard/index.html', '_blank');
-    }
+    setParams(); // sync current form values to the shared parameters ref
+    emit('open-wire-wizard');
 }
 
 async function handleTestSSH() {
@@ -1014,6 +1012,7 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
-    hasChanges
+    hasChanges,
+    setParams
 });
 </script>

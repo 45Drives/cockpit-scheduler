@@ -33,6 +33,11 @@ router.beforeEach((to, from) => {
     const store = useTaskDraftStore();
     const comingBackFromRemotes = from.name === 'SimpleManageRemotes';
 
+    // Redirect to task form if returning from Wire Wizard with a saved draft
+    if (to.name === 'SimpleTasks' && sessionStorage.getItem('scheduler-task-draft')) {
+        return { name: 'SimpleAddTask' };
+    }
+
     if (to.name === 'SimpleAddTask' && !comingBackFromRemotes) store.clear?.();
 
     if (to.name === 'SimpleEditTask') {
