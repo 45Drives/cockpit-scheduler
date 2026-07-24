@@ -243,11 +243,6 @@
                             class="mt-0.5 btn btn-secondary object-right justify-end h-fit">
                             Test SSH
                         </button>
-                        <button @click="openWireWizard"
-                            class="mt-0.5 btn btn-secondary object-right justify-end h-fit text-xs inline-flex items-center gap-1" title="Set up a VPN tunnel">
-                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                            VPN
-                        </button>
                     </div>
                 </div>
 
@@ -515,6 +510,7 @@ interface RsyncTaskParamsProps {
 const props = defineProps<RsyncTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
+const wirewizardHost = inject<Ref<string | null>>('wirewizard-selected-host', ref(null));
 const initialParameters = ref({});
 
 const sourcePath = ref('');
@@ -1007,6 +1003,12 @@ Make sure passwordless SSH connection has been configured for target system.`,
 
 onMounted(async () => {
     await initializeData();
+
+    // If returning from Wire Wizard with a selected host, inject it
+    if (wirewizardHost.value) {
+        destHost.value = wirewizardHost.value;
+        wirewizardHost.value = null;
+    }
 });
 
 defineExpose({

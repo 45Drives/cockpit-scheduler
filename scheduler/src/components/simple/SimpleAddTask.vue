@@ -130,6 +130,11 @@ const parameters = ref<any>();
 const notesTask = ref('');
 const paramInputKey = ref(0);
 
+// Consume wirewizard-selected-host from sessionStorage; set value lazily after mount
+const _savedWirewizardHost = sessionStorage.getItem('wirewizard-selected-host');
+if (_savedWirewizardHost) sessionStorage.removeItem('wirewizard-selected-host');
+const wirewizardHost = ref<string | null>(null);
+provide('wirewizard-selected-host', wirewizardHost);
 
 // schedule bridge init
 const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
@@ -169,11 +174,14 @@ onMounted(async () => {
                 uiSchedule.value = sched;
             }
             paramInputKey.value++;
+            // Wait for child components to re-mount, then inject wirewizard host
+            await nextTick();
+            if (_savedWirewizardHost) wirewizardHost.value = _savedWirewizardHost;
             return; // skip default initialization
         } catch { /* ignore corrupt data, fall through to defaults */ }
     }
     if (isEditMode.value && originalTask.value) {
-        // Editing: load the task’s existing schedule + other fields
+        // Editing: load the task's existing schedule + other fields
         uiSchedule.value = toUISchedule(originalTask.value.schedule);
         prefillFromTask(originalTask.value);
     } else {
@@ -181,6 +189,9 @@ onMounted(async () => {
         resetForm();                   // clears name/template/params/notes
         uiSchedule.value = toUISchedule(null); // default blank UI schedule
     }
+    // If no draft but wirewizard host was selected, inject after children mount
+    await nextTick();
+    if (_savedWirewizardHost) wirewizardHost.value = _savedWirewizardHost;
 });
 
 
