@@ -160,6 +160,27 @@
                     </div>
                 </div>
 
+                <!-- Network / VPN Section -->
+                <div class="border border-default rounded-md p-4 bg-accent">
+                    <h4 class="text-sm font-semibold text-default mb-3">Network / VPN</h4>
+                    <p class="text-xs text-muted mb-3">
+                        Manage WireGuard VPN tunnels for secure server-to-server backups.
+                        Use Wire Wizard to create encrypted tunnels between this server and remote backup targets.
+                    </p>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <button v-if="wireWizardInstalled" class="btn btn-primary h-fit" @click="openWireWizard">
+                                Open Wire Wizard
+                            </button>
+                            <button v-else class="btn btn-primary h-fit" @click="installWireWizard" :disabled="installingWireWizard">
+                                {{ installingWireWizard ? 'Installing...' : 'Install Wire Wizard' }}
+                            </button>
+                            <span class="text-xs text-muted">Create or manage WireGuard VPN tunnels</span>
+                        </div>
+                        <p v-if="installWireWizardError" class="text-xs text-danger">{{ installWireWizardError }}</p>
+                    </div>
+                </div>
+
             </div>
         </template>
         <template v-slot:footer>
@@ -270,6 +291,47 @@ async function installAlerts() {
     }
 }
 
+// Wire Wizard
+const wireWizardInstalled = ref(false);
+const installingWireWizard = ref(false);
+const installWireWizardError = ref('');
+
+async function detectWireWizard() {
+    try {
+        await runCommand(['test', '-d', '/usr/share/cockpit/wire-wizard']);
+        wireWizardInstalled.value = true;
+    } catch {
+        wireWizardInstalled.value = false;
+    }
+}
+
+function openWireWizard() {
+    const cockpit = (window as any).cockpit;
+    if (cockpit?.jump) {
+        cockpit.jump('/wire-wizard');
+    } else {
+        window.open('/cockpit/@localhost/wire-wizard/index.html', '_blank');
+    }
+}
+
+async function installWireWizard() {
+    installingWireWizard.value = true;
+    installWireWizardError.value = '';
+    try {
+        const cmd = packageManager.value === 'apt'
+            ? ['apt', 'install', '-y', 'cockpit-wire-wizard']
+            : ['dnf', 'install', '-y', 'cockpit-wire-wizard'];
+        await runCommand(cmd, { superuser: 'require' });
+        wireWizardInstalled.value = true;
+        pushNotification(new Notification('Installed', 'Wire Wizard installed successfully. Restart Cockpit to activate.', 'success', 5000));
+    } catch (e: any) {
+        installWireWizardError.value = e?.message || String(e);
+        pushNotification(new Notification('Install Failed', installWireWizardError.value, 'error', 8000));
+    } finally {
+        installingWireWizard.value = false;
+    }
+}
+
 const showVacuumConfirmation = ref(false);
 const confirmationComponent = ref();
 const confirmationTitle = ref('');
@@ -281,6 +343,7 @@ const confirmationOperating = computed(() => vacuuming.value || vacuumingJournal
 
 onMounted(() => {
     detectAlerts();
+    detectWireWizard();
     loadRetrySettings();
 });
 
