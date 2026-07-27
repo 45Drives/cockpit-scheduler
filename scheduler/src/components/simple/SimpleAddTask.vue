@@ -130,11 +130,9 @@ const parameters = ref<any>();
 const notesTask = ref('');
 const paramInputKey = ref(0);
 
-// Consume wirewizard-selected-host from sessionStorage; set value lazily after mount
-const _savedWirewizardHost = sessionStorage.getItem('wirewizard-selected-host');
-if (_savedWirewizardHost) sessionStorage.removeItem('wirewizard-selected-host');
-const wirewizardHost = ref<string | null>(null);
-provide('wirewizard-selected-host', wirewizardHost);
+// vpnHost ref — will be set from draft in onMounted, before child components mount
+const vpnHostRef = ref<string | null>(null);
+provide('vpnHost', vpnHostRef);
 
 // schedule bridge init
 const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
@@ -156,12 +154,13 @@ watch(isEditMode, (edit) => {
 onMounted(async () => {
     await nextTick();
     // Check for saved draft from Wire Wizard round-trip
-    const savedDraft = sessionStorage.getItem('scheduler-task-draft');
+    const savedDraft = localStorage.getItem('scheduler-task-draft');
     if (savedDraft && !isEditMode.value) {
-        sessionStorage.removeItem('scheduler-task-draft');
+        localStorage.removeItem('scheduler-task-draft');
         try {
             const snap = JSON.parse(savedDraft);
             newTaskName.value = snap.name ?? '';
+            if (snap.vpnHost) vpnHostRef.value = snap.vpnHost;
             const found = taskTemplates.find((t: any) => t.name === snap.templateName);
             if (found) selectedTemplate.value = found;
             const localSchema = makeLocalSchemaByName(snap.templateName);
@@ -174,9 +173,6 @@ onMounted(async () => {
                 uiSchedule.value = sched;
             }
             paramInputKey.value++;
-            // Wait for child components to re-mount, then inject wirewizard host
-            await nextTick();
-            if (_savedWirewizardHost) wirewizardHost.value = _savedWirewizardHost;
             return; // skip default initialization
         } catch { /* ignore corrupt data, fall through to defaults */ }
     }
@@ -189,9 +185,6 @@ onMounted(async () => {
         resetForm();                   // clears name/template/params/notes
         uiSchedule.value = toUISchedule(null); // default blank UI schedule
     }
-    // If no draft but wirewizard host was selected, inject after children mount
-    await nextTick();
-    if (_savedWirewizardHost) wirewizardHost.value = _savedWirewizardHost;
 });
 
 
@@ -465,7 +458,7 @@ const isDirty = computed(() => {
 function goBack() { router.push({ name: 'SimpleTasks' }); }
 
 function handleOpenWireWizard() {
-    // Snapshot form state to sessionStorage before jumping to Wire Wizard
+    // Snapshot form state to localStorage before jumping to Wire Wizard
     const snapshot = {
         name: newTaskName.value,
         templateName: selectedTemplate.value?.name ?? '',
@@ -473,14 +466,13 @@ function handleOpenWireWizard() {
         notes: notesTask.value,
         schedule: uiSchedule.value ? JSON.parse(JSON.stringify(uiSchedule.value)) : null,
     };
-    sessionStorage.setItem('scheduler-task-draft', JSON.stringify(snapshot));
-    sessionStorage.setItem('wirewizard-return', 'scheduler');
+    localStorage.setItem('scheduler-task-draft', JSON.stringify(snapshot));
 
     const cockpit = (window as any).cockpit;
     if (cockpit?.jump) {
-        cockpit.jump('/wire-wizard-test');
+        cockpit.jump('/wire-wizard-test#?from=scheduler');
     } else {
-        window.open('/cockpit/@localhost/wire-wizard-test/index.html', '_blank');
+        window.open('/cockpit/@localhost/wire-wizard-test/index.html#?from=scheduler', '_blank');
     }
 }
 

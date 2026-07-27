@@ -572,7 +572,7 @@ interface ZfsRepTaskParamsProps {
 const props = defineProps<ZfsRepTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
-const wirewizardHost = inject<Ref<string | null>>('wirewizard-selected-host', ref(null));
+const injectedVpnHost = inject<import('vue').Ref<string | null>>('vpnHost', ref(null));
 const initialParameters: any = ref({});
 
 const sourcePools = ref<string[]>([]);
@@ -599,15 +599,6 @@ const destHost = ref('');
 const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
-
-// Watch for wirewizard host injection — fires whenever value is set
-watch(wirewizardHost, async (host) => {
-    if (host) {
-        destHost.value = host;
-        wirewizardHost.value = null;
-        await getTargetPools();
-    }
-});
 
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
@@ -1390,6 +1381,12 @@ onMounted(async () => {
         destPort.value = 22;
     }
     await initializeData();
+
+    // Apply VPN host from Wire Wizard if provided
+    if (injectedVpnHost.value) {
+        destHost.value = injectedVpnHost.value;
+        await getTargetPools();
+    }
 });
 
 defineExpose({

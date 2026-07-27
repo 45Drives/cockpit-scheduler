@@ -510,7 +510,7 @@ interface RsyncTaskParamsProps {
 const props = defineProps<RsyncTaskParamsProps>();
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
-const wirewizardHost = inject<Ref<string | null>>('wirewizard-selected-host', ref(null));
+const injectedVpnHost = inject<import('vue').Ref<string | null>>('vpnHost', ref(null));
 const initialParameters = ref({});
 
 const sourcePath = ref('');
@@ -1004,10 +1004,9 @@ Make sure passwordless SSH connection has been configured for target system.`,
 onMounted(async () => {
     await initializeData();
 
-    // If returning from Wire Wizard with a selected host, inject it
-    if (wirewizardHost.value) {
-        destHost.value = wirewizardHost.value;
-        wirewizardHost.value = null;
+    // Apply VPN host from Wire Wizard if provided
+    if (injectedVpnHost.value) {
+        destHost.value = injectedVpnHost.value;
     }
 });
 
