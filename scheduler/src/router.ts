@@ -33,8 +33,8 @@ router.beforeEach((to, from) => {
     const store = useTaskDraftStore();
     const comingBackFromRemotes = from.name === 'SimpleManageRemotes';
 
-    // Redirect to task form if returning from Wire Wizard with a saved draft
-    if (to.name === 'SimpleTasks' && localStorage.getItem('scheduler-task-draft')) {
+    // Redirect to task form if returning from Wire Wizard with a saved draft or vpnHost
+    if (to.name === 'SimpleTasks' && (localStorage.getItem('scheduler-task-draft') || localStorage.getItem('scheduler-vpn-host'))) {
         return { name: 'SimpleAddTask' };
     }
 

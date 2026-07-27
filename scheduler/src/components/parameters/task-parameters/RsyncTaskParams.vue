@@ -123,8 +123,37 @@
                 </div>
             </div>
 
+            <!-- SSH Key Setup Prompt (one-time, shown when VPN host set but SSH not configured) -->
+            <div v-if="sshSetupNeeded" class="mt-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
+                <p class="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                    First-time setup
+                </p>
+                <p class="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                    Enter the password for <strong>{{ destUser || 'root' }}@{{ destHost }}</strong> to set up automatic login.
+                    This is a one-time step — your servers will use SSH keys for all future connections.
+                </p>
+                <div class="flex items-end gap-2">
+                    <div class="flex-1">
+                        <label class="block text-xs text-amber-700 dark:text-amber-300">{{ destUser || 'root' }} password</label>
+                        <input type="password" v-model="sshSetupPassword"
+                            class="mt-1 block w-full input-textlike text-sm"
+                            placeholder="Enter password"
+                            @keyup.enter="handleSSHKeySetup"
+                            :disabled="settingUpSSH" />
+                    </div>
+                    <button @click="handleSSHKeySetup" :disabled="!sshSetupPassword || settingUpSSH"
+                        class="btn btn-primary h-fit text-sm">
+                        {{ settingUpSSH ? 'Setting up…' : 'Connect' }}
+                    </button>
+                </div>
+                <p v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ sshSetupError }}</p>
+            </div>
+
             <template #footer>
-                <p class="text-[11px] text-muted">
+                <p v-if="sshSetupNeeded" class="text-[11px] text-amber-600 dark:text-amber-400">
+                    SSH login must be configured before remote copies can work.
+                </p>
+                <p v-else class="text-[11px] text-muted">
                     We'll connect securely for remote copies. Keep the server field empty for local copies.
                 </p>
             </template>
@@ -525,6 +554,12 @@ const destUser = ref('root');
 const destUserPass = ref('');
 const showPassword = ref(false);
 
+// SSH key auto-setup state
+const sshSetupNeeded = ref(false);
+const sshSetupPassword = ref('');
+const settingUpSSH = ref(false);
+const sshSetupError = ref('');
+
 const directionSwitched = ref(false);
 
 const isArchive = ref(true);
@@ -629,16 +664,25 @@ function openWireWizard() {
 async function handleTestSSH() {
     testingSSH.value = true;
     try {
-        const res = await testOrSetupSSH({
-            host: destHost.value,
-            user: destUser.value || 'root',
-            port: destPort.value || 22,
-            passwordRef: destUserPass,
-            onEvent: ({ type, title, message }) => {
-                pushNotification(new Notification(title, message, type, type === 'info' ? 6000 : 6000));
-            }
-        });
-        sshReady.value = res.success;
+        const host = destHost.value.trim();
+        const user = (destUser.value || 'root').trim();
+
+        if (!host) {
+            pushNotification(new Notification('Local Transfer', 'No remote host specified. SSH not required.', 'success', 6000));
+            sshReady.value = true;
+            return;
+        }
+
+        const ok = await testSSH(`${user}@${host}`);
+        if (ok) {
+            pushNotification(new Notification('Connection Successful!', 'Passwordless SSH connection established.', 'success', 6000));
+            sshReady.value = true;
+            return;
+        }
+
+        // SSH failed — show the password setup prompt
+        sshSetupNeeded.value = true;
+        sshReady.value = false;
     } finally {
         testingSSH.value = false;
     }
@@ -1007,8 +1051,62 @@ onMounted(async () => {
     // Apply VPN host from Wire Wizard if provided
     if (injectedVpnHost.value) {
         destHost.value = injectedVpnHost.value;
+        await autoTestAndSetupSSH();
     }
 });
+
+// Watch for vpnHost arriving after mount (e.g., from storage event while iframe was hidden)
+watch(() => injectedVpnHost.value, async (newHost) => {
+    if (newHost && !destHost.value) {
+        destHost.value = newHost;
+        await autoTestAndSetupSSH();
+    }
+});
+
+// Auto-test SSH when VPN host is set; show password prompt if it fails
+async function autoTestAndSetupSSH() {
+    const host = destHost.value?.trim();
+    if (!host) return;
+    const user = (destUser.value || 'root').trim();
+    try {
+        const ok = await testSSH(`${user}@${host}`);
+        if (ok) {
+            sshSetupNeeded.value = false;
+        } else {
+            sshSetupNeeded.value = true;
+        }
+    } catch {
+        sshSetupNeeded.value = true;
+    }
+}
+
+// Handle one-time SSH key setup with password
+async function handleSSHKeySetup() {
+    settingUpSSH.value = true;
+    sshSetupError.value = '';
+    try {
+        const res = await testOrSetupSSH({
+            host: destHost.value.trim(),
+            user: (destUser.value || 'root').trim(),
+            port: destPort.value || 22,
+            passwordRef: sshSetupPassword,
+            onEvent: ({ type, title, message }) => {
+                pushNotification(new Notification(title, message, type, 6000));
+            }
+        });
+        if (res.success) {
+            sshSetupNeeded.value = false;
+            sshSetupError.value = '';
+        } else {
+            sshSetupError.value = res.message || 'SSH setup failed. Check the password and try again.';
+        }
+    } catch (err: any) {
+        sshSetupError.value = err?.message || 'Unexpected error during SSH setup.';
+    } finally {
+        settingUpSSH.value = false;
+        sshSetupPassword.value = '';
+    }
+}
 
 defineExpose({
     validateParams,

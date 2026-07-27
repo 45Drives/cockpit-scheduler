@@ -86,12 +86,38 @@
                 </div>
             </div>
 
-            <label class="block text-sm mt-3 text-default">Destination Pool</label>
-            <div v-if="loadingDestPools" class="mt-1 flex items-center gap-2">
+            <!-- SSH Key Setup Prompt (one-time, shown when VPN host set but SSH not configured) -->
+            <div v-if="sshSetupNeeded" class="mt-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
+                <p class="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                    First-time setup
+                </p>
+                <p class="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                    Enter the password for <strong>{{ destUser || 'root' }}@{{ destHost }}</strong> to set up automatic login.
+                    This is a one-time step — your servers will use SSH keys for all future connections.
+                </p>
+                <div class="flex items-end gap-2">
+                    <div class="flex-1">
+                        <label class="block text-xs text-amber-700 dark:text-amber-300">{{ destUser || 'root' }} password</label>
+                        <input type="password" v-model="sshSetupPassword"
+                            class="mt-1 block w-full input-textlike text-sm"
+                            placeholder="Enter password"
+                            @keyup.enter="handleSSHKeySetup"
+                            :disabled="settingUpSSH" />
+                    </div>
+                    <button @click="handleSSHKeySetup" :disabled="!sshSetupPassword || settingUpSSH"
+                        class="btn btn-primary h-fit text-sm">
+                        {{ settingUpSSH ? 'Setting up…' : 'Connect' }}
+                    </button>
+                </div>
+                <p v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ sshSetupError }}</p>
+            </div>
+
+            <label v-if="!sshSetupNeeded" class="block text-sm mt-3 text-default">Destination Pool</label>
+            <div v-if="!sshSetupNeeded && loadingDestPools" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
                 <span class="text-sm text-muted">Loading backup server pools…</span>
             </div>
-            <select v-else v-model="destPool" :disabled="!destHost" :class="[
+            <select v-else-if="!sshSetupNeeded" v-model="destPool" :disabled="!destHost" :class="[
                 'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
                 destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
             ]">
@@ -99,6 +125,7 @@
                 <option v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
             </select>
 
+            <template v-if="!sshSetupNeeded">
             <label class="block text-sm mt-3 text-default">Destination Dataset</label>
             <div v-if="loadingDestDatasets" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
@@ -121,9 +148,13 @@
                     customDestDatasetErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" placeholder="New dataset name (created on first run)" />
             </div>
+            </template>
 
             <template #footer>
-                <p class="text-[11px] text-muted">
+                <p v-if="sshSetupNeeded" class="text-[11px] text-amber-600 dark:text-amber-400">
+                    SSH login must be configured before pools can be loaded.
+                </p>
+                <p v-else class="text-[11px] text-muted">
                     We'll use SSH to send ZFS snapshots to this server. Make sure passwordless SSH is configured.
                 </p>
             </template>
@@ -600,6 +631,12 @@ const destHostErrorTag = ref(false);
 const destPort = ref(22);
 const destUser = ref('root');
 
+// SSH key auto-setup state
+const sshSetupNeeded = ref(false);
+const sshSetupPassword = ref('');
+const settingUpSSH = ref(false);
+const sshSetupError = ref('');
+
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
 const resumeFailAllowOverwrite = ref(false);
@@ -1004,11 +1041,33 @@ const getSourceDatasets = async () => {
 const getTargetPools = async () => {
     loadingDestPools.value = true;
     try {
+        let result;
         if (targetIsRemote.value) {
             const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
-            destPools.value = await getPoolData(destHost.value, portToUse, destUser.value);
+            result = await getPoolData(destHost.value, portToUse, destUser.value);
         } else {
-            destPools.value = await getPoolData();
+            result = await getPoolData();
+        }
+        destPools.value = result;
+        if (!result || (Array.isArray(result) && result.length === 0)) {
+            if (targetIsRemote.value && destHost.value) {
+                pushNotification(new Notification(
+                    'Could not load remote pools',
+                    `Failed to retrieve ZFS pools from ${destHost.value}. Check that passwordless SSH is configured and ZFS is installed on the target.`,
+                    'warning',
+                    8000
+                ));
+            }
+        }
+    } catch (err) {
+        destPools.value = [];
+        if (targetIsRemote.value && destHost.value) {
+            pushNotification(new Notification(
+                'Connection Failed',
+                `Could not connect to ${destHost.value}. Ensure the server is reachable and SSH is configured.`,
+                'error',
+                8000
+            ));
         }
     } finally {
         loadingDestPools.value = false;
@@ -1331,7 +1390,6 @@ async function handleTestSSH() {
     try {
         const host = destHost.value.trim();
         const user = (destUser.value || 'root').trim();
-        const port = destPort.value || 22;
 
         // In pull mode host is required; in push mode blank host is allowed (local).
         if (isPull.value && !host) {
@@ -1345,16 +1403,17 @@ async function handleTestSSH() {
             return;
         }
 
-        const res = await testOrSetupSSH({
-            host,
-            user,
-            port,
-            onEvent: ({ type, title, message }) => {
-                pushNotification(new Notification(title, message, type, 6000));
-            }
-        });
+        // Quick test — if passwordless SSH already works, we're done
+        const ok = host ? await testSSH(`${user}@${host}`) : true;
+        if (ok) {
+            pushNotification(new Notification('Connection Successful!', 'Passwordless SSH connection established.', 'success', 6000));
+            sshReady.value = true;
+            return;
+        }
 
-        sshReady.value = res.success;
+        // SSH failed — show the password setup prompt instead of silently attempting
+        sshSetupNeeded.value = true;
+        sshReady.value = false;
     } finally {
         testingSSH.value = false;
     }
@@ -1385,9 +1444,64 @@ onMounted(async () => {
     // Apply VPN host from Wire Wizard if provided
     if (injectedVpnHost.value) {
         destHost.value = injectedVpnHost.value;
-        await getTargetPools();
+        await autoTestAndSetupSSH();
     }
 });
+
+// Watch for vpnHost arriving after mount (e.g., from storage event while iframe was hidden)
+watch(() => injectedVpnHost.value, async (newHost) => {
+    if (newHost && !destHost.value) {
+        destHost.value = newHost;
+        await autoTestAndSetupSSH();
+    }
+});
+
+// Auto-test SSH when VPN host is set; show password prompt if it fails
+async function autoTestAndSetupSSH() {
+    const host = destHost.value?.trim();
+    if (!host) return;
+    const user = (destUser.value || 'root').trim();
+    try {
+        const ok = await testSSH(`${user}@${host}`);
+        if (ok) {
+            sshSetupNeeded.value = false;
+            await getTargetPools();
+        } else {
+            sshSetupNeeded.value = true;
+        }
+    } catch {
+        sshSetupNeeded.value = true;
+    }
+}
+
+// Handle one-time SSH key setup with password
+async function handleSSHKeySetup() {
+    settingUpSSH.value = true;
+    sshSetupError.value = '';
+    try {
+        const res = await testOrSetupSSH({
+            host: destHost.value.trim(),
+            user: (destUser.value || 'root').trim(),
+            port: destPort.value || 22,
+            passwordRef: sshSetupPassword,
+            onEvent: ({ type, title, message }) => {
+                pushNotification(new Notification(title, message, type, 6000));
+            }
+        });
+        if (res.success) {
+            sshSetupNeeded.value = false;
+            sshSetupError.value = '';
+            await getTargetPools();
+        } else {
+            sshSetupError.value = res.message || 'SSH setup failed. Check the password and try again.';
+        }
+    } catch (err: any) {
+        sshSetupError.value = err?.message || 'Unexpected error during SSH setup.';
+    } finally {
+        settingUpSSH.value = false;
+        sshSetupPassword.value = '';
+    }
+}
 
 defineExpose({
     validateParams,

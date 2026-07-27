@@ -82,7 +82,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, provide, ref, watch } from 'vue';
+import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import SimpleCalendar from './SimpleCalendar.vue';
@@ -134,6 +134,24 @@ const paramInputKey = ref(0);
 const vpnHostRef = ref<string | null>(null);
 provide('vpnHost', vpnHostRef);
 
+// Listen for localStorage changes from Wire Wizard (same origin, hidden iframe)
+// This fires when another iframe (Wire Wizard) modifies localStorage
+function handleStorageEvent(event: StorageEvent) {
+    if (event.key === 'scheduler-task-draft' && event.newValue) {
+        try {
+            const snap = JSON.parse(event.newValue);
+            if (snap.vpnHost && !vpnHostRef.value) {
+                vpnHostRef.value = snap.vpnHost;
+            }
+        } catch { /* ignore */ }
+    }
+    if (event.key === 'scheduler-vpn-host' && event.newValue) {
+        vpnHostRef.value = event.newValue;
+    }
+}
+window.addEventListener('storage', handleStorageEvent);
+onUnmounted(() => window.removeEventListener('storage', handleStorageEvent));
+
 // schedule bridge init
 const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
 
@@ -153,6 +171,14 @@ watch(isEditMode, (edit) => {
 
 onMounted(async () => {
     await nextTick();
+
+    // Check for standalone vpnHost fallback (Wire Wizard couldn't find draft)
+    const standaloneVpn = localStorage.getItem('scheduler-vpn-host');
+    if (standaloneVpn) {
+        localStorage.removeItem('scheduler-vpn-host');
+        vpnHostRef.value = standaloneVpn;
+    }
+
     // Check for saved draft from Wire Wizard round-trip
     const savedDraft = localStorage.getItem('scheduler-task-draft');
     if (savedDraft && !isEditMode.value) {
@@ -160,7 +186,9 @@ onMounted(async () => {
         try {
             const snap = JSON.parse(savedDraft);
             newTaskName.value = snap.name ?? '';
-            if (snap.vpnHost) vpnHostRef.value = snap.vpnHost;
+            if (snap.vpnHost) {
+                vpnHostRef.value = snap.vpnHost;
+            }
             const found = taskTemplates.find((t: any) => t.name === snap.templateName);
             if (found) selectedTemplate.value = found;
             const localSchema = makeLocalSchemaByName(snap.templateName);
@@ -455,7 +483,12 @@ const isDirty = computed(() => {
 });
 
 // ---- navigation ----
-function goBack() { router.push({ name: 'SimpleTasks' }); }
+function goBack() {
+    // Clear any leftover draft/vpnHost so router guard doesn't redirect back
+    localStorage.removeItem('scheduler-task-draft');
+    localStorage.removeItem('scheduler-vpn-host');
+    router.push({ name: 'SimpleTasks' });
+}
 
 function handleOpenWireWizard() {
     // Snapshot form state to localStorage before jumping to Wire Wizard
@@ -507,6 +540,9 @@ async function saveAll() {
             pushNotification(new Notification('Task Created', 'Your task was created and scheduled.', 'success', 6000));
         }
 
+        // Clear any leftover draft/vpnHost so router guard doesn't redirect back
+        localStorage.removeItem('scheduler-task-draft');
+        localStorage.removeItem('scheduler-vpn-host');
         router.push({ name: 'SimpleTasks' });
     } catch (e: any) {
         pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 6000));

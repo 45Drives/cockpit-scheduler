@@ -10,7 +10,10 @@ def log(msg, quiet=False):
 def run(cmd, check=False, quiet=False, env=None):
     if not quiet:
         log(f"$ {' '.join(cmd)}", quiet)
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+    return result
 
 def have_cmd(name:str) -> bool:
     return shutil.which(name) is not None

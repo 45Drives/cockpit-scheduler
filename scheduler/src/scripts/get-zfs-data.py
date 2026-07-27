@@ -13,18 +13,22 @@ def get_local_zfs_pools():
 
 def get_remote_zfs_pools(host, port=22, user='root'):
     try:
-        ssh_cmd = ['ssh']
+        ssh_cmd = ['ssh',
+            '-o', 'ConnectTimeout=10',
+            '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=accept-new']
         if port != '22':
             ssh_cmd.extend(['-p', port])
         ssh_cmd.append(f"{user}@{host}")
         ssh_cmd.extend(['zpool', 'list', '-H', '-o', 'name'])
         
-        result = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+        result = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT, universal_newlines=True, timeout=20)
         pools = result.strip().split('\n')
         return {"success": True, "data": pools, "error": None}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "data": [], "error": f"Connection to {host} timed out after 10 seconds"}
     except subprocess.CalledProcessError as e:
-        print(f"Error {e}")
-        return {"success": False, "data": [], "error": str(e)}
+        return {"success": False, "data": [], "error": str(e.output).strip() if e.output else str(e)}
 
 def get_remote_zfs_pools_netcat(host, port=22):
     try:
@@ -60,18 +64,22 @@ def get_local_zfs_datasets(pool):
 
 def get_remote_zfs_datasets(pool, host, port=22, user='root'):
     try:
-        ssh_cmd = ['ssh']
+        ssh_cmd = ['ssh',
+            '-o', 'ConnectTimeout=10',
+            '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=accept-new']
         if port != '22':
             ssh_cmd.extend(['-p', port])
         ssh_cmd.append(f"{user}@{host}")
         ssh_cmd.extend(['zfs', 'list', '-H', '-o', 'name', '-r', pool])
         
-        result = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+        result = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT, universal_newlines=True, timeout=20)
         datasets = result.strip().split('\n')
         return {"success": True, "data": datasets, "error": None}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "data": [], "error": f"Connection to {host} timed out after 10 seconds"}
     except subprocess.CalledProcessError as e:
-        print(f"Error {e}")
-        return {"success": False, "data": [], "error": str(e)}
+        return {"success": False, "data": [], "error": str(e.output).strip() if e.output else str(e)}
 
 def main():
     parser = argparse.ArgumentParser(description='Get Pools or Datasets from Local or Remote system')
