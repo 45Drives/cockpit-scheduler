@@ -98,11 +98,19 @@
                 <div class="flex items-end gap-2">
                     <div class="flex-1">
                         <label class="block text-xs text-amber-700 dark:text-amber-300">{{ destUser || 'root' }} password</label>
-                        <input type="password" v-model="sshSetupPassword"
-                            class="mt-1 block w-full input-textlike text-sm"
-                            placeholder="Enter password"
-                            @keyup.enter="handleSSHKeySetup"
-                            :disabled="settingUpSSH" />
+                        <div class="relative mt-1">
+                            <input :type="showSshSetupPassword ? 'text' : 'password'" v-model="sshSetupPassword"
+                                class="block w-full input-textlike text-sm pr-10"
+                                placeholder="Enter password"
+                                @keyup.enter="handleSSHKeySetup"
+                                :disabled="settingUpSSH" />
+                            <button type="button" @click="showSshSetupPassword = !showSshSetupPassword"
+                                class="absolute inset-y-0 right-0 px-3 flex items-center text-muted"
+                                :aria-label="showSshSetupPassword ? 'Hide password' : 'Show password'">
+                                <EyeIcon v-if="!showSshSetupPassword" class="w-4 h-4" />
+                                <EyeSlashIcon v-else class="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                     <button @click="handleSSHKeySetup" :disabled="!sshSetupPassword || settingUpSSH"
                         class="btn btn-primary h-fit text-sm">
@@ -567,7 +575,7 @@
 
 <script setup lang="ts">
 import { ref, Ref, onMounted, watch, inject, computed } from 'vue';
-import { ExclamationCircleIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
+import { ExclamationCircleIcon, ChevronDoubleRightIcon, ArrowPathIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import { Switch } from '@headlessui/vue';
 import CustomLoadingSpinner from '../../common/CustomLoadingSpinner.vue';
 import InfoTile from '../../common/InfoTile.vue';
@@ -636,6 +644,7 @@ const sshSetupNeeded = ref(false);
 const sshSetupPassword = ref('');
 const settingUpSSH = ref(false);
 const sshSetupError = ref('');
+const showSshSetupPassword = ref(false);
 
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
@@ -1450,7 +1459,7 @@ onMounted(async () => {
 
 // Watch for vpnHost arriving after mount (e.g., from storage event while iframe was hidden)
 watch(() => injectedVpnHost.value, async (newHost) => {
-    if (newHost && !destHost.value) {
+    if (newHost) {
         destHost.value = newHost;
         await autoTestAndSetupSSH();
     }

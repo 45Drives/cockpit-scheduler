@@ -140,7 +140,7 @@ function handleStorageEvent(event: StorageEvent) {
     if (event.key === 'scheduler-task-draft' && event.newValue) {
         try {
             const snap = JSON.parse(event.newValue);
-            if (snap.vpnHost && !vpnHostRef.value) {
+            if (snap.vpnHost) {
                 vpnHostRef.value = snap.vpnHost;
             }
         } catch { /* ignore */ }

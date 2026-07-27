@@ -481,7 +481,10 @@ function getZfsDataset(t: any, paramKey: string) {
     const dataset = ds.children?.find((c: any) => c.key === 'dataset')?.value ?? '';
     const host = ds.children?.find((c: any) => c.key === 'host')?.value ?? '';
     const user = ds.children?.find((c: any) => c.key === 'user')?.value ?? '';
-    const localPart = dataset ? `${pool}/${dataset}` : pool || '—';
+    // dataset may already include the pool prefix (e.g. "tank/share"), avoid doubling it
+    const localPart = dataset
+        ? (dataset.startsWith(`${pool}/`) || dataset === pool ? dataset : `${pool}/${dataset}`)
+        : pool || '—';
     if (!host) return localPart;
     const userPart = user ? `${user}@` : '';
     return `${userPart}${host}:${localPart}`;
