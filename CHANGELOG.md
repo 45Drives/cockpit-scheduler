@@ -1,3 +1,3 @@
-## task scheduler 1.6.16-4
+## task scheduler 1.6.17-1
 
-* Fixes netcat detection bug with conflicting port/listen flags
+* Fixes boot-start issue with task service file and adds conditional zfs ordering
