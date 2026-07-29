@@ -89,6 +89,8 @@
                                         :isExpanded="expandedTaskName === taskInstance.name"
                                         :deleteMode="deleteMode"
                                         :selected="selectedForDelete.has(taskInstance.name)"
+                                        :globalStatus="globalLive.statusFor(taskInstance)"
+                                        :globalLastRun="globalLive.lastRunFor(taskInstance)"
                                         @update:selected="(val) => toggleTaskSelection(taskInstance.name, val)"
                                         @runTask="(task) => runTaskBtn(taskInstance, index)"
                                         @dryRunTask="(task) => dryRunTaskBtn(taskInstance, index)"

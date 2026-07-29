@@ -2,7 +2,9 @@ import { ref, onUnmounted, watch } from 'vue';
 
 type AnyTask = any;
 
-const STATUS_REFRESH_CONCURRENCY = 8;
+const STATUS_REFRESH_CONCURRENCY = 4;
+// When task count exceeds this, use batched systemctl queries instead of per-task calls
+const BULK_THRESHOLD = 10;
 
 function taskId(t: AnyTask) {
     return t?.id ?? t?.uuid ?? t?.name;
@@ -405,13 +407,154 @@ export function useLiveTaskStatus(
         refreshAllInFlight = (async () => {
             try {
                 const tasks = tasksRef.value ?? [];
-                await mapWithConcurrency(tasks, STATUS_REFRESH_CONCURRENCY, refreshOne);
+                if (tasks.length > BULK_THRESHOLD && typeof scheduler.getBulkDisplayMeta === 'function') {
+                    // Bulk path: 2 systemctl calls total instead of 2*N
+                    await refreshAllBulk(tasks);
+                } else {
+                    await mapWithConcurrency(tasks, STATUS_REFRESH_CONCURRENCY, refreshOne);
+                }
                 if (!initialPollDone && tasks.length > 0) initialPollDone = true;
             } finally {
                 refreshAllInFlight = null;
             }
         })();
         return refreshAllInFlight;
+    }
+
+    /**
+     * Bulk refresh: single batched systemctl query for all tasks,
+     * then distribute results into the status/lastRun maps.
+     */
+    async function refreshAllBulk(tasks: AnyTask[]) {
+        const completedWindowMs = opts?.completedWindowMs ?? 15_000;
+
+        const fmtMs = (ms: number) => {
+            if (!ms) return "Task hasn't run yet.";
+            if (opts?.formatMs) return opts.formatMs(ms);
+            if (typeof scheduler?.formatLocal === 'function') return scheduler.formatLocal(ms);
+            return new Date(ms).toLocaleString();
+        };
+
+        const buildLastRunLabel = (statusText: string, ms: number): string => {
+            if (!ms) return "";
+            const lower = statusText.toLowerCase();
+            const ts = fmtMs(ms);
+            if (lower.includes('failed')) return `Failed at ${ts}`;
+            if (lower.includes('completed')) return `Completed at ${ts}`;
+            if (lower.includes('inactive') || lower.includes('disabled')) return `${ts}`;
+            // "Active (Pending)" with a lastRunMs means the previous run
+            // succeeded (failures would show "Failed" status). Show "Completed at".
+            if (lower.includes('active') || lower.includes('pending')) return `Completed at ${ts}`;
+            return `Completed at ${ts}`;
+        };
+
+        let bulkMeta: Map<string, any>;
+        try {
+            bulkMeta = await scheduler.getBulkDisplayMeta(tasks);
+        } catch (e) {
+            // If bulk fails entirely, fall back to per-task (reduced concurrency)
+            console.warn('[useLiveTaskStatus] Bulk fetch failed, falling back to per-task:', e);
+            await mapWithConcurrency(tasks, Math.min(STATUS_REFRESH_CONCURRENCY, 2), refreshOne);
+            return;
+        }
+
+        for (const t of tasks) {
+            const id = taskId(t);
+            const meta = bulkMeta.get(id);
+            if (!meta) {
+                // Task not in bulk results — leave existing status or set fallback
+                if (!statusMap.value[id]) {
+                    const enabled = !!t?.schedule?.enabled;
+                    statusMap.value[id] = enabled ? 'Active (pending)' : 'Inactive (Disabled)';
+                }
+                continue;
+            }
+
+            let schedulerStatusText: string = meta.statusText;
+            const isFallbackStatus = !schedulerStatusText || schedulerStatusText === '—' || schedulerStatusText === '-';
+            if (isFallbackStatus) {
+                const enabled = !!t?.schedule?.enabled;
+                schedulerStatusText = enabled ? 'Active (pending)' : 'Inactive (Disabled)';
+            }
+
+            // For scheduled tasks: if systemd reports "Completed" or "Inactive"
+            // but the schedule is enabled, the normal resting state is "Active (Pending)"
+            // (the timer is waiting for the next trigger). Only show "Completed"
+            // briefly after a recent run (handled by the window check below).
+            const enabled = !!t?.schedule?.enabled;
+            let lowerScheduler = schedulerStatusText.toLowerCase();
+            if (enabled && (lowerScheduler.includes('completed') || lowerScheduler.includes('inactive'))) {
+                schedulerStatusText = 'Active (Pending)';
+                lowerScheduler = schedulerStatusText.toLowerCase();
+            }
+
+            // If currently running
+            if (
+                !lowerScheduler.includes('failed') &&
+                (lowerScheduler.includes('active (running)') || lowerScheduler.includes('starting') || lowerScheduler.includes('running'))
+            ) {
+                statusMap.value[id] = schedulerStatusText;
+                lastRunMap.value[id] = 'Running now...';
+                if (progressMap.value[id] == null) progressMap.value[id] = 0;
+                continue;
+            }
+
+            let label = '';
+            const lastRunMs = meta?.lastRunMs || 0;
+            if (lastRunMs) {
+                label = buildLastRunLabel(schedulerStatusText, lastRunMs);
+            }
+
+            // Windowed "Completed" override
+            let finalStatusText = schedulerStatusText;
+            const now = Date.now();
+            const latestCompleted = lastCompletedAtMap.value[id] || 0;
+            if (
+                latestCompleted && now - latestCompleted < completedWindowMs &&
+                !lowerScheduler.includes('failed') && !lowerScheduler.includes('inactive')
+            ) {
+                finalStatusText = 'Completed';
+            }
+
+            // Track completed timestamps — also seed from lastRunMs when
+            // the task is "Active (Pending)" and the last trigger is recent.
+            // This catches completions that happen between polls.
+            if (lowerScheduler.includes('completed') && lastRunMs) {
+                lastCompletedAtMap.value[id] = lastRunMs;
+            } else if (
+                lastRunMs &&
+                !lowerScheduler.includes('failed') &&
+                (lowerScheduler.includes('active') || lowerScheduler.includes('pending'))
+            ) {
+                // If lastRunMs is very recent and we haven't tracked it yet,
+                // the task just completed between polls. Seed the completed map.
+                const prev = lastCompletedAtMap.value[id] || 0;
+                if (lastRunMs > prev && (now - lastRunMs) < completedWindowMs) {
+                    lastCompletedAtMap.value[id] = lastRunMs;
+                    finalStatusText = 'Completed';
+                }
+            }
+
+            statusMap.value[id] = finalStatusText;
+            lastRunMap.value[id] = label || lastRunMap.value[id] || "Task hasn't run yet.";
+
+            // Notify on newly-detected failures
+            if (finalStatusText.toLowerCase().includes('failed')) {
+                const failKey = label || finalStatusText;
+                const prev = notifiedFailures.get(id);
+                if (prev !== failKey) {
+                    notifiedFailures.set(id, failKey);
+                    if (initialPollDone) {
+                        opts?.onFailure?.(t, finalStatusText);
+                    }
+                }
+            } else if (
+                finalStatusText.toLowerCase().includes('completed') ||
+                finalStatusText.toLowerCase().includes('success')
+            ) {
+                notifiedFailures.delete(id);
+            }
+        }
     }
 
     let refreshProgressInFlight: Promise<void> | null = null;
@@ -456,8 +599,17 @@ export function useLiveTaskStatus(
         polling.value = true;
         refreshAll();
         refreshProgress();
-        intervalId = window.setInterval(() => refreshAll(true), opts?.intervalMs ?? 1500);
-        progressIntervalId = window.setInterval(refreshProgress, 5000);
+        // Scale polling interval based on task count to avoid overwhelming cockpit.
+        // With bulk queries the per-poll cost is low, but we still want breathing room.
+        const taskCount = (tasksRef.value ?? []).length;
+        const baseInterval = opts?.intervalMs ?? 1500;
+        const effectiveInterval = taskCount > 100
+            ? Math.max(baseInterval, 15000)   // 250+ tasks: poll every 15s minimum
+            : taskCount > 50
+                ? Math.max(baseInterval, 10000)   // 50-100 tasks: poll every 10s
+                : baseInterval;
+        intervalId = window.setInterval(() => refreshAll(true), effectiveInterval);
+        progressIntervalId = window.setInterval(refreshProgress, Math.max(effectiveInterval, 10000));
     }
 
     function stop() {

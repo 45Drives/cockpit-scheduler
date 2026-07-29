@@ -318,6 +318,142 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    /**
+     * Bulk-fetch display metadata for many tasks in minimal systemctl calls.
+     * Instead of N separate `systemctl show` invocations (which overwhelms
+     * cockpit at scale), this batches all timer units into one call and all
+     * service units into another, then parses the multi-unit output.
+     *
+     * `systemctl show unit1 unit2 ... unitN` separates each unit's properties
+     * with a blank line.
+     */
+    async getBulkDisplayMeta(tasks: TaskInstanceType[]): Promise<Map<string, {
+        unit: string;
+        statusText: string;
+        lastRunMs: number;
+        nextRunMs?: number;
+    }>> {
+        await this.ensureBackend();
+
+        const results = new Map<string, { unit: string; statusText: string; lastRunMs: number; nextRunMs?: number }>();
+        if (!tasks.length) return results;
+
+        // Build unit names for all tasks
+        const unitNames: string[] = [];
+        const taskByUnit = new Map<string, TaskInstanceType>();
+        for (const t of tasks) {
+            const unit = await this.unitNameFor(t);
+            unitNames.push(unit);
+            taskByUnit.set(unit, t);
+        }
+
+        // Batch into chunks to avoid exceeding argv limits (~200KB on Linux)
+        // Each unit name is ~60 chars, so 250 units ≈ 15KB — well within limits.
+        // But for safety with very large sets, chunk at 200 units.
+        const CHUNK_SIZE = 200;
+        const timerProps = 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit';
+        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,MergedUnit';
+
+        // Parse multi-unit `systemctl show` output — units separated by blank lines
+        const parseMultiShow = (raw: string): string[] => {
+            // Split on double-newline (blank line between units)
+            return raw.split(/\n\n+/).filter(block => block.trim());
+        };
+
+        for (let i = 0; i < unitNames.length; i += CHUNK_SIZE) {
+            const chunk = unitNames.slice(i, i + CHUNK_SIZE);
+
+            // --- Timer query (one call for all timers in this chunk) ---
+            const timerUnits = chunk.map(u => `${u}.timer`);
+            let timerBlocks: string[] = [];
+            try {
+                const { stdout, exitStatus } = await runCommand(
+                    ['systemctl', 'show', '--no-pager', '--property', timerProps, ...timerUnits],
+                    { superuser: 'try' }
+                );
+                if (exitStatus === 0 && stdout) {
+                    timerBlocks = parseMultiShow(stdout);
+                }
+            } catch (e) {
+                // If the bulk call itself fails (too many units / cockpit limit),
+                // timerBlocks stays empty and we proceed with service-only data
+                console.warn('getBulkDisplayMeta: bulk timer query failed:', errorString(e));
+            }
+
+            // --- Service query (one call for all services in this chunk) ---
+            const serviceUnits = chunk.map(u => `${u}.service`);
+            let serviceBlocks: string[] = [];
+            try {
+                const { stdout, exitStatus } = await runCommand(
+                    ['systemctl', 'show', '--no-pager', '--property', serviceProps, ...serviceUnits],
+                    { superuser: 'try' }
+                );
+                if (exitStatus === 0 && stdout) {
+                    serviceBlocks = parseMultiShow(stdout);
+                }
+            } catch (e) {
+                console.warn('getBulkDisplayMeta: bulk service query failed:', errorString(e));
+            }
+
+            // --- Assemble results for each unit in this chunk ---
+            const log = new TaskExecutionLog([]);
+            for (let j = 0; j < chunk.length; j++) {
+                const unit = chunk[j];
+                const ti = taskByUnit.get(unit)!;
+                const timerOut = timerBlocks[j] || '';
+                const serviceOut = serviceBlocks[j] || '';
+
+                const t = this.parseShow(timerOut);
+                const s = this.parseShow(serviceOut);
+
+                const preferTimer = !!ti?.schedule?.enabled;
+
+                // Same logic as getDisplayMeta's pickStatusSource
+                let source: string;
+                if (s.active === 'active' && s.sub === 'running') source = serviceOut;
+                else if (s.active === 'failed' || s.sub === 'failed') source = serviceOut;
+                else if (s.active === 'activating' && s.sub === 'auto-restart') source = serviceOut;
+                else if (s.result && s.result !== 'success' && s.result !== '') source = serviceOut;
+                else source = preferTimer ? timerOut : serviceOut;
+
+                let statusText: string;
+                try {
+                    const parsed = await this.parseTaskStatus(source, unit, log, ti);
+                    statusText = String(parsed || '—');
+                } catch {
+                    statusText = '—';
+                }
+
+                const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
+                const nextRunUs = t.nextElapseUSec || 0;
+                let lastRunMs = this.usToMs(Number(lastRunUs));
+
+                // Fallback: read persisted .lastrun file (only if no timestamp from systemd)
+                if (!lastRunMs) {
+                    try {
+                        const lastrunPath = `/etc/systemd/system/${unit}.lastrun`;
+                        const ep = await unwrap(
+                            server.execute(new Command(["cat", lastrunPath], { superuser: "try" }), false)
+                        );
+                        if (ep.exitStatus === 0) {
+                            const epoch = parseInt(String(ep.getStdout(false)).trim(), 10);
+                            if (Number.isFinite(epoch) && epoch > 0) lastRunMs = epoch * 1000;
+                        }
+                    } catch { /* ignore missing .lastrun */ }
+                }
+
+                if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
+                    statusText = 'Completed';
+                }
+
+                const id = (ti as any).id ?? (ti as any).uuid ?? ti.name;
+                results.set(String(id), { unit, statusText, lastRunMs, nextRunMs: this.usToMs(Number(nextRunUs)) });
+            }
+        }
+
+        return results;
+    }
+
     formatLocal(ms?: number): string {
         if (!ms) return '—';
         const d = new Date(ms);

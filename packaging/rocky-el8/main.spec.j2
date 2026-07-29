@@ -84,6 +84,10 @@ if [ "$1" -eq 0 ]; then
 fi
 
 %changelog
+* Wed Jul 29 2026 Jordan Keough <jkeough@45drives.com> 1.6.18-1
+- Fixes status polling for each individual task with a global task status map when
+  there are 10+ tasks, preventing loading issues. Also fixes migration script auto-starting
+  failed tasks
 * Wed Jul 29 2026 Jordan Keough <jkeough@45drives.com> 1.6.17-1
 - Fixes boot-start issue with task service file and adds conditional zfs ordering
 * Wed Jul 22 2026 Jordan Keough <jkeough@45drives.com> 1.6.16-4
