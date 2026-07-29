@@ -1,3 +1,11 @@
+cockpit-scheduler (1.6.18-1focal) focal; urgency=medium
+
+  * Fixes status polling for each individual task with a global task status map when
+    there are 10+ tasks, preventing loading issues. Also fixes migration script auto-starting
+    failed tasks
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 29 Jul 2026 11:51:54 -0300
+
 cockpit-scheduler (1.6.17-1focal) focal; urgency=medium
 
   * Fixes boot-start issue with task service file and adds conditional zfs ordering
