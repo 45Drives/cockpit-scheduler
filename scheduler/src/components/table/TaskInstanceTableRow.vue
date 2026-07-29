@@ -172,6 +172,10 @@ interface TaskInstanceTableRowProps {
 	isExpanded: boolean;
 	deleteMode?: boolean;
 	selected?: boolean;
+	/** Status text from the parent's global poller (avoids per-row polling) */
+	globalStatus?: string;
+	/** Last run text from the parent's global poller */
+	globalLastRun?: string;
 }
 
 const props = withDefaults(defineProps<TaskInstanceTableRowProps>(), {
@@ -232,7 +236,8 @@ function markManualRun(windowMs = 60_000) {
 
 // Text shown in the Status column, with manual wording
 const statusText = computed(() => {
-	const baseRaw = statusFor(taskInstance.value);
+	// Prefer own live data (when expanded/polling), fall back to global poller data
+	const baseRaw = statusFor(taskInstance.value) || props.globalStatus;
 	const enabled = taskInstance.value?.schedule?.enabled ?? false;
 	const now = Date.now();
 	const manualWindowActive = !enabled && now < manualRunUntil.value;
@@ -261,7 +266,7 @@ const statusText = computed(() => {
 
 // Text shown in the "Last run" column
 const lastRunText = computed(() => {
-	return lastRunFor(taskInstance.value) ?? "Task hasn't run yet.";
+	return lastRunFor(taskInstance.value) || props.globalLastRun || "Task hasn't run yet.";
 });
 
 // Boolean flags wrapped for the template
@@ -274,6 +279,13 @@ const isRunning = computed(() => {
 	if (liveIsFailed(taskInstance.value)) return false;
 
 	if (liveIsRunning(taskInstance.value)) return true;
+
+	// Check global status when own poller isn't active (collapsed row)
+	if (props.globalStatus) {
+		const gl = props.globalStatus.toLowerCase();
+		if (gl.includes('failed')) return false;
+		if (gl.includes('active (running)') || gl.includes('starting') || gl.includes('running')) return true;
+	}
 
 	if (manualWindowActive && !liveIsCompleted(taskInstance.value) && !liveIsFailed(taskInstance.value) && !liveIsInactive(taskInstance.value)) {
 		return true;
@@ -473,14 +485,35 @@ async function toggleTaskSchedule(intendedValue: boolean) {
 let progressIntervalId: number | undefined;
 
 onMounted(async () => {
-	// await refreshAll();
-	start();
+	// Only start per-row polling when expanded — the parent's global poller
+	// handles bulk status refresh for all rows. This prevents 250+ independent
+	// polling intervals from overwhelming cockpit with systemctl calls.
+	if (isExpanded.value) {
+		start();
+	}
 
 	await updateProgress(taskInstance.value);
 	progressIntervalId = window.setInterval(() => {
-		updateProgress(taskInstance.value);
+		// Poll progress when expanded OR when the task is actively running
+		// (progress bar shows in collapsed rows too)
+		if (isExpanded.value || isRunning.value) {
+			updateProgress(taskInstance.value);
+		}
 	// }, 1500);
 	}, 5000);
+});
+
+// Start/stop per-row polling when expanded state changes
+watch(isExpanded, (expanded) => {
+	if (expanded) {
+		start();
+	} else {
+		stop();
+		// Clear stale local status so the row falls through to globalStatus/globalLastRun.
+		// Without this, the row's frozen statusMap would show stale "Completed" forever.
+		live.statusMap.value = {};
+		live.lastRunMap.value = {};
+	}
 });
 
 onUnmounted(() => {

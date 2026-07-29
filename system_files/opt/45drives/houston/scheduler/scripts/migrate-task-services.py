@@ -113,6 +113,14 @@ def main():
         print("\nRunning systemctl daemon-reload...")
         subprocess.run(["systemctl", "daemon-reload"], check=True)
 
+        # Stop all scheduler services FIRST to prevent Restart=on-failure
+        # from triggering mass-starts when we clear the failed state below.
+        print("Stopping all scheduler services to prevent mass-restart...")
+        subprocess.run(
+            ["systemctl", "stop", "houston_scheduler_*.service"],
+            stderr=subprocess.DEVNULL,
+        )
+
         # Clear start-limit-hit state so timers can trigger services again
         print("Resetting failed units...")
         subprocess.run(
