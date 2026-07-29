@@ -113,6 +113,13 @@ def main():
         print("\nRunning systemctl daemon-reload...")
         subprocess.run(["systemctl", "daemon-reload"], check=True)
 
+        # Clear start-limit-hit state so timers can trigger services again
+        print("Resetting failed units...")
+        subprocess.run(
+            ["systemctl", "reset-failed", "houston_scheduler_*.service"],
+            stderr=subprocess.DEVNULL,
+        )
+
     # Summary
     print(f"\n{'=== DRY RUN Summary ===' if dry_run else '=== Migration Summary ==='}")
     print(f"  Migrated: {len(migrated)}")

@@ -187,6 +187,8 @@ def start_timer(timer_name):
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to start {timer_name}: {e}")
 
+ZFS_TASK_TEMPLATES = {'AutomatedSnapshotTask', 'ZfsReplicationTask', 'ScrubTask'}
+
 def create_task(template_name, script_path, param_env_path):
     logging.debug(f'Creating task with service template: {template_name} and env file: {param_env_path}')
     param_env_filename = os.path.basename(param_env_path)
@@ -200,6 +202,13 @@ def create_task(template_name, script_path, param_env_path):
     exec_start_command = generate_exec_start(template_name, parameters, script_path)
     service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
+
+    # Add ZFS ordering dependencies for ZFS-dependent task types
+    if template_name in ZFS_TASK_TEMPLATES:
+        zfs_deps = "After=zfs-mount.service zfs-import.target\nWants=zfs-import.target\n"
+    else:
+        zfs_deps = ""
+    service_template_content = service_template_content.replace("{zfs_dependencies}", zfs_deps)
 
     # Apply retry settings from global config
     retry = get_retry_settings()

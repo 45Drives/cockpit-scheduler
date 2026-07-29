@@ -1,6 +1,6 @@
 [Unit]
 Description=Service for {task_name}
-StartLimitBurst={start_limit_burst}
+{zfs_dependencies}StartLimitBurst={start_limit_burst}
 StartLimitIntervalSec={start_limit_interval_sec}
 
 [Service]
@@ -17,4 +17,3 @@ TimeoutStartSec=0
 TimeoutStopSec=90
 
 [Install]
-WantedBy=multi-user.target
