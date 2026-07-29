@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.17-1jammy) jammy; urgency=medium
+
+  * Fixes boot-start issue with task service file and adds conditional zfs ordering
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 29 Jul 2026 08:11:50 -0300
+
 cockpit-scheduler (1.6.16-4jammy) jammy; urgency=medium
 
   * Fixes netcat detection bug with conflicting port/listen flags
