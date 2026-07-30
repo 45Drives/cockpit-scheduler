@@ -1734,6 +1734,22 @@ def send_snapshot_push(
     else:
         print(f"sending {sendName} to {recvName}")
 
+    # Print the full CLI-reproducible command for troubleshooting
+    send_str = " ".join(shlex.quote(str(a)) for a in send_cmd)
+    if transferMethod == "local" or not recvHost:
+        recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
+        print(f"CLI command: {send_str} | {recv_flags}")
+    elif transferMethod == "netcat":
+        recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
+        print(f"CLI command (sender): {send_str} | nc -l <port>")
+        print(f"CLI command (receiver): nc <host> <port> | {recv_flags}")
+    else:
+        recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
+        ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
+        ssh_port_flag = f" -p {recvSshPort}" if str(recvSshPort) != "22" else ""
+        print(f"CLI command: {send_str} | ssh{ssh_port_flag} {ssh_target} {recv_flags}")
+    dbg(f"send_cmd: {send_str}")
+
     total_bytes = estimate_send_size(send_cmd)
     if total_bytes is None:
         print("Note: Could not estimate send size; progress will be indeterminate.")
@@ -2242,6 +2258,18 @@ def send_snapshot_pull(
     else:
         print(f"pulling {remoteSnapName} into {localRecvFs}")
 
+    # Print the full CLI-reproducible command for troubleshooting
+    send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
+    recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {localRecvFs}"
+    ssh_port_flag = f" -p {remoteSshPort}" if str(remoteSshPort) != "22" else ""
+    if transferMethod == "netcat":
+        data_port = str(recvDataPort or remoteSshPort or "31337")
+        print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | nc -l {data_port}'")
+        print(f"CLI command (dest):   nc {remoteHost} {data_port} | {recv_flags}")
+    else:
+        print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} {send_str} | {recv_flags}")
+    dbg(f"send_cmd: {send_str}")
+
     if transferMethod == "netcat":
         data_port = str(recvDataPort or remoteSshPort or "31337")
         ssh_port = str(remoteSshPort or "22")
@@ -2618,6 +2646,16 @@ def resume_receive_push(
         dbg("Resume send size estimation unavailable; progress will be indeterminate.")
         print(f"Resuming interrupted transfer to {recvName} (size unknown). Progress in debug log.")
 
+    # Print CLI-reproducible resume command
+    send_str = f"zfs send -t {shlex.quote(resume_token)}"
+    recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
+    if transferMethod == "local" or not recvHost:
+        print(f"CLI command: {send_str} | {recv_flags}")
+    else:
+        ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
+        ssh_port_flag = f" -p {recvSshPort}" if str(recvSshPort) != "22" else ""
+        print(f"CLI command: {send_str} | ssh{ssh_port_flag} {ssh_target} {recv_flags}")
+
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if transferMethod == "local" or not recvHost:
@@ -2891,6 +2929,17 @@ def resume_receive_pull(
     else:
         dbg("Resume pull send size estimation unavailable; progress will be indeterminate.")
         print(f"Resuming interrupted transfer to {localRecvFs} (size unknown). Progress in debug log.")
+
+    # Print CLI-reproducible resume command
+    send_str_cli = f"zfs send -t {shlex.quote(resume_token)}"
+    recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {localRecvFs}"
+    ssh_port_flag = f" -p {remoteSshPort}" if str(remoteSshPort) != "22" else ""
+    if transferMethod == "netcat":
+        data_port_cli = str(recvDataPort or remoteSshPort or "31337")
+        print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | nc -l {data_port_cli}'")
+        print(f"CLI command (dest):   nc {remoteHost} {data_port_cli} | {recv_flags}")
+    else:
+        print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} {send_str_cli} | {recv_flags}")
 
     if transferMethod == "netcat":
         data_port = str(recvDataPort or remoteSshPort or "31337")
@@ -3214,9 +3263,75 @@ def _clear_one_shot_flags(task_name: str, keys=None):
     except Exception as e:
         print(f"WARNING: could not clear one-shot flags: {e}", file=sys.stderr)
 
+# --- Pending full send state -------------------------------------------------
+# When a full send (forceFullSend) starts, we write a state file so that if
+# the transfer is interrupted (shutdown, network failure, etc.), subsequent
+# scheduled runs know a full send was in progress and can continue it
+# instead of treating a completed resume token as "done".
+
+def _pending_full_send_path(task_name: str) -> str:
+    return f"/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{task_name}.fullsend"
+
+
+def _write_pending_full_send(task_name: str, snapshot_name: str, dest_filesystem: str,
+                              direction: str, source_filesystem: str):
+    """Record that a full send is in progress so interrupted sends can be continued."""
+    if not task_name:
+        return
+    path = _pending_full_send_path(task_name)
+    state = {
+        "snapshot": snapshot_name,
+        "destFilesystem": dest_filesystem,
+        "sourceFilesystem": source_filesystem,
+        "direction": direction,
+        "startedAt": datetime.datetime.now().isoformat(),
+    }
+    try:
+        with open(path, "w") as f:
+            json.dump(state, f)
+        dbg(f"Wrote pending full send state: {state}")
+    except Exception as e:
+        print(f"WARNING: could not write pending full send state: {e}")
+
+
+def _read_pending_full_send(task_name: str):
+    """Read pending full send state. Returns dict or None."""
+    if not task_name:
+        return None
+    path = _pending_full_send_path(task_name)
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        dbg(f"WARNING: could not read pending full send state: {e}")
+        return None
+
+
+def _clear_pending_full_send(task_name: str):
+    """Remove the pending full send state file after successful completion."""
+    if not task_name:
+        return
+    path = _pending_full_send_path(task_name)
+    try:
+        os.remove(path)
+        dbg("Cleared pending full send state.")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        dbg(f"WARNING: could not clear pending full send state: {e}")
+
+
 # --- Debugging helpers -------------------------------------------------------
 
-DEBUG_LOG = os.environ.get("ZFS_REP_DEBUG_LOG", "/tmp/zfs_rep_debug.log")
+# Per-task debug log: defaults to /tmp/zfs_rep_debug_<taskName>.log
+# Falls back to /tmp/zfs_rep_debug.log if taskName is not set.
+_DEBUG_TASK_NAME = os.environ.get("taskName", "").strip()
+DEBUG_LOG = os.environ.get(
+    "ZFS_REP_DEBUG_LOG",
+    f"/tmp/zfs_rep_debug_{_DEBUG_TASK_NAME}.log" if _DEBUG_TASK_NAME else "/tmp/zfs_rep_debug.log",
+)
 DEBUG_ENABLED = os.environ.get("ZFS_REP_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
 DEBUG_MAX_TEXT = int(os.environ.get("ZFS_REP_DEBUG_MAX_TEXT", "4000"))
 
@@ -3743,8 +3858,249 @@ def main():
         forceOverwrite = False
         incrementalSnapName = ""
 
+        # --- Pending full send recovery -------------------------------------------
+        # If a previous full send was interrupted, a state file records the
+        # snapshot that was being sent.  Check whether it actually landed on the
+        # destination; if not, resume or redo the full send.
+        pending_state = _read_pending_full_send(taskName)
+        if pending_state:
+            pending_snap = pending_state.get("snapshot", "")
+            pending_dest = pending_state.get("destFilesystem", "")
+            pending_src = pending_state.get("sourceFilesystem", "")
+            pending_dir = pending_state.get("direction", "")
+            print(f"Pending full send detected: {pending_snap} → {pending_dest} (started {pending_state.get('startedAt', '?')})")
+            dbg(f"Pending full send state: {pending_state}")
+
+            # Validate that the state file matches the current task config.
+            # If the task was reconfigured (different source/dest/direction),
+            # the old state is stale and should be discarded.
+            config_matches = (
+                pending_dest == destFilesystem
+                and pending_src == sourceFilesystem
+                and pending_dir == direction
+            )
+            if not config_matches:
+                print(
+                    f"Pending full send state does not match current task config "
+                    f"(state: {pending_src}→{pending_dest} {pending_dir}, "
+                    f"config: {sourceFilesystem}→{destFilesystem} {direction}). "
+                    f"Discarding stale state."
+                )
+                _clear_pending_full_send(taskName)
+                pending_state = None
+            elif not pending_snap:
+                print("Pending full send state has no snapshot name. Discarding.")
+                _clear_pending_full_send(taskName)
+                pending_state = None
+
+        if pending_state:
+            snap_suffix = snapshot_suffix(pending_snap)
+            if direction == "pull":
+                exists, _ = snapshot_exists_on_destination(
+                    pending_dest, snap_suffix,
+                    remote_user=None, remote_host=None, remote_port=sshPort,
+                )
+            else:
+                exists, _ = snapshot_exists_on_destination(
+                    pending_dest, snap_suffix,
+                    remote_user=remoteUser if remoteHost else None,
+                    remote_host=remoteHost if remoteHost else None,
+                    remote_port=sshPort,
+                )
+
+            if exists:
+                print(f"Pending full send snapshot {pending_snap} found on destination — full send completed.")
+                _clear_pending_full_send(taskName)
+                pending_state = None
+            else:
+                print(f"Pending full send snapshot NOT found on destination — full send still incomplete.")
+                # Try to resume if a token exists; if resume completes, re-verify
+                if direction == "pull":
+                    _token = get_receive_resume_token(destFilesystem)
+                else:
+                    _token = get_receive_resume_token(
+                        destFilesystem,
+                        remote_user=remoteUser if remoteHost else None,
+                        remote_host=remoteHost if remoteHost else None,
+                        remote_port=sshPort,
+                    )
+                if _token:
+                    msg = f"Resume token found for pending full send to {destFilesystem}. Resuming…"
+                    notifier.notify(f"STATUS={msg}")
+                    print(msg)
+                    if direction == "pull":
+                        ok, err = resume_receive_pull(
+                            resume_token=_token,
+                            localRecvFs=destFilesystem,
+                            remoteHost=remoteHost,
+                            remoteSshPort=sshPort,
+                            remoteUser=remoteUser,
+                            mBufferSize=str(mBufferSize),
+                            mBufferUnit=mBufferUnit,
+                            forceOverwrite=True,
+                            stall_timeout=resumeStallTimeout,
+                            transferMethod=transferMethod,
+                            recvDataPort=dataPort,
+                        )
+                    else:
+                        ok, err = resume_receive_push(
+                            resume_token=_token,
+                            recvName=destFilesystem,
+                            recvHost=remoteHost,
+                            recvSshPort=sshPort,
+                            recvHostUser=remoteUser,
+                            mBufferSize=str(mBufferSize),
+                            mBufferUnit=mBufferUnit,
+                            transferMethod=transferMethod if transferMethod else "ssh",
+                            recvDataPort=dataPort,
+                            forceOverwrite=True,
+                            stall_timeout=resumeStallTimeout,
+                        )
+                    if ok:
+                        # Re-verify: did the snapshot actually land?
+                        if direction == "pull":
+                            exists2, _ = snapshot_exists_on_destination(
+                                pending_dest, snap_suffix,
+                                remote_user=None, remote_host=None, remote_port=sshPort,
+                            )
+                        else:
+                            exists2, _ = snapshot_exists_on_destination(
+                                pending_dest, snap_suffix,
+                                remote_user=remoteUser if remoteHost else None,
+                                remote_host=remoteHost if remoteHost else None,
+                                remote_port=sshPort,
+                            )
+                        if exists2:
+                            print(f"Resume completed and snapshot {pending_snap} verified on destination.")
+                            _clear_pending_full_send(taskName)
+                            pending_state = None
+                            # Fall through to normal flow (snapshot creation + incremental)
+                        else:
+                            print(f"Resume completed but snapshot still missing — resume token was stale/partial.")
+                            print("Will redo full send with the original snapshot.")
+                            # Clear the stale token so it doesn't interfere
+                            if direction == "pull":
+                                clear_receive_resume_token(destFilesystem)
+                            else:
+                                clear_receive_resume_token(
+                                    destFilesystem,
+                                    remote_user=remoteUser if remoteHost else None,
+                                    remote_host=remoteHost if remoteHost else None,
+                                    remote_port=sshPort,
+                                )
+                    else:
+                        print(f"Resume failed: {err}. Will redo full send.")
+                        # Clear the failed token
+                        if direction == "pull":
+                            clear_receive_resume_token(destFilesystem)
+                        else:
+                            clear_receive_resume_token(
+                                destFilesystem,
+                                remote_user=remoteUser if remoteHost else None,
+                                remote_host=remoteHost if remoteHost else None,
+                                remote_port=sshPort,
+                            )
+                else:
+                    print("No resume token found. Will redo full send with the original snapshot.")
+
+                # If we get here, the pending full send is still incomplete.
+                # Check if the original source snapshot still exists so we can resend it.
+                if pending_state:
+                    if direction == "pull":
+                        src_snaps = get_remote_snapshots(remoteUser, remoteHost, sshPort, pending_src) or []
+                    else:
+                        src_snaps = get_local_snapshots(pending_src) or []
+                    src_snap_names = {s.name for s in src_snaps}
+                    if pending_snap in src_snap_names:
+                        print(f"Original source snapshot {pending_snap} still exists. Resending full…")
+                        notifier.notify(f"STATUS=Resending full: {pending_snap} → {destFilesystem}…")
+                        # Destroy any partial dest snapshots to allow clean full receive
+                        if direction == "pull":
+                            dest_snaps_now = get_local_snapshots(destFilesystem)
+                        else:
+                            if remoteHost:
+                                dest_snaps_now = get_remote_snapshots(remoteUser, remoteHost, sshPort, destFilesystem)
+                            else:
+                                dest_snaps_now = get_local_snapshots(destFilesystem)
+                        if dest_snaps_now:
+                            print(f"Clearing {len(dest_snaps_now)} destination snapshot(s) for full resend…")
+                            for snap in dest_snaps_now:
+                                if direction == "pull" or not remoteHost:
+                                    dp = subprocess.run(
+                                        ["zfs", "destroy", "-R", snap.name],
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        universal_newlines=True,
+                                    )
+                                else:
+                                    ssh_destroy = ["ssh"] + SSH_BASE_OPTS
+                                    if str(sshPort) != "22":
+                                        ssh_destroy += ["-p", str(sshPort)]
+                                    ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", "-R", snap.name]
+                                    dp = subprocess.run(
+                                        ssh_destroy,
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        universal_newlines=True,
+                                    )
+                                if dp.returncode != 0:
+                                    err_out = (dp.stderr or dp.stdout or "").strip()
+                                    if "does not exist" not in err_out and "could not find" not in err_out:
+                                        print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+
+                        if direction == "pull":
+                            send_snapshot_pull(
+                                remoteSnapName=pending_snap,
+                                localRecvFs=destFilesystem,
+                                remoteBaseSnapName="",
+                                compressed=isCompressed,
+                                raw=isRaw,
+                                remoteHost=remoteHost,
+                                remoteSshPort=sshPort,
+                                remoteUser=remoteUser,
+                                mBufferSize=str(mBufferSize),
+                                mBufferUnit=mBufferUnit,
+                                forceOverwrite=True,
+                                recursive=isRecursiveSnap,
+                                transferMethod=transferMethod,
+                                recvDataPort=dataPort,
+                                include_intermediates=includeIntermediateSnapshots,
+                            )
+                        else:
+                            send_snapshot_push(
+                                pending_snap,
+                                destFilesystem,
+                                "",
+                                isCompressed,
+                                isRaw,
+                                remoteHost,
+                                sshPort,
+                                remoteUser,
+                                str(mBufferSize),
+                                mBufferUnit,
+                                True,
+                                transferMethod,
+                                recursive=isRecursiveSnap,
+                                recvDataPort=dataPort,
+                                include_intermediates=includeIntermediateSnapshots,
+                            )
+                        # Full send completed — clear state and finish
+                        _clear_pending_full_send(taskName)
+                        notifier.notify("STATUS=ZFS replication task completed (full resend). 100% complete")
+                        try:
+                            lastrun_path = f"/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{taskName}.lastrun"
+                            with open(lastrun_path, "w") as f:
+                                f.write(str(int(time.time())))
+                        except Exception as e:
+                            dbg(f"WARNING: failed to write lastrun file: {e}")
+                        return
+                    else:
+                        print(f"Original source snapshot {pending_snap} no longer exists.")
+                        print("Cannot resume the interrupted full send. Clearing state and starting fresh.")
+                        _clear_pending_full_send(taskName)
+                        pending_state = None
+
         # Resume token check (destination side)
-        if direction == "pull":
+        # Skip if we already handled resume above via pending full send recovery.
+        if not pending_state and direction == "pull":
             resume_token = get_receive_resume_token(destFilesystem)
             if resume_token:
                 msg = f"Found resume token on destination {destFilesystem}. Attempting to resume receive."
@@ -3827,7 +4183,7 @@ def main():
                         "errors": f"{resume_token} | {err}",
                     }
                 )
-        else:
+        elif not pending_state:
             resume_token = get_receive_resume_token(
                 destFilesystem,
                 remote_user=remoteUser if remoteHost else None,
@@ -4257,6 +4613,10 @@ def main():
                             print(f"WARNING: failed to destroy {snap.name}: {err_out}")
                 print("Destination snapshots cleared.")
 
+            # Record pending full send state so interrupted transfers can be continued
+            if not incrementalSnapName:
+                _write_pending_full_send(taskName, newSnap, destFilesystem, direction, sourceFilesystem)
+
             send_snapshot_pull(
                 remoteSnapName=newSnap,
                 localRecvFs=destFilesystem,
@@ -4323,6 +4683,10 @@ def main():
                             if "does not exist" not in err_out and "could not find" not in err_out:
                                 print(f"WARNING: failed to destroy {snap.name}: {err_out}")
                 print("Destination snapshots cleared.")
+
+            # Record pending full send state so interrupted transfers can be continued
+            if not incrementalSnapName:
+                _write_pending_full_send(taskName, newSnap, destFilesystem, direction, sourceFilesystem)
 
             send_snapshot_push(
                 newSnap,
@@ -4486,6 +4850,9 @@ def main():
                     )
 
         notifier.notify("STATUS=ZFS replication task completed. 100% complete")
+
+        # Clear pending full send state on successful completion
+        _clear_pending_full_send(taskName)
 
         # Persist last-run timestamp so the UI can show it even after
         # the schedule is disabled/re-enabled (systemd clears its timestamps).
