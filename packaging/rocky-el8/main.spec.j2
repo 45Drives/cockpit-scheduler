@@ -84,6 +84,8 @@ if [ "$1" -eq 0 ]; then
 fi
 
 %changelog
+* Thu Jul 30 2026 Jordan Keough <jkeough@45drives.com> 1.6.18-2
+- Fix migration script so it does not stop in-progress tasks
 * Wed Jul 29 2026 Jordan Keough <jkeough@45drives.com> 1.6.18-1
 - Fixes status polling for each individual task with a global task status map when
   there are 10+ tasks, preventing loading issues. Also fixes migration script auto-starting
