@@ -1,3 +1,9 @@
+cockpit-scheduler (1.6.18-3trixie) trixie; urgency=medium
+
+  * Fixes more bugs
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 30 Jul 2026 13:02:23 -0300
+
 cockpit-scheduler (1.6.18-2trixie) trixie; urgency=medium
 
   * Fix migration script so it does not stop in-progress tasks
