@@ -113,11 +113,17 @@ def main():
         print("\nRunning systemctl daemon-reload...")
         subprocess.run(["systemctl", "daemon-reload"], check=True)
 
-        # Stop all scheduler services FIRST to prevent Restart=on-failure
-        # from triggering mass-starts when we clear the failed state below.
-        print("Stopping all scheduler services to prevent mass-restart...")
+        # Stop scheduler services that are in failed/auto-restart state to prevent
+        # Restart=on-failure from triggering mass-starts when we clear failed state.
+        # IMPORTANT: Do NOT stop actively running services — they may be long-running
+        # tasks (e.g. multi-day replications) that must not be interrupted.
+        print("Stopping failed/restarting scheduler services (preserving running tasks)...")
         subprocess.run(
-            ["systemctl", "stop", "houston_scheduler_*.service"],
+            ["bash", "-c",
+             "for s in $(systemctl list-units 'houston_scheduler_*.service' "
+             "  --state=failed,activating --no-legend --plain 2>/dev/null | awk '{print $1}'); do "
+             "  systemctl stop \"$s\" 2>/dev/null; "
+             "done"],
             stderr=subprocess.DEVNULL,
         )
 
@@ -125,6 +131,24 @@ def main():
         print("Resetting failed units...")
         subprocess.run(
             ["systemctl", "reset-failed", "houston_scheduler_*.service"],
+            stderr=subprocess.DEVNULL,
+        )
+
+        # Re-activate enabled timers that are currently inactive.
+        # Uses 'start' (not restart) so already-active timers are untouched.
+        # Skips timers with OnBootSec to avoid triggering all tasks at once.
+        print("Starting inactive timers...")
+        subprocess.run(
+            ["bash", "-c",
+             "for t in /etc/systemd/system/houston_scheduler_*.timer; do "
+             "  unit=$(basename \"$t\"); "
+             "  if systemctl is-enabled \"$unit\" >/dev/null 2>&1 && "
+             "     ! systemctl is-active \"$unit\" >/dev/null 2>&1; then "
+             "    if ! grep -q 'OnBootSec' \"$t\" 2>/dev/null; then "
+             "      systemctl start \"$unit\" 2>/dev/null; "
+             "    fi; "
+             "  fi; "
+             "done"],
             stderr=subprocess.DEVNULL,
         )
 

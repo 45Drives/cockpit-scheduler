@@ -201,6 +201,14 @@ def create_task(template_name, script_path, param_env_path):
     service_template_content = service_template_content.replace("{task_name}", task_instance_name)
     service_template_content = service_template_content.replace("{env_path}", param_env_path)
 
+    # Add ZFS ordering dependencies for ZFS-dependent task types
+    ZFS_TASK_TEMPLATES = {'AutomatedSnapshotTask', 'ZfsReplicationTask', 'ScrubTask'}
+    if template_name in ZFS_TASK_TEMPLATES:
+        zfs_deps = "After=zfs-mount.service zfs-import.target\nWants=zfs-import.target\n"
+    else:
+        zfs_deps = ""
+    service_template_content = service_template_content.replace("{zfs_dependencies}", zfs_deps)
+
     # Apply retry settings from global config
     retry = get_retry_settings()
     service_template_content = service_template_content.replace("{restart_sec}", str(retry["restart_sec"]))
