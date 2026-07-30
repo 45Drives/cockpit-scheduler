@@ -188,6 +188,7 @@ def start_timer(timer_name):
         logging.error(f"Failed to start {timer_name}: {e}")
 
 ZFS_TASK_TEMPLATES = {'AutomatedSnapshotTask', 'ZfsReplicationTask', 'ScrubTask'}
+VPN_TASK_TEMPLATES = {'RsyncTask', 'ZfsReplicationTask'}
 
 def create_task(template_name, script_path, param_env_path):
     logging.debug(f'Creating task with service template: {template_name} and env file: {param_env_path}')
@@ -209,6 +210,13 @@ def create_task(template_name, script_path, param_env_path):
     else:
         zfs_deps = ""
     service_template_content = service_template_content.replace("{zfs_dependencies}", zfs_deps)
+
+    # Add VPN tunnel preflight for remote-capable task types
+    if template_name in VPN_TASK_TEMPLATES:
+        vpn_pre = "ExecStartPre=-/bin/bash -c 'test -x /usr/lib/wire-wizard/preflight.sh && /usr/lib/wire-wizard/preflight.sh || true'\n"
+    else:
+        vpn_pre = ""
+    service_template_content = service_template_content.replace("{vpn_preflight}", vpn_pre)
 
     # Apply retry settings from global config
     retry = get_retry_settings()

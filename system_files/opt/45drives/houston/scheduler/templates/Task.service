@@ -10,7 +10,7 @@ Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal
 StandardError=journal
 EnvironmentFile={env_path}
-ExecStart={ExecStart}
+{vpn_preflight}ExecStart={ExecStart}
 Restart=on-failure
 RestartSec={restart_sec}sec
 TimeoutStartSec=0
