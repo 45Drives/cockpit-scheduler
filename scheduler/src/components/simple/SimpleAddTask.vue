@@ -498,6 +498,7 @@ function handleOpenWireWizard() {
         parameters: parameters.value ? JSON.parse(JSON.stringify(parameters.value)) : null,
         notes: notesTask.value,
         schedule: uiSchedule.value ? JSON.parse(JSON.stringify(uiSchedule.value)) : null,
+        _savedAt: Date.now(), // Timestamp for expiration check
     };
     localStorage.setItem('scheduler-task-draft', JSON.stringify(snapshot));
 

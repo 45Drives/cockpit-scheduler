@@ -1470,6 +1470,10 @@ async function autoTestAndSetupSSH() {
     const host = destHost.value?.trim();
     if (!host) return;
     const user = (destUser.value || 'root').trim();
+    
+    // Reset testing state in case it was stuck from a previous hang
+    testingSSH.value = true;
+    
     try {
         const ok = await testSSH(`${user}@${host}`);
         if (ok) {
@@ -1480,6 +1484,8 @@ async function autoTestAndSetupSSH() {
         }
     } catch {
         sshSetupNeeded.value = true;
+    } finally {
+        testingSSH.value = false;
     }
 }
 

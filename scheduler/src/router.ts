@@ -34,8 +34,40 @@ router.beforeEach((to, from) => {
     const comingBackFromRemotes = from.name === 'SimpleManageRemotes';
 
     // Redirect to task form if returning from Wire Wizard with a saved draft or vpnHost
-    if (to.name === 'SimpleTasks' && (localStorage.getItem('scheduler-task-draft') || localStorage.getItem('scheduler-vpn-host'))) {
-        return { name: 'SimpleAddTask' };
+    // Only redirect if the draft is recent (within 1 hour) to prevent stale drafts from persisting
+    if (to.name === 'SimpleTasks') {
+        const draftStr = localStorage.getItem('scheduler-task-draft');
+        const vpnHost = localStorage.getItem('scheduler-vpn-host');
+        
+        if (draftStr || vpnHost) {
+            let shouldRedirect = false;
+            
+            if (draftStr) {
+                try {
+                    const draft = JSON.parse(draftStr);
+                    const savedTime = draft._savedAt || 0;
+                    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+                    
+                    if (savedTime > oneHourAgo) {
+                        shouldRedirect = true;
+                    } else {
+                        // Draft is stale, remove it
+                        localStorage.removeItem('scheduler-task-draft');
+                    }
+                } catch {
+                    // Invalid draft, remove it
+                    localStorage.removeItem('scheduler-task-draft');
+                }
+            }
+            
+            if (vpnHost) {
+                shouldRedirect = true;
+            }
+            
+            if (shouldRedirect) {
+                return { name: 'SimpleAddTask' };
+            }
+        }
     }
 
     if (to.name === 'SimpleAddTask' && !comingBackFromRemotes) store.clear?.();

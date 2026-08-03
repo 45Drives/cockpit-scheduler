@@ -4,7 +4,15 @@ import argparse
 def test_passwordless_ssh(target):
     try:
         # Attempt to run a command on the remote host without providing a password
-        test_cmd = ['ssh', target, 'echo Success']
+        # Add connection timeout and strict host key checking options
+        test_cmd = [
+            'ssh',
+            '-o', 'ConnectTimeout=10',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'BatchMode=yes',
+            target,
+            'echo Success'
+        ]
 
         process_test = subprocess.Popen(
             test_cmd,
@@ -12,7 +20,13 @@ def test_passwordless_ssh(target):
             stderr=subprocess.PIPE,  
         )
 
-        stdout, stderr = process_test.communicate()
+        # Add a timeout to communicate() call (overall command timeout)
+        try:
+            stdout, stderr = process_test.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            process_test.kill()
+            print("SSH connection timed out")
+            return False
 
         if process_test.returncode != 0:
             # raise Exception(f"Error: {stderr.decode('utf-8')}")

@@ -33,3 +33,4 @@ packaging/cloud-creds.env
 
 *.dokuwiki.txt
 .claude/CLAUDE.md
+*.md
