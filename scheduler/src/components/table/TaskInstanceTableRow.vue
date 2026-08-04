@@ -66,7 +66,7 @@
 					<div v-else class="h-2 rounded w-1/4 animate-indeterminate bg-blue-500 dark:bg-blue-400"></div>
 				</div>
 				<div class="text-xs mt-1 text-muted">
-					<span v-if="!isIndeterminate">{{ (progress ?? 0).toFixed(1) }}%</span>
+					<span v-if="!isIndeterminate">{{ progressText }}</span>
 					<span v-else class="animate-pulse">{{ progressLabel || 'Running…' }}</span>
 				</div>
 			</div>
@@ -303,6 +303,10 @@ const progress = ref<number | null>(null);
 const progressLabel = ref<string | null>(null);
 const showProgressBar = computed(() => isRunning.value);
 const isIndeterminate = computed(() => isRunning.value && progress.value === null);
+const progressText = computed(() => {
+	const pct = `${(progress.value ?? 0).toFixed(1)}%`;
+	return progressLabel.value ? `${progressLabel.value} — ${pct}` : pct;
+});
 
 async function updateProgress(task: TaskInstanceType) {
 	// Only poll progress when the task is actually running to avoid
@@ -316,7 +320,7 @@ async function updateProgress(task: TaskInstanceType) {
 		const result = await myScheduler.getTaskProgress(task);
 		if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
 			progress.value = result.percent;
-			progressLabel.value = null;
+			progressLabel.value = result?.label ?? null;
 		} else {
 			progress.value = null;
 			progressLabel.value = result?.label ?? null;
@@ -341,6 +345,7 @@ const progressBarClass = computed(() => {
 
 	if (
 		s.includes('active (running)') ||
+		s.includes('running (manual)') ||
 		s.includes('running now') ||
 		s.includes('starting') ||
 		s.includes('activating')

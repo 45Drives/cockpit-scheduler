@@ -226,8 +226,11 @@
                         <div v-else
                             class="h-full bg-blue-500 dark:bg-blue-400 rounded-full animate-indeterminate w-1/4" />
                     </div>
-                    <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
-                        {{ row.progress != null ? row.progress.toFixed(1) + '%' : (row.progressLabel || 'Running…') }}
+                    <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right"
+                        :title="row.progressLabel || ''">
+                        {{ row.progress != null
+                            ? (row.progressLabel ? `${row.progressLabel} — ${row.progress.toFixed(1)}%` : `${row.progress.toFixed(1)}%`)
+                            : (row.progressLabel || 'Running…') }}
                     </span>
                 </div>
             </div>

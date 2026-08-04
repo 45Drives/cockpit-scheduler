@@ -44,6 +44,15 @@ const DEBUG_LOG_MAP: Record<string, string> = {
     CustomTask: '/tmp/custom_task_debug.log',
 };
 
+/**
+ * Scripts write per-task logs as <base>_<taskName>.log and fall back to
+ * <base>.log when taskName is unset, so probe both.
+ */
+function debugLogCandidates(basePath: string, taskName: string): string[] {
+    const base = basePath.replace(/\.log$/, '');
+    return taskName ? [`${base}_${taskName}.log`, basePath] : [basePath];
+}
+
 export class TaskExecutionLog {
     entries: TaskExecutionResult[];
 
@@ -215,15 +224,20 @@ export class TaskExecutionLog {
         if (!logPath) {
             return `No debug log path configured for template "${templateName}".`;
         }
-        try {
-            const { stdout } = await runCommand(
-                ['tail', '-n', String(lines), logPath],
-                { superuser: 'try' },
-            );
-            return (stdout || '').trim() || '(debug log is empty)';
-        } catch {
-            return `(debug log not found at ${logPath})`;
+        const candidates = debugLogCandidates(logPath, taskInstance.name);
+        for (const path of candidates) {
+            try {
+                const { stdout } = await runCommand(
+                    ['tail', '-n', String(lines), path],
+                    { superuser: 'try' },
+                );
+                const content = (stdout || '').trim();
+                if (content) return content;
+            } catch {
+                // try next candidate
+            }
         }
+        return `(no debug log content found at ${candidates.join(' or ')})`;
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
@@ -270,7 +284,9 @@ export class TaskExecutionLog {
             // so we just rotate and clear the debug log)
             const debugLogPath = DEBUG_LOG_MAP[templateName];
             if (debugLogPath) {
-                await runCommand(['truncate', '-s', '0', debugLogPath], { superuser: 'try' }).catch(() => {});
+                for (const path of debugLogCandidates(debugLogPath, taskInstance.name)) {
+                    await runCommand(['truncate', '-s', '0', path], { superuser: 'try' }).catch(() => {});
+                }
             }
 
             return { success: true, message: `Cleared debug log for ${taskInstance.name}. Journal entries remain in system journal.` };

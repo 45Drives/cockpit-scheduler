@@ -1825,6 +1825,17 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    /** Strip the numeric tail off a systemd StatusText so the phase name can be shown next to the percentage. */
+    private extractProgressLabel(txt: string): string | null {
+        const s = txt
+            .replace(/\s*\d+\s*\/\s*\d+\s*\(\s*\d+(?:\.\d+)?\s*%\s*\)\s*$/, '')
+            .replace(/\s*\d+(?:\.\d+)?\s*%\s*(?:complete)?\s*$/i, '')
+            .replace(/[…\.]+\s*$/, '')
+            .replace(/[\s—:-]+$/, '')
+            .trim();
+        return s || null;
+    }
+
     async getTaskProgress(taskInstance: TaskInstanceType): Promise<{ percent: number | null; label: string | null }> {
         await this.ensureBackend();
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
@@ -1836,7 +1847,7 @@ export class Scheduler implements SchedulerType {
                 const txt = String(st?.service || '');
 
                 const match = txt.match(/(\d+(?:\.\d+)?)%/);
-                if (match) return { percent: parseFloat(match[1]), label: null };
+                if (match) return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt) };
                 return { percent: null, label: txt || null };
             } catch {
                 return { percent: null, label: null };
@@ -1854,7 +1865,7 @@ export class Scheduler implements SchedulerType {
             );
             const txt = (stdout || '').trim();
             const match = txt.match(/(\d+(?:\.\d+)?)%/);
-            if (match) return { percent: parseFloat(match[1]), label: null };
+            if (match) return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt) };
             return { percent: null, label: txt || null };
         } catch {
             return { percent: null, label: null };

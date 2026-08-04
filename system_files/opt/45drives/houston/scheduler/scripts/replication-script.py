@@ -2,6 +2,7 @@ import subprocess
 import sys
 import datetime
 import os
+import errno
 import time
 import json
 import shlex
@@ -729,16 +730,27 @@ def _has_pv():
 
 def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activity=None):
     """Read pv stderr output and emit progress notifications.
-    pv -f writes progress lines to stderr like:
-      1.23GiB 0:00:10 [ 126MiB/s] [====>               ] 12%
-    We parse the percentage or byte count for notifications.
+
+    pv redraws a single status line terminated by carriage returns rather than
+    newlines, so readline() would block until the process exits. Read bytes and
+    split on both \\r and \\n instead.
     If last_activity is provided (a single-element list), update it with time.time()
     on each output line so the caller can detect stalls."""
     last_pct = -1.0
     last_emit = 0.0
+    last_dbg = 0.0
+    buf = bytearray()
     try:
-        for raw_line in iter(pv_stderr.readline, b""):
-            line = raw_line.decode(errors="replace").strip()
+        while True:
+            ch = pv_stderr.read(1)
+            if not ch:
+                break
+            if ch not in (b"\r", b"\n"):
+                buf.extend(ch)
+                continue
+
+            line = buf.decode(errors="replace").strip()
+            buf.clear()
             if not line:
                 continue
             now = time.time()
@@ -753,9 +765,9 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activit
                     last_pct = pct
                     last_emit = now
             # Also log rate info from pv
-            rate_m = re.search(r'\[\s*([\d.]+\s*[KMGT]i?B/s)\s*\]', line)
-            if rate_m and (now - last_emit) >= 10.0:
+            if (now - last_dbg) >= 10.0:
                 dbg(f"pv {label}: {line}")
+                last_dbg = now
     except Exception:
         pass
 
@@ -773,8 +785,8 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
 
     procs = []
     try:
-        # Build pv command for progress monitoring
-        pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
+        # -f is required: pv prints nothing when stderr is not a terminal.
+        pv_cmd = ["pv", "-f", "-i", "1", "-b", "-r", "-t"]
         if total_bytes:
             pv_cmd.extend(["-s", str(total_bytes)])
 
@@ -782,11 +794,13 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         last_activity = [time.time()]
 
         # Pipeline: src_stdout -> pv -> mbuffer -> recv
+        # bufsize=0 disables buffering on stderr so progress lines appear immediately
         process_pv = subprocess.Popen(
             pv_cmd,
             stdin=src_process.stdout,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            bufsize=0,
         )
         procs.append(("pv", process_pv))
         # Close parent's copy so EOF propagates
@@ -1067,97 +1081,44 @@ def estimate_send_size_remote(remote_user, remote_host, remote_port, send_cmd):
         return None
 
 
-def stream_with_progress(src, dst, total_bytes, label="Transferring", min_interval=1.0, chunk_size=None):
-    """Returns (bytes_sent, pipe_broken) tuple."""
-    bytes_sent = 0
-    pipe_broken = False
-    last_pct = -1.0
-    last_emit = 0.0
-    last_dbg = 0.0
-    start_time = time.time()
-    window_bytes = 0
-    window_start = start_time
-
-    # Default 1 MiB chunk; configurable for benchmarking
-    read_size = chunk_size or int(os.environ.get("ZFS_REP_CHUNK_SIZE", str(1024 * 1024)))
-
-    if total_bytes:
-        notifier.notify(f"STATUS={label}… 0.0% complete")
-        dbg(f"{label} start: estimated_total={total_bytes} ({format_bytes(total_bytes)}) chunk_size={read_size}")
-    else:
-        notifier.notify(f"STATUS={label}…")
-        dbg(f"{label} start: estimated_total=unknown chunk_size={read_size}")
-
-    while True:
-        chunk = src.read(read_size)
-        if not chunk:
-            break
-        try:
-            dst.write(chunk)
-        except (BrokenPipeError, ValueError):
-            safe_print(f"WARNING: {label} pipe broken after {bytes_sent/(1024*1024):.1f} MiB — downstream process likely exited.")
-            dbg(f"{label} BrokenPipeError after bytes_sent={bytes_sent}")
-            pipe_broken = True
-            break
-        bytes_sent += len(chunk)
-        window_bytes += len(chunk)
-        now = time.time()
-
-        if total_bytes:
-            pct = min(round(bytes_sent * 100.0 / total_bytes, 1), 100.0)
-            if pct > last_pct and (now - last_emit) >= min_interval:
-                notifier.notify(f"STATUS={label}… {pct:.1f}% complete")
-                last_pct = pct
-                last_emit = now
-        else:
-            if (now - last_emit) >= max(5.0, min_interval):
-                mib = bytes_sent / (1024 * 1024)
-                notifier.notify(f"STATUS={label}… {mib:.1f} MiB sent")
-                safe_print(f"{label}… {mib:.1f} MiB sent")
-                last_emit = now
-
-        # debug heartbeat every 10s with rate info
-        if (now - last_dbg) >= 10.0:
-            elapsed = now - start_time
-            avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
-            window_elapsed = now - window_start
-            current_rate = window_bytes / window_elapsed if window_elapsed > 0 else 0
-            eta_str = ""
-            if total_bytes and avg_rate > 0:
-                remaining = total_bytes - bytes_sent
-                eta_secs = remaining / avg_rate
-                eta_str = f" ETA={int(eta_secs)}s"
-            dbg(
-                f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) "
-                f"current_rate={current_rate/(1024*1024):.1f} MiB/s "
-                f"avg_rate={avg_rate/(1024*1024):.1f} MiB/s{eta_str}"
-            )
-            last_dbg = now
-            window_bytes = 0
-            window_start = now
-
-    try:
-        dst.flush()
-    except Exception:
-        pass
-
-    elapsed = time.time() - start_time
-    avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
-    dbg(
-        f"{label} finished: bytes_sent={bytes_sent} ({format_bytes(bytes_sent)}) "
-        f"elapsed={elapsed:.1f}s avg_rate={avg_rate/(1024*1024):.1f} MiB/s pipe_broken={pipe_broken}"
-    )
-    return bytes_sent, pipe_broken
-
-
 class StallTimeout(Exception):
     """Raised when no data flows for longer than the stall timeout."""
     pass
 
 
+def _write_all_stalled(fd, data, stall_timeout, bytes_sent):
+    """Write all of data to fd, raising StallTimeout if the pipe stays unwritable.
+
+    The watchdog has to cover the write side too: when the copy loop sits downstream
+    of mbuffer, a stalled network blocks in write(), not read().
+    """
+    import select as _select
+
+    view = memoryview(data)
+    sent = 0
+    while sent < len(view):
+        if stall_timeout:
+            waited = 0.0
+            poll_interval = min(30.0, stall_timeout)
+            while True:
+                _, writable, _ = _select.select([], [fd], [], poll_interval)
+                if writable:
+                    break
+                waited += poll_interval
+                if waited >= stall_timeout:
+                    raise StallTimeout(
+                        "Downstream pipe not writable for {0}s (stall timeout: {1}s). "
+                        "Transferred {2:.1f} MiB before stall.".format(
+                            int(waited), stall_timeout, bytes_sent / (1024 * 1024)
+                        )
+                    )
+        sent += os.write(fd, view[sent:])
+    return sent
+
+
 def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_interval=1.0, stall_timeout=3600):
-    """Like stream_with_progress but raises StallTimeout if no data arrives for stall_timeout seconds.
-    If stall_timeout is 0 or None, stall detection is disabled (behaves like stream_with_progress).
+    """Copy src to dst with progress, raising StallTimeout if no data moves for stall_timeout seconds.
+    If stall_timeout is 0 or None, stall detection is disabled.
     Returns (bytes_sent, pipe_broken) tuple."""
     import select as _select
 
@@ -1176,10 +1137,16 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
 
     if total_bytes:
         notifier.notify(f"STATUS={label}… 0.0% complete")
+        dbg(f"{label} start: estimated_total={total_bytes} ({format_bytes(total_bytes)}) chunk_size={read_size}")
     else:
         notifier.notify(f"STATUS={label}…")
+        dbg(f"{label} start: estimated_total=unknown chunk_size={read_size}")
 
     fd = src.fileno()
+    dst_fd = dst.fileno()
+    # read1 returns whatever is buffered instead of blocking for a full chunk,
+    # which keeps the stall watchdog and the progress bar responsive.
+    _read = getattr(src, "read1", None) or src.read
 
     while True:
         if stall_enabled:
@@ -1196,13 +1163,15 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
                     )
                 continue
 
-        chunk = src.read(read_size)
+        chunk = _read(read_size)
         if not chunk:
             break
         last_data_time = time.time()
         try:
-            dst.write(chunk)
-        except (BrokenPipeError, ValueError):
+            _write_all_stalled(dst_fd, chunk, stall_timeout if stall_enabled else None, bytes_sent)
+        except (BrokenPipeError, ValueError, OSError) as e:
+            if isinstance(e, OSError) and not isinstance(e, BrokenPipeError) and e.errno not in (errno.EPIPE, errno.ECONNRESET):
+                raise
             safe_print(f"WARNING: {label} pipe broken after {bytes_sent/(1024*1024):.1f} MiB — downstream process likely exited.")
             dbg(f"{label} BrokenPipeError after bytes_sent={bytes_sent}")
             pipe_broken = True
@@ -1212,7 +1181,8 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
         now = time.time()
 
         if total_bytes:
-            pct = min(round(bytes_sent * 100.0 / total_bytes, 1), 100.0)
+            # Hold at 99.9% if we overrun the estimate; only EOF means 100%.
+            pct = min(round(bytes_sent * 100.0 / total_bytes, 1), 99.9)
             if pct > last_pct and (now - last_emit) >= min_interval:
                 notifier.notify(f"STATUS={label}… {pct:.1f}% complete")
                 last_pct = pct
@@ -1250,11 +1220,52 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
 
     elapsed = time.time() - start_time
     avg_rate = bytes_sent / elapsed if elapsed > 0 else 0
+    if not pipe_broken:
+        notifier.notify(f"STATUS={label}… 100.0% complete")
+    est_note = ""
+    if total_bytes:
+        est_note = f" estimated_total={total_bytes} accuracy={bytes_sent * 100.0 / total_bytes:.1f}%"
     dbg(
         f"{label} finished: bytes_sent={bytes_sent} ({format_bytes(bytes_sent)}) "
-        f"elapsed={elapsed:.1f}s avg_rate={avg_rate/(1024*1024):.1f} MiB/s pipe_broken={pipe_broken}"
+        f"elapsed={elapsed:.1f}s avg_rate={avg_rate/(1024*1024):.1f} MiB/s pipe_broken={pipe_broken}{est_note}"
     )
     return bytes_sent, pipe_broken
+
+
+def _wait_with_finalize_heartbeat(proc, wait_on, timeout, heartbeat_interval=15):
+    """Wait for a process with periodic finalize heartbeat updates."""
+    start = time.time()
+    interval = max(1.0, float(heartbeat_interval or 15))
+    while True:
+        elapsed = time.time() - start
+        remaining = timeout - elapsed
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+        try:
+            return proc.wait(timeout=min(interval, remaining))
+        except subprocess.TimeoutExpired:
+            elapsed_i = int(time.time() - start)
+            remaining_i = max(0, int(timeout - elapsed_i))
+            dbg(f"finalize heartbeat: waiting_on={wait_on} pid={getattr(proc, 'pid', '?')} elapsed={elapsed_i}s remaining={remaining_i}s")
+            notifier.notify(f"STATUS=Finalizing receive… waiting on {wait_on} ({elapsed_i}s elapsed)")
+
+
+def _communicate_with_finalize_heartbeat(proc, wait_on, timeout, heartbeat_interval=15):
+    """communicate() with periodic finalize heartbeat updates."""
+    start = time.time()
+    interval = max(1.0, float(heartbeat_interval or 15))
+    while True:
+        elapsed = time.time() - start
+        remaining = timeout - elapsed
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+        try:
+            return proc.communicate(timeout=min(interval, remaining))
+        except subprocess.TimeoutExpired:
+            elapsed_i = int(time.time() - start)
+            remaining_i = max(0, int(timeout - elapsed_i))
+            dbg(f"finalize heartbeat: waiting_on={wait_on} pid={getattr(proc, 'pid', '?')} elapsed={elapsed_i}s remaining={remaining_i}s")
+            notifier.notify(f"STATUS=Finalizing receive… waiting on {wait_on} ({elapsed_i}s elapsed)")
 
 
 def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
@@ -1570,6 +1581,75 @@ def safe_destroy_remote(snap_name, remote_user, remote_host, remote_port) -> boo
         return False
 
 
+def destroy_snapshots_with_progress(snapshots, dest_fs, remote_user=None, remote_host=None,
+                                    ssh_port="22", reason="for full receive"):
+    """Destroy destination snapshots ahead of a full receive, reporting progress.
+
+    Returns (destroyed, failed).
+    """
+    total = len(snapshots)
+    where = f"remote destination {dest_fs}" if remote_host else f"destination {dest_fs}"
+    status_label = "Destroying remote snapshots" if remote_host else "Destroying destination snapshots"
+    print(f"Destroying {total} snapshot(s) on {where} {reason}…")
+    notifier.notify(f"STATUS={status_label}… 0/{total} (0.0%)")
+    dbg(f"destroy start: {total} snapshot(s) on {where} {reason}")
+
+    destroyed = 0
+    failed = 0
+    start = time.time()
+    last_emit = 0.0
+    last_print = start
+
+    for idx, snap in enumerate(snapshots, 1):
+        if remote_host:
+            cmd = ["ssh"] + SSH_BASE_OPTS
+            if str(ssh_port) != "22":
+                cmd += ["-p", str(ssh_port)]
+            cmd += [f"{remote_user}@{remote_host}", "zfs", "destroy", "-R", snap.name]
+        else:
+            cmd = ["zfs", "destroy", "-R", snap.name]
+
+        dbg(f"RUN {_fmt_cmd(cmd)}")
+        dp = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            universal_newlines=True)
+        if dp.returncode != 0:
+            err_out = (dp.stderr or dp.stdout or "").strip()
+            # Already gone counts as cleared, not as a failure.
+            if "does not exist" not in err_out and "could not find" not in err_out:
+                failed += 1
+                print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+                dbg(f"destroy FAILED {snap.name}: {err_out}")
+            else:
+                destroyed += 1
+        else:
+            destroyed += 1
+
+        now = time.time()
+        pct = idx * 100.0 / total
+        if idx == total or (now - last_emit) >= 1.0:
+            notifier.notify(f"STATUS={status_label}… {idx}/{total} ({pct:.1f}%)")
+            last_emit = now
+
+        if idx == total or (now - last_print) >= 5.0:
+            elapsed = now - start
+            rate = idx / elapsed if elapsed > 0 else 0
+            eta = f" ETA={int((total - idx) / rate)}s" if rate > 0 and idx < total else ""
+            safe_print(f"{status_label}… {idx}/{total} ({pct:.1f}%){eta}")
+            dbg(f"destroy progress: {idx}/{total} ({pct:.1f}%) "
+                f"destroyed={destroyed} failed={failed} rate={rate:.1f}/s{eta}")
+            last_print = now
+
+    elapsed = time.time() - start
+    dbg(f"destroy finished: total={total} destroyed={destroyed} failed={failed} elapsed={elapsed:.1f}s")
+    if failed:
+        print(f"Destination snapshots cleared with {failed} failure(s) ({destroyed}/{total} destroyed).")
+        notifier.notify(f"STATUS={status_label} — destroyed {destroyed}/{total} ({failed} failed).")
+    else:
+        print(f"Destination snapshots cleared ({destroyed}/{total}).")
+        notifier.notify(f"STATUS={status_label} — destroyed {destroyed}/{total}.")
+    return destroyed, failed
+
+
 def prune_snapshots_by_retention(
     filesystem,
     task_name,
@@ -1809,10 +1889,14 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        process_send.wait()
+        _wait_with_finalize_heartbeat(process_send, "local zfs send", PIPELINE_FINALIZE_TIMEOUT)
 
         try:
-            recv_stdout, recv_stderr = process_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            recv_stdout, recv_stderr = _communicate_with_finalize_heartbeat(
+                process_recv,
+                "local zfs recv",
+                PIPELINE_FINALIZE_TIMEOUT,
+            )
         except subprocess.TimeoutExpired:
             process_recv.kill()
             notifier.notify("STATUS=Finalization timed out — recv process killed.")
@@ -1970,14 +2054,18 @@ def send_snapshot_push(
             return
 
         # --- Standard path: Python copy loop ---
+        # The copy loop sits downstream of mbuffer so measured bytes are the ones
+        # actually handed to ssh, not the ones absorbed by mbuffer's RAM buffer.
         m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_m_buff = subprocess.Popen(
             m_buff_cmd,
-            stdin=subprocess.PIPE,
+            stdin=process_send.stdout,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         mbuf_capture = StreamCapture(process_m_buff.stderr)
+        # Close parent's copy so EOF propagates from send to mbuffer
+        process_send.stdout.close()
 
         flags = ["zfs", "recv", "-s"]
         if forceOverwrite:
@@ -1989,22 +2077,20 @@ def send_snapshot_push(
             recvHost,
             recvSshPort,
             flags,
-            stdin=process_m_buff.stdout,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=False,
         )
-        # Close parent's copy so SIGPIPE propagates if recv dies
-        process_m_buff.stdout.close()
         dbg(f"PIPE mbuffer pid={process_m_buff.pid} cmd={_fmt_cmd(m_buff_cmd)}")
         dbg(f"PIPE remote_recv pid={process_remote_recv.pid} recv={recvHostUser}@{recvHost}:{recvName} port={recvSshPort}")
 
-        if process_send.stdout is None or process_m_buff.stdin is None:
-            raise RuntimeError("Failed to initialize send/mbuffer pipes.")
+        if process_m_buff.stdout is None or process_remote_recv.stdin is None:
+            raise RuntimeError("Failed to initialize mbuffer/recv pipes.")
 
         try:
             _, pipe_broken = stream_with_progress_stall(
-                process_send.stdout, process_m_buff.stdin, total_bytes,
+                process_m_buff.stdout, process_remote_recv.stdin, total_bytes,
                 label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
             )
         except StallTimeout as e:
@@ -2013,7 +2099,9 @@ def send_snapshot_push(
             print(f"ERROR: {e}")
             sys.exit(1)
         try:
-            process_m_buff.stdin.close()
+            process_remote_recv.stdin.close()
+            # Detach so communicate() below does not flush a closed pipe
+            process_remote_recv.stdin = None
         except Exception:
             pass
 
@@ -2038,11 +2126,15 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        process_send.wait()
-        process_m_buff.wait()
+        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
 
         try:
-            stdout, stderr = process_remote_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            stdout, stderr = _communicate_with_finalize_heartbeat(
+                process_remote_recv,
+                "remote zfs recv",
+                PIPELINE_FINALIZE_TIMEOUT,
+            )
         except subprocess.TimeoutExpired:
             process_remote_recv.kill()
             notifier.notify("STATUS=Finalization timed out — remote recv process killed.")
@@ -2100,28 +2192,30 @@ def send_snapshot_push(
         mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         nc_cmd = _build_nc_connect_cmd(recvHost, data_port, recv_only=False)
 
+        # Copy loop sits downstream of mbuffer so progress tracks bytes actually
+        # pushed into netcat rather than bytes absorbed by mbuffer's RAM buffer.
         process_mbuffer = subprocess.Popen(
             mbuffer_cmd,
-            stdin=subprocess.PIPE,
+            stdin=process_send.stdout,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         mbuf_capture = StreamCapture(process_mbuffer.stderr)
+        # Close parent's copy so EOF propagates from send to mbuffer
+        process_send.stdout.close()
         process_nc = subprocess.Popen(
             nc_cmd,
-            stdin=process_mbuffer.stdout,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        # Close parent's copy so SIGPIPE propagates if nc/recv dies
-        process_mbuffer.stdout.close()
 
-        if process_send.stdout is None or process_mbuffer.stdin is None:
-            raise RuntimeError("Failed to initialize send/mbuffer pipes.")
+        if process_mbuffer.stdout is None or process_nc.stdin is None:
+            raise RuntimeError("Failed to initialize mbuffer/netcat pipes.")
 
         try:
             _, pipe_broken = stream_with_progress_stall(
-                process_send.stdout, process_mbuffer.stdin, total_bytes,
+                process_mbuffer.stdout, process_nc.stdin, total_bytes,
                 label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
             )
         except StallTimeout as e:
@@ -2130,7 +2224,9 @@ def send_snapshot_push(
             print(f"ERROR: {e}")
             sys.exit(1)
         try:
-            process_mbuffer.stdin.close()
+            process_nc.stdin.close()
+            # Detach so communicate() below does not flush a closed pipe
+            process_nc.stdin = None
         except Exception:
             pass
 
@@ -2157,11 +2253,15 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        process_send.wait()
-        process_mbuffer.wait()
+        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
 
         try:
-            _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            _, nc_stderr = _communicate_with_finalize_heartbeat(
+                process_nc,
+                "netcat sender",
+                PIPELINE_FINALIZE_TIMEOUT,
+            )
         except subprocess.TimeoutExpired:
             process_nc.kill()
             ssh_process_listener.terminate()
@@ -2693,6 +2793,8 @@ def resume_receive_push(
 
         try:
             process_recv.stdin.close()
+            # Detach so communicate() below does not flush a closed pipe
+            process_recv.stdin = None
         except Exception:
             pass
 
@@ -4023,28 +4125,16 @@ def main():
                             else:
                                 dest_snaps_now = get_local_snapshots(destFilesystem)
                         if dest_snaps_now:
-                            print(f"Clearing {len(dest_snaps_now)} destination snapshot(s) for full resend…")
-                            for snap in dest_snaps_now:
-                                if direction == "pull" or not remoteHost:
-                                    dp = subprocess.run(
-                                        ["zfs", "destroy", "-R", snap.name],
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                        universal_newlines=True,
-                                    )
-                                else:
-                                    ssh_destroy = ["ssh"] + SSH_BASE_OPTS
-                                    if str(sshPort) != "22":
-                                        ssh_destroy += ["-p", str(sshPort)]
-                                    ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", "-R", snap.name]
-                                    dp = subprocess.run(
-                                        ssh_destroy,
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                        universal_newlines=True,
-                                    )
-                                if dp.returncode != 0:
-                                    err_out = (dp.stderr or dp.stdout or "").strip()
-                                    if "does not exist" not in err_out and "could not find" not in err_out:
-                                        print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+                            if direction == "pull" or not remoteHost:
+                                destroy_snapshots_with_progress(
+                                    dest_snaps_now, destFilesystem, reason="for full resend"
+                                )
+                            else:
+                                destroy_snapshots_with_progress(
+                                    dest_snaps_now, destFilesystem,
+                                    remote_user=remoteUser, remote_host=remoteHost,
+                                    ssh_port=sshPort, reason="for full resend",
+                                )
 
                         if direction == "pull":
                             send_snapshot_pull(
@@ -4600,18 +4690,7 @@ def main():
             # ZFS refuses a full receive into a dataset that already has snapshots.
             # Use -R to also destroy clones/dependents that would block destroy.
             if forceFullSend and not incrementalSnapName and destinationSnapshots:
-                print(f"Destroying {len(destinationSnapshots)} snapshot(s) on destination {destFilesystem} for full receive…")
-                notifier.notify(f"STATUS=Destroying destination snapshots for full receive…")
-                for snap in destinationSnapshots:
-                    destroy_cmd = ["zfs", "destroy", "-R", snap.name]
-                    dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
-                    dp = subprocess.run(destroy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                    if dp.returncode != 0:
-                        err_out = (dp.stderr or dp.stdout or "").strip()
-                        # Tolerate "does not exist" (already gone) but fail on others
-                        if "does not exist" not in err_out and "could not find" not in err_out:
-                            print(f"WARNING: failed to destroy {snap.name}: {err_out}")
-                print("Destination snapshots cleared.")
+                destroy_snapshots_with_progress(destinationSnapshots, destFilesystem)
 
             # Record pending full send state so interrupted transfers can be continued
             if not incrementalSnapName:
@@ -4658,31 +4737,12 @@ def main():
             # Force Full Send: destroy destination snapshots before full receive.
             if forceFullSend and not incrementalSnapName and destinationSnapshots:
                 if remoteHost and remoteUser:
-                    print(f"Destroying {len(destinationSnapshots)} snapshot(s) on remote destination {destFilesystem} for full receive…")
-                    notifier.notify(f"STATUS=Destroying remote destination snapshots for full receive…")
-                    for snap in destinationSnapshots:
-                        ssh_destroy = ["ssh"] + SSH_BASE_OPTS
-                        if str(sshPort) != "22":
-                            ssh_destroy += ["-p", str(sshPort)]
-                        ssh_destroy += [f"{remoteUser}@{remoteHost}", "zfs", "destroy", "-R", snap.name]
-                        dbg(f"RUN {_fmt_cmd(ssh_destroy)}")
-                        dp = subprocess.run(ssh_destroy, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                        if dp.returncode != 0:
-                            err_out = (dp.stderr or dp.stdout or "").strip()
-                            if "does not exist" not in err_out and "could not find" not in err_out:
-                                print(f"WARNING: failed to destroy {snap.name}: {err_out}")
+                    destroy_snapshots_with_progress(
+                        destinationSnapshots, destFilesystem,
+                        remote_user=remoteUser, remote_host=remoteHost, ssh_port=sshPort,
+                    )
                 else:
-                    print(f"Destroying {len(destinationSnapshots)} snapshot(s) on destination {destFilesystem} for full receive…")
-                    notifier.notify(f"STATUS=Destroying destination snapshots for full receive…")
-                    for snap in destinationSnapshots:
-                        destroy_cmd = ["zfs", "destroy", "-R", snap.name]
-                        dbg(f"RUN {_fmt_cmd(destroy_cmd)}")
-                        dp = subprocess.run(destroy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                        if dp.returncode != 0:
-                            err_out = (dp.stderr or dp.stdout or "").strip()
-                            if "does not exist" not in err_out and "could not find" not in err_out:
-                                print(f"WARNING: failed to destroy {snap.name}: {err_out}")
-                print("Destination snapshots cleared.")
+                    destroy_snapshots_with_progress(destinationSnapshots, destFilesystem)
 
             # Record pending full send state so interrupted transfers can be continued
             if not incrementalSnapName:
