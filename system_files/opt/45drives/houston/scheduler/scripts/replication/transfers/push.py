@@ -8,6 +8,89 @@ import time
 
 from .common import *
 
+
+def _dataset_of_snapshot(snapshot_name):
+    return (snapshot_name or "").split("@", 1)[0]
+
+
+def _count_local_snapshots(filesystem):
+    try:
+        p = subprocess.run(
+            ["zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", filesystem],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+            timeout=30,
+        )
+        if p.returncode != 0:
+            return 0
+        out = (p.stdout or "").strip()
+        if not out:
+            return 0
+        return len(out.splitlines())
+    except Exception:
+        return 0
+
+
+def _count_remote_snapshots(filesystem, remote_user, remote_host, remote_port):
+    try:
+        p = ssh_run_args(
+            remote_user,
+            remote_host,
+            remote_port,
+            ["zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", filesystem],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+        if p.returncode != 0:
+            return 0
+        out = (p.stdout or "").strip()
+        if not out:
+            return 0
+        return len(out.splitlines())
+    except Exception:
+        return 0
+
+
+def _start_push_snapshot_replay_monitor(send_name, recv_name, recv_host, recv_ssh_port, recv_host_user, poll_interval=30.0):
+    src_fs = _dataset_of_snapshot(send_name)
+    if not src_fs:
+        return None, None, None
+
+    total_src = _count_local_snapshots(src_fs)
+    if recv_host:
+        baseline_dst = _count_remote_snapshots(recv_name, recv_host_user, recv_host, recv_ssh_port)
+    else:
+        baseline_dst = _count_local_snapshots(recv_name)
+
+    total_replay = max(0, total_src - baseline_dst)
+    if total_replay <= 0:
+        return None, None, None
+
+    state = {"note": "; snapshots replayed 0/{0}".format(total_replay)}
+    stop_event = threading.Event()
+
+    def _monitor():
+        while not stop_event.is_set():
+            try:
+                if recv_host:
+                    current_dst = _count_remote_snapshots(recv_name, recv_host_user, recv_host, recv_ssh_port)
+                else:
+                    current_dst = _count_local_snapshots(recv_name)
+                applied = max(0, current_dst - baseline_dst)
+                if applied > total_replay:
+                    applied = total_replay
+                state["note"] = "; snapshots replayed {0}/{1}".format(applied, total_replay)
+            except Exception:
+                pass
+            stop_event.wait(poll_interval)
+
+    thread = threading.Thread(target=_monitor, daemon=True)
+    thread.start()
+    return (lambda: state["note"]), stop_event, thread
+
 def send_snapshot_push(
     sendName,
     recvName,
@@ -62,6 +145,7 @@ def send_snapshot_push(
         print("Note: Could not estimate send size; progress will be indeterminate.")
 
     process_send = subprocess.Popen(send_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    send_capture = StreamCapture(process_send.stderr)
     dbg(f"PIPE send pid={process_send.pid} cmd={_fmt_cmd(send_cmd)}")
     
     if transferMethod == "local" or not recvHost:
@@ -73,23 +157,42 @@ def send_snapshot_push(
         process_recv = subprocess.Popen(
             recv_cmd,
             stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
+        recv_capture = StreamCapture(process_recv.stderr)
 
         if process_send.stdout is None or process_recv.stdin is None:
             raise RuntimeError("Failed to initialize send/recv pipes.")
+
+        replay_note_getter = None
+        replay_stop_event = None
+        replay_thread = None
+        if recursive and not sendName2:
+            replay_note_getter, replay_stop_event, replay_thread = _start_push_snapshot_replay_monitor(
+                sendName,
+                recvName,
+                "",
+                recvSshPort,
+                recvHostUser,
+            )
 
         try:
             _, pipe_broken = stream_with_progress_stall(
                 process_send.stdout, process_recv.stdin, total_bytes,
                 label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+                progress_note_getter=replay_note_getter,
             )
         except StallTimeout as e:
             _kill_procs(process_send, process_recv)
             notifier.notify(f"STATUS=Transfer stalled: {e}")
             print(f"ERROR: {e}")
             sys.exit(1)
+        finally:
+            if replay_stop_event:
+                replay_stop_event.set()
+            if replay_thread:
+                replay_thread.join(timeout=1)
         try:
             _close_pipe(process_recv.stdin)
             process_recv.stdin = None
@@ -101,11 +204,7 @@ def send_snapshot_push(
                 process_recv.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 process_recv.terminate()
-            recv_stderr = ""
-            try:
-                recv_stderr = process_recv.stderr.read().decode(errors="replace") if process_recv.stderr else ""
-            except Exception:
-                pass
+            recv_stderr = recv_capture.text()
             process_send.terminate()
             notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
             if recv_stderr:
@@ -115,11 +214,10 @@ def send_snapshot_push(
             sys.exit(1)
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
-        send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         _wait_with_finalize_heartbeat(process_send, "local zfs send", PIPELINE_FINALIZE_TIMEOUT)
 
         try:
-            recv_stdout, recv_stderr = _communicate_with_finalize_heartbeat(
+            _recv_stdout_unused, _recv_stderr_unused = _communicate_with_finalize_heartbeat(
                 process_recv,
                 "local zfs recv",
                 PIPELINE_FINALIZE_TIMEOUT,
@@ -129,8 +227,8 @@ def send_snapshot_push(
             notifier.notify("STATUS=Finalization timed out — recv process killed.")
             print(f"ERROR: zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed.")
             sys.exit(1)
-        recv_stdout = recv_stdout.decode(errors="replace") if recv_stdout else ""
-        recv_stderr = recv_stderr.decode(errors="replace") if recv_stderr else ""
+        send_stderr = send_capture.text()
+        recv_stderr = recv_capture.text()
 
         if process_send.returncode != 0:
             notifier.notify("STATUS=Local send failed.")
@@ -144,12 +242,22 @@ def send_snapshot_push(
             sys.exit(1)
 
         notifier.notify("STATUS=Local receive completed.")
-        if recv_stdout:
-            print(recv_stdout)
         return
 
     if transferMethod == "ssh":
         notifier.notify(f"STATUS=Sending snapshot {sendName} to {recvHostUser}@{recvHost}:{recvName} via ssh…")
+
+        replay_note_getter = None
+        replay_stop_event = None
+        replay_thread = None
+        if recursive and not sendName2:
+            replay_note_getter, replay_stop_event, replay_thread = _start_push_snapshot_replay_monitor(
+                sendName,
+                recvName,
+                recvHost,
+                recvSshPort,
+                recvHostUser,
+            )
 
         # --- Direct-pipe path: zfs send -> pv -> mbuffer -> ssh zfs recv ---
         if DIRECT_PIPE_ENABLED and _has_pv():
@@ -221,34 +329,41 @@ def send_snapshot_push(
             stall_enabled = bool(stall_timeout and stall_timeout > 0)
             poll_interval = min(30.0, stall_timeout) if stall_enabled else None
 
-            while True:
-                try:
-                    stdout, stderr = process_remote_recv.communicate(timeout=poll_interval)
-                    break
-                except subprocess.TimeoutExpired:
-                    if not stall_enabled:
-                        continue
-                    idle = time.time() - last_activity[0]
-                    if idle >= stall_timeout:
-                        dbg(f"direct_pipe push: STALL detected — no pv activity for {int(idle)}s, killing pipeline")
-                        notifier.notify(f"STATUS=Transfer stalled — no data flow for {int(idle)}s, aborting.")
-                        for p in [process_pv, process_m_buff, process_remote_recv, process_send]:
-                            try:
-                                p.kill()
-                            except Exception:
-                                pass
-                        print(f"ERROR: Pipeline stalled: no data transferred for {int(idle)}s "
-                              f"(stall timeout: {stall_timeout}s). Check destination pool health.")
-                        sys.exit(1)
-                    else:
-                        dbg(f"direct_pipe push: watchdog check — last activity {int(idle)}s ago (timeout {stall_timeout}s)")
-                        continue
-            stdout = stdout.decode(errors="replace") if stdout else ""
-            stderr = stderr.decode(errors="replace") if stderr else ""
+            try:
+                while True:
+                    try:
+                        stdout, stderr = process_remote_recv.communicate(timeout=poll_interval)
+                        break
+                    except subprocess.TimeoutExpired:
+                        if not stall_enabled:
+                            continue
+                        idle = time.time() - last_activity[0]
+                        if idle >= stall_timeout:
+                            dbg(f"direct_pipe push: STALL detected — no pv activity for {int(idle)}s, killing pipeline")
+                            notifier.notify(f"STATUS=Transfer stalled — no data flow for {int(idle)}s, aborting.")
+                            for p in [process_pv, process_m_buff, process_remote_recv, process_send]:
+                                try:
+                                    p.kill()
+                                except Exception:
+                                    pass
+                            print(f"ERROR: Pipeline stalled: no data transferred for {int(idle)}s "
+                                  f"(stall timeout: {stall_timeout}s). Check destination pool health.")
+                            sys.exit(1)
+                        else:
+                            dbg(f"direct_pipe push: watchdog check — last activity {int(idle)}s ago (timeout {stall_timeout}s)")
+                            continue
+                stdout = stdout.decode(errors="replace") if stdout else ""
+                stderr = stderr.decode(errors="replace") if stderr else ""
 
-            process_m_buff.wait()
-            process_pv.wait()
-            process_send.wait()
+                notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
+                _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+                _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
+                _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+            finally:
+                if replay_stop_event:
+                    replay_stop_event.set()
+                if replay_thread:
+                    replay_thread.join(timeout=1)
 
             send_stderr = ""
             if process_send.stderr:
@@ -319,12 +434,18 @@ def send_snapshot_push(
             _, pipe_broken = stream_with_progress_stall(
                 process_m_buff.stdout, process_remote_recv.stdin, total_bytes,
                 label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+                progress_note_getter=replay_note_getter,
             )
         except StallTimeout as e:
             _kill_procs(process_send, process_m_buff, process_remote_recv)
             notifier.notify(f"STATUS=Transfer stalled: {e}")
             print(f"ERROR: {e}")
             sys.exit(1)
+        finally:
+            if replay_stop_event:
+                replay_stop_event.set()
+            if replay_thread:
+                replay_thread.join(timeout=1)
         try:
             _close_pipe(process_remote_recv.stdin)
             # Detach so communicate() below does not flush a closed pipe
@@ -400,6 +521,18 @@ def send_snapshot_push(
 
         notifier.notify(f"STATUS=Sending snapshot {sendName} via netcat to {recvHostUser}@{recvHost}:{recvName}…")
 
+        replay_note_getter = None
+        replay_stop_event = None
+        replay_thread = None
+        if recursive and not sendName2:
+            replay_note_getter, replay_stop_event, replay_thread = _start_push_snapshot_replay_monitor(
+                sendName,
+                recvName,
+                recvHost,
+                recvSshPort,
+                recvHostUser,
+            )
+
         recv_q = shlex.quote(recvName)
         nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port, bind_address=NC_BIND_ADDRESS)
         listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
@@ -444,12 +577,18 @@ def send_snapshot_push(
             _, pipe_broken = stream_with_progress_stall(
                 process_mbuffer.stdout, process_nc.stdin, total_bytes,
                 label="Transferring", stall_timeout=TRANSFER_STALL_TIMEOUT,
+                progress_note_getter=replay_note_getter,
             )
         except StallTimeout as e:
             _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
             notifier.notify(f"STATUS=Transfer stalled: {e}")
             print(f"ERROR: {e}")
             sys.exit(1)
+        finally:
+            if replay_stop_event:
+                replay_stop_event.set()
+            if replay_thread:
+                replay_thread.join(timeout=1)
         try:
             _close_pipe(process_nc.stdin)
             # Detach so communicate() below does not flush a closed pipe

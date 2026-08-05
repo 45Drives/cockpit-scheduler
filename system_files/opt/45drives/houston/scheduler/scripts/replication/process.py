@@ -10,7 +10,7 @@ import time
 from collections import deque
 
 from .config import as_bool
-from .constants import MBUFFER_BLOCK_SIZE
+from .constants import MBUFFER_BLOCK_SIZE, PIPELINE_FINALIZE_TIMEOUT
 from .context import notifier
 from .logging_utils import _fmt_cmd, _truncate, dbg, safe_print
 
@@ -320,9 +320,10 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
         recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
 
-        process_mbuffer.wait()
-        process_pv.wait()
-        src_process.wait()
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
+        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(src_process, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
 
         # Check return codes in pipeline order
         src_rc = src_process.returncode
@@ -413,7 +414,7 @@ def _write_all_stalled(fd, data, stall_timeout, bytes_sent):
     return sent
 
 
-def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_interval=1.0, stall_timeout=3600):
+def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_interval=1.0, stall_timeout=3600, progress_note_getter=None):
     """Copy src to dst with progress, raising StallTimeout if no data moves for stall_timeout seconds.
     If stall_timeout is 0 or None, stall detection is disabled.
     Returns (bytes_sent, pipe_broken) tuple."""
@@ -424,6 +425,9 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
     last_pct = -1.0
     last_emit = 0.0
     last_dbg = 0.0
+    last_pct_change = 0.0
+    last_liveness_notice = 0.0
+    liveness_notice_interval = 45.0
     last_data_time = time.time()
     start_time = last_data_time
     window_bytes = 0
@@ -435,6 +439,7 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
     if total_bytes:
         notifier.notify(f"STATUS={label}… 0.0% complete")
         dbg(f"{label} start: estimated_total={total_bytes} ({format_bytes(total_bytes)}) chunk_size={read_size}")
+        last_pct_change = start_time
     else:
         notifier.notify(f"STATUS={label}…")
         dbg(f"{label} start: estimated_total=unknown chunk_size={read_size}")
@@ -484,6 +489,25 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
                 notifier.notify(f"STATUS={label}… {pct:.1f}% complete")
                 last_pct = pct
                 last_emit = now
+                last_pct_change = now
+            elif pct <= last_pct and (now - last_pct_change) >= liveness_notice_interval and (now - last_liveness_notice) >= liveness_notice_interval:
+                # Reassure users during long recursive replay phases where bytes move but rounded % appears unchanged.
+                mib = bytes_sent / (1024 * 1024)
+                progress_note = ""
+                if progress_note_getter:
+                    try:
+                        progress_note = progress_note_getter() or ""
+                    except Exception:
+                        progress_note = ""
+                if last_pct >= 99.9:
+                    notifier.notify(
+                        f"STATUS={label}… {last_pct:.1f}% complete (still active; near stream completion, waiting for receive-side finalization, {mib:.1f} MiB sent{progress_note})"
+                    )
+                else:
+                    notifier.notify(
+                        f"STATUS={label}… {last_pct:.1f}% complete (still active; replaying many small snapshot deltas, {mib:.1f} MiB sent{progress_note})"
+                    )
+                last_liveness_notice = now
         else:
             if (now - last_emit) >= max(5.0, min_interval):
                 mib = bytes_sent / (1024 * 1024)

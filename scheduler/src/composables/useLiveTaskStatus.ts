@@ -31,7 +31,8 @@ export function useLiveTaskStatus(
     scheduler: any,
     log: any,
     opts?: {
-        intervalMs?: number;
+        intervalMs?: number | (() => number);
+        progressIntervalMs?: number | (() => number);
         formatMs?: (ms: number) => string;
         completedWindowMs?: number; // how long to show "Completed" before reverting
         onFailure?: (task: AnyTask, statusText: string) => void;
@@ -600,16 +601,35 @@ export function useLiveTaskStatus(
         refreshAll();
         refreshProgress();
         // Scale polling interval based on task count to avoid overwhelming cockpit.
-        // With bulk queries the per-poll cost is low, but we still want breathing room.
+        // Use much slower polling at larger scales to keep systemctl/dbus load low.
         const taskCount = (tasksRef.value ?? []).length;
-        const baseInterval = opts?.intervalMs ?? 1500;
-        const effectiveInterval = taskCount > 100
-            ? Math.max(baseInterval, 15000)   // 250+ tasks: poll every 15s minimum
-            : taskCount > 50
-                ? Math.max(baseInterval, 10000)   // 50-100 tasks: poll every 10s
-                : baseInterval;
+        const baseStatusInterval = typeof opts?.intervalMs === 'function'
+            ? opts.intervalMs()
+            : (opts?.intervalMs ?? 1500);
+        const baseProgressInterval = typeof opts?.progressIntervalMs === 'function'
+            ? opts.progressIntervalMs()
+            : (opts?.progressIntervalMs ?? baseStatusInterval);
+        const safeStatusBase = Number.isFinite(baseStatusInterval) ? Math.max(1000, baseStatusInterval) : 1500;
+        const safeProgressBase = Number.isFinite(baseProgressInterval) ? Math.max(1000, baseProgressInterval) : safeStatusBase;
+        const effectiveInterval = taskCount > 250
+            ? Math.max(safeStatusBase, 60000)   // 250+ tasks: poll every 60s minimum
+            : taskCount > 100
+                ? Math.max(safeStatusBase, 45000)   // 101-250 tasks: poll every 45s
+                : taskCount > 50
+                    ? Math.max(safeStatusBase, 30000)   // 51-100 tasks: poll every 30s
+                    : taskCount > 20
+                        ? Math.max(safeStatusBase, 15000)   // 21-50 tasks: poll every 15s
+                        : safeStatusBase;
         intervalId = window.setInterval(() => refreshAll(true), effectiveInterval);
-        progressIntervalId = window.setInterval(refreshProgress, Math.max(effectiveInterval, 10000));
+        // Progress text changes more slowly than run-state transitions; poll it less.
+        const progressInterval = taskCount > 100
+            ? Math.max(safeProgressBase, effectiveInterval, 60000)
+            : taskCount > 50
+                ? Math.max(safeProgressBase, effectiveInterval, 45000)
+                : taskCount > 20
+                    ? Math.max(safeProgressBase, effectiveInterval, 30000)
+                    : Math.max(safeProgressBase, effectiveInterval, 10000);
+        progressIntervalId = window.setInterval(refreshProgress, progressInterval);
     }
 
     function stop() {

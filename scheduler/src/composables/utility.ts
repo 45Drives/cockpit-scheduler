@@ -543,7 +543,42 @@ export type ZfsSnap = {
 	name: string;      // tank/fs@stamp
 	guid: string;
 	creation: number;  // epoch seconds
+	taskTag?: string;
 };
+
+const ZFS_TASK_PROP = 'com.45drives_scheduler:task_name';
+
+function snapshotSuffix(fullSnapName: string): string {
+	const idx = fullSnapName.indexOf('@');
+	return idx >= 0 ? fullSnapName.slice(idx + 1) : fullSnapName;
+}
+
+export function isTaskSnapshotName(fullSnapName: string, taskName: string, customName = ''): boolean {
+	const suffix = snapshotSuffix(fullSnapName);
+	const tn = (taskName || '').trim();
+	const cn = (customName || '').trim();
+
+	if (!tn) return false;
+
+	const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	if (cn && new RegExp(`^${esc(cn)}-t\\d+-\\d{4}`).test(suffix)) return true;
+	if (new RegExp(`^${esc(tn)}-t\\d+-\\d{4}`).test(suffix)) return true;
+	if (cn && suffix.startsWith(`${cn}-`)) return true;
+	if (suffix.startsWith(`${tn}-`)) return true;
+	if (cn && suffix.startsWith(`${cn}-${tn}-`)) return true;
+
+	return false;
+}
+
+export function filterTaskSnapshots(snaps: ZfsSnap[], taskName: string, customName = ''): ZfsSnap[] {
+	return (snaps || []).filter((snap) => {
+		const taggedOwner = (snap.taskTag || '').trim();
+		if (taggedOwner) {
+			return taggedOwner === taskName;
+		}
+		return isTaskSnapshotName(snap.name, taskName, customName);
+	});
+}
 
 // Local or remote snapshot listing
 export async function listSnapshots(
@@ -571,6 +606,33 @@ export async function listSnapshots(
 				const creation = Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
 				return { name, guid, creation };
 			});
+
+		const tagCmdBase = [
+			"zfs", "get", "-H", "-t", "snapshot", "-o", "name,property,value", ZFS_TASK_PROP, "-r", dataset
+		];
+		const tagCmd: string[] = user && host
+			? (port && port !== "22"
+				? ["ssh", "-p", String(port), `${user}@${host}`, ...tagCmdBase]
+				: ["ssh", `${user}@${host}`, ...tagCmdBase])
+			: tagCmdBase;
+
+		try {
+			const { stdout: tagOut } = await runCommand(tagCmd, { superuser: "try" });
+			const tagMap = new Map<string, string>();
+			for (const line of tagOut.trim().split("\n").filter(Boolean)) {
+				const parts = line.split("\t");
+				if (parts.length < 3) continue;
+				const [name, prop, value] = parts;
+				if (prop === ZFS_TASK_PROP && value && value !== '-') {
+					tagMap.set(name, value);
+				}
+			}
+			for (const snap of snaps) {
+				snap.taskTag = tagMap.get(snap.name);
+			}
+		} catch {
+			// Tag lookups are best-effort. Matching falls back to snapshot names.
+		}
 
 		snaps.sort((a, b) => a.creation - b.creation);
 		return snaps;

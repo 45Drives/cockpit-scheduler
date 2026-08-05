@@ -1,6 +1,6 @@
 <template>
     <!-- Loading spinner (shared) -->
-    <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+    <div v-if="loading" class="grid grid-flow-cols grid-cols-2 my-2 gap-2 auto-rows-min items-start">
         <div
             class="border border-default rounded-md p-2 col-span-2 row-start-1 row-span-2 bg-accent flex items-center justify-center">
             <CustomLoadingSpinner :width="'w-20'" :height="'h-20'" :baseColor="'text-gray-200'"
@@ -127,10 +127,10 @@
     </div>
 
     <!-- ═══ ADVANCED MODE (existing UI) ═══ -->
-    <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2 grid-rows-2">
+    <div v-else class="grid grid-flow-cols grid-cols-2 my-2 gap-2 items-stretch">
         <!-- TOP LEFT -->
         <div name="source-data"
-            class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent">
+            class="border border-default rounded-md p-2 col-span-1 row-start-1 row-span-1 bg-accent h-full">
             <div class="flex flex-row justify-between items-center text-center">
                 <label class="-mt-1 block text-base leading-6 text-default">{{ sourceCardLabel }}</label>
                 <div class="mt-1 flex flex-col items-center text-center">
@@ -250,7 +250,7 @@
 
         <!-- BOTTOM LEFT -->
         <div name="destination-data"
-            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
+            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent h-full min-h-[34rem]">
             <div class="flex flex-row justify-between items-center">
                 <label class="-mt-1 block text-base leading-6 text-default">{{ targetCardLabel }}</label>
                 <div class="mt-1 flex items-center gap-4">
@@ -393,7 +393,7 @@
         </div>
 
         <!-- TOP RIGHT -->
-        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent">
+        <div name="destination-ssh-data" class="border border-default rounded-md p-2 col-span-1 bg-accent h-full">
             <div class="grid grid-cols-2">
                 <label class="mt-1 col-span-1 block text-base leading-6 text-default">Select Transfer Method</label>
                 <select v-model="transferMethod" :disabled="!hasRemoteEndpoint"
@@ -463,7 +463,7 @@
 
         <!-- BOTTOM RIGHT -->
         <div name="send-options"
-            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent">
+            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent h-full min-h-[34rem]">
             <label class="mt-1 block text-base leading-6 text-default">Send Options</label>
             <div class="grid grid-cols-2 mt-1">
                 <div name="send-opt-raw" class="flex flex-row items-center gap-2 mt-1 col-span-1">
@@ -481,11 +481,31 @@
                 <label class="block text-sm leading-6 text-default">Send Recursive</label>
                 <input type="checkbox" v-model="sendRecursive" class="h-4 w-4 rounded" />
             </div>
+            <p v-if="showRecursiveHistoryRecommendation" class="mt-1 text-xs text-yellow-500">
+                Recommendation: if this destination should preserve restore history, enable Include Intermediate
+                Snapshots.
+            </p>
             <div name="send-opt-include-intermediates" class="flex flex-row items-center gap-2 mt-2">
                 <label class="block text-sm leading-6 text-default">Include Intermediate Snapshots</label>
                 <input type="checkbox" v-model="includeIntermediateSnapshots" class="h-4 w-4 rounded" />
-                <span class="text-xs text-muted">(sends full snapshot history — disable for faster transfers)</span>
             </div>
+            <p class="text-xs text-muted">
+                Replicate every snapshot created since the last common snapshot. Disable to send only the newest
+                snapshot state.
+            </p>
+            <p v-if="useExistingDest && includeIntermediatesApplicability === 'not-applicable'" class="text-xs text-yellow-500">
+                No common base detected for this destination right now, so this option will not affect the current run.
+                It will apply automatically once a common snapshot exists.
+            </p>
+            <p class="mt-1 text-xs text-muted">
+                Encryption note: for recursive hierarchies with encrypted datasets, choose an explicit encryption
+                strategy (raw stream to preserve source encryption, or non-raw behavior) and avoid mixing raw and
+                non-raw incremental chains.
+            </p>
+            <p v-if="showRecursiveOverwriteWarning" class="mt-1 text-xs text-red-400">
+                Warning: Recursive send combined with overwrite behavior (<code>zfs receive -F</code>) can remove
+                destination snapshots and child datasets that do not exist on the source.
+            </p>
             <div name="send-opt-custom-name mt-2">
                 <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
                     <div class="flex flex-row items-center gap-2 mt-2">
@@ -552,6 +572,7 @@ import {
     testNetcat,
     mostRecentCommonSnapshot,
     listSnapshots,
+    filterTaskSnapshots,
     ZfsSnap,
     destAheadOfCommon
 } from '../../../composables/utility';
@@ -564,6 +585,20 @@ interface ZfsRepTaskParamsProps {
 }
 
 const props = defineProps<ZfsRepTaskParamsProps>();
+const taskForEditing = inject<Ref<TaskInstanceType | null>>('task-for-editing', ref(null));
+const draftTaskName = inject<Ref<string>>('task-name-draft', ref(''));
+
+function sanitizeTaskName(name: string): string {
+    let out = (name || '').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    if (out.startsWith('_')) out = `task${out}`;
+    return out;
+}
+
+const effectiveTaskName = computed(() => {
+    const explicit = props.task?.name || taskForEditing.value?.name || draftTaskName.value || '';
+    return sanitizeTaskName(explicit);
+});
+
 const loading = ref(false);
 const parameters = inject<Ref<any>>('parameters')!;
 const initialParameters: any = ref({});
@@ -634,7 +669,7 @@ const destPoolPlaceholder = computed(() =>
 const hasRemoteEndpoint = computed(() => isPull.value || destHost.value.trim() !== '');
 
 const sendRaw = ref(false);
-const sendCompressed = ref(false);
+const sendCompressed = ref(true);
 const sendRecursive = ref(false);
 const includeIntermediateSnapshots = ref(true);
 const mbufferSize = ref(1);
@@ -665,6 +700,15 @@ const netCatPortError = ref(false);
 const errorList = inject<Ref<string[]>>('errors')!;
 
 const sshReady = ref(false);
+const includeIntermediatesApplicability = ref<'unknown' | 'applicable' | 'not-applicable'>('unknown');
+
+const showRecursiveHistoryRecommendation = computed(() => {
+    return sendRecursive.value && !includeIntermediateSnapshots.value;
+});
+
+const showRecursiveOverwriteWarning = computed(() => {
+    return useExistingDest.value && sendRecursive.value && (allowOverwrite.value || forceFullSend.value);
+});
 
 /* ---------------- Direction-aware labels + behavior ---------------- */
 
@@ -723,6 +767,7 @@ watch(useExistingDest, async (on) => {
         if (destPool.value) await getTargetDatasets();
         void checkDestDatasetContents();
     } else {
+        includeIntermediatesApplicability.value = 'unknown';
         allowOverwrite.value = false;
         resumeFailAllowOverwrite.value = false;
         resumeStallTimeout.value = 3600;
@@ -1166,6 +1211,7 @@ async function checkDestDatasetContents() {
     if (!useExistingDest.value) return;
 
     try {
+        includeIntermediatesApplicability.value = 'unknown';
         const srcFs = `${sourcePool.value}/${sourceDataset.value}`;
         const dstFs = `${destPool.value}/${destDataset.value}`;
 
@@ -1190,7 +1236,15 @@ async function checkDestDatasetContents() {
                 : await listSnapshots(dstFs);
         }
 
+        const taskName = effectiveTaskName.value;
+        const customScope = useCustomName.value ? customName.value : '';
+        if (taskName) {
+            srcSnaps = filterTaskSnapshots(srcSnaps, taskName, customScope);
+            dstSnaps = filterTaskSnapshots(dstSnaps, taskName, customScope);
+        }
+
         if (!dstSnaps.length) {
+            includeIntermediatesApplicability.value = 'not-applicable';
             destDatasetErrorTag.value = false;
             return;
         }
@@ -1198,6 +1252,7 @@ async function checkDestDatasetContents() {
         const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
 
         if (!common) {
+            includeIntermediatesApplicability.value = 'not-applicable';
             if (allowOverwrite.value) {
                 destDatasetErrorTag.value = false;
                 return;
@@ -1206,6 +1261,8 @@ async function checkDestDatasetContents() {
             destDatasetErrorTag.value = true;
             return;
         }
+
+        includeIntermediatesApplicability.value = 'applicable';
 
         const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
         if (diverged && !allowOverwrite.value) {
@@ -1217,6 +1274,7 @@ async function checkDestDatasetContents() {
         destDatasetErrorTag.value = false;
     } catch (err) {
         console.error("checkDestDatasetContents:", err);
+        includeIntermediatesApplicability.value = 'unknown';
         errorList.value.push("Failed to verify destination snapshots.");
         destDatasetErrorTag.value = true;
     }

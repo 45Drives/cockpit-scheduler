@@ -25,6 +25,7 @@ from .snapshots import (
     create_snapshot_remote,
     dataset_of_snapshot,
     filter_dataset_snapshots,
+    filter_task_snapshots,
     get_local_snapshots,
     get_remote_snapshots,
     get_written_since_snapshot,
@@ -475,12 +476,21 @@ def _plan_send(ctx: ReplicationRun):
         ctx.forceOverwrite = True
         ctx.incrementalSnapName = ''
     else:
+        src_task_snaps = filter_task_snapshots(ctx.sourceSnapshots, ctx.taskName, custom_name=ctx.customName)
+        dst_task_snaps = filter_task_snapshots(ctx.destinationSnapshots, ctx.taskName, custom_name=ctx.customName)
+
         if ctx.isRecursiveSnap:
-            src_root_snaps = filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)
-            dst_root_snaps = filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)
+            src_root_snaps = filter_dataset_snapshots(src_task_snaps, ctx.sourceFilesystem)
+            dst_root_snaps = filter_dataset_snapshots(dst_task_snaps, ctx.destFilesystem)
         else:
-            src_root_snaps = ctx.sourceSnapshots
-            dst_root_snaps = ctx.destinationSnapshots
+            src_root_snaps = filter_dataset_snapshots(src_task_snaps, ctx.sourceFilesystem)
+            dst_root_snaps = filter_dataset_snapshots(dst_task_snaps, ctx.destFilesystem)
+
+        if not src_root_snaps:
+            print('No source snapshots found for this task on the root dataset.')
+            print('Run the task once (non-dry-run) to create a task-owned snapshot baseline.')
+            sys.exit(2)
+
         src_guids = {s.guid for s in src_root_snaps}
         common_candidates = [d for d in dst_root_snaps if d.guid in src_guids]
         if not common_candidates:
@@ -498,7 +508,7 @@ def _plan_send(ctx: ReplicationRun):
             src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
             ctx.incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
             print(f'Most recent common snapshot: {ctx.incrementalSnapName}')
-            dest_check_snaps = dst_root_snaps if ctx.isRecursiveSnap else ctx.destinationSnapshots
+            dest_check_snaps = dst_root_snaps
             dest_check_snaps_sorted = sorted(dest_check_snaps, key=lambda s: s.creation_epoch)
             common_idx = -1
             for (i, d) in enumerate(dest_check_snaps_sorted):
@@ -519,14 +529,14 @@ def _plan_send(ctx: ReplicationRun):
                 ctx.forceOverwrite = True
             if not destAhead and ctx.allowOverwrite:
                 if ctx.direction == 'pull':
-                    dest_root_snaps = filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)
+                    dest_root_snaps = list(dst_root_snaps)
                     written_remote = None
                     if dest_root_snaps:
                         dest_root_snaps.sort(key=lambda s: s.order_key)
                         dest_latest = dest_root_snaps[-1]
                         written_remote = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name)
                 else:
-                    dest_root_snaps = filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)
+                    dest_root_snaps = list(dst_root_snaps)
                     written_remote = None
                     if dest_root_snaps:
                         dest_root_snaps.sort(key=lambda s: s.order_key)
@@ -566,13 +576,11 @@ def _report_dry_run(ctx: ReplicationRun):
         else:
             print(f'  Resume token:     None')
         if ctx.sourceSnapshots:
-            if ctx.isRecursiveSnap:
-                dry_run_snaps = filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)
-            else:
-                dry_run_snaps = list(ctx.sourceSnapshots)
+            task_source_snaps = filter_task_snapshots(ctx.sourceSnapshots, ctx.taskName, custom_name=ctx.customName)
+            dry_run_snaps = filter_dataset_snapshots(task_source_snaps, ctx.sourceFilesystem)
             dry_run_snaps.sort(key=lambda s: s.creation_epoch)
             if not dry_run_snaps:
-                print('\n  No snapshots found on root dataset — cannot preview send command.')
+                print('\n  No task-owned snapshots found on root dataset — cannot preview send command.')
                 print('\n--- End Dry Run (no changes made) ---')
                 sys.exit(0)
             latest_src = dry_run_snaps[-1].name
@@ -666,6 +674,16 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
             sys.exit(2)
         notifier.notify('STATUS=Sending snapshot to destination…')
         dbg(f"baseSnap={ctx.incrementalSnapName} baseDs={(dataset_of_snapshot(ctx.incrementalSnapName) if ctx.incrementalSnapName else '')} newSnap={ctx.newSnap} newDs={dataset_of_snapshot(ctx.newSnap)} recursive={ctx.isRecursiveSnap}")
+        if (not ctx.remoteHost) and ctx.isRecursiveSnap and (not ctx.incrementalSnapName):
+            src_pool = (ctx.sourceFilesystem or '').split('/', 1)[0]
+            dst_pool = (ctx.destFilesystem or '').split('/', 1)[0]
+            if src_pool and dst_pool and src_pool == dst_pool:
+                msg = (
+                    f"Local recursive full send within pool '{src_pool}' can be slow and bursty "
+                    "because send and receive contend for the same disks and transaction-group syncs."
+                )
+                notifier.notify(f'STATUS={msg}')
+                print(msg)
         if ctx.forceFullSend and (not ctx.incrementalSnapName) and ctx.destinationSnapshots:
             if ctx.remoteHost and ctx.remoteUser:
                 destroy_snapshots_with_progress(ctx.destinationSnapshots, ctx.destFilesystem, remote_user=ctx.remoteUser, remote_host=ctx.remoteHost, ssh_port=ctx.sshPort)
@@ -689,6 +707,33 @@ def _tag_received_snapshot(ctx: ReplicationRun):
 
 
 def _apply_retention(ctx: ReplicationRun):
+    def _retention_disabled(ret_time, ret_unit):
+        try:
+            val = int(ret_time)
+        except (TypeError, ValueError):
+            val = 0
+        return val == 0 and (not ret_unit)
+
+    source_retention_disabled = _retention_disabled(ctx.sourceRetentionTime, ctx.sourceRetentionUnit)
+    destination_retention_disabled = _retention_disabled(ctx.destinationRetentionTime, ctx.destinationRetentionUnit)
+    if source_retention_disabled and destination_retention_disabled:
+        notifier.notify('STATUS=Retention not configured on source or destination. Skipping pruning. 100% complete')
+        ctx.current_pct = 100
+        schedule_intervals = ctx.schedule_data.get('intervals') if ctx.schedule_data else None
+        if ctx.tier_idx is not None and isinstance(schedule_intervals, list):
+            dbg('Retention disabled for active tier run; skipping legacy untagged retention sweep as well.')
+        notifier.notify('STATUS=ZFS replication task completed. 100% complete')
+        _clear_pending_full_send(ctx.taskName)
+        try:
+            lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{ctx.taskName}.lastrun'
+            with open(lastrun_path, 'w') as f:
+                f.write(str(int(time.time())))
+        except Exception as e:
+            dbg(f'WARNING: failed to write lastrun file: {e}')
+        safe_print(f'ZFS replication task completed successfully: {ctx.sourceFilesystem} -> {ctx.destFilesystem}')
+        dbg('=== task completed successfully ===')
+        return
+
     if ctx.direction == 'pull':
         ctx.current_pct = prune_snapshots_by_retention(ctx.sourceFilesystem, ctx.taskName, ctx.sourceRetentionTime, ctx.sourceRetentionUnit, ctx.newSnap, ctx.remoteUser, ctx.remoteHost, ctx.sshPort, ctx.transferMethod, progress_base=ctx.current_pct, progress_span=50, tier_idx=ctx.tier_idx, custom_name=ctx.customName)
         ctx.current_pct = prune_snapshots_by_retention(ctx.destFilesystem, ctx.taskName, ctx.destinationRetentionTime, ctx.destinationRetentionUnit, ctx.newSnap, progress_base=ctx.current_pct, progress_span=50, tier_idx=ctx.tier_idx, custom_name=ctx.customName)

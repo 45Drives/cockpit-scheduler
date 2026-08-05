@@ -75,6 +75,32 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    private async resetFailedQuiet(serviceUnit?: string): Promise<void> {
+        try {
+            if (!serviceUnit) {
+                await unwrap(
+                    server.execute(new Command(['systemctl', 'reset-failed'], { superuser: 'try' }), false)
+                );
+                return;
+            }
+
+            const probe = await unwrap(
+                server.execute(
+                    new Command(['systemctl', 'show', serviceUnit, '--property=LoadState', '--value'], { superuser: 'try' }),
+                    false
+                )
+            );
+            const loadState = String(probe.getStdout(false) ?? '').trim().toLowerCase();
+            if (probe.exitStatus === 0 && loadState && loadState !== 'not-found') {
+                await unwrap(
+                    server.execute(new Command(['systemctl', 'reset-failed', serviceUnit], { superuser: 'try' }), false)
+                );
+            }
+        } catch {
+            // best-effort cleanup path
+        }
+    }
+
     private statusCache = new Map<string, { ts: number; st: any }>();
 
     private async fetchStatus(ti: TaskInstanceType): Promise<any> {
@@ -1554,13 +1580,10 @@ export class Scheduler implements SchedulerType {
 
         // === LEGACY path  ===
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+        const serviceUnit = `${fullTaskName}.service`;
 
         console.log(`Running ${fullTaskName}...`);
-        try {
-            await runCommand(['systemctl', 'reset-failed', `${fullTaskName}.service`], { superuser: 'try' });
-        } catch {
-            // best-effort; ignore if it fails
-        }
+        await this.resetFailedQuiet(serviceUnit);
         await runTask(fullTaskName);
 
         const finalStatus = await waitForFinalStatus();
@@ -1828,6 +1851,8 @@ export class Scheduler implements SchedulerType {
     /** Strip the numeric tail off a systemd StatusText so the phase name can be shown next to the percentage. */
     private extractProgressLabel(txt: string): string | null {
         const s = txt
+            // New replication statuses may end with an explicit duplicate "— 29.9%".
+            .replace(/[\s—-]+\d+(?:\.\d+)?\s*%\s*$/, '')
             .replace(/\s*\d+\s*\/\s*\d+\s*\(\s*\d+(?:\.\d+)?\s*%\s*\)\s*$/, '')
             .replace(/\s*\d+(?:\.\d+)?\s*%\s*(?:complete)?\s*$/i, '')
             .replace(/[…\.]+\s*$/, '')
@@ -1926,7 +1951,7 @@ export class Scheduler implements SchedulerType {
             // in-progress retry cycle is halted immediately.
             // These are non-fatal — service may not be loaded if it never ran.
             try { await runCommand(['systemctl', 'stop', serviceName], { superuser: 'try' }); } catch {}
-            try { await runCommand(['systemctl', 'reset-failed', serviceName], { superuser: 'try' }); } catch {}
+            await this.resetFailedQuiet(serviceName);
 
             console.log(`${timerName} and ${serviceName} have been stopped and disabled`);
             taskInstance.schedule.enabled = false;
@@ -2039,7 +2064,7 @@ export class Scheduler implements SchedulerType {
             await runCommand(['rm', '-f', jsonPath], { superuser: 'try' });
 
             // Clean up state and reload systemd
-            await runCommand(['systemctl', 'reset-failed'], { superuser: 'try' }).catch(() => { });
+            await this.resetFailedQuiet();
             await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
 
             taskInstance.schedule.enabled = false;

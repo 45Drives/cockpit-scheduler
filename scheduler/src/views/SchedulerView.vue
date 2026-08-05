@@ -164,7 +164,8 @@
 
     <div v-if="showSettings">
         <component :is="settingsComponent" :showSettings="showSettings" @close="showSettings = false"
-            @update:showSettings="(val) => showSettings = val" @clearBadge="clearErrorBadge" />
+            @update:showSettings="(val) => showSettings = val" @clearBadge="clearErrorBadge"
+            @pollSettingsSaved="(payload) => applyPollingSettings(payload?.statusPollMs, payload?.progressPollMs)" />
     </div>
 
 </template>
@@ -180,6 +181,7 @@ import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { useLiveTaskStatus } from '../composables/useLiveTaskStatus';
+import { runCommand } from '../models/Scheduler';
 
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
 const loading = injectWithCheck(loadingInjectionKey, "loading not provided!");
@@ -211,8 +213,31 @@ function clearErrorBadge() {
     updateCockpitBadge(0);
 }
 
+const MIGRATE_SCRIPT = '/opt/45drives/houston/scheduler/scripts/migrate-retry-settings.py';
+const statusPollMs = ref(5000);
+const progressPollMs = ref(10000);
+
+async function loadPollingSettings() {
+    try {
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--get'], { superuser: 'try' });
+        const parsed = JSON.parse((stdout || '').trim());
+        statusPollMs.value = Math.max(1000, Number(parsed?.ui_status_poll_ms ?? statusPollMs.value));
+        progressPollMs.value = Math.max(1000, Number(parsed?.ui_progress_poll_ms ?? progressPollMs.value));
+    } catch {
+        // Use defaults silently
+    }
+}
+
+function applyPollingSettings(statusMs?: number, progressMs?: number) {
+    statusPollMs.value = Math.max(1000, Number(statusMs ?? statusPollMs.value));
+    progressPollMs.value = Math.max(1000, Number(progressMs ?? progressPollMs.value));
+    globalLive.stop();
+    globalLive.start();
+}
+
 const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
-    intervalMs: 5000, // lighter poll rate — table rows have their own 1.5s polling
+    intervalMs: () => statusPollMs.value,
+    progressIntervalMs: () => progressPollMs.value,
     onFailure: (task, _statusText) => {
         // First failure detection via polling → "retrying" toast
         // Skip if a manual Run Now is handling this task's notifications
@@ -283,7 +308,8 @@ watch(globalLive.statusMap, () => {
     }
 }, { deep: true });
 
-onMounted(() => {
+onMounted(async () => {
+    await loadPollingSettings();
     globalLive.start();
     initHoustonDbusSubscription();
 });
@@ -515,7 +541,7 @@ async function dryRunTaskBtn(task, rowIndex: number) {
         new Notification('Dry Run Started', `Dry run for ${task.name} started. Check logs for results.`, 'info', 6000)
     );
     const row = taskTableRow.value[rowIndex];
-    row?.markManualRun(60_000);
+    row?.markManualRun(60_000, 'dryRun');
     try {
         await myScheduler.dryRunTask(task);
         pushNotification(
@@ -525,6 +551,9 @@ async function dryRunTaskBtn(task, rowIndex: number) {
         pushNotification(
             new Notification('Dry Run Failed', `Dry run for ${task.name} encountered an error.`, 'error', 6000)
         );
+    } finally {
+        row?.clearManualAction(60_000);
+        await updateStatusAndTime(task, rowIndex);
     }
 }
 
@@ -534,7 +563,7 @@ async function resumeTaskBtn(task, rowIndex: number) {
         new Notification('Resume Started', `Attempting to resume ${task.name}…`, 'info', 6000)
     );
     const row = taskTableRow.value[rowIndex];
-    row?.markManualRun(60_000);
+    row?.markManualRun(60_000, 'resume');
     try {
         await myScheduler.resumeTask(task);
         pushNotification(
@@ -544,6 +573,9 @@ async function resumeTaskBtn(task, rowIndex: number) {
         pushNotification(
             new Notification('Resume Failed', `Resume for ${task.name} encountered an error.`, 'error', 6000)
         );
+    } finally {
+        row?.clearManualAction(60_000);
+        await updateStatusAndTime(task, rowIndex);
     }
 }
 

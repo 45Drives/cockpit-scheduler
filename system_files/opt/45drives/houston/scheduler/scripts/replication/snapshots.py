@@ -85,6 +85,26 @@ def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "")
     return False
 
 
+def filter_task_snapshots(snaps, task_name: str, custom_name: str = ""):
+    """Return snapshots that belong to the task.
+
+    Primary match uses TASK_PROP tag. For untagged legacy snapshots, fall back
+    to name-based matching. Tagged snapshots owned by other tasks are never
+    claimed by fallback matching.
+    """
+    filtered = []
+    for snap in (snaps or []):
+        belongs = (hasattr(snap, 'task_tag') and snap.task_tag == task_name)
+
+        if not belongs and not getattr(snap, 'task_tag', None):
+            belongs = is_task_snapshot(snap.name, task_name, custom_name=custom_name)
+
+        if belongs:
+            filtered.append(snap)
+
+    return filtered
+
+
 def get_local_snapshots(filesystem):
     cmd = [
         "zfs",

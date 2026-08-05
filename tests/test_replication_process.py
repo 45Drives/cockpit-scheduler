@@ -78,6 +78,91 @@ def test_progress_holds_at_99_9_when_estimate_is_too_small(monkeypatch):
     assert recorder.messages[-1].endswith("100.0% complete")
 
 
+def test_progress_emits_liveness_notice_when_percent_is_static(monkeypatch):
+    recorder = RecordingNotifier()
+    monkeypatch.setattr(process, "notifier", recorder)
+
+    class StepClock:
+        def __init__(self):
+            self.value = 0.0
+
+        def __call__(self):
+            self.value += 20.0
+            return self.value
+
+    monkeypatch.setattr(process.time, "time", StepClock())
+
+    payload = b"x" * (1024 * 1024 * 5)
+    with tempfile.TemporaryFile() as src, tempfile.TemporaryFile() as dst:
+        src.write(payload)
+        src.seek(0)
+        process.stream_with_progress_stall(src, dst, 10**12, min_interval=0, stall_timeout=0)
+
+    assert any("still active; replaying many small snapshot deltas" in message for message in recorder.messages)
+
+
+def test_progress_liveness_notice_includes_optional_progress_note(monkeypatch):
+    recorder = RecordingNotifier()
+    monkeypatch.setattr(process, "notifier", recorder)
+
+    class StepClock:
+        def __init__(self):
+            self.value = 0.0
+
+        def __call__(self):
+            self.value += 20.0
+            return self.value
+
+    monkeypatch.setattr(process.time, "time", StepClock())
+
+    payload = b"x" * (1024 * 1024 * 5)
+    with tempfile.TemporaryFile() as src, tempfile.TemporaryFile() as dst:
+        src.write(payload)
+        src.seek(0)
+        process.stream_with_progress_stall(
+            src,
+            dst,
+            10**12,
+            min_interval=0,
+            stall_timeout=0,
+            progress_note_getter=lambda: "; snapshots replayed 12/34",
+        )
+
+    assert any("snapshots replayed 12/34" in message for message in recorder.messages)
+
+
+def test_progress_liveness_notice_mentions_receive_finalization_near_99_9(monkeypatch):
+    recorder = RecordingNotifier()
+    monkeypatch.setattr(process, "notifier", recorder)
+
+    class StepClock:
+        def __init__(self):
+            self.value = 0.0
+
+        def __call__(self):
+            self.value += 20.0
+            return self.value
+
+    monkeypatch.setattr(process.time, "time", StepClock())
+    monkeypatch.setenv("ZFS_REP_CHUNK_SIZE", "5")
+
+    # Deliberately overrun estimate in many small chunks so percent caps at 99.9
+    # and liveness notice is emitted while transfer remains active.
+    payload = b"x" * 1000
+    with tempfile.TemporaryFile() as src, tempfile.TemporaryFile() as dst:
+        src.write(payload)
+        src.seek(0)
+        process.stream_with_progress_stall(
+            src,
+            dst,
+            10,
+            min_interval=0,
+            stall_timeout=0,
+        )
+
+    assert any("near stream completion, waiting for receive-side finalization" in message for message in recorder.messages)
+
+
 def test_finalize_wait_emits_heartbeat_then_completes(monkeypatch):
     recorder = RecordingNotifier()
     monkeypatch.setattr(process, "notifier", recorder)

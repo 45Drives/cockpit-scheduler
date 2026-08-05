@@ -113,6 +113,49 @@
                     </div>
                 </div>
 
+                <!-- Polling Settings Section -->
+                <div class="border border-default rounded-md p-4 bg-accent">
+                    <h4 class="text-sm font-semibold text-default mb-3">Live Status Polling</h4>
+                    <p class="text-xs text-muted mb-3">
+                        Control how often the UI refreshes task status and detailed progress.
+                        Higher values reduce system load when many tasks exist.
+                    </p>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-default whitespace-nowrap w-44">Status Poll Interval</label>
+                            <input type="number" v-model.number="pollSettings.status_poll_ms" min="1000" max="600000" step="500"
+                                class="w-28 text-default input-textlike bg-default" />
+                            <span class="text-sm text-muted">ms</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-default whitespace-nowrap w-44">Progress Poll Interval</label>
+                            <input type="number" v-model.number="pollSettings.progress_poll_ms" min="1000" max="600000" step="500"
+                                class="w-28 text-default input-textlike bg-default" />
+                            <span class="text-sm text-muted">ms</span>
+                        </div>
+                        <div class="flex items-center gap-3 mt-2">
+                            <button class="btn btn-primary h-fit" @click="savePollSettings" :disabled="savingPollSettings">
+                                {{ savingPollSettings ? 'Saving...' : 'Save Polling Settings' }}
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            <span class="text-xs text-muted mr-1">Presets:</span>
+                            <button class="btn btn-secondary h-fit text-xs" @click="applyPollingPreset('responsive')" :disabled="savingPollSettings">
+                                Responsive
+                            </button>
+                            <button class="btn btn-secondary h-fit text-xs" @click="applyPollingPreset('balanced')" :disabled="savingPollSettings">
+                                Balanced
+                            </button>
+                            <button class="btn btn-secondary h-fit text-xs" @click="applyPollingPreset('lowLoad')" :disabled="savingPollSettings">
+                                Very Low Load
+                            </button>
+                        </div>
+                        <p class="text-xs text-muted">
+                            Responsive: 5s / 10s. Balanced: 15s / 30s. Very Low Load: 30s / 60s.
+                        </p>
+                    </div>
+                </div>
+
                 <!-- Backup & Restore Section -->
                 <div class="border border-default rounded-md p-4 bg-accent">
                     <h4 class="text-sm font-semibold text-default mb-3">Backup & Restore</h4>
@@ -194,7 +237,7 @@ interface SchedulerSettingsProps {
 }
 
 const props = defineProps<SchedulerSettingsProps>();
-const emit = defineEmits(['close', 'update:showSettings', 'clearBadge']);
+const emit = defineEmits(['close', 'update:showSettings', 'clearBadge', 'pollSettingsSaved']);
 
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");
 const myTaskLog = new TaskExecutionLog([]);
@@ -281,7 +324,7 @@ const confirmationOperating = computed(() => vacuuming.value || vacuumingJournal
 
 onMounted(() => {
     detectAlerts();
-    loadRetrySettings();
+    loadSchedulerSettings();
 });
 
 function closeModal() {
@@ -413,15 +456,26 @@ const retrySettings = ref({
     restart_sec: 5,
     start_limit_burst: 3,
 });
+const pollSettings = ref({
+    status_poll_ms: 5000,
+    progress_poll_ms: 10000,
+});
 const savingRetry = ref(false);
 const migratingRetry = ref(false);
+const savingPollSettings = ref(false);
 const retryMigrateResult = ref('');
 
-async function loadRetrySettings() {
+type PollPreset = 'responsive' | 'balanced' | 'lowLoad';
+
+async function loadSchedulerSettings() {
     try {
         const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--get'], { superuser: 'try' });
         const parsed = JSON.parse(stdout.trim());
         retrySettings.value = { ...retrySettings.value, ...parsed };
+        pollSettings.value = {
+            status_poll_ms: Math.max(1000, Number(parsed?.ui_status_poll_ms ?? pollSettings.value.status_poll_ms)),
+            progress_poll_ms: Math.max(1000, Number(parsed?.ui_progress_poll_ms ?? pollSettings.value.progress_poll_ms)),
+        };
     } catch {
         // Use defaults silently
     }
@@ -442,6 +496,54 @@ async function saveRetrySettings() {
     } finally {
         savingRetry.value = false;
     }
+}
+
+async function savePollSettings() {
+    savingPollSettings.value = true;
+    try {
+        const payload = JSON.stringify({
+            ui_status_poll_ms: Math.max(1000, Number(pollSettings.value.status_poll_ms || 5000)),
+            ui_progress_poll_ms: Math.max(1000, Number(pollSettings.value.progress_poll_ms || 10000)),
+        });
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--set', payload], { superuser: 'require' });
+        const result = JSON.parse(stdout.trim());
+        if (result.success) {
+            pollSettings.value = {
+                status_poll_ms: Number(result?.settings?.ui_status_poll_ms ?? pollSettings.value.status_poll_ms),
+                progress_poll_ms: Number(result?.settings?.ui_progress_poll_ms ?? pollSettings.value.progress_poll_ms),
+            };
+            emit('pollSettingsSaved', {
+                statusPollMs: pollSettings.value.status_poll_ms,
+                progressPollMs: pollSettings.value.progress_poll_ms,
+            });
+            pushNotification(new Notification('Polling Settings Saved', 'Live polling intervals were updated.', 'success', 4000));
+        }
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', e?.message || String(e), 'error', 5000));
+    } finally {
+        savingPollSettings.value = false;
+    }
+}
+
+function applyPollingPreset(preset: PollPreset) {
+    if (preset === 'responsive') {
+        pollSettings.value = {
+            status_poll_ms: 5000,
+            progress_poll_ms: 10000,
+        };
+        return;
+    }
+    if (preset === 'balanced') {
+        pollSettings.value = {
+            status_poll_ms: 15000,
+            progress_poll_ms: 30000,
+        };
+        return;
+    }
+    pollSettings.value = {
+        status_poll_ms: 30000,
+        progress_poll_ms: 60000,
+    };
 }
 
 async function migrateRetrySettings() {

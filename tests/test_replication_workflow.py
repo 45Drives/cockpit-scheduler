@@ -164,3 +164,31 @@ def test_main_routes_unexpected_exception_to_failure_handler(monkeypatch):
     assert len(seen) == 1
     assert isinstance(seen[0][1], RuntimeError)
 
+
+def test_apply_retention_skips_two_phase_progress_when_both_disabled(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.taskName = "task-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "tank/dest"
+    ctx.sourceRetentionTime = 0
+    ctx.sourceRetentionUnit = ""
+    ctx.destinationRetentionTime = 0
+    ctx.destinationRetentionUnit = ""
+    ctx.schedule_data = None
+    ctx.tier_idx = None
+
+    prune_calls = []
+    monkeypatch.setattr(workflow, "prune_snapshots_by_retention", lambda *args, **kwargs: prune_calls.append((args, kwargs)) or 0)
+    monkeypatch.setattr(workflow, "_clear_pending_full_send", lambda task_name: None)
+    monkeypatch.setattr(workflow, "open", lambda *args, **kwargs: io.StringIO(), raising=False)
+
+    messages = []
+    monkeypatch.setattr(workflow.notifier, "notify", lambda message: messages.append(message))
+
+    workflow._apply_retention(ctx)
+
+    assert ctx.current_pct == 100
+    assert prune_calls == []
+    assert any("Retention not configured on source or destination. Skipping pruning. 100% complete" in m for m in messages)
+    assert messages[-1] == "STATUS=ZFS replication task completed. 100% complete"
+
