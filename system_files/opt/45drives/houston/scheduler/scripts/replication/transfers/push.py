@@ -91,6 +91,54 @@ def _start_push_snapshot_replay_monitor(send_name, recv_name, recv_host, recv_ss
     thread.start()
     return (lambda: state["note"]), stop_event, thread
 
+
+def _start_remote_recv_over_ssh(
+    recv_host_user,
+    recv_host,
+    recv_ssh_port,
+    recv_name,
+    force_overwrite,
+    remote_mbuffer_enabled,
+    m_buffer_size,
+    m_buffer_unit,
+    *,
+    stdin,
+    stdout,
+    stderr,
+    universal_newlines=False,
+):
+    if not remote_mbuffer_enabled:
+        recv_args = ["zfs", "recv", "-s"]
+        if force_overwrite:
+            recv_args.append("-F")
+        recv_args.append(recv_name)
+        return ssh_popen_args(
+            recv_host_user,
+            recv_host,
+            recv_ssh_port,
+            recv_args,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            universal_newlines=universal_newlines,
+        )
+
+    recv_q = shlex.quote(recv_name)
+    mbuf_stage = mbuffer_shell_stage(m_buffer_size, m_buffer_unit)
+    recv_cmd = f"{mbuf_stage} | zfs recv -s {'-F ' if force_overwrite else ''}{recv_q}"
+    ssh_cmd = ssh_base_args(recv_host_user, recv_host, recv_ssh_port)
+    ssh_cmd.append(recv_cmd)
+    dbg(f"POPEN ssh (remote mbuffer recv): {_fmt_cmd(ssh_cmd)}")
+    p = subprocess.Popen(
+        ssh_cmd,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        universal_newlines=universal_newlines,
+    )
+    dbg(f"POPEN ssh pid={p.pid}")
+    return p
+
 def send_snapshot_push(
     sendName,
     recvName,
@@ -109,6 +157,18 @@ def send_snapshot_push(
     include_intermediates=None,
 ):
     notifier.notify("STATUS=Preparing ZFS send/recv pipeline…")
+
+    remote_mbuffer_enabled = False
+    if recvHost and transferMethod in ("ssh", "netcat"):
+        remote_mbuffer_enabled = remote_has_command(recvHostUser, recvHost, recvSshPort, "mbuffer")
+        if remote_mbuffer_enabled:
+            msg = f"Remote mbuffer detected on {recvHost}; enabling two-ended buffering."
+            notifier.notify(f"STATUS={msg}")
+            print(msg)
+        else:
+            msg = f"Remote mbuffer not found on {recvHost}; using local-only buffering."
+            notifier.notify(f"STATUS={msg}")
+            print(msg)
 
     send_cmd = build_zfs_send_args(
         sendName,
@@ -130,14 +190,23 @@ def send_snapshot_push(
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
         print(f"CLI command: {send_str} | {recv_flags}")
     elif transferMethod == "netcat":
+        data_port = str(recvDataPort or recvSshPort or "31337")
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
-        print(f"CLI command (sender): {send_str} | nc -l <port>")
-        print(f"CLI command (receiver): nc <host> <port> | {recv_flags}")
+        sender_stage = f"{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)}"
+        if remote_mbuffer_enabled:
+            print(f"CLI command (sender): {sender_stage} | nc {recvHost} {data_port}")
+            print(f"CLI command (receiver): nc -l {data_port} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
+        else:
+            print(f"CLI command (sender): {sender_stage} | nc {recvHost} {data_port}")
+            print(f"CLI command (receiver): nc -l {data_port} | {recv_flags}")
     else:
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
         ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
         ssh_port_flag = f" -p {recvSshPort}" if str(recvSshPort) != "22" else ""
-        print(f"CLI command: {send_str} | ssh{ssh_port_flag} {ssh_target} {recv_flags}")
+        if remote_mbuffer_enabled:
+            print(f"CLI command: {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | ssh{ssh_port_flag} {ssh_target} '{mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}'")
+        else:
+            print(f"CLI command: {send_str} | ssh{ssh_port_flag} {ssh_target} {recv_flags}")
     dbg(f"send_cmd: {send_str}")
 
     total_bytes = estimate_send_size(send_cmd)
@@ -264,11 +333,6 @@ def send_snapshot_push(
             dbg("push SSH: using direct-pipe transfer (pv)")
 
             # Build the remote recv command via SSH
-            flags = ["zfs", "recv", "-s"]
-            if forceOverwrite:
-                flags.append("-F")
-            flags.append(recvName)
-
             # We need mbuffer stdout -> ssh recv.  Build that chain first,
             # then wire process_send -> pv -> mbuffer.
             m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
@@ -300,8 +364,15 @@ def send_snapshot_push(
             mbuf_capture = StreamCapture(process_m_buff.stderr)
             _close_pipe(process_pv.stdout)
 
-            process_remote_recv = ssh_popen_args(
-                recvHostUser, recvHost, recvSshPort, flags,
+            process_remote_recv = _start_remote_recv_over_ssh(
+                recvHostUser,
+                recvHost,
+                recvSshPort,
+                recvName,
+                forceOverwrite,
+                remote_mbuffer_enabled,
+                mBufferSize,
+                mBufferUnit,
                 stdin=process_m_buff.stdout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -409,16 +480,15 @@ def send_snapshot_push(
         # Close parent's copy so EOF propagates from send to mbuffer
         _close_pipe(process_send.stdout)
 
-        flags = ["zfs", "recv", "-s"]
-        if forceOverwrite:
-            flags.append("-F")
-        flags.append(recvName)
-
-        process_remote_recv = ssh_popen_args(
+        process_remote_recv = _start_remote_recv_over_ssh(
             recvHostUser,
             recvHost,
             recvSshPort,
-            flags,
+            recvName,
+            forceOverwrite,
+            remote_mbuffer_enabled,
+            mBufferSize,
+            mBufferUnit,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -535,7 +605,10 @@ def send_snapshot_push(
 
         recv_q = shlex.quote(recvName)
         nc_listen = build_nc_listen_cmd(data_port, recvHostUser, recvHost, ssh_port, bind_address=NC_BIND_ADDRESS)
-        listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
+        if remote_mbuffer_enabled:
+            listen_cmd = f"{nc_listen} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
+        else:
+            listen_cmd = f"{nc_listen} | zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
         ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
         ssh_cmd_listener.append(listen_cmd)
 

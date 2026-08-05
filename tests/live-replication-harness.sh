@@ -20,6 +20,9 @@ Usage:
   live-replication-harness.sh clear-one-shots <task_name>
   live-replication-harness.sh token-local <dest_dataset>
   live-replication-harness.sh token-remote <dest_dataset> <remote_user> <remote_host> [remote_ssh_port]
+  live-replication-harness.sh remote-mbuffer <remote_user> <remote_host> [remote_ssh_port]
+  live-replication-harness.sh discover-tasks
+  live-replication-harness.sh autotest-all [dry-run|live] [timeout_sec]
   live-replication-harness.sh get-flag <task_name> <dryRun|forceFullSend|resumeOnly>
   live-replication-harness.sh interrupt-main <task_name> [signal]
   live-replication-harness.sh scenario-resume-token-local <task_name> <dest_dataset> [interrupt_after_sec] [token_wait_sec]
@@ -32,6 +35,9 @@ Examples:
   live-replication-harness.sh set-flag TestLocalPush dryRun true
   live-replication-harness.sh scenario-resume-token-local TestLocalPush tank/sharebackup 8 45
   live-replication-harness.sh scenario-resume-token-remote TestRemotePush tank/backup root 192.168.0.1 22 8 45
+  live-replication-harness.sh remote-mbuffer root 192.168.0.1 22
+  live-replication-harness.sh discover-tasks
+  live-replication-harness.sh autotest-all dry-run 900
   live-replication-harness.sh scenario-resume-only-no-token-local TestLocalPush tank/sharebackup 90
   live-replication-harness.sh scenario-force-full-send-clears TestLocalPush 900
 EOF
@@ -45,6 +51,88 @@ unit_for_task() {
 env_file_for_task() {
   local task_name="$1"
   printf '/etc/systemd/system/houston_scheduler_ZfsReplicationTask_%s.env' "$task_name"
+}
+
+list_task_names() {
+  local f base task
+  shopt -s nullglob
+  for f in /etc/systemd/system/houston_scheduler_ZfsReplicationTask_*.env; do
+    base="$(basename "$f")"
+    task="${base#houston_scheduler_ZfsReplicationTask_}"
+    task="${task%.env}"
+    echo "$task"
+  done
+  shopt -u nullglob
+}
+
+env_read_key() {
+  local env_file="$1"
+  local key="$2"
+  if [[ ! -f "$env_file" ]]; then
+    echo ""
+    return 0
+  fi
+
+  awk -F= -v key="$key" '$1==key { v=$2 } END { print v }' "$env_file" | tr -d '\r' | sed 's/[[:space:]]*$//'
+}
+
+join_fs() {
+  local pool="$1"
+  local dataset="$2"
+
+  pool="${pool:-}"
+  dataset="${dataset:-}"
+
+  if [[ -z "$pool" ]]; then
+    echo "$dataset"
+    return 0
+  fi
+  if [[ -z "$dataset" ]]; then
+    echo "$pool"
+    return 0
+  fi
+  if [[ "$dataset" == "$pool" || "$dataset" == "$pool/"* ]]; then
+    echo "$dataset"
+    return 0
+  fi
+  echo "$pool/$dataset"
+}
+
+describe_task_config() {
+  local task_name="$1"
+  local env_file
+  env_file="$(env_file_for_task "$task_name")"
+
+  local direction transfer host user data_port ssh_port src_pool src_ds dst_pool dst_ds src_fs dst_fs
+  direction="$(env_read_key "$env_file" "zfsRepConfig_direction")"
+  transfer="$(env_read_key "$env_file" "zfsRepConfig_sendOptions_transferMethod")"
+  host="$(env_read_key "$env_file" "zfsRepConfig_destDataset_host")"
+  user="$(env_read_key "$env_file" "zfsRepConfig_destDataset_user")"
+  data_port="$(env_read_key "$env_file" "zfsRepConfig_destDataset_port")"
+  ssh_port="$(env_read_key "$env_file" "zfsRepConfig_destDataset_sshPort")"
+  src_pool="$(env_read_key "$env_file" "zfsRepConfig_sourceDataset_pool")"
+  src_ds="$(env_read_key "$env_file" "zfsRepConfig_sourceDataset_dataset")"
+  dst_pool="$(env_read_key "$env_file" "zfsRepConfig_destDataset_pool")"
+  dst_ds="$(env_read_key "$env_file" "zfsRepConfig_destDataset_dataset")"
+
+  direction="${direction:-push}"
+  transfer="${transfer:-ssh}"
+  user="${user:-root}"
+  data_port="${data_port:-22}"
+  ssh_port="${ssh_port:-}"
+  if [[ -z "$ssh_port" ]]; then
+    if [[ "$transfer" == "netcat" ]]; then
+      ssh_port="22"
+    else
+      ssh_port="$data_port"
+    fi
+  fi
+
+  src_fs="$(join_fs "$src_pool" "$src_ds")"
+  dst_fs="$(join_fs "$dst_pool" "$dst_ds")"
+
+  printf 'task=%s direction=%s transfer=%s source=%s destination=%s remote_user=%s remote_host=%s ssh_port=%s data_port=%s\n' \
+    "$task_name" "$direction" "$transfer" "$src_fs" "$dst_fs" "$user" "${host:--}" "$ssh_port" "$data_port"
 }
 
 set_env_flag() {
@@ -296,6 +384,140 @@ cmd_token_remote() {
     "zfs get -H -o value receive_resume_token '$dataset'"
 }
 
+cmd_remote_mbuffer() {
+  local user="$1"
+  local host="$2"
+  local port="${3:-22}"
+
+  if ssh -p "$port" -o BatchMode=yes -o ConnectTimeout=10 "$user@$host" "command -v mbuffer >/dev/null 2>&1"; then
+    echo "PASS: mbuffer is installed on $user@$host"
+    ssh -p "$port" -o BatchMode=yes -o ConnectTimeout=10 "$user@$host" "mbuffer --version 2>&1 | head -1"
+  else
+    echo "FAIL: mbuffer is not installed (or not reachable) on $user@$host" >&2
+    return 1
+  fi
+}
+
+cmd_discover_tasks() {
+  local tasks
+  mapfile -t tasks < <(list_task_names)
+
+  if [[ ${#tasks[@]} -eq 0 ]]; then
+    echo "No ZFS replication task env files found under /etc/systemd/system."
+    return 1
+  fi
+
+  echo "== discovered zfs replication tasks =="
+  for t in "${tasks[@]}"; do
+    describe_task_config "$t"
+  done
+}
+
+cmd_autotest_all() {
+  local mode="${1:-dry-run}"
+  local timeout_sec="${2:-900}"
+  local tasks
+  local pass_count=0
+  local fail_count=0
+  local task
+
+  case "$mode" in
+    dry-run|live) ;;
+    *)
+      echo "error: mode must be dry-run or live" >&2
+      return 1
+      ;;
+  esac
+
+  mapfile -t tasks < <(list_task_names)
+  if [[ ${#tasks[@]} -eq 0 ]]; then
+    echo "No ZFS replication tasks found to test."
+    return 1
+  fi
+
+  echo "== autotest-all mode=$mode timeout=${timeout_sec}s tasks=${#tasks[@]} =="
+
+  for task in "${tasks[@]}"; do
+    local unit env_file transfer host user data_port ssh_port result exec_status
+    unit="$(unit_for_task "$task")"
+    env_file="$(env_file_for_task "$task")"
+
+    transfer="$(env_read_key "$env_file" "zfsRepConfig_sendOptions_transferMethod")"
+    host="$(env_read_key "$env_file" "zfsRepConfig_destDataset_host")"
+    user="$(env_read_key "$env_file" "zfsRepConfig_destDataset_user")"
+    data_port="$(env_read_key "$env_file" "zfsRepConfig_destDataset_port")"
+    ssh_port="$(env_read_key "$env_file" "zfsRepConfig_destDataset_sshPort")"
+
+    transfer="${transfer:-ssh}"
+    user="${user:-root}"
+    data_port="${data_port:-22}"
+    if [[ -z "$ssh_port" ]]; then
+      if [[ "$transfer" == "netcat" ]]; then
+        ssh_port="22"
+      else
+        ssh_port="$data_port"
+      fi
+    fi
+
+    echo
+    echo "== autotest task: $task =="
+    describe_task_config "$task"
+
+    if [[ -n "$host" ]]; then
+      if ! ssh -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 "$user@$host" "true" >/dev/null 2>&1; then
+        echo "FAIL: SSH precheck failed for $user@$host:$ssh_port" >&2
+        fail_count=$((fail_count + 1))
+        continue
+      fi
+
+      if [[ "$transfer" == "netcat" ]]; then
+        if [[ "$data_port" == "22" ]]; then
+          echo "FAIL: netcat transfer uses data port 22; choose a non-22 data port" >&2
+          fail_count=$((fail_count + 1))
+          continue
+        fi
+        if ! cmd_remote_mbuffer "$user" "$host" "$ssh_port"; then
+          echo "WARN: remote mbuffer unavailable; task will fall back to local-only buffering"
+        fi
+      fi
+    fi
+
+    cmd_clear_one_shots "$task"
+    if [[ "$mode" == "dry-run" ]]; then
+      cmd_set_flag "$task" dryRun true
+    fi
+
+    cmd_start "$task"
+
+    if ! wait_for_unit_finished "$unit" "$timeout_sec"; then
+      echo "FAIL: timeout waiting for $unit to finish" >&2
+      cmd_logs "$task" 160 || true
+      fail_count=$((fail_count + 1))
+      continue
+    fi
+
+    result="$(systemctl show "$unit" -p Result --value || true)"
+    exec_status="$(systemctl show "$unit" -p ExecMainStatus --value || true)"
+
+    if [[ "$result" == "success" && "$exec_status" == "0" ]]; then
+      echo "PASS: $task (Result=$result ExecMainStatus=$exec_status)"
+      pass_count=$((pass_count + 1))
+    else
+      echo "FAIL: $task (Result=$result ExecMainStatus=$exec_status)" >&2
+      cmd_logs "$task" 180 || true
+      fail_count=$((fail_count + 1))
+    fi
+  done
+
+  echo
+  echo "== autotest summary =="
+  echo "mode=$mode pass=$pass_count fail=$fail_count total=${#tasks[@]}"
+
+  if (( fail_count > 0 )); then
+    return 1
+  fi
+}
+
 cmd_get_flag() {
   local task_name="$1"
   local flag_name="$2"
@@ -487,6 +709,18 @@ main() {
     token-remote)
       [[ $# -ge 3 && $# -le 4 ]] || { usage; exit 1; }
       cmd_token_remote "$@"
+      ;;
+    remote-mbuffer)
+      [[ $# -ge 2 && $# -le 3 ]] || { usage; exit 1; }
+      cmd_remote_mbuffer "$@"
+      ;;
+    discover-tasks)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      cmd_discover_tasks
+      ;;
+    autotest-all)
+      [[ $# -le 2 ]] || { usage; exit 1; }
+      cmd_autotest_all "$@"
       ;;
     get-flag)
       [[ $# -eq 2 ]] || { usage; exit 1; }

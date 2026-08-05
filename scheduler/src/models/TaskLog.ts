@@ -30,6 +30,27 @@ async function runCommand(
 
 const errorString = (e: any) => e?.message ?? String(e);
 
+function trimToLatestRunBlock(output: string): string {
+    const text = (output || '').replace(/^-- Logs begin at.*\n?/m, '');
+    if (!text) return '';
+
+    const lines = text.split('\n');
+    let startIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i] || '';
+        if (line.includes('Starting Service for ')) {
+            startIdx = i;
+            break;
+        }
+    }
+
+    if (startIdx < 0) {
+        return text;
+    }
+
+    return lines.slice(startIdx).join('\n');
+}
+
 /**
  * Maps formatted template names to the debug log file written by each script.
  * These are the /tmp/ logs that always exist even when the journal is empty.
@@ -149,7 +170,7 @@ export class TaskExecutionLog {
             // --- LEGACY path (system units)
             const showCmd = [
                 'systemctl', 'show', `${unit}.service`,
-                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp',
+                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp,InvocationID',
                 '--no-pager',
             ];
             const showRes = await runCommand(showCmd, { superuser: 'try' });
@@ -173,6 +194,8 @@ export class TaskExecutionLog {
                 kv['InactiveEnterTimestamp'] ||
                 '';
 
+            const invocationId = (kv['InvocationID'] || '').trim();
+
             let output = '';
             const baseLogCmd = [
                 'journalctl', '-q', '--output=cat',
@@ -180,11 +203,24 @@ export class TaskExecutionLog {
                 '--no-pager', '--all',
             ];
 
+            if (invocationId) {
+                try {
+                    const byInvocationCmd = ['journalctl', '-q', '--output=cat', '--no-pager', '--all', `_SYSTEMD_INVOCATION_ID=${invocationId}`];
+                    const logRes = await runCommand(byInvocationCmd, { superuser: 'try' });
+                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                } catch (e) {
+                    const msg = errorString(e);
+                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
+                        console.warn('journalctl (invocation) failed:', msg);
+                    }
+                }
+            }
+
             if (startTime) {
                 const logCmd = [...baseLogCmd, '--since', startTime];
                 try {
                     const logRes = await runCommand(logCmd, { superuser: 'try' });
-                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                    output = trimToLatestRunBlock(logRes.stdout || '');
                 } catch (e) {
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {
@@ -198,7 +234,7 @@ export class TaskExecutionLog {
                 try {
                     const fallbackCmd = [...baseLogCmd, '-n', '200'];
                     const logRes = await runCommand(fallbackCmd, { superuser: 'try' });
-                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                    output = trimToLatestRunBlock(logRes.stdout || '');
                 } catch (e) {
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {

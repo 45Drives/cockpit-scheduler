@@ -175,7 +175,48 @@ What it does:
 What it tests:
 - Resume token existence when destination is remote.
 
-### 3.10 `get-flag <task_name> <dryRun|forceFullSend|resumeOnly>`
+### 3.10 `discover-tasks`
+
+Command:
+
+```bash
+./live-replication-harness.sh discover-tasks
+```
+
+What it does:
+- Scans `/etc/systemd/system/houston_scheduler_ZfsReplicationTask_*.env` and prints each task's discovered direction, transfer method, source/destination dataset, and remote endpoint details.
+
+What it tests:
+- Whether scheduler task configuration can be auto-discovered without manually entering task names, hosts, or datasets.
+
+### 3.11 `autotest-all [dry-run|live] [timeout_sec]`
+
+Command:
+
+```bash
+./live-replication-harness.sh autotest-all
+./live-replication-harness.sh autotest-all dry-run 900
+./live-replication-harness.sh autotest-all live 1800
+```
+
+What it does:
+- Auto-discovers all ZFS replication tasks and runs them sequentially with standardized checks.
+- `dry-run` mode (default): clears one-shots, sets `dryRun=true`, runs each task, and validates success.
+- `live` mode: clears one-shots and runs each task normally.
+
+What it tests:
+- End-to-end service start/finish and result status for every discovered task, without manual per-task input.
+
+Pass criteria:
+- `Result=success`
+- `ExecMainStatus=0`
+
+Fail criteria:
+- SSH precheck failure for remote tasks.
+- Timeout waiting for a task to finish.
+- Non-success systemd result/exit status.
+
+### 3.12 `get-flag <task_name> <dryRun|forceFullSend|resumeOnly>`
 
 Command:
 
@@ -191,7 +232,29 @@ What it does:
 What it tests:
 - Whether one-shot flags auto-clear as expected after task runs.
 
-### 3.11 `interrupt-main <task_name> [signal]`
+### 3.13 `remote-mbuffer <remote_user> <remote_host> [remote_ssh_port]`
+
+Command:
+
+```bash
+./live-replication-harness.sh remote-mbuffer "$REMOTE_USER" "$REMOTE_HOST" "$REMOTE_PORT"
+```
+
+What it does:
+- Verifies whether `mbuffer` exists on the remote destination/source host and prints its version line.
+
+What it tests:
+- Whether two-ended mbuffer mode can activate for remote SSH/netcat transfers.
+
+Pass signals:
+- `PASS: mbuffer is installed ...`
+- Version line such as `mbuffer version R20231216`
+
+Fail signals:
+- `FAIL: mbuffer is not installed ...`
+- Task will still run with local-only buffering fallback.
+
+### 3.14 `interrupt-main <task_name> [signal]`
 
 Command:
 
@@ -318,7 +381,26 @@ sleep 8
 
 If still no token, increase source change size and try again.
 
-## 6) Retry policy checks
+## 6) Two-ended mbuffer validation
+
+Remote availability check:
+
+```bash
+./live-replication-harness.sh remote-mbuffer "$REMOTE_USER" "$REMOTE_HOST" "$REMOTE_PORT"
+```
+
+During task runs, check for one of these status lines:
+
+- `Remote mbuffer detected ... enabling two-ended buffering`
+- `Remote mbuffer not found ... using local-only buffering`
+
+Example log filter:
+
+```bash
+./live-replication-harness.sh logs "$TASK" 400 | grep -E 'Remote mbuffer|CLI command|netcat|mbuffer'
+```
+
+## 7) Retry policy checks
 
 Max attempts includes the first run.
 
@@ -332,7 +414,7 @@ systemctl cat "$UNIT" | grep -E 'StartLimitBurst|Restart='
 systemctl show "$UNIT" -p StartLimitBurst -p NRestarts -p Result -p ActiveState -p SubState
 ```
 
-## 7) Distinguish systemd retry from internal script retry
+## 8) Distinguish systemd retry from internal script retry
 
 ```bash
 journalctl -u "$UNIT" -n 250 --no-pager | grep -E 'Scheduled restart job|Start request repeated too quickly|dataset is busy|retrying in'
@@ -342,7 +424,7 @@ Interpretation:
 - `Scheduled restart job` indicates systemd restart cycle.
 - `dataset is busy ... retrying in` indicates internal script retry logic.
 
-## 8) Cleanup and reset
+## 9) Cleanup and reset
 
 ```bash
 systemctl stop "$UNIT" || true
@@ -359,10 +441,13 @@ zfs get -H -o value receive_resume_token "$DEST"
 
 Expected after clear: `-`
 
-## 9) Suggested execution order (full suite)
+## 10) Suggested execution order (full suite)
 
 ```bash
 ./live-replication-harness.sh preflight
+./live-replication-harness.sh discover-tasks
+./live-replication-harness.sh autotest-all dry-run 900
+./live-replication-harness.sh remote-mbuffer "$REMOTE_USER" "$REMOTE_HOST" "$REMOTE_PORT"
 ./live-replication-harness.sh clear-one-shots "$TASK"
 ./live-replication-harness.sh scenario-resume-token-local "$TASK" "$DEST" 25 60
 ./live-replication-harness.sh scenario-resume-only-no-token-local "$TASK" "$DEST" 90

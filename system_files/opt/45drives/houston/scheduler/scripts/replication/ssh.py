@@ -31,6 +31,37 @@ def ssh_base_args(user, host, port):
     return args
 
 
+_REMOTE_COMMAND_CACHE = {}
+
+
+def remote_has_command(user, host, port, command_name, timeout=10):
+    """Return True when command_name exists on the remote host via SSH."""
+    if not user or not host or not command_name:
+        return False
+
+    key = (str(user), str(host), str(port), str(command_name))
+    if key in _REMOTE_COMMAND_CACHE:
+        return _REMOTE_COMMAND_CACHE[key]
+
+    check = f"command -v {shlex.quote(str(command_name))} >/dev/null 2>&1"
+    try:
+        p = ssh_run_args(
+            user,
+            host,
+            port,
+            ["sh", "-lc", check],
+            capture_output=False,
+            check=False,
+            timeout=timeout,
+        )
+        ok = p.returncode == 0
+    except Exception:
+        ok = False
+
+    _REMOTE_COMMAND_CACHE[key] = ok
+    return ok
+
+
 def ssh_run_args(user, host, port, args, *, capture_output=True, check=False, text=False, timeout=None):
     ssh_cmd = ["ssh"] + SSH_BASE_OPTS
     if str(port) != "22":

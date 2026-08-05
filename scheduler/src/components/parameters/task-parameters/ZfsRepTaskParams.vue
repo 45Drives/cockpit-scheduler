@@ -493,9 +493,12 @@
                 Replicate every snapshot created since the last common snapshot. Disable to send only the newest
                 snapshot state.
             </p>
-            <p v-if="useExistingDest && includeIntermediatesApplicability === 'not-applicable'" class="text-xs text-yellow-500">
+            <p v-if="useExistingDest && includeIntermediatesApplicability === 'no-common-base'" class="text-xs text-yellow-500">
                 No common base detected for this destination right now, so this option will not affect the current run.
                 It will apply automatically once a common snapshot exists.
+            </p>
+            <p v-if="useExistingDest && includeIntermediatesApplicability === 'empty-destination'" class="text-xs text-yellow-500">
+                Destination has no task snapshots yet, so there is no incremental chain for intermediate snapshots to apply to on this run.
             </p>
             <p class="mt-1 text-xs text-muted">
                 Encryption note: for recursive hierarchies with encrypted datasets, choose an explicit encryption
@@ -700,7 +703,14 @@ const netCatPortError = ref(false);
 const errorList = inject<Ref<string[]>>('errors')!;
 
 const sshReady = ref(false);
-const includeIntermediatesApplicability = ref<'unknown' | 'applicable' | 'not-applicable'>('unknown');
+const includeIntermediatesApplicability = ref<'unknown' | 'applicable' | 'no-common-base' | 'empty-destination'>('unknown');
+
+const canEvaluateIncludeIntermediates = computed(() => {
+    if (!useExistingDest.value) return false;
+    if (!sourcePool.value || !sourceDataset.value || !destPool.value || !destDataset.value) return false;
+    if (isPull.value && !destHost.value) return false;
+    return true;
+});
 
 const showRecursiveHistoryRecommendation = computed(() => {
     return sendRecursive.value && !includeIntermediateSnapshots.value;
@@ -763,10 +773,7 @@ async function refreshDestPoolData() {
 
 watch(useExistingDest, async (on) => {
     makeNewDestDataset.value = !on;
-    if (on) {
-        if (destPool.value) await getTargetDatasets();
-        void checkDestDatasetContents();
-    } else {
+    if (!on) {
         includeIntermediatesApplicability.value = 'unknown';
         allowOverwrite.value = false;
         resumeFailAllowOverwrite.value = false;
@@ -775,6 +782,35 @@ watch(useExistingDest, async (on) => {
         destDatasetErrorTag.value = false;
     }
 });
+
+watch(
+    [
+        useExistingDest,
+        canEvaluateIncludeIntermediates,
+        sourcePool,
+        sourceDataset,
+        destPool,
+        destDataset,
+        destHost,
+        destUser,
+        destPort,
+        transferMethod,
+        directionSwitched,
+        useCustomName,
+        customName,
+    ],
+    async () => {
+        if (!useExistingDest.value) {
+            includeIntermediatesApplicability.value = 'unknown';
+            return;
+        }
+        if (!canEvaluateIncludeIntermediates.value) {
+            includeIntermediatesApplicability.value = 'unknown';
+            return;
+        }
+        await checkDestDatasetContents();
+    }
+);
 
 watch([useExistingDest, destDatasets], () => {
     if (useExistingDest.value && destDataset.value && !doesItExist(destDataset.value, destDatasets.value)) {
@@ -1244,7 +1280,7 @@ async function checkDestDatasetContents() {
         }
 
         if (!dstSnaps.length) {
-            includeIntermediatesApplicability.value = 'not-applicable';
+            includeIntermediatesApplicability.value = 'empty-destination';
             destDatasetErrorTag.value = false;
             return;
         }
@@ -1252,7 +1288,7 @@ async function checkDestDatasetContents() {
         const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
 
         if (!common) {
-            includeIntermediatesApplicability.value = 'not-applicable';
+            includeIntermediatesApplicability.value = 'no-common-base';
             if (allowOverwrite.value) {
                 destDatasetErrorTag.value = false;
                 return;

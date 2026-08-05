@@ -84,6 +84,43 @@ def _start_pull_snapshot_replay_monitor(remote_snap_name, local_recv_fs, remote_
     thread.start()
     return (lambda: state["note"]), stop_event, thread
 
+
+def _start_remote_send_over_ssh(
+    remote_user,
+    remote_host,
+    remote_ssh_port,
+    remote_send_args,
+    remote_mbuffer_enabled,
+    m_buffer_size,
+    m_buffer_unit,
+):
+    if not remote_mbuffer_enabled:
+        return ssh_popen_args(
+            remote_user,
+            remote_host,
+            remote_ssh_port,
+            remote_send_args,
+            stdin=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=False,
+        )
+
+    remote_send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
+    remote_cmd = f"{remote_send_str} | {mbuffer_shell_stage(m_buffer_size, m_buffer_unit)}"
+    ssh_cmd = ssh_base_args(remote_user, remote_host, remote_ssh_port)
+    ssh_cmd.append(remote_cmd)
+    dbg(f"POPEN ssh (remote mbuffer send): {_fmt_cmd(ssh_cmd)}")
+    p = subprocess.Popen(
+        ssh_cmd,
+        stdin=None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=False,
+    )
+    dbg(f"POPEN ssh pid={p.pid}")
+    return p
+
 def send_snapshot_pull(
     remoteSnapName,
     localRecvFs,
@@ -105,6 +142,18 @@ def send_snapshot_pull(
 
     if not remoteHost:
         raise RuntimeError("Pull replication requires a remote host.")
+
+    remote_mbuffer_enabled = False
+    if transferMethod in ("ssh", "netcat"):
+        remote_mbuffer_enabled = remote_has_command(remoteUser, remoteHost, remoteSshPort, "mbuffer")
+        if remote_mbuffer_enabled:
+            msg = f"Remote mbuffer detected on {remoteHost}; enabling two-ended buffering."
+            notifier.notify(f"STATUS={msg}")
+            print(msg)
+        else:
+            msg = f"Remote mbuffer not found on {remoteHost}; using local-only buffering."
+            notifier.notify(f"STATUS={msg}")
+            print(msg)
 
     remote_send_args = build_zfs_send_args(
         remoteSnapName,
@@ -142,10 +191,17 @@ def send_snapshot_pull(
     ssh_port_flag = f" -p {remoteSshPort}" if str(remoteSshPort) != "22" else ""
     if transferMethod == "netcat":
         data_port = str(recvDataPort or remoteSshPort or "31337")
-        print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | nc -l {data_port}'")
-        print(f"CLI command (dest):   nc {remoteHost} {data_port} | {recv_flags}")
+        local_recv_stage = f"nc {remoteHost} {data_port} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}"
+        if remote_mbuffer_enabled:
+            print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | nc -l {data_port}'")
+        else:
+            print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | nc -l {data_port}'")
+        print(f"CLI command (dest, local receiver):   {local_recv_stage}")
     else:
-        print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} {send_str} | {recv_flags}")
+        if remote_mbuffer_enabled:
+            print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)}' | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
+        else:
+            print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} {send_str} | {recv_flags}")
     dbg(f"send_cmd: {send_str}")
 
     if transferMethod == "netcat":
@@ -157,7 +213,10 @@ def send_snapshot_pull(
         # Build the remote command: zfs send | nc -l <port>
         remote_send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
         nc_listen = build_nc_listen_cmd(data_port, remoteUser, remoteHost, ssh_port, bind_address=NC_BIND_ADDRESS, send_only=True)
-        remote_cmd = f"{remote_send_str} | {nc_listen}"
+        if remote_mbuffer_enabled:
+            remote_cmd = f"{remote_send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {nc_listen}"
+        else:
+            remote_cmd = f"{remote_send_str} | {nc_listen}"
         ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
         ssh_cmd_sender.append(remote_cmd)
 
@@ -339,15 +398,14 @@ def send_snapshot_pull(
         return
 
     # SSH transfer (default)
-    process_remote_send = ssh_popen_args(
+    process_remote_send = _start_remote_send_over_ssh(
         remoteUser,
         remoteHost,
         remoteSshPort,
         remote_send_args,
-        stdin=None,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=False,
+        remote_mbuffer_enabled,
+        mBufferSize,
+        mBufferUnit,
     )
 
     # --- Direct-pipe path: SSH stdout -> pv -> mbuffer -> zfs recv (no Python copy) ---
