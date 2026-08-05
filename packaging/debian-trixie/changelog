@@ -1,3 +1,11 @@
+cockpit-scheduler (1.7.1-1trixie) trixie; urgency=medium
+
+  * Testing package with new replication improvements - script structure, status
+    output, option labels/toggles, etc. as well as fixing resume token output and
+    retry logic
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Aug 2026 09:18:14 -0300
+
 cockpit-scheduler (1.7.0-1trixie) trixie; urgency=medium
 
   * Testing package with new replication improvements - script structure, status
