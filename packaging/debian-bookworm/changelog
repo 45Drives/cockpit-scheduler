@@ -1,3 +1,10 @@
+cockpit-scheduler (1.7.1-2bookworm) bookworm; urgency=medium
+
+  * Updates log outputs, adds mbuffer to both send/recv usage in all methods, updates
+    test harness
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 05 Aug 2026 11:37:29 -0300
+
 cockpit-scheduler (1.7.1-1bookworm) bookworm; urgency=medium
 
   * Testing package with new replication improvements - script structure, status
