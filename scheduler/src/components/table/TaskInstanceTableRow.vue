@@ -83,7 +83,7 @@
 					Stop Now
 					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button v-else-if="isFailed" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+				<button v-else-if="isRetryingFailure" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Stop Retries
 					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
@@ -330,6 +330,10 @@ watch(
 const isCompleted = computed(() => liveIsCompleted(taskInstance.value));
 const isFailed = computed(() => liveIsFailed(taskInstance.value));
 const isInactive = computed(() => liveIsInactive(taskInstance.value));
+const isRetryingFailure = computed(() => {
+	const s = (statusText.value || '').toLowerCase();
+	return s.includes('failed') && s.includes('restarting');
+});
 
 // Progress tracking (separate from status)
 const progress = ref<number | null>(null);

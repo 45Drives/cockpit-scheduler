@@ -16,6 +16,16 @@ RETRY_DEFAULTS = {
 }
 
 
+def desired_restart_policy(retry_settings):
+    """Return systemd Restart policy for the given retry settings.
+
+    start_limit_burst is total attempts including the initial run.
+    Therefore, burst=1 means no retry attempt should happen.
+    """
+    burst = int(retry_settings.get("start_limit_burst", RETRY_DEFAULTS["start_limit_burst"]))
+    return "no" if burst <= 1 else "on-failure"
+
+
 def get_retry_settings():
     """Read retry settings from scheduler.conf, falling back to defaults.
     StartLimitIntervalSec is auto-calculated to always be large enough."""
@@ -223,6 +233,23 @@ def create_task(template_name, script_path, param_env_path):
     service_template_content = service_template_content.replace("{restart_sec}", str(retry["restart_sec"]))
     service_template_content = service_template_content.replace("{start_limit_burst}", str(retry["start_limit_burst"]))
     service_template_content = service_template_content.replace("{start_limit_interval_sec}", str(retry["start_limit_interval_sec"]))
+
+    restart_policy = desired_restart_policy(retry)
+    (service_template_content, restart_replacements) = re.subn(
+        r"^Restart=.*$",
+        f"Restart={restart_policy}",
+        service_template_content,
+        flags=re.MULTILINE,
+    )
+    if restart_replacements == 0:
+        (service_template_content, inserted) = re.subn(
+            r"^RestartSec=.*$",
+            f"Restart={restart_policy}\n\\g<0>",
+            service_template_content,
+            flags=re.MULTILINE,
+        )
+        if inserted == 0:
+            service_template_content = service_template_content.rstrip("\n") + f"\nRestart={restart_policy}\n"
 
     locked_exec = (
         "/bin/sh -c '"

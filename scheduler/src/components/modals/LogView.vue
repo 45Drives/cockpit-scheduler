@@ -85,10 +85,10 @@
                  
                     <div v-if="!loadingLogs" class="bg-plugin-header p-4 rounded-lg mt-1">
                         <ul v-if="thisLogEntry !== undefined" ref="logContainer" role="list"
-                            class="divide-y divide-default h-96 overflow-y-scroll">
+                            class="divide-y divide-default h-96 overflow-y-scroll overflow-x-hidden">
                             <li v-if="!viewMoreLogs && !loadingMoreLogs"
                                 v-for="line, idx in (thisLogEntry.output).split('\n')" :key="idx"
-                                class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
+                                class="m-1 block text-sm leading-6 text-default whitespace-pre-wrap break-all" :class="logColor(line)">
                                 {{ line }}
                             </li>
                             <li v-if="viewMoreLogs && !loadingMoreLogs"
@@ -97,7 +97,7 @@
                             </li>
                             <li v-if="viewMoreLogs && !loadingMoreLogs"
                                 v-for="line, idx in allLogsForThisTask.split('\n')" :key="idx"
-                                class="m-1 block text-sm leading-6 text-default" :class="logColor(line)">
+                                class="m-1 block text-sm leading-6 text-default whitespace-pre-wrap break-all" :class="logColor(line)">
                                 {{ line }}
                             </li>
                             <!-- <li v-if="viewMoreLogs && !loadingMoreLogs"

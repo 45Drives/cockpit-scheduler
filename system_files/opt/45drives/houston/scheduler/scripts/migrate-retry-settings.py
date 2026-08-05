@@ -33,6 +33,16 @@ DEFAULTS = {
 }
 
 
+def desired_restart_policy(settings):
+    """Return service Restart policy from retry settings.
+
+    start_limit_burst counts total attempts including the first run.
+    So a value of 1 means no retry attempt should be made.
+    """
+    burst = int(settings.get("start_limit_burst", DEFAULTS["start_limit_burst"]))
+    return "no" if burst <= 1 else "on-failure"
+
+
 def read_config():
     """Read retry settings from scheduler.conf, falling back to defaults.
     StartLimitIntervalSec is auto-calculated."""
@@ -116,6 +126,26 @@ def patch_service_file(path, settings):
         content,
         flags=re.MULTILINE,
     )
+
+    # Patch Restart policy based on max attempts.
+    restart_policy = desired_restart_policy(settings)
+    (content, restart_replacements) = re.subn(
+        r"^Restart=.*$",
+        f"Restart={restart_policy}",
+        content,
+        flags=re.MULTILINE,
+    )
+    if restart_replacements == 0:
+        # If the line is missing for any reason, inject it before RestartSec.
+        (content, inserted) = re.subn(
+            r"^RestartSec=.*$",
+            f"Restart={restart_policy}\n\\g<0>",
+            content,
+            flags=re.MULTILINE,
+        )
+        if inserted == 0:
+            # Fallback: append to end of file.
+            content = content.rstrip("\n") + f"\nRestart={restart_policy}\n"
 
     if content != original:
         with open(path, "w") as f:

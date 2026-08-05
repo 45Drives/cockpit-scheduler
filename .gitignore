@@ -37,3 +37,4 @@ packaging/cloud-creds.env
 *.pyc
 *.bak
 tests/*.txt
+!tests/live-replication-runbook.md

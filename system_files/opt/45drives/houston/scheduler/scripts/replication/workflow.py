@@ -50,6 +50,18 @@ from .transfers import (
 )
 
 
+def _persist_lastrun(task_name):
+    """Persist a last-run marker used by UI fallback status rendering."""
+    if not task_name:
+        return
+    try:
+        lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{task_name}.lastrun'
+        with open(lastrun_path, 'w') as f:
+            f.write(str(int(time.time())))
+    except Exception as e:
+        dbg(f'WARNING: failed to write lastrun file: {e}')
+
+
 def _initialize_run(ctx: ReplicationRun):
     notifier.notify('STATUS=Starting ZFS replication task…')
     notifier.notify('READY=1')
@@ -178,6 +190,9 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
             if not _resume_token:
                 print('RESUME ONLY mode: no resume token found. Nothing to resume.')
                 print('The previous transfer either completed successfully or was never started.')
+                print('Resume token is only created if a resumable receive was interrupted after data started flowing.')
+                notifier.notify('STATUS=Resume failed: no resume token found. The previous transfer likely completed, never started, or was interrupted before receive began.')
+                _persist_lastrun(ctx.taskName)
                 sys.exit(0)
             print(f'Resume token found on {local_target_fs}. Resuming transfer…')
             notifier.notify(f'STATUS=Resume token found. Resuming transfer to {local_target_fs}…')
@@ -185,10 +200,12 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
             if ok:
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
+                _persist_lastrun(ctx.taskName)
                 sys.exit(0)
             else:
                 print(f'Resume transfer failed: {err}')
                 notifier.notify(f'STATUS=Resume transfer failed: {err}')
+                _persist_lastrun(ctx.taskName)
                 sys.exit(1)
         dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
         dbg(f'remoteUser={ctx.remoteUser} remoteHost={ctx.remoteHost} sshPort={ctx.sshPort}')
@@ -225,6 +242,9 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
             if not _resume_token:
                 print('RESUME ONLY mode: no resume token found. Nothing to resume.')
                 print('The previous transfer either completed successfully or was never started.')
+                print('Resume token is only created if a resumable receive was interrupted after data started flowing.')
+                notifier.notify('STATUS=Resume failed: no resume token found. The previous transfer likely completed, never started, or was interrupted before receive began.')
+                _persist_lastrun(ctx.taskName)
                 sys.exit(0)
             print(f'Resume token found on {target_fs}. Resuming transfer…')
             notifier.notify(f'STATUS=Resume token found. Resuming transfer to {target_fs}…')
@@ -232,10 +252,12 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
             if ok:
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
+                _persist_lastrun(ctx.taskName)
                 sys.exit(0)
             else:
                 print(f'Resume transfer failed: {err}')
                 notifier.notify(f'STATUS=Resume transfer failed: {err}')
+                _persist_lastrun(ctx.taskName)
                 sys.exit(1)
         if ctx.remoteHost:
             dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")

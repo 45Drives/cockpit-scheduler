@@ -296,7 +296,7 @@ export class Scheduler implements SchedulerType {
             const { stdout, stderr, exitStatus } = await runCommand(
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,MergedUnit',
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit',
                 ],
                 { superuser: 'try' }
             );
@@ -378,7 +378,7 @@ export class Scheduler implements SchedulerType {
         // But for safety with very large sets, chunk at 200 units.
         const CHUNK_SIZE = 200;
         const timerProps = 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit';
-        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,MergedUnit';
+        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit';
 
         // Parse multi-unit `systemctl show` output — units separated by blank lines
         const parseMultiShow = (raw: string): string[] => {
@@ -1701,7 +1701,7 @@ export class Scheduler implements SchedulerType {
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
                     '--property',
-                    'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,MergedUnit',
+                    'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,StartLimitBurst,NRestarts,MergedUnit',
                 ],
                 { superuser: 'try' }
             );
@@ -1729,6 +1729,13 @@ export class Scheduler implements SchedulerType {
             if (i > 0) m.set(line.slice(0, i), line.slice(i + 1));
         }
 
+        const intOrUndefined = (k: string): number | undefined => {
+            const v = m.get(k);
+            if (v == null || v === '') return undefined;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : undefined;
+        };
+
         const num = (k: string) => {
             const v = m.get(k);
             const n = v ? Number(v) : NaN;
@@ -1753,6 +1760,8 @@ export class Scheduler implements SchedulerType {
             active: m.get('ActiveState') || '',
             sub: m.get('SubState') || '',
             result: m.get('Result') || '',
+            startLimitBurst: intOrUndefined('StartLimitBurst'),
+            nRestarts: intOrUndefined('NRestarts'),
             // timers
             lastTriggerUSec: ts('LastTriggerUSec', 'LastTrigger'),
             nextElapseUSec: num('NextElapseUSecRealtime'),
@@ -1780,7 +1789,13 @@ export class Scheduler implements SchedulerType {
 
                 if (s.active === 'active' && s.sub === 'waiting') return 'Active (Pending)';
                 if (s.active === 'active' && s.sub === 'running') return 'Active (Running)';
-                if (s.active === 'activating' && s.sub === 'auto-restart') return 'Failed (Restarting)';
+                if (s.active === 'activating' && s.sub === 'auto-restart') {
+                    // StartLimitBurst=1 means no retry attempt beyond the first run.
+                    if (typeof s.startLimitBurst === 'number' && s.startLimitBurst <= 1) {
+                        return 'Failed';
+                    }
+                    return 'Failed (Restarting)';
+                }
 
                 if (s.active === 'inactive' && s.sub === 'dead') {
                     // Result=success is systemd's default for never-run units

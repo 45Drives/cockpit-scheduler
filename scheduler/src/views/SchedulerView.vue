@@ -238,17 +238,22 @@ function applyPollingSettings(statusMs?: number, progressMs?: number) {
 const globalLive = useLiveTaskStatus(taskInstances, myScheduler, myTaskLog, {
     intervalMs: () => statusPollMs.value,
     progressIntervalMs: () => progressPollMs.value,
-    onFailure: (task, _statusText) => {
-        // First failure detection via polling → "retrying" toast
+    onFailure: (task, statusText) => {
+        // First failure detection via polling.
+        // Only show "Retrying" when the status explicitly indicates an active
+        // restart cycle.
         // Skip if a manual Run Now is handling this task's notifications
         if (task?.name && task.name === manualRunTaskName.value) return;
         badgeManuallyCleared.value = false;
         const name = task?.name ?? 'Unknown task';
+        const retrying = String(statusText || '').toLowerCase().includes('restarting');
         pushNotification(
             new Notification(
-                'Task Failed — Retrying',
-                `Task "${name}" has failed. Retrying...`,
-                'warning',
+                retrying ? 'Task Failed — Retrying' : 'Task Failed',
+                retrying
+                    ? `Task "${name}" has failed. Retrying...`
+                    : `Task "${name}" has failed.`,
+                retrying ? 'warning' : 'error',
                 8000
             )
         );
@@ -565,10 +570,31 @@ async function resumeTaskBtn(task, rowIndex: number) {
     const row = taskTableRow.value[rowIndex];
     row?.markManualRun(60_000, 'resume');
     try {
-        await myScheduler.resumeTask(task);
-        pushNotification(
-            new Notification('Resume Complete', `Resume for ${task.name} finished. View logs for details.`, 'success', 6000)
-        );
+        const finalStatus = await myScheduler.resumeTask(task);
+        const latestEntry = await myTaskLog.getLatestEntryFor(task);
+        const latestOutput = (latestEntry && typeof latestEntry === 'object')
+            ? String((latestEntry as any).output || '')
+            : '';
+        const noResumeToken = /no resume token found|nothing to resume/i.test(latestOutput);
+
+        if (noResumeToken) {
+            pushNotification(
+                new Notification(
+                    'Resume Failed No resume token found',
+                    `Resume for ${task.name} failed: no resume token was found. Likely causes: previous transfer completed, transfer never started, or interruption happened before receive began.`,
+                    'error',
+                    9000,
+                )
+            );
+        } else if (String(finalStatus || '').toLowerCase().includes('fail')) {
+            pushNotification(
+                new Notification('Resume Failed', `Resume for ${task.name} encountered an error.`, 'error', 6000)
+            );
+        } else {
+            pushNotification(
+                new Notification('Resume Complete', `Resume for ${task.name} finished. View logs for details.`, 'success', 6000)
+            );
+        }
     } catch {
         pushNotification(
             new Notification('Resume Failed', `Resume for ${task.name} encountered an error.`, 'error', 6000)
