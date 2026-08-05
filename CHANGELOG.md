@@ -1,3 +1,3 @@
-## task scheduler 1.6.18-3
+## task scheduler 1.7.0-1
 
-* Fixes more bugs
+* Testing package with new replication improvements - script structure, status output, option labels/toggles, etc.
