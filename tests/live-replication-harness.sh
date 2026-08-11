@@ -121,7 +121,7 @@ describe_task_config() {
   data_port="${data_port:-22}"
   ssh_port="${ssh_port:-}"
   if [[ -z "$ssh_port" ]]; then
-    if [[ "$transfer" == "netcat" ]]; then
+    if [[ "$transfer" == "netcat" || "$transfer" == "mbuffer" ]]; then
       ssh_port="22"
     else
       ssh_port="$data_port"
@@ -452,7 +452,7 @@ cmd_autotest_all() {
     user="${user:-root}"
     data_port="${data_port:-22}"
     if [[ -z "$ssh_port" ]]; then
-      if [[ "$transfer" == "netcat" ]]; then
+      if [[ "$transfer" == "netcat" || "$transfer" == "mbuffer" ]]; then
         ssh_port="22"
       else
         ssh_port="$data_port"
@@ -470,9 +470,9 @@ cmd_autotest_all() {
         continue
       fi
 
-      if [[ "$transfer" == "netcat" ]]; then
+      if [[ "$transfer" == "netcat" || "$transfer" == "mbuffer" ]]; then
         if [[ "$data_port" == "22" ]]; then
-          echo "FAIL: netcat transfer uses data port 22; choose a non-22 data port" >&2
+          echo "FAIL: netcat/mbuffer transfer uses data port 22; choose a non-22 data port" >&2
           fail_count=$((fail_count + 1))
           continue
         fi

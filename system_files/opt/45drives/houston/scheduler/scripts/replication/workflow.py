@@ -10,8 +10,7 @@ import sys
 import time
 import traceback
 
-from .config import as_bool, clamp_mbuffer, get_dest_ports, join_zfs_path
-from .constants import MBUFFER_BLOCK_SIZE
+from .config import as_bool, clamp_mbuffer, clamp_mbuffer_block, get_dest_ports, join_zfs_path
 from .context import notifier
 from .logging_utils import dbg, dbg_env, dbg_kv, safe_print
 from .models import ReplicationRun
@@ -121,6 +120,10 @@ def _initialize_run(ctx: ReplicationRun):
     ctx.mBufferSize = os.environ.get('zfsRepConfig_sendOptions_mbufferSize', '1')
     ctx.mBufferUnit = os.environ.get('zfsRepConfig_sendOptions_mbufferUnit', 'G')
     (ctx.mBufferSize, ctx.mBufferUnit) = clamp_mbuffer(ctx.mBufferSize, ctx.mBufferUnit)
+    ctx.mBufferBlockSize = os.environ.get('zfsRepConfig_sendOptions_mbufferBlockSize', '256')
+    ctx.mBufferBlockUnit = os.environ.get('zfsRepConfig_sendOptions_mbufferBlockUnit', 'k')
+    (ctx.mBufferBlockSize, ctx.mBufferBlockUnit) = clamp_mbuffer_block(ctx.mBufferBlockSize, ctx.mBufferBlockUnit)
+    ctx.mBufferCallbackHost = os.environ.get('zfsRepConfig_sendOptions_mbufferCallbackHost', '').strip()
     ctx.sourceRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionTime', 0)
     ctx.sourceRetentionUnit = os.environ.get('zfsRepConfig_snapshotRetention_source_retentionUnit', '')
     ctx.destinationRetentionTime = os.environ.get('zfsRepConfig_snapshotRetention_destination_retentionTime', 0)
@@ -168,7 +171,7 @@ def _initialize_run(ctx: ReplicationRun):
     dstDs = os.environ.get('zfsRepConfig_destDataset_dataset', '')
     ctx.sourceFilesystem = join_zfs_path(srcPool, srcDs)
     ctx.destFilesystem = join_zfs_path(dstPool, dstDs)
-    dbg_kv('config', {'direction': ctx.direction, 'transferMethod': ctx.transferMethod, 'sshPort': ctx.sshPort, 'dataPort': ctx.dataPort, 'remoteUser': ctx.remoteUser, 'remoteHost': ctx.remoteHost, 'sourceFilesystem': ctx.sourceFilesystem, 'destFilesystem': ctx.destFilesystem, 'recursive': ctx.isRecursiveSnap, 'compressed': ctx.isCompressed, 'raw': ctx.isRaw, 'includeIntermediates': ctx.includeIntermediateSnapshots, 'allowOverwrite': ctx.allowOverwrite, 'useExistingDest': ctx.useExistingDest, 'mbuffer': f'{ctx.mBufferSize}{ctx.mBufferUnit}', 'mbuffer_block': MBUFFER_BLOCK_SIZE, 'ssh_cipher': _SSH_CIPHER or '(system default)'})
+    dbg_kv('config', {'direction': ctx.direction, 'transferMethod': ctx.transferMethod, 'sshPort': ctx.sshPort, 'dataPort': ctx.dataPort, 'remoteUser': ctx.remoteUser, 'remoteHost': ctx.remoteHost, 'sourceFilesystem': ctx.sourceFilesystem, 'destFilesystem': ctx.destFilesystem, 'recursive': ctx.isRecursiveSnap, 'compressed': ctx.isCompressed, 'raw': ctx.isRaw, 'includeIntermediates': ctx.includeIntermediateSnapshots, 'allowOverwrite': ctx.allowOverwrite, 'useExistingDest': ctx.useExistingDest, 'mbuffer': f'{ctx.mBufferSize}{ctx.mBufferUnit}', 'mbuffer_block': f'{ctx.mBufferBlockSize}{ctx.mBufferBlockUnit}', 'mbuffer_callback_host': ctx.mBufferCallbackHost or '(auto)', 'ssh_cipher': _SSH_CIPHER or '(system default)'})
     if not ctx.sourceFilesystem:
         raise RuntimeError('Source dataset is empty (zfsRepConfig_sourceDataset_pool/dataset).')
     if not ctx.destFilesystem:
@@ -196,7 +199,7 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
                 sys.exit(0)
             print(f'Resume token found on {local_target_fs}. Resuming transfer…')
             notifier.notify(f'STATUS=Resume token found. Resuming transfer to {local_target_fs}…')
-            (ok, err) = resume_receive_pull(_resume_token, local_target_fs, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=ctx.mBufferSize, mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort)
+            (ok, err) = resume_receive_pull(_resume_token, local_target_fs, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=ctx.mBufferSize, mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
             if ok:
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
@@ -320,7 +323,7 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                 notifier.notify(f'STATUS={msg}')
                 print(msg)
                 if ctx.direction == 'pull':
-                    (ok, err) = resume_receive_pull(resume_token=_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=True, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort)
+                    (ok, err) = resume_receive_pull(resume_token=_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=True, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
                 else:
                     (ok, err) = resume_receive_push(resume_token=_token, recvName=ctx.destFilesystem, recvHost=ctx.remoteHost, recvSshPort=ctx.sshPort, recvHostUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, transferMethod=ctx.transferMethod if ctx.transferMethod else 'ssh', recvDataPort=ctx.dataPort, forceOverwrite=True, stall_timeout=ctx.resumeStallTimeout)
                 if ok:
@@ -396,7 +399,7 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
             notifier.notify(f'STATUS={msg}')
             print(msg)
             send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_token', 'subject': 'ZFS Replication Resume Token Found', 'email_message': f'{msg} Token: {resume_token}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': resume_token})
-            (ok, err) = resume_receive_pull(resume_token=resume_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort)
+            (ok, err) = resume_receive_pull(resume_token=resume_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
             if ok:
                 return True
             err_lower = (err or '').lower()
@@ -685,7 +688,7 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
             destroy_snapshots_with_progress(ctx.destinationSnapshots, ctx.destFilesystem)
         if not ctx.incrementalSnapName:
             _write_pending_full_send(ctx.taskName, ctx.newSnap, ctx.destFilesystem, ctx.direction, ctx.sourceFilesystem)
-        send_snapshot_pull(remoteSnapName=ctx.newSnap, localRecvFs=ctx.destFilesystem, remoteBaseSnapName=ctx.incrementalSnapName, compressed=ctx.isCompressed, raw=ctx.isRaw, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.forceOverwrite, recursive=ctx.isRecursiveSnap, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots)
+        send_snapshot_pull(remoteSnapName=ctx.newSnap, localRecvFs=ctx.destFilesystem, remoteBaseSnapName=ctx.incrementalSnapName, compressed=ctx.isCompressed, raw=ctx.isRaw, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.forceOverwrite, recursive=ctx.isRecursiveSnap, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots, mbufferCallbackHost=ctx.mBufferCallbackHost)
     else:
         ctx.newSnap = create_snapshot_local(ctx.sourceFilesystem, ctx.isRecursiveSnap, ctx.taskName, ctx.customName, tier_idx=ctx.tier_idx)
         (exists, dest_snap_name) = snapshot_exists_on_destination(ctx.destFilesystem, snapshot_suffix(ctx.newSnap), remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)

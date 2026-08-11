@@ -401,6 +401,7 @@
                     id="method">
                     <option value="ssh">SSH</option>
                     <option value="netcat">Netcat</option>
+                    <option value="mbuffer">mBuffer</option>
                 </select>
             </div>
 
@@ -421,7 +422,7 @@
                         </svg>
                         Testing...
                     </button>
-                    <button v-else-if="transferMethod === 'ssh'" @click="handleTestSSH"
+                    <button v-else-if="transferMethod === 'ssh' || transferMethod === 'mbuffer'" @click="handleTestSSH"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test SSH</button>
                     <button v-else-if="transferMethod === 'netcat'" @click="confirmNetcatTest(destHost, destPort)"
                         class="mt-0.5 btn btn-secondary object-right justify-end h-fit">Test Netcat</button>
@@ -456,8 +457,18 @@
                     netCatPortError ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : '',
                     'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6'
                 ]" min="0" max="65535"
-                    :placeholder="transferMethod === 'netcat' ? 'Enter port (not 22 for netcat)' : '22 is default'"
+                    :placeholder="transferMethod === 'netcat' || transferMethod === 'mbuffer' ? 'Enter data port (not 22)' : '22 is default'"
                     @input="validatePort" />
+            </div>
+
+            <div v-if="transferMethod === 'mbuffer' && isPull" name="mbuffer-callback-host" class="mt-1">
+                <label class="block text-sm leading-6 text-default">mBuffer Callback Host (Optional)</label>
+                <input :disabled="remoteFieldsDisabled" type="text" v-model="mbufferCallbackHost"
+                    class="mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                    placeholder="Leave blank to auto-detect via SSH client source IP" />
+                <p class="mt-1 text-xs text-muted">
+                    Use this when pull+mbuffer runs across multi-homed networks and auto-detected callback IP is not reachable.
+                </p>
             </div>
         </div>
 
@@ -547,6 +558,29 @@
                     </div>
                 </div>
             </div>
+            <div v-if="transferMethod === 'mbuffer'" class="grid grid-cols-2 mt-2">
+                <div name="send-opt-mbuffer-block" class="col-span-1">
+                    <label class="block text-sm leading-6 text-default">mBuffer Block Size</label>
+                    <input :disabled="remoteFieldsDisabled" type="number" v-model="mbufferBlockSize" min="1"
+                        class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
+                        placeholder="256" />
+                </div>
+                <div name="send-opt-mbuffer-block" class="col-span-1">
+                    <div name="send-opt-mbuffer-block-unit">
+                        <label class="block text-sm leading-6 text-default">mBuffer Block Unit</label>
+                        <select :disabled="remoteFieldsDisabled" v-model="mbufferBlockUnit"
+                            class="text-default bg-default mt-0.5 block w-full input-textlike sm:text-sm sm:leading-6">
+                            <option value="b">b</option>
+                            <option value="k">k</option>
+                            <option value="M">M</option>
+                            <option value="G">G</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <p v-if="transferMethod === 'mbuffer'" class="mt-1 text-xs text-muted">
+                Block size maps to <code>mbuffer -s</code>; memory size maps to <code>mbuffer -m</code>.
+            </p>
         </div>
     </div>
 </template>
@@ -677,6 +711,9 @@ const sendRecursive = ref(false);
 const includeIntermediateSnapshots = ref(true);
 const mbufferSize = ref(1);
 const mbufferUnit = ref('G');
+const mbufferBlockSize = ref(256);
+const mbufferBlockUnit = ref('k');
+const mbufferCallbackHost = ref('');
 const useCustomName = ref(false);
 const customName = ref('');
 const customNameErrorTag = ref(false);
@@ -847,7 +884,7 @@ watch(directionSwitched, async () => {
 });
 
 watch(transferMethod, (newValue) => {
-    if (newValue === 'netcat' && destPort.value === 22) {
+    if ((newValue === 'netcat' || newValue === 'mbuffer') && destPort.value === 22) {
         destPort.value = 31337;
     }
 });
@@ -894,6 +931,12 @@ async function initializeData() {
         includeIntermediateSnapshots.value = includeIntermediatesParam ? !!includeIntermediatesParam.value : true;
         mbufferSize.value = sendOptionsParams.find(p => p.key === 'mbufferSize')!.value;
         mbufferUnit.value = sendOptionsParams.find(p => p.key === 'mbufferUnit')!.value;
+        const mbufferBlockSizeParam = sendOptionsParams.find(p => p.key === 'mbufferBlockSize');
+        mbufferBlockSize.value = mbufferBlockSizeParam ? Number(mbufferBlockSizeParam.value) || 256 : 256;
+        const mbufferBlockUnitParam = sendOptionsParams.find(p => p.key === 'mbufferBlockUnit');
+        mbufferBlockUnit.value = mbufferBlockUnitParam ? String(mbufferBlockUnitParam.value || 'k') : 'k';
+        const mbufferCallbackHostParam = sendOptionsParams.find(p => p.key === 'mbufferCallbackHost');
+        mbufferCallbackHost.value = mbufferCallbackHostParam ? String(mbufferCallbackHostParam.value || '') : '';
         useCustomName.value = sendOptionsParams.find(p => p.key === 'customName_flag')!.value;
         customName.value = sendOptionsParams.find(p => p.key === 'customName')!.value;
 
@@ -955,6 +998,9 @@ async function initializeData() {
             includeIntermediateSnapshots: includeIntermediateSnapshots.value,
             mbufferSize: mbufferSize.value,
             mbufferUnit: mbufferUnit.value,
+            mbufferBlockSize: mbufferBlockSize.value,
+            mbufferBlockUnit: mbufferBlockUnit.value,
+            mbufferCallbackHost: mbufferCallbackHost.value,
             useCustomName: useCustomName.value,
             customName: customName.value,
             transferMethod: transferMethod.value,
@@ -992,6 +1038,9 @@ function hasChanges() {
         includeIntermediateSnapshots: includeIntermediateSnapshots.value,
         mbufferSize: mbufferSize.value,
         mbufferUnit: mbufferUnit.value,
+        mbufferBlockSize: mbufferBlockSize.value,
+        mbufferBlockUnit: mbufferBlockUnit.value,
+        mbufferCallbackHost: mbufferCallbackHost.value,
         useCustomName: useCustomName.value,
         customName: customName.value,
         allowOverwrite: allowOverwrite.value,
@@ -1047,7 +1096,7 @@ const getSourcePools = async () => {
                 sourcePools.value = [];
                 return;
             }
-            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            const portToUse = (transferMethod.value === 'netcat' || transferMethod.value === 'mbuffer') ? '22' : String(destPort.value);
             sourcePools.value = await getPoolData(destHost.value, portToUse, destUser.value);
         } else {
             sourcePools.value = await getPoolData();
@@ -1065,7 +1114,7 @@ const getSourceDatasets = async () => {
                 sourceDatasets.value = [];
                 return;
             }
-            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            const portToUse = (transferMethod.value === 'netcat' || transferMethod.value === 'mbuffer') ? '22' : String(destPort.value);
             sourceDatasets.value = await getDatasetData(sourcePool.value, destHost.value, portToUse, destUser.value);
         } else {
             sourceDatasets.value = await getDatasetData(sourcePool.value);
@@ -1079,7 +1128,7 @@ const getTargetPools = async () => {
     loadingDestPools.value = true;
     try {
         if (targetIsRemote.value) {
-            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            const portToUse = (transferMethod.value === 'netcat' || transferMethod.value === 'mbuffer') ? '22' : String(destPort.value);
             destPools.value = await getPoolData(destHost.value, portToUse, destUser.value);
         } else {
             destPools.value = await getPoolData();
@@ -1093,7 +1142,7 @@ const getTargetDatasets = async () => {
     loadingDestDatasets.value = true;
     try {
         if (targetIsRemote.value) {
-            const portToUse = transferMethod.value === 'netcat' ? '22' : String(destPort.value);
+            const portToUse = (transferMethod.value === 'netcat' || transferMethod.value === 'mbuffer') ? '22' : String(destPort.value);
             destDatasets.value = await getDatasetData(destPool.value, destHost.value, portToUse, destUser.value);
         } else {
             destDatasets.value = await getDatasetData(destPool.value);
@@ -1116,7 +1165,7 @@ watch(destPool, handleDestPoolChange);
 
 // If transfer method changes, adjust port default (netcat uses a data port, not SSH port)
 watch(transferMethod, (newValue) => {
-    if (newValue === 'netcat' && destPort.value === 22) {
+    if ((newValue === 'netcat' || newValue === 'mbuffer') && destPort.value === 22) {
         destPort.value = 31337;
     }
 });
@@ -1144,8 +1193,8 @@ function validateHost() {
 }
 
 function validatePort() {
-    if (destPort.value == 22 && transferMethod.value == 'netcat' && destHost.value != '') {
-        errorList.value.push("Port 22 is not allowed for Netcat. Please choose a different port.");
+    if (destPort.value == 22 && (transferMethod.value == 'netcat' || transferMethod.value == 'mbuffer') && destHost.value != '') {
+        errorList.value.push("Port 22 is not allowed for Netcat or mBuffer transfer. Please choose a different data port.");
         netCatPortError.value = true;
     } else {
         netCatPortError.value = false;
@@ -1206,7 +1255,31 @@ function validateSource() {
     }
 }
 
-function validateDestination() {
+function normalizeDatasetNameForPool(poolName: string, datasetName: string): string {
+    const pool = (poolName || '').trim();
+    let ds = (datasetName || '').trim();
+    if (!ds) return ds;
+    ds = ds.replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!pool) return ds;
+    if (ds === pool) return '';
+    if (ds.startsWith(`${pool}/`)) return ds.slice(pool.length + 1);
+    return ds;
+}
+
+function datasetExistsInPool(poolName: string, datasetName: string, datasets: string[]): boolean {
+    const raw = (datasetName || '').trim();
+    const normalized = normalizeDatasetNameForPool(poolName, raw);
+    if (!raw) return false;
+
+    return datasets.some((existing) => {
+        const existingRaw = (existing || '').trim();
+        if (!existingRaw) return false;
+        const existingNormalized = normalizeDatasetNameForPool(poolName, existingRaw);
+        return existingRaw === raw || existingRaw === normalized || existingNormalized === raw || existingNormalized === normalized;
+    });
+}
+
+async function validateDestination() {
     if (destPool.value === '') {
         errorList.value.push("Destination pool is needed.");
         destPoolErrorTag.value = true;
@@ -1215,13 +1288,25 @@ function validateDestination() {
         customDestPoolErrorTag.value = true;
     }
 
+    // Refresh the dataset inventory so "new dataset" checks are authoritative.
+    if (destPool.value) {
+        try {
+            await getTargetDatasets();
+        } catch (err) {
+            console.error('validateDestination:getTargetDatasets', err);
+            errorList.value.push("Failed to refresh destination datasets for validation.");
+            destDatasetErrorTag.value = true;
+            return;
+        }
+    }
+
     if (useExistingDest.value) {
         if (destDataset.value === '') {
             errorList.value.push("Destination dataset is needed.");
             destDatasetErrorTag.value = true;
             return;
         }
-        if (!doesItExist(destDataset.value, destDatasets.value)) {
+        if (!datasetExistsInPool(destPool.value, destDataset.value, destDatasets.value)) {
             errorList.value.push("Selected destination dataset does not exist in this pool.");
             destDatasetErrorTag.value = true;
             return;
@@ -1234,7 +1319,7 @@ function validateDestination() {
         customDestDatasetErrorTag.value = true;
         return;
     }
-    if (doesItExist(destDataset.value, destDatasets.value)) {
+    if (datasetExistsInPool(destPool.value, destDataset.value, destDatasets.value)) {
         errorList.value.push("That dataset already exists. Choose 'Existing Dataset' or use a new path.");
         customDestDatasetErrorTag.value = true;
         return;
@@ -1251,7 +1336,7 @@ async function checkDestDatasetContents() {
         const srcFs = `${sourcePool.value}/${sourceDataset.value}`;
         const dstFs = `${destPool.value}/${destDataset.value}`;
 
-        const portToUse = transferMethod.value === "netcat" ? "22" : String(destPort.value);
+        const portToUse = (transferMethod.value === "netcat" || transferMethod.value === "mbuffer") ? "22" : String(destPort.value);
 
         let srcSnaps: ZfsSnap[] = [];
         let dstSnaps: ZfsSnap[] = [];
@@ -1357,7 +1442,7 @@ function clearErrorTags() {
 async function validateParams() {
     validateSource();
     validateHost();
-    validateDestination();
+    await validateDestination();
     validatePort();
     if (useExistingDest.value) await checkDestDatasetContents();
     validateCustomName();
@@ -1374,7 +1459,7 @@ function setParams() {
 
     let tm = transferMethod.value;
     if (tm === 'ssh' && !isPull.value && destHost.value === '') tm = 'local';
-    if (tm !== 'netcat' && tm !== 'ssh' && tm !== 'local') tm = 'ssh';
+    if (tm !== 'netcat' && tm !== 'ssh' && tm !== 'local' && tm !== 'mbuffer') tm = 'ssh';
 
     const newParams = new ParameterNode("ZFS Replication Task Config", "zfsRepConfig")
         .addChild(new ZfsDatasetParameter('Source Dataset', 'sourceDataset', '', 0, '', sourcePool.value, sourceDataset.value))
@@ -1387,6 +1472,9 @@ function setParams() {
             .addChild(new BoolParameter('Include Intermediate Snapshots', 'includeIntermediateSnapshots', includeIntermediateSnapshots.value))
             .addChild(new IntParameter('MBuffer Size', 'mbufferSize', mbufferSize.value))
             .addChild(new StringParameter('MBuffer Unit', 'mbufferUnit', mbufferUnit.value))
+            .addChild(new IntParameter('MBuffer Block Size', 'mbufferBlockSize', mbufferBlockSize.value))
+            .addChild(new StringParameter('MBuffer Block Unit', 'mbufferBlockUnit', mbufferBlockUnit.value))
+            .addChild(new StringParameter('MBuffer Callback Host', 'mbufferCallbackHost', mbufferCallbackHost.value))
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
             .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
@@ -1403,7 +1491,7 @@ function setParams() {
 /* ---------------- Test buttons ---------------- */
 
 async function handleTestSSH() {
-    if (transferMethod.value !== 'ssh') return;
+    if (transferMethod.value !== 'ssh' && transferMethod.value !== 'mbuffer') return;
 
     testingSSH.value = true;
     try {

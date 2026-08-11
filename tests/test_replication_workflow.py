@@ -73,6 +73,30 @@ def test_initialize_rejects_empty_source(monkeypatch):
         workflow._initialize_run(ReplicationRun())
 
 
+def test_pull_mode_allows_standalone_mbuffer_transfer(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.direction = "pull"
+    ctx.remoteHost = "host"
+    ctx.remoteUser = "root"
+    ctx.sshPort = "2222"
+    ctx.transferMethod = "mbuffer"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    ctx.resumeOnly = False
+
+    monkeypatch.setattr(
+        workflow.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=""),
+    )
+    monkeypatch.setattr(workflow, "get_remote_snapshots", lambda *args, **kwargs: [snap("tank/source@s1", "g1", 1)])
+    monkeypatch.setattr(workflow, "get_local_snapshots", lambda *args, **kwargs: [])
+
+    workflow._load_snapshot_inventory(ctx)
+
+    assert ctx.transferMethod == "mbuffer"
+
+
 def test_plan_new_destination_uses_full_send_without_force():
     ctx = ReplicationRun()
     ctx.destinationSnapshots = None

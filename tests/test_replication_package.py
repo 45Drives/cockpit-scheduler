@@ -15,7 +15,7 @@ SCRIPTS_DIR = (
 )
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from replication.config import as_bool, clamp_mbuffer, get_dest_ports, join_zfs_path
+from replication.config import as_bool, clamp_mbuffer, clamp_mbuffer_block, get_dest_ports, join_zfs_path
 from replication import workflow as replication_workflow
 from replication.models import ReplicationRun
 from replication.planner import build_zfs_send_args
@@ -39,11 +39,13 @@ def test_boolean_and_destination_port_parsing(monkeypatch):
     monkeypatch.setenv("zfsRepConfig_destDataset_sshPort", "2222")
     assert get_dest_ports("netcat") == ("2222", "9000")
     assert get_dest_ports("ssh") == ("2222", "9000")
+    assert get_dest_ports("mbuffer") == ("2222", "9000")
 
 
 def test_mbuffer_values_are_normalized():
     assert clamp_mbuffer("8", "m") == ("8", "M")
     assert clamp_mbuffer("0", "invalid") == ("1", "G")
+    assert clamp_mbuffer_block("0", "invalid") == ("256", "k")
 
 
 def test_send_planner_preserves_incremental_flags():

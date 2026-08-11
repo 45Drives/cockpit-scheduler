@@ -103,9 +103,47 @@ def run_logged(cmd, *, check=False, text=True, timeout=None, env=None):
     return p
 
 
+def _effective_mbuffer_block():
+    """Resolve mbuffer block size for this run.
+
+    Block-size overrides are only applied when transfer method is standalone
+    mbuffer. SSH/netcat methods keep the repository default block size unless
+    overridden globally via ZFS_REP_MBUFFER_BLOCK.
+    """
+    transfer_method = (os.environ.get("zfsRepConfig_sendOptions_transferMethod", "") or "").strip().lower()
+    if transfer_method != "mbuffer":
+        return MBUFFER_BLOCK_SIZE
+
+    size_raw = (os.environ.get("zfsRepConfig_sendOptions_mbufferBlockSize", "") or "").strip()
+    unit_raw = (os.environ.get("zfsRepConfig_sendOptions_mbufferBlockUnit", "") or "").strip()
+
+    try:
+        size = int(size_raw or "0")
+    except (TypeError, ValueError):
+        size = 0
+    if size <= 0:
+        return MBUFFER_BLOCK_SIZE
+
+    unit_map = {
+        "b": "b",
+        "B": "b",
+        "k": "k",
+        "K": "k",
+        "m": "M",
+        "M": "M",
+        "g": "G",
+        "G": "G",
+    }
+    unit = unit_map.get(unit_raw)
+    if not unit:
+        return MBUFFER_BLOCK_SIZE
+
+    return f"{size}{unit}"
+
+
 def _build_mbuffer_cmd(buf_size, buf_unit):
     """Build the mbuffer command list with configurable block size."""
-    return ["mbuffer", "-s", MBUFFER_BLOCK_SIZE, "-m", f"{buf_size}{buf_unit}"]
+    return ["mbuffer", "-s", _effective_mbuffer_block(), "-m", f"{buf_size}{buf_unit}"]
 
 
 def _wait_for_port(host, port, timeout=30, interval=0.5):

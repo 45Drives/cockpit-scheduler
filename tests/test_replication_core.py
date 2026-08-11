@@ -26,6 +26,14 @@ def test_clamp_mbuffer(size, unit, expected):
 
 
 @pytest.mark.parametrize(
+    "size,unit,expected",
+    [("256", "k", ("256", "k")), (0, "K", ("256", "k")), ("bad", "M", ("256", "M")), (None, None, ("256", "k"))],
+)
+def test_clamp_mbuffer_block(size, unit, expected):
+    assert config.clamp_mbuffer_block(size, unit) == expected
+
+
+@pytest.mark.parametrize(
     "pool,dataset,expected",
     [("tank", "data", "tank/data"), ("tank", "tank/data", "tank/data"), ("tank", "tank", "tank"), ("", "tank/data", "tank/data"), ("tank", "", "tank")],
 )
@@ -38,9 +46,11 @@ def test_destination_ports_distinguish_ssh_and_netcat(monkeypatch):
     monkeypatch.setenv("zfsRepConfig_destDataset_sshPort", "2222")
     assert config.get_dest_ports("ssh") == ("2222", "31337")
     assert config.get_dest_ports("netcat") == ("2222", "31337")
+    assert config.get_dest_ports("mbuffer") == ("2222", "31337")
     monkeypatch.delenv("zfsRepConfig_destDataset_sshPort")
     assert config.get_dest_ports("ssh") == ("31337", "31337")
     assert config.get_dest_ports("netcat") == ("22", "31337")
+    assert config.get_dest_ports("mbuffer") == ("22", "31337")
 
 
 @pytest.mark.parametrize(

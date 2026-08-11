@@ -23,6 +23,30 @@ def clamp_mbuffer(size_value, unit_value):
     return str(size), unit
 
 
+def clamp_mbuffer_block(size_value, unit_value):
+    """Return a positive mbuffer block size and a supported unit."""
+    try:
+        size = int(str(size_value).strip() or "0")
+    except (TypeError, ValueError):
+        size = 0
+
+    unit_raw = (unit_value or "k").strip()
+    unit_map = {
+        "b": "b",
+        "B": "b",
+        "k": "k",
+        "K": "k",
+        "m": "M",
+        "M": "M",
+        "g": "G",
+        "G": "G",
+    }
+    unit = unit_map.get(unit_raw, "k")
+    if size <= 0:
+        size = 256
+    return str(size), unit
+
+
 def join_zfs_path(pool: str, dataset: str) -> str:
     pool = (pool or "").strip()
     ds = (dataset or "").strip()
@@ -53,7 +77,7 @@ def get_dest_ports(transfer_method: str):
 
     transfer_method = (transfer_method or "").strip().lower()
 
-    if transfer_method == "netcat":
+    if transfer_method in ("netcat", "mbuffer"):
         if not ssh_port:
             ssh_port = "22"
         return (ssh_port, data_port)

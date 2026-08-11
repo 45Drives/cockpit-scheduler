@@ -199,6 +199,11 @@ def send_snapshot_push(
         else:
             print(f"CLI command (sender): {sender_stage} | nc {recvHost} {data_port}")
             print(f"CLI command (receiver): nc -l {data_port} | {recv_flags}")
+    elif transferMethod == "mbuffer":
+        data_port = str(recvDataPort or recvSshPort or "31337")
+        recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
+        print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {recvHost}:{data_port}")
+        print(f"CLI command (receiver): {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port} | {recv_flags}")
     else:
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
         ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
@@ -754,5 +759,114 @@ def send_snapshot_push(
 
         return
 
-    print("ERROR: Invalid transferMethod specified. Must be 'local', 'ssh', or 'netcat'.")
+    if transferMethod == "mbuffer":
+        data_port = str(recvDataPort or recvSshPort or "31337")
+        ssh_port = str(recvSshPort or "22")
+
+        notifier.notify(f"STATUS=Sending snapshot {sendName} via mbuffer to {recvHostUser}@{recvHost}:{recvName}…")
+
+        recv_q = shlex.quote(recvName)
+        listen_cmd = (
+            f"{mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {shlex.quote(data_port)} "
+            f"| zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
+        )
+        ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
+        ssh_cmd_listener.append(listen_cmd)
+
+        ssh_process_listener = subprocess.Popen(
+            ssh_cmd_listener,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        if not _wait_for_port_remote(recvHostUser, recvHost, data_port, ssh_port, timeout=30):
+            safe_print(f"WARNING: mbuffer listener on {recvHost}:{data_port} not ready after 30s, proceeding anyway")
+
+        sender_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit) + ["-O", f"{recvHost}:{data_port}"]
+        process_mbuffer = subprocess.Popen(
+            sender_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        mbuf_capture = StreamCapture(process_mbuffer.stderr)
+
+        if process_send.stdout is None or process_mbuffer.stdin is None:
+            raise RuntimeError("Failed to initialize mbuffer network pipes.")
+
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_send.stdout,
+                process_mbuffer.stdin,
+                total_bytes,
+                label="Transferring",
+                stall_timeout=TRANSFER_STALL_TIMEOUT,
+            )
+        except StallTimeout as e:
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            notifier.notify(f"STATUS=Transfer stalled: {e}")
+            print(f"ERROR: {e}")
+            sys.exit(1)
+
+        try:
+            _close_pipe(process_mbuffer.stdin)
+            process_mbuffer.stdin = None
+        except Exception:
+            pass
+
+        if pipe_broken:
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
+            safe_print("ERROR: Transfer pipe broken. Downstream process (mbuffer receiver) likely died.")
+            sys.exit(1)
+
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
+        send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
+        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer network sender", PIPELINE_FINALIZE_TIMEOUT)
+
+        mbuf_stderr = mbuf_capture.text()
+
+        if process_send.returncode != 0:
+            notifier.notify("STATUS=mBuffer send failed.")
+            if send_stderr:
+                print(f"[Sender Side] zfs send error: {send_stderr}")
+            ssh_process_listener.terminate()
+            sys.exit(1)
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=mBuffer send failed.")
+            if mbuf_stderr:
+                print(f"[Sender Side] mbuffer error: {mbuf_stderr}")
+            ssh_process_listener.terminate()
+            sys.exit(1)
+
+        ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+        if ssh_process_listener.returncode != 0:
+            notifier.notify("STATUS=Remote receive via mBuffer failed.")
+            print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
+            sys.exit(1)
+
+        notifier.notify("STATUS=mBuffer send/receive completed.")
+        if ssh_stdout:
+            print(ssh_stdout)
+
+        snapshot_process = ssh_run_args(
+            recvHostUser,
+            recvHost,
+            ssh_port,
+            ["zfs", "list", recvName],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if snapshot_process.returncode != 0:
+            err = (snapshot_process.stderr or snapshot_process.stdout or "").strip()
+            print(f"[Receiver Side] Error checking dataset: {err}")
+            sys.exit(1)
+
+        return
+
+    print("ERROR: Invalid transferMethod specified. Must be 'local', 'ssh', 'netcat', or 'mbuffer'.")
     sys.exit(1)

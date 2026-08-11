@@ -137,6 +137,7 @@ def send_snapshot_pull(
     transferMethod="ssh",
     recvDataPort=None,
     include_intermediates=None,
+    mbufferCallbackHost="",
 ):
     notifier.notify("STATUS=Preparing ZFS pull pipeline…")
 
@@ -185,6 +186,19 @@ def send_snapshot_pull(
     else:
         print(f"pulling {remoteSnapName} into {localRecvFs}")
 
+    mbuffer_callback_expr = None
+    mbuffer_callback_display = None
+    mbuffer_callback_cli = None
+    if transferMethod == "mbuffer":
+        _callback_port = str(recvDataPort or remoteSshPort or "31337")
+        mbuffer_callback_expr, mbuffer_callback_display, mbuffer_callback_cli = resolve_mbuffer_callback_target_for_remote(
+            remoteUser,
+            remoteHost,
+            remoteSshPort,
+            mbufferCallbackHost,
+            _callback_port,
+        )
+
     # Print the full CLI-reproducible command for troubleshooting
     send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
     recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {localRecvFs}"
@@ -197,6 +211,10 @@ def send_snapshot_pull(
         else:
             print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | nc -l {data_port}'")
         print(f"CLI command (dest, local receiver):   {local_recv_stage}")
+    elif transferMethod == "mbuffer":
+        data_port = str(recvDataPort or remoteSshPort or "31337")
+        print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {mbuffer_callback_cli}'")
+        print(f"CLI command (dest, local receiver):   {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port} | {recv_flags}")
     else:
         if remote_mbuffer_enabled:
             print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)}' | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
@@ -397,6 +415,168 @@ def send_snapshot_pull(
             replay_thread.join(timeout=1)
         return
 
+    if transferMethod == "mbuffer":
+        data_port = str(recvDataPort or remoteSshPort or "31337")
+        ssh_port = str(remoteSshPort or "22")
+        callback_expr = mbuffer_callback_expr
+        callback_display = mbuffer_callback_display
+
+        notifier.notify(f"STATUS=Pulling snapshot {remoteSnapName} via mbuffer from {remoteUser}@{remoteHost} into {localRecvFs}…")
+
+        notifier.notify(f"STATUS=Running callback preflight from source to {callback_display}:{data_port}…")
+        preflight_ok, preflight_detail, preflight_checked = preflight_remote_callback_connectivity(
+            remoteUser,
+            remoteHost,
+            ssh_port,
+            callback_expr,
+            callback_display,
+            data_port,
+        )
+        if preflight_checked and not preflight_ok:
+            notifier.notify(f"STATUS=Data-plane blocked: source cannot reach callback host {callback_display}:{data_port}.")
+            print(f"ERROR: Data-plane blocked for mbuffer pull. Source {remoteHost} cannot reach callback host {callback_display}:{data_port}.")
+            if preflight_detail:
+                print(f"Preflight detail: {preflight_detail}")
+            print("Hint: Open firewall/route for callback host:port or set an explicit mBuffer callback host.")
+            sys.exit(1)
+        if preflight_checked and preflight_detail:
+            notifier.notify(f"STATUS=Callback preflight note: {preflight_detail}")
+            print(f"Preflight note: {preflight_detail}")
+        if not preflight_checked:
+            notifier.notify(f"STATUS=Callback preflight skipped ({preflight_detail}).")
+            print(f"Warning: {preflight_detail}")
+
+        # Local listener: mbuffer -I <port> | zfs recv
+        mbuffer_listen_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit) + ["-I", data_port]
+        process_mbuffer = subprocess.Popen(
+            mbuffer_listen_cmd,
+            stdin=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        mbuf_capture = StreamCapture(process_mbuffer.stderr)
+
+        recv_cmd = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            recv_cmd.append("-F")
+        recv_cmd.append(localRecvFs)
+
+        process_local_recv = subprocess.Popen(
+            recv_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        notifier.notify(f"STATUS=Listener ready on local port {data_port}; waiting for remote mbuffer callback from {remoteHost} to {callback_display}:{data_port}…")
+
+        # Remote sender connects back to the callback host.
+        remote_send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
+        remote_cmd = f"{remote_send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {callback_expr}:{shlex.quote(data_port)}"
+        ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
+        ssh_cmd_sender.append(remote_cmd)
+        ssh_process_sender = subprocess.Popen(
+            ssh_cmd_sender,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        notifier.notify("STATUS=Remote sender started; waiting for first data bytes…")
+
+        if process_mbuffer.stdout is None or process_local_recv.stdin is None:
+            raise RuntimeError("Failed to initialize mbuffer pull pipes.")
+
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_mbuffer.stdout,
+                process_local_recv.stdin,
+                total_bytes,
+                label="Transferring",
+                stall_timeout=TRANSFER_STALL_TIMEOUT,
+                progress_note_getter=replay_note_getter,
+            )
+        except StallTimeout as e:
+            _kill_procs(process_mbuffer, process_local_recv, ssh_process_sender)
+            notifier.notify(f"STATUS=Transfer stalled: {e}")
+            print(f"ERROR: {e}")
+            sys.exit(1)
+        finally:
+            if replay_stop_event:
+                replay_stop_event.set()
+            if replay_thread:
+                replay_thread.join(timeout=1)
+
+        try:
+            _close_pipe(process_local_recv.stdin)
+            process_local_recv.stdin = None
+        except Exception:
+            pass
+
+        if pipe_broken:
+            _kill_procs(process_mbuffer, process_local_recv, ssh_process_sender)
+            notifier.notify("STATUS=Transfer failed — downstream pipe broken.")
+            safe_print("ERROR: Transfer pipe broken. Downstream process (recv) likely died.")
+            sys.exit(1)
+
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
+        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer listener", PIPELINE_FINALIZE_TIMEOUT)
+
+        try:
+            recv_stdout, recv_stderr = _communicate_with_finalize_heartbeat(
+                process_local_recv,
+                "local zfs recv",
+                PIPELINE_FINALIZE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            process_local_recv.kill()
+            ssh_process_sender.kill()
+            notifier.notify("STATUS=Finalization timed out — local recv process killed.")
+            print(f"ERROR: Local zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Process killed.")
+            sys.exit(1)
+
+        try:
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_sender,
+                "remote mbuffer sender",
+                300,
+            )
+        except subprocess.TimeoutExpired:
+            ssh_process_sender.kill()
+            notifier.notify("STATUS=Finalization timed out — remote sender process killed.")
+            print("ERROR: Remote sender did not finish during mbuffer pull finalization. Process killed.")
+            sys.exit(1)
+
+        recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
+        recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
+        ssh_stdout = ssh_stdout.decode(errors="replace") if isinstance(ssh_stdout, bytes) else (ssh_stdout or "")
+        ssh_stderr = ssh_stderr.decode(errors="replace") if isinstance(ssh_stderr, bytes) else (ssh_stderr or "")
+
+        mbuf_err = mbuf_capture.text()
+
+        if ssh_process_sender.returncode != 0:
+            notifier.notify("STATUS=Remote send via mbuffer failed.")
+            print(f"[Remote Side] Error during send: {ssh_stderr.strip()}")
+            sys.exit(1)
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=mBuffer pull failed.")
+            if mbuf_err:
+                print(f"[Receiver Side] mbuffer error: {mbuf_err}")
+            sys.exit(1)
+
+        if process_local_recv.returncode != 0:
+            notifier.notify("STATUS=Local receive (pull via mbuffer) failed.")
+            print(f"ERROR: local recv error: {recv_stderr}")
+            sys.exit(1)
+
+        notifier.notify("STATUS=mBuffer pull receive completed.")
+        if recv_stdout:
+            print(recv_stdout)
+        if ssh_stdout:
+            print(ssh_stdout)
+        return
+
     # SSH transfer (default)
     process_remote_send = _start_remote_send_over_ssh(
         remoteUser,
@@ -556,5 +736,5 @@ def send_snapshot_pull(
         replay_thread.join(timeout=1)
     return
 
-    print("ERROR: Invalid transferMethod specified. Must be 'ssh' or 'netcat'.")
+    print("ERROR: Invalid transferMethod specified. Must be 'ssh', 'netcat', or 'mbuffer' for pull replication.")
     sys.exit(1)
