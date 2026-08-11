@@ -226,8 +226,11 @@
                         <div v-else
                             class="h-full bg-blue-500 dark:bg-blue-400 rounded-full animate-indeterminate w-1/4" />
                     </div>
-                    <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
-                        {{ row.progress != null ? row.progress.toFixed(1) + '%' : (row.progressLabel || 'Running…') }}
+                    <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right"
+                        :title="row.progressLabel || ''">
+                        {{ row.progress != null
+                            ? (row.progressLabel ? `${row.progressLabel} — ${row.progress.toFixed(1)}%` : `${row.progress.toFixed(1)}%`)
+                            : (row.progressLabel || 'Running…') }}
                     </span>
                 </div>
             </div>
@@ -276,6 +279,7 @@ import { useRouter } from 'vue-router';
 import { useTaskDraftStore } from '../stores/taskDraft';
 import { useLiveTaskStatus, taskStatusClass, taskStatusBadgeClass } from '../composables/useLiveTaskStatus';
 import SchedulerNotification from '../components/notification/SchedulerNotification.vue';
+import { runCommand } from '../models/Scheduler';
 
 const router = useRouter();
 const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
@@ -339,6 +343,21 @@ const everLoaded = ref(false);
 const cachedRows = ref<any[]>([]);
 let isActive = true;
 
+const MIGRATE_SCRIPT = '/opt/45drives/houston/scheduler/scripts/migrate-retry-settings.py';
+const statusPollMs = ref(1500);
+const progressPollMs = ref(5000);
+
+async function loadPollingSettings() {
+    try {
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--get'], { superuser: 'try' });
+        const parsed = JSON.parse((stdout || '').trim());
+        statusPollMs.value = Math.max(1000, Number(parsed?.ui_status_poll_ms ?? statusPollMs.value));
+        progressPollMs.value = Math.max(1000, Number(parsed?.ui_progress_poll_ms ?? progressPollMs.value));
+    } catch {
+        // Use defaults silently
+    }
+}
+
 const isBusy = computed(() => fetching.value || loading.value);
 const showInitialSpinner = computed(() => !everLoaded.value && isBusy.value);
 const showOverlaySpinner = computed(() => everLoaded.value && isBusy.value);
@@ -347,6 +366,7 @@ const boot = async () => {
     if (fetching.value) return;       // guard against double calls
     fetching.value = true;
     try {
+        await loadPollingSettings();
         await myScheduler.loadTaskInstances();
         await live.refreshAll();
         // Only start polling if the view is still active — a deactivation
@@ -370,7 +390,10 @@ const remoteTasks = computed(() =>
         (t: any) => t?.template?.name === 'Rsync Task' || t?.template?.name === 'Cloud Sync Task' || t?.template?.name === 'ZFS Replication Task'
     )
 );
-const live = useLiveTaskStatus(remoteTasks, myScheduler, myTaskLog, { intervalMs: 1500 });
+const live = useLiveTaskStatus(remoteTasks, myScheduler, myTaskLog, {
+    intervalMs: () => statusPollMs.value,
+    progressIntervalMs: () => progressPollMs.value,
+});
 
 // Simple name filter
 const filtered = computed(() => {

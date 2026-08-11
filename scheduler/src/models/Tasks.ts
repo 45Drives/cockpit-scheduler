@@ -68,7 +68,7 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
             .addChild(new ZfsDatasetParameter('Destination Dataset', 'destDataset', '', 22, '', '', ''))
             .addChild(new SelectionParameter('Direction', 'direction', 'push', directionSelection))
             .addChild(new ParameterNode('Send Options', 'sendOptions')
-                .addChild(new BoolParameter('Compressed', 'compressed_flag', false))
+                .addChild(new BoolParameter('Compressed', 'compressed_flag', true))
                 .addChild(new BoolParameter('Raw', 'raw_flag', false))
                 .addChild(new BoolParameter('Recursive', 'recursive_flag', false))
                 .addChild(new BoolParameter('Include Intermediate Snapshots', 'includeIntermediateSnapshots', true))

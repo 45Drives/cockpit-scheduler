@@ -504,9 +504,9 @@ function handleOpenWireWizard() {
 
     const cockpit = (window as any).cockpit;
     if (cockpit?.jump) {
-        cockpit.jump('/wire-wizard-test#?from=scheduler');
+        cockpit.jump('/wireshield-test#/simple?from=scheduler');
     } else {
-        window.open('/cockpit/@localhost/wire-wizard-test/index.html#?from=scheduler', '_blank');
+        window.open('/cockpit/@localhost/wireshield-test/index.html#/simple?from=scheduler', '_blank');
     }
 }
 

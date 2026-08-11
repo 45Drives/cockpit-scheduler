@@ -28,7 +28,19 @@ SERVICE_GLOB = "/etc/systemd/system/houston_scheduler_*.service"
 DEFAULTS = {
     "restart_sec": 5,
     "start_limit_burst": 3,
+    "ui_status_poll_ms": 5000,
+    "ui_progress_poll_ms": 10000,
 }
+
+
+def desired_restart_policy(settings):
+    """Return service Restart policy from retry settings.
+
+    start_limit_burst counts total attempts including the first run.
+    So a value of 1 means no retry attempt should be made.
+    """
+    burst = int(settings.get("start_limit_burst", DEFAULTS["start_limit_burst"]))
+    return "no" if burst <= 1 else "on-failure"
 
 
 def read_config():
@@ -43,11 +55,19 @@ def read_config():
     start_limit_burst = config.getint(section, "start_limit_burst", fallback=DEFAULTS["start_limit_burst"])
     # Auto-calculate: window must be large enough to contain all burst attempts
     start_limit_interval_sec = (start_limit_burst + 1) * restart_sec
+    ui_status_poll_ms = config.getint("ui", "status_poll_ms", fallback=DEFAULTS["ui_status_poll_ms"])
+    ui_progress_poll_ms = config.getint("ui", "progress_poll_ms", fallback=DEFAULTS["ui_progress_poll_ms"])
+
+    # Clamp to sane minima to avoid accidental UI overload.
+    ui_status_poll_ms = max(1000, ui_status_poll_ms)
+    ui_progress_poll_ms = max(1000, ui_progress_poll_ms)
 
     return {
         "restart_sec": restart_sec,
         "start_limit_burst": start_limit_burst,
         "start_limit_interval_sec": start_limit_interval_sec,
+        "ui_status_poll_ms": ui_status_poll_ms,
+        "ui_progress_poll_ms": ui_progress_poll_ms,
     }
 
 
@@ -59,9 +79,13 @@ def write_config(settings):
 
     if not config.has_section("retry"):
         config.add_section("retry")
+    if not config.has_section("ui"):
+        config.add_section("ui")
 
     config.set("retry", "restart_sec", str(settings["restart_sec"]))
     config.set("retry", "start_limit_burst", str(settings["start_limit_burst"]))
+    config.set("ui", "status_poll_ms", str(settings["ui_status_poll_ms"]))
+    config.set("ui", "progress_poll_ms", str(settings["ui_progress_poll_ms"]))
     # Remove stale start_limit_interval_sec if present (now auto-calculated)
     if config.has_option("retry", "start_limit_interval_sec"):
         config.remove_option("retry", "start_limit_interval_sec")
@@ -103,6 +127,26 @@ def patch_service_file(path, settings):
         flags=re.MULTILINE,
     )
 
+    # Patch Restart policy based on max attempts.
+    restart_policy = desired_restart_policy(settings)
+    (content, restart_replacements) = re.subn(
+        r"^Restart=.*$",
+        f"Restart={restart_policy}",
+        content,
+        flags=re.MULTILINE,
+    )
+    if restart_replacements == 0:
+        # If the line is missing for any reason, inject it before RestartSec.
+        (content, inserted) = re.subn(
+            r"^RestartSec=.*$",
+            f"Restart={restart_policy}\n\\g<0>",
+            content,
+            flags=re.MULTILINE,
+        )
+        if inserted == 0:
+            # Fallback: append to end of file.
+            content = content.rstrip("\n") + f"\nRestart={restart_policy}\n"
+
     if content != original:
         with open(path, "w") as f:
             f.write(content)
@@ -134,12 +178,20 @@ def main():
     if args.get:
         print(json.dumps(read_config()))
     elif args.set:
-        settings = json.loads(args.set)
-        # Validate
-        for key in DEFAULTS:
-            if key not in settings:
-                settings[key] = DEFAULTS[key]
-            settings[key] = max(1, int(settings[key]))
+        incoming = json.loads(args.set)
+        settings = read_config()
+        # Merge incoming values so partial UI saves don't reset retry settings, and vice versa.
+        for key, value in incoming.items():
+            settings[key] = value
+
+        # Validate retry values
+        settings["restart_sec"] = max(1, int(settings.get("restart_sec", DEFAULTS["restart_sec"])))
+        settings["start_limit_burst"] = max(1, int(settings.get("start_limit_burst", DEFAULTS["start_limit_burst"])))
+
+        # Validate UI polling values
+        settings["ui_status_poll_ms"] = max(1000, int(settings.get("ui_status_poll_ms", DEFAULTS["ui_status_poll_ms"])))
+        settings["ui_progress_poll_ms"] = max(1000, int(settings.get("ui_progress_poll_ms", DEFAULTS["ui_progress_poll_ms"])))
+
         # Auto-calculate interval
         settings["start_limit_interval_sec"] = (settings["start_limit_burst"] + 1) * settings["restart_sec"]
         write_config(settings)

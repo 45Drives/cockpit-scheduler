@@ -1,7 +1,8 @@
 <template>
     <div class="space-y-4 text-left">
         <!-- Task-specific metadata -->
-        <ZfsRepTaskDetails v-if="template.name == 'ZFS Replication Task'" ref="activeComponent" :task="props.task" />
+        <ZfsRepTaskDetails v-if="template.name == 'ZFS Replication Task'" ref="activeComponent" :task="props.task"
+            :isRunning="props.isRunning" @dryRun="emit('dryRunTask')" @resumeTransfer="emit('resumeTask')" />
         <AutomatedSnapshotTaskDetails v-else-if="template.name == 'Automated Snapshot Task'" ref="activeComponent"
             :task="props.task" />
         <RsyncTaskDetails v-else-if="template.name == 'Rsync Task'" ref="activeComponent" :task="props.task" />
@@ -47,9 +48,14 @@ import { schedulerInjectionKey } from '../../keys/injection-keys';
 
 interface TaskInstanceDetailsProps {
     task: TaskInstanceType;
+    isRunning?: boolean;
 }
 
 const props = defineProps<TaskInstanceDetailsProps>();
+const emit = defineEmits<{
+    dryRunTask: [];
+    resumeTask: [];
+}>();
 
 const template = computed(() => props.task.template);
 const myScheduler = injectWithCheck(schedulerInjectionKey, "scheduler not provided!");

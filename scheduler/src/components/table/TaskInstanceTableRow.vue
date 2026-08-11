@@ -66,7 +66,7 @@
 					<div v-else class="h-2 rounded w-1/4 animate-indeterminate bg-blue-500 dark:bg-blue-400"></div>
 				</div>
 				<div class="text-xs mt-1 text-muted">
-					<span v-if="!isIndeterminate">{{ (progress ?? 0).toFixed(1) }}%</span>
+					<span v-if="!isIndeterminate">{{ progressText }}</span>
 					<span v-else class="animate-pulse">{{ progressLabel || 'Running…' }}</span>
 				</div>
 			</div>
@@ -74,7 +74,8 @@
 
 		<!-- Expanded details -->
 		<td v-if="isExpanded" class="col-span-full px-3 py-3 border-t border-default">
-			<TaskInstanceDetails :task="taskInstance" />
+			<TaskInstanceDetails :task="taskInstance" :isRunning="isRunning" @dryRunTask="dryRunBtn"
+				@resumeTask="resumeBtn" />
 
 			<!-- Primary actions -->
 			<div class="flex flex-wrap gap-2 justify-center mt-4 pt-4 border-t border-default">
@@ -82,7 +83,7 @@
 					Stop Now
 					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
-				<button v-else-if="isFailed" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
+				<button v-else-if="isRetryingFailure" @click="stopTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Stop Retries
 					<StopIcon class="h-5 ml-2 mt-0.5" />
 				</button>
@@ -110,22 +111,6 @@
 				<button @click="removeTaskBtn()" class="flex flex-row min-h-fit flex-nowrap btn btn-danger">
 					Remove
 					<TrashIcon class="h-5 ml-2 mt-0.5" />
-				</button>
-			</div>
-			<!-- Replication-specific actions -->
-			<div v-if="isReplicationTask && !isRunning" class="flex flex-wrap gap-2 justify-center mt-2 pt-2 border-t border-default/50">
-				<span class="text-xs text-muted self-center mr-1">Replication:</span>
-				<button @click="dryRunBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary text-sm"
-					title="Test the replication without transferring data">
-					Dry Run
-					<BeakerIcon class="h-4 ml-1.5 mt-0.5" />
-				</button>
-				<button @click="resumeBtn()"
-					class="flex flex-row min-h-fit flex-nowrap btn btn-secondary text-sm"
-					title="Resume an interrupted transfer from where it left off (exits cleanly if nothing to resume)">
-					Resume Transfer
-					<ArrowPathIcon class="h-4 ml-1.5 mt-0.5" />
 				</button>
 			</div>
 		</td>
@@ -158,8 +143,6 @@ import {
 	TableCellsIcon,
 	PencilSquareIcon,
 	StopIcon,
-	BeakerIcon,
-	ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
 import { Switch } from '@headlessui/vue';
 import { injectWithCheck } from '../../composables/utility';
@@ -230,12 +213,40 @@ watch(
 );
 
 const manualRunUntil = ref<number>(0);
-function markManualRun(windowMs = 60_000) {
+
+type ManualAction = 'dryRun' | 'resume' | null;
+const manualAction = ref<ManualAction>(null);
+const stickyLastRunText = ref<string>('');
+
+function isMeaningfulLastRun(text: string | undefined) {
+	if (!text) return false;
+	const lower = text.toLowerCase();
+	return lower !== "task hasn't run yet." && lower !== 'running now...';
+}
+
+const currentLastRun = computed(() => lastRunFor(taskInstance.value) || props.globalLastRun || '');
+
+watch(currentLastRun, (value) => {
+	if (isMeaningfulLastRun(value)) {
+		stickyLastRunText.value = value;
+	}
+}, { immediate: true });
+
+function markManualRun(windowMs = 60_000, action: ManualAction = null) {
 	manualRunUntil.value = Date.now() + windowMs;
+	manualAction.value = action;
+}
+
+function clearManualAction(keepWindowMs = 60_000) {
+	manualAction.value = null;
+	manualRunUntil.value = Date.now() + keepWindowMs;
 }
 
 // Text shown in the Status column, with manual wording
 const statusText = computed(() => {
+	if (manualAction.value === 'dryRun') return 'Dry Running...';
+	if (manualAction.value === 'resume') return 'Attempting Resume...';
+
 	// Prefer own live data (when expanded/polling), fall back to global poller data
 	const baseRaw = statusFor(taskInstance.value) || props.globalStatus;
 	const enabled = taskInstance.value?.schedule?.enabled ?? false;
@@ -250,15 +261,18 @@ const statusText = computed(() => {
 		const running = liveIsRunning(taskInstance.value);
 		const completed = liveIsCompleted(taskInstance.value);
 		const hasRun = !!(lastRunFor(taskInstance.value) && !lastRunFor(taskInstance.value)?.includes("hasn't run"));
+		const hasCompletedHistory = stickyLastRunText.value.toLowerCase().includes('completed at');
 
 		// While we're in the manual window, be explicit
 		if (manualWindowActive) {
 			if (running) return 'Running (manual)';
 			if (completed && hasRun) return 'Completed (manual)';
+			if (hasCompletedHistory) return 'Completed (manual)';
 		}
 
 		// Outside window, still keep "Completed (manual)" instead of plain "Completed"
 		if (completed && hasRun) return 'Completed (manual)';
+		if (hasCompletedHistory) return 'Completed (manual)';
 	}
 
 	return base;
@@ -266,11 +280,17 @@ const statusText = computed(() => {
 
 // Text shown in the "Last run" column
 const lastRunText = computed(() => {
-	return lastRunFor(taskInstance.value) || props.globalLastRun || "Task hasn't run yet.";
+	if (isMeaningfulLastRun(currentLastRun.value)) return currentLastRun.value;
+	if (stickyLastRunText.value) return stickyLastRunText.value;
+	return "Task hasn't run yet.";
 });
 
 // Boolean flags wrapped for the template
 const isRunning = computed(() => {
+	if (manualAction.value === 'dryRun' || manualAction.value === 'resume') {
+		return true;
+	}
+
 	const enabled = taskInstance.value?.schedule?.enabled ?? false;
 	const now = Date.now();
 	const manualWindowActive = !enabled && now < manualRunUntil.value;
@@ -294,15 +314,36 @@ const isRunning = computed(() => {
 	return false;
 });
 
+watch(
+	() => statusFor(taskInstance.value) || props.globalStatus || '',
+	(s) => {
+		if (manualAction.value !== null) {
+			const lower = s.toLowerCase();
+			const stillRunning = lower.includes('active (running)') || lower.includes('starting') || lower.includes('running');
+			if (!stillRunning) {
+				manualAction.value = null;
+			}
+		}
+	}
+);
+
 const isCompleted = computed(() => liveIsCompleted(taskInstance.value));
 const isFailed = computed(() => liveIsFailed(taskInstance.value));
 const isInactive = computed(() => liveIsInactive(taskInstance.value));
+const isRetryingFailure = computed(() => {
+	const s = (statusText.value || '').toLowerCase();
+	return s.includes('failed') && s.includes('restarting');
+});
 
 // Progress tracking (separate from status)
 const progress = ref<number | null>(null);
 const progressLabel = ref<string | null>(null);
 const showProgressBar = computed(() => isRunning.value);
 const isIndeterminate = computed(() => isRunning.value && progress.value === null);
+const progressText = computed(() => {
+	const pct = `${(progress.value ?? 0).toFixed(1)}%`;
+	return progressLabel.value ? `${progressLabel.value} — ${pct}` : pct;
+});
 
 async function updateProgress(task: TaskInstanceType) {
 	// Only poll progress when the task is actually running to avoid
@@ -316,7 +357,7 @@ async function updateProgress(task: TaskInstanceType) {
 		const result = await myScheduler.getTaskProgress(task);
 		if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
 			progress.value = result.percent;
-			progressLabel.value = null;
+			progressLabel.value = result?.label ?? null;
 		} else {
 			progress.value = null;
 			progressLabel.value = result?.label ?? null;
@@ -341,6 +382,7 @@ const progressBarClass = computed(() => {
 
 	if (
 		s.includes('active (running)') ||
+		s.includes('running (manual)') ||
 		s.includes('running now') ||
 		s.includes('starting') ||
 		s.includes('activating')
@@ -369,10 +411,6 @@ const emit = defineEmits([
 	'stopTask',
 	'update:selected',
 ]);
-
-const isReplicationTask = computed(() => {
-	return taskInstance.value?.template?.name === 'ZFS Replication Task';
-});
 
 async function runTaskBtn() {
 	emit('runTask', taskInstance.value);
@@ -537,6 +575,7 @@ defineExpose({
 	fetchLatestLog,
 	updateProgress,
 	markManualRun,
+	clearManualAction,
 	isCompleted,
 	isFailed,
 	isInactive,

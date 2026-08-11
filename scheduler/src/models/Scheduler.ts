@@ -75,6 +75,32 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    private async resetFailedQuiet(serviceUnit?: string): Promise<void> {
+        try {
+            if (!serviceUnit) {
+                await unwrap(
+                    server.execute(new Command(['systemctl', 'reset-failed'], { superuser: 'try' }), false)
+                );
+                return;
+            }
+
+            const probe = await unwrap(
+                server.execute(
+                    new Command(['systemctl', 'show', serviceUnit, '--property=LoadState', '--value'], { superuser: 'try' }),
+                    false
+                )
+            );
+            const loadState = String(probe.getStdout(false) ?? '').trim().toLowerCase();
+            if (probe.exitStatus === 0 && loadState && loadState !== 'not-found') {
+                await unwrap(
+                    server.execute(new Command(['systemctl', 'reset-failed', serviceUnit], { superuser: 'try' }), false)
+                );
+            }
+        } catch {
+            // best-effort cleanup path
+        }
+    }
+
     private statusCache = new Map<string, { ts: number; st: any }>();
 
     private async fetchStatus(ti: TaskInstanceType): Promise<any> {
@@ -270,7 +296,7 @@ export class Scheduler implements SchedulerType {
             const { stdout, stderr, exitStatus } = await runCommand(
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,MergedUnit',
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit',
                 ],
                 { superuser: 'try' }
             );
@@ -352,7 +378,7 @@ export class Scheduler implements SchedulerType {
         // But for safety with very large sets, chunk at 200 units.
         const CHUNK_SIZE = 200;
         const timerProps = 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit';
-        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,MergedUnit';
+        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit';
 
         // Parse multi-unit `systemctl show` output — units separated by blank lines
         const parseMultiShow = (raw: string): string[] => {
@@ -1554,13 +1580,10 @@ export class Scheduler implements SchedulerType {
 
         // === LEGACY path  ===
         const fullTaskName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
+        const serviceUnit = `${fullTaskName}.service`;
 
         console.log(`Running ${fullTaskName}...`);
-        try {
-            await runCommand(['systemctl', 'reset-failed', `${fullTaskName}.service`], { superuser: 'try' });
-        } catch {
-            // best-effort; ignore if it fails
-        }
+        await this.resetFailedQuiet(serviceUnit);
         await runTask(fullTaskName);
 
         const finalStatus = await waitForFinalStatus();
@@ -1678,7 +1701,7 @@ export class Scheduler implements SchedulerType {
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
                     '--property',
-                    'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,MergedUnit',
+                    'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,StartLimitBurst,NRestarts,MergedUnit',
                 ],
                 { superuser: 'try' }
             );
@@ -1706,6 +1729,13 @@ export class Scheduler implements SchedulerType {
             if (i > 0) m.set(line.slice(0, i), line.slice(i + 1));
         }
 
+        const intOrUndefined = (k: string): number | undefined => {
+            const v = m.get(k);
+            if (v == null || v === '') return undefined;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : undefined;
+        };
+
         const num = (k: string) => {
             const v = m.get(k);
             const n = v ? Number(v) : NaN;
@@ -1730,6 +1760,8 @@ export class Scheduler implements SchedulerType {
             active: m.get('ActiveState') || '',
             sub: m.get('SubState') || '',
             result: m.get('Result') || '',
+            startLimitBurst: intOrUndefined('StartLimitBurst'),
+            nRestarts: intOrUndefined('NRestarts'),
             // timers
             lastTriggerUSec: ts('LastTriggerUSec', 'LastTrigger'),
             nextElapseUSec: num('NextElapseUSecRealtime'),
@@ -1757,7 +1789,13 @@ export class Scheduler implements SchedulerType {
 
                 if (s.active === 'active' && s.sub === 'waiting') return 'Active (Pending)';
                 if (s.active === 'active' && s.sub === 'running') return 'Active (Running)';
-                if (s.active === 'activating' && s.sub === 'auto-restart') return 'Failed (Restarting)';
+                if (s.active === 'activating' && s.sub === 'auto-restart') {
+                    // StartLimitBurst=1 means no retry attempt beyond the first run.
+                    if (typeof s.startLimitBurst === 'number' && s.startLimitBurst <= 1) {
+                        return 'Failed';
+                    }
+                    return 'Failed (Restarting)';
+                }
 
                 if (s.active === 'inactive' && s.sub === 'dead') {
                     // Result=success is systemd's default for never-run units
@@ -1825,6 +1863,19 @@ export class Scheduler implements SchedulerType {
         }
     }
 
+    /** Strip the numeric tail off a systemd StatusText so the phase name can be shown next to the percentage. */
+    private extractProgressLabel(txt: string): string | null {
+        const s = txt
+            // New replication statuses may end with an explicit duplicate "— 29.9%".
+            .replace(/[\s—-]+\d+(?:\.\d+)?\s*%\s*$/, '')
+            .replace(/\s*\d+\s*\/\s*\d+\s*\(\s*\d+(?:\.\d+)?\s*%\s*\)\s*$/, '')
+            .replace(/\s*\d+(?:\.\d+)?\s*%\s*(?:complete)?\s*$/i, '')
+            .replace(/[…\.]+\s*$/, '')
+            .replace(/[\s—:-]+$/, '')
+            .trim();
+        return s || null;
+    }
+
     async getTaskProgress(taskInstance: TaskInstanceType): Promise<{ percent: number | null; label: string | null }> {
         await this.ensureBackend();
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
@@ -1836,7 +1887,7 @@ export class Scheduler implements SchedulerType {
                 const txt = String(st?.service || '');
 
                 const match = txt.match(/(\d+(?:\.\d+)?)%/);
-                if (match) return { percent: parseFloat(match[1]), label: null };
+                if (match) return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt) };
                 return { percent: null, label: txt || null };
             } catch {
                 return { percent: null, label: null };
@@ -1854,7 +1905,7 @@ export class Scheduler implements SchedulerType {
             );
             const txt = (stdout || '').trim();
             const match = txt.match(/(\d+(?:\.\d+)?)%/);
-            if (match) return { percent: parseFloat(match[1]), label: null };
+            if (match) return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt) };
             return { percent: null, label: txt || null };
         } catch {
             return { percent: null, label: null };
@@ -1915,7 +1966,7 @@ export class Scheduler implements SchedulerType {
             // in-progress retry cycle is halted immediately.
             // These are non-fatal — service may not be loaded if it never ran.
             try { await runCommand(['systemctl', 'stop', serviceName], { superuser: 'try' }); } catch {}
-            try { await runCommand(['systemctl', 'reset-failed', serviceName], { superuser: 'try' }); } catch {}
+            await this.resetFailedQuiet(serviceName);
 
             console.log(`${timerName} and ${serviceName} have been stopped and disabled`);
             taskInstance.schedule.enabled = false;
@@ -2028,7 +2079,7 @@ export class Scheduler implements SchedulerType {
             await runCommand(['rm', '-f', jsonPath], { superuser: 'try' });
 
             // Clean up state and reload systemd
-            await runCommand(['systemctl', 'reset-failed'], { superuser: 'try' }).catch(() => { });
+            await this.resetFailedQuiet();
             await runCommand(['systemctl', 'daemon-reload'], { superuser: 'try' });
 
             taskInstance.schedule.enabled = false;

@@ -30,6 +30,27 @@ async function runCommand(
 
 const errorString = (e: any) => e?.message ?? String(e);
 
+function trimToLatestRunBlock(output: string): string {
+    const text = (output || '').replace(/^-- Logs begin at.*\n?/m, '');
+    if (!text) return '';
+
+    const lines = text.split('\n');
+    let startIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i] || '';
+        if (line.includes('Starting Service for ')) {
+            startIdx = i;
+            break;
+        }
+    }
+
+    if (startIdx < 0) {
+        return text;
+    }
+
+    return lines.slice(startIdx).join('\n');
+}
+
 /**
  * Maps formatted template names to the debug log file written by each script.
  * These are the /tmp/ logs that always exist even when the journal is empty.
@@ -43,6 +64,15 @@ const DEBUG_LOG_MAP: Record<string, string> = {
     SmartTest: '/tmp/smart_test_debug.log',
     CustomTask: '/tmp/custom_task_debug.log',
 };
+
+/**
+ * Scripts write per-task logs as <base>_<taskName>.log and fall back to
+ * <base>.log when taskName is unset, so probe both.
+ */
+function debugLogCandidates(basePath: string, taskName: string): string[] {
+    const base = basePath.replace(/\.log$/, '');
+    return taskName ? [`${base}_${taskName}.log`, basePath] : [basePath];
+}
 
 export class TaskExecutionLog {
     entries: TaskExecutionResult[];
@@ -140,7 +170,7 @@ export class TaskExecutionLog {
             // --- LEGACY path (system units)
             const showCmd = [
                 'systemctl', 'show', `${unit}.service`,
-                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp',
+                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp,InvocationID',
                 '--no-pager',
             ];
             const showRes = await runCommand(showCmd, { superuser: 'try' });
@@ -164,6 +194,8 @@ export class TaskExecutionLog {
                 kv['InactiveEnterTimestamp'] ||
                 '';
 
+            const invocationId = (kv['InvocationID'] || '').trim();
+
             let output = '';
             const baseLogCmd = [
                 'journalctl', '-q', '--output=cat',
@@ -171,11 +203,24 @@ export class TaskExecutionLog {
                 '--no-pager', '--all',
             ];
 
+            if (invocationId) {
+                try {
+                    const byInvocationCmd = ['journalctl', '-q', '--output=cat', '--no-pager', '--all', `_SYSTEMD_INVOCATION_ID=${invocationId}`];
+                    const logRes = await runCommand(byInvocationCmd, { superuser: 'try' });
+                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                } catch (e) {
+                    const msg = errorString(e);
+                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
+                        console.warn('journalctl (invocation) failed:', msg);
+                    }
+                }
+            }
+
             if (startTime) {
                 const logCmd = [...baseLogCmd, '--since', startTime];
                 try {
                     const logRes = await runCommand(logCmd, { superuser: 'try' });
-                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                    output = trimToLatestRunBlock(logRes.stdout || '');
                 } catch (e) {
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {
@@ -189,7 +234,7 @@ export class TaskExecutionLog {
                 try {
                     const fallbackCmd = [...baseLogCmd, '-n', '200'];
                     const logRes = await runCommand(fallbackCmd, { superuser: 'try' });
-                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                    output = trimToLatestRunBlock(logRes.stdout || '');
                 } catch (e) {
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {
@@ -215,15 +260,20 @@ export class TaskExecutionLog {
         if (!logPath) {
             return `No debug log path configured for template "${templateName}".`;
         }
-        try {
-            const { stdout } = await runCommand(
-                ['tail', '-n', String(lines), logPath],
-                { superuser: 'try' },
-            );
-            return (stdout || '').trim() || '(debug log is empty)';
-        } catch {
-            return `(debug log not found at ${logPath})`;
+        const candidates = debugLogCandidates(logPath, taskInstance.name);
+        for (const path of candidates) {
+            try {
+                const { stdout } = await runCommand(
+                    ['tail', '-n', String(lines), path],
+                    { superuser: 'try' },
+                );
+                const content = (stdout || '').trim();
+                if (content) return content;
+            } catch {
+                // try next candidate
+            }
         }
+        return `(no debug log content found at ${candidates.join(' or ')})`;
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
@@ -270,7 +320,9 @@ export class TaskExecutionLog {
             // so we just rotate and clear the debug log)
             const debugLogPath = DEBUG_LOG_MAP[templateName];
             if (debugLogPath) {
-                await runCommand(['truncate', '-s', '0', debugLogPath], { superuser: 'try' }).catch(() => {});
+                for (const path of debugLogCandidates(debugLogPath, taskInstance.name)) {
+                    await runCommand(['truncate', '-s', '0', path], { superuser: 'try' }).catch(() => {});
+                }
             }
 
             return { success: true, message: `Cleared debug log for ${taskInstance.name}. Journal entries remain in system journal.` };

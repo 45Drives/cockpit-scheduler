@@ -1,3 +1,3 @@
-## task scheduler 1.6.18-3
+## task scheduler 1.7.1-2
 
-* Fixes more bugs
+* Updates log outputs, adds mbuffer to both send/recv usage in all methods, updates test harness

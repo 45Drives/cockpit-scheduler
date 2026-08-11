@@ -1,5 +1,5 @@
 <template>
-    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-3/5'" :min-width="'min-w-3/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false" :closeConfirm="closeBtn">
+    <Modal @close="closeModal" :isOpen="showTaskWizard" :margin-top="'mt-10'" :width="'w-4/5'" :min-width="'min-w-4/5'" :height="'h-min'" :min-height="'min-h-min'" :close-on-background-click="false" :closeConfirm="closeBtn">
         <template v-slot:title>
             Add New Task
         </template>
@@ -291,5 +291,6 @@ provide('errors', errorList);
 provide('show-schedule-prompt', showSchedulePrompt);
 provide('is-standalone-task', isStandaloneTask);
 provide('show-task-wizard', showTaskWizard);
+provide('task-name-draft', newTaskName);
 
 </script>

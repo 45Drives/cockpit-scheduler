@@ -50,6 +50,20 @@
                     :value="boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))" />
                 <DetailField v-if="isRemote" label="Transfer Method" :value="effectiveTransferMethod === 'netcat' ? 'Netcat' : 'SSH'" />          
             </div>
+            <div v-if="!props.isRunning" class="flex flex-row gap-2 mt-4 pt-3 border-t border-default/50 justify-end">
+                <button @click="dryRunBtn"
+                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary text-sm"
+                    title="Test the replication without transferring data">
+                    Dry Run
+                    <BeakerIcon class="h-4 ml-1.5 mt-0.5" />
+                </button>
+                <button @click="resumeTransferBtn"
+                    class="flex flex-row min-h-fit flex-nowrap btn btn-secondary text-sm"
+                    title="Resume an interrupted transfer from where it left off (exits cleanly if nothing to resume)">
+                    Attempt Resume
+                    <ArrowPathIcon class="h-4 ml-1.5 mt-0.5" />
+                </button>
+            </div>
         </DetailSection>
     </div>
 </template>
@@ -57,15 +71,20 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { boolToYesNo, findValue } from '../../../composables/utility';
-import { ChevronDoubleRightIcon } from '@heroicons/vue/24/outline';
+import { ChevronDoubleRightIcon, BeakerIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 import DetailField from '../../common/DetailField.vue';
 import DetailSection from '../../common/DetailSection.vue';
 
 interface ZfsRepTaskDetailsProps {
     task: TaskInstanceType;
+    isRunning?: boolean;
 }
 
 const props = defineProps<ZfsRepTaskDetailsProps>();
+const emit = defineEmits<{
+    dryRun: [];
+    resumeTransfer: [];
+}>();
 const taskInstance = ref(props.task);
 
 const direction = computed(() => {
@@ -119,4 +138,12 @@ const destFullPath = computed(() => {
     if (!pool || dataset.startsWith(pool + '/') || dataset === pool) return dataset;
     return `${pool}/${dataset}`;
 });
+
+function dryRunBtn() {
+    emit('dryRun');
+}
+
+function resumeTransferBtn() {
+    emit('resumeTransfer');
+}
 </script>
