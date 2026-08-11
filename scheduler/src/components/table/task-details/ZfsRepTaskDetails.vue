@@ -48,7 +48,7 @@
                     :value="boolToYesNo(findValue(taskInstance.parameters, 'sendOptions', 'recursive_flag'))" />
                 <DetailField label="Resume on Failure"
                     :value="boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))" />
-                <DetailField v-if="isRemote" label="Transfer Method" :value="effectiveTransferMethod === 'netcat' ? 'Netcat' : 'SSH'" />          
+                <DetailField v-if="isRemote" label="Transfer Method" :value="remoteProtoLabel" />
             </div>
             <div v-if="!props.isRunning" class="flex flex-row gap-2 mt-4 pt-3 border-t border-default/50 justify-end">
                 <button @click="dryRunBtn"
@@ -107,16 +107,20 @@ const sendTypeLabel = computed(() => {
     if (!isRemote.value) return 'Local';
     if (isPull.value) {
         if (effectiveTransferMethod.value === 'netcat') return 'Pull (Remote via Netcat)';
+        if (effectiveTransferMethod.value === 'mbuffer') return 'Pull (Remote via mBuffer)';
         return 'Pull (Remote via SSH)';
     }
     if (effectiveTransferMethod.value === 'netcat') return 'Push (Remote via Netcat)';
+    if (effectiveTransferMethod.value === 'mbuffer') return 'Push (Remote via mBuffer)';
     if (effectiveTransferMethod.value === 'ssh') return 'Push (Remote via SSH)';
     return 'Push (Remote)';
 });
 
 const remoteLabel = computed(() => (isPull.value ? 'Remote Source' : 'Remote Target'));
 const remoteProtoLabel = computed(() => {
-    return effectiveTransferMethod.value === 'netcat' ? 'Netcat' : 'SSH';
+    if (effectiveTransferMethod.value === 'netcat') return 'Netcat';
+    if (effectiveTransferMethod.value === 'mbuffer') return 'mBuffer';
+    return 'SSH';
 });
 
 const compressionValue = computed(() => {

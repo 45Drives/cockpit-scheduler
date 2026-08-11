@@ -139,6 +139,10 @@ def resume_receive_push(
         else:
             print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | nc {recvHost} {data_port_cli}")
             print(f"CLI command (receiver): nc -l {data_port_cli} | {recv_flags}")
+    elif transferMethod == "mbuffer":
+        data_port_cli = str(recvDataPort or recvSshPort or "31337")
+        print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {recvHost}:{data_port_cli}")
+        print(f"CLI command (receiver): {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port_cli} | {recv_flags}")
     else:
         ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
         ssh_port_flag = f" -p {recvSshPort}" if str(recvSshPort) != "22" else ""
@@ -313,9 +317,101 @@ def resume_receive_push(
             print(ssh_stdout)
         return True, ""
 
+    if transferMethod == "mbuffer":
+        data_port = str(recvDataPort or recvSshPort or "31337")
+        ssh_port = str(recvSshPort or "22")
+
+        recv_q = shlex.quote(recvName)
+        listen_cmd = (
+            f"{mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {shlex.quote(data_port)} "
+            f"| zfs recv -s {'-F ' if forceOverwrite else ''}{recv_q}"
+        )
+        ssh_cmd_listener = ssh_base_args(recvHostUser, recvHost, ssh_port)
+        ssh_cmd_listener.append(listen_cmd)
+
+        ssh_process_listener = subprocess.Popen(
+            ssh_cmd_listener,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        if not _wait_for_port_remote(recvHostUser, recvHost, data_port, ssh_port, timeout=30):
+            safe_print(f"WARNING: mbuffer listener on {recvHost}:{data_port} not ready after 30s, proceeding anyway")
+
+        sender_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit) + ["-O", f"{recvHost}:{data_port}"]
+        process_mbuffer = subprocess.Popen(
+            sender_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        mbuf_capture = StreamCapture(process_mbuffer.stderr)
+
+        if process_send.stdout is None or process_mbuffer.stdin is None:
+            raise RuntimeError("Failed to initialize resume mbuffer pipes.")
+
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_send.stdout,
+                process_mbuffer.stdin,
+                total_bytes,
+                label="Resuming (mbuffer)",
+                stall_timeout=stall_timeout,
+            )
+        except StallTimeout as e:
+            notifier.notify(f"STATUS=Resume stalled: {e}")
+            print(f"ERROR: {e}")
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            return False, str(e)
+
+        if pipe_broken:
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+            err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+            safe_print(err_msg)
+            return False, err_msg
+
+        try:
+            _close_pipe(process_mbuffer.stdin)
+            process_mbuffer.stdin = None
+        except Exception:
+            pass
+
+        send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
+        process_send.wait()
+        process_mbuffer.wait()
+        mbuf_stderr = mbuf_capture.text()
+
+        if process_send.returncode != 0:
+            notifier.notify("STATUS=mBuffer resume send failed.")
+            err_msg = f"send error: {send_stderr}"
+            print(err_msg)
+            ssh_process_listener.terminate()
+            return False, err_msg
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=mBuffer resume send failed.")
+            err_msg = f"mbuffer error: {mbuf_stderr}"
+            print(err_msg)
+            ssh_process_listener.terminate()
+            return False, err_msg
+
+        ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+        if ssh_process_listener.returncode != 0:
+            notifier.notify("STATUS=Remote resume receive via mBuffer failed.")
+            err_msg = f"[Receiver Side] Error during receive: {ssh_stderr.strip()}"
+            print(err_msg)
+            return False, err_msg
+
+        notifier.notify("STATUS=mBuffer resume send/receive completed.")
+        if ssh_stdout:
+            print(ssh_stdout)
+        return True, ""
+
     if transferMethod != "ssh":
-        print("ERROR: Resume tokens are only supported for local, ssh, or netcat transfers in this script.")
-        return False, "Resume tokens are only supported for local, ssh, or netcat transfers in this script."
+        print("ERROR: Resume tokens are only supported for local, ssh, netcat, or mbuffer transfers in this script.")
+        return False, "Resume tokens are only supported for local, ssh, netcat, or mbuffer transfers in this script."
 
     m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
     process_m_buff = subprocess.Popen(
@@ -406,6 +502,7 @@ def resume_receive_pull(
     stall_timeout=3600,
     transferMethod="ssh",
     recvDataPort=None,
+    mbufferCallbackHost="",
 ):
     notifier.notify("STATUS=Resuming ZFS pull pipeline from resume token…")
 
@@ -439,6 +536,18 @@ def resume_receive_pull(
     send_str_cli = f"zfs send -t {shlex.quote(resume_token)}"
     recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {localRecvFs}"
     ssh_port_flag = f" -p {remoteSshPort}" if str(remoteSshPort) != "22" else ""
+    mbuffer_callback_expr = None
+    mbuffer_callback_display = None
+    mbuffer_callback_cli = None
+    if transferMethod == "mbuffer":
+        _callback_port = str(recvDataPort or remoteSshPort or "31337")
+        mbuffer_callback_expr, mbuffer_callback_display, mbuffer_callback_cli = resolve_mbuffer_callback_target_for_remote(
+            remoteUser,
+            remoteHost,
+            remoteSshPort,
+            mbufferCallbackHost,
+            _callback_port,
+        )
     if transferMethod == "netcat":
         data_port_cli = str(recvDataPort or remoteSshPort or "31337")
         local_recv_stage = f"nc {remoteHost} {data_port_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}"
@@ -447,6 +556,10 @@ def resume_receive_pull(
         else:
             print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | nc -l {data_port_cli}'")
         print(f"CLI command (dest, local receiver):   {local_recv_stage}")
+    elif transferMethod == "mbuffer":
+        data_port_cli = str(recvDataPort or remoteSshPort or "31337")
+        print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {mbuffer_callback_cli}'")
+        print(f"CLI command (dest, local receiver):   {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port_cli} | {recv_flags}")
     else:
         if remote_mbuffer_enabled:
             print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)}' | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
@@ -612,6 +725,151 @@ def resume_receive_pull(
             print(recv_stdout)
         return True, ""
 
+    if transferMethod == "mbuffer":
+        data_port = str(recvDataPort or remoteSshPort or "31337")
+        ssh_port = str(remoteSshPort or "22")
+        callback_expr = mbuffer_callback_expr
+        callback_display = mbuffer_callback_display
+
+        notifier.notify(f"STATUS=Resuming pull via mbuffer from {remoteUser}@{remoteHost} into {localRecvFs}…")
+
+        notifier.notify(f"STATUS=Running callback preflight from source to {callback_display}:{data_port}…")
+        preflight_ok, preflight_detail, preflight_checked = preflight_remote_callback_connectivity(
+            remoteUser,
+            remoteHost,
+            ssh_port,
+            callback_expr,
+            callback_display,
+            data_port,
+        )
+        if preflight_checked and not preflight_ok:
+            notifier.notify(f"STATUS=Data-plane blocked: source cannot reach callback host {callback_display}:{data_port}.")
+            err_msg = (
+                f"Data-plane blocked for mbuffer pull resume. Source {remoteHost} cannot reach "
+                f"callback host {callback_display}:{data_port}."
+            )
+            print(f"ERROR: {err_msg}")
+            if preflight_detail:
+                print(f"Preflight detail: {preflight_detail}")
+            print("Hint: Open firewall/route for callback host:port or set an explicit mBuffer callback host.")
+            return False, err_msg
+        if preflight_checked and preflight_detail:
+            notifier.notify(f"STATUS=Callback preflight note: {preflight_detail}")
+            print(f"Preflight note: {preflight_detail}")
+        if not preflight_checked:
+            notifier.notify(f"STATUS=Callback preflight skipped ({preflight_detail}).")
+            print(f"Warning: {preflight_detail}")
+
+        mbuffer_listen_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit) + ["-I", data_port]
+        process_mbuffer = subprocess.Popen(
+            mbuffer_listen_cmd,
+            stdin=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        mbuf_capture = StreamCapture(process_mbuffer.stderr)
+
+        recv_cmd = ["zfs", "recv", "-s"]
+        if forceOverwrite:
+            recv_cmd.append("-F")
+        recv_cmd.append(localRecvFs)
+        process_local_recv = subprocess.Popen(
+            recv_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=False,
+        )
+
+        notifier.notify(f"STATUS=Listener ready on local port {data_port}; waiting for remote mbuffer callback from {remoteHost} to {callback_display}:{data_port}…")
+
+        send_str = f"zfs send -t {shlex.quote(resume_token)}"
+        remote_cmd = f"{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {callback_expr}:{shlex.quote(data_port)}"
+        ssh_cmd_sender = ssh_base_args(remoteUser, remoteHost, ssh_port)
+        ssh_cmd_sender.append(remote_cmd)
+        ssh_process_sender = subprocess.Popen(
+            ssh_cmd_sender,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        notifier.notify("STATUS=Remote sender started; waiting for first data bytes…")
+
+        if process_mbuffer.stdout is None or process_local_recv.stdin is None:
+            raise RuntimeError("Failed to initialize resume mbuffer pull pipes.")
+
+        try:
+            _, pipe_broken = stream_with_progress_stall(
+                process_mbuffer.stdout,
+                process_local_recv.stdin,
+                total_bytes,
+                label="Resuming (mbuffer)",
+                stall_timeout=stall_timeout,
+            )
+        except StallTimeout as e:
+            notifier.notify(f"STATUS=Resume stalled: {e}")
+            print(f"ERROR: {e}")
+            _kill_procs(process_mbuffer, process_local_recv, ssh_process_sender)
+            return False, str(e)
+
+        if pipe_broken:
+            _kill_procs(process_mbuffer, process_local_recv, ssh_process_sender)
+            notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+            err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+            safe_print(err_msg)
+            return False, err_msg
+
+        try:
+            _close_pipe(process_local_recv.stdin)
+            process_local_recv.stdin = None
+        except Exception:
+            pass
+
+        process_mbuffer.wait()
+
+        try:
+            recv_stdout, recv_stderr = process_local_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process_local_recv.kill()
+            ssh_process_sender.kill()
+            notifier.notify("STATUS=Finalization timed out — local recv process killed.")
+            return False, f"Local zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Process killed."
+
+        try:
+            ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
+        except subprocess.TimeoutExpired:
+            ssh_process_sender.kill()
+            notifier.notify("STATUS=Finalization timed out — remote sender process killed.")
+            return False, "Remote sender did not finish during mbuffer pull resume finalization. Process killed."
+
+        recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
+        recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
+        mbuf_err = mbuf_capture.text()
+
+        if ssh_process_sender.returncode != 0:
+            notifier.notify("STATUS=Remote resume send via mbuffer failed.")
+            err_msg = f"[Remote Side] Error during send: {ssh_stderr.strip()}"
+            print(err_msg)
+            return False, err_msg
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=mBuffer resume pull failed.")
+            err_msg = f"[Receiver Side] mbuffer error: {mbuf_err}"
+            print(err_msg)
+            return False, err_msg
+
+        if process_local_recv.returncode != 0:
+            notifier.notify("STATUS=Local resume receive (pull via mbuffer) failed.")
+            err_msg = f"ERROR: local recv error: {recv_stderr}"
+            print(err_msg)
+            return False, err_msg
+
+        notifier.notify("STATUS=mBuffer pull resume receive completed.")
+        if recv_stdout:
+            print(recv_stdout)
+        return True, ""
+
     # SSH transfer (default)
     process_remote_send = _start_remote_send_over_ssh(
         remoteUser,
@@ -700,4 +958,4 @@ def resume_receive_pull(
         print(stdout)
     return True, ""
 
-    return False, "Resume tokens are only supported for ssh or netcat transfers in this script."
+    return False, "Resume tokens are only supported for ssh, netcat, or mbuffer transfers in this script."

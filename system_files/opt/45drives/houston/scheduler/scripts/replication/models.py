@@ -43,6 +43,9 @@ class ReplicationRun:
         self.remoteHost = ""
         self.mBufferSize = "1"
         self.mBufferUnit = "G"
+        self.mBufferBlockSize = "256"
+        self.mBufferBlockUnit = "k"
+        self.mBufferCallbackHost = ""
         self.sourceRetentionTime: RetentionValue = 0
         self.sourceRetentionUnit = ""
         self.destinationRetentionTime: RetentionValue = 0

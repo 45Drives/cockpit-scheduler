@@ -1,3 +1,3 @@
-## task scheduler 1.7.1-2
+## task scheduler 1.7.2-1
 
-* Updates log outputs, adds mbuffer to both send/recv usage in all methods, updates test harness
+* Adds mbuffer as a standalone transfer method for ZFS Replication

@@ -22,6 +22,20 @@ def test_parse_send_size_output(raw, expected):
     assert process._parse_send_size_output(raw) == expected
 
 
+def test_effective_mbuffer_block_defaults_when_transfer_is_not_mbuffer(monkeypatch):
+    monkeypatch.setenv("zfsRepConfig_sendOptions_transferMethod", "ssh")
+    monkeypatch.setenv("zfsRepConfig_sendOptions_mbufferBlockSize", "512")
+    monkeypatch.setenv("zfsRepConfig_sendOptions_mbufferBlockUnit", "k")
+    assert process._effective_mbuffer_block() == process.MBUFFER_BLOCK_SIZE
+
+
+def test_effective_mbuffer_block_uses_task_override_for_mbuffer(monkeypatch):
+    monkeypatch.setenv("zfsRepConfig_sendOptions_transferMethod", "mbuffer")
+    monkeypatch.setenv("zfsRepConfig_sendOptions_mbufferBlockSize", "512")
+    monkeypatch.setenv("zfsRepConfig_sendOptions_mbufferBlockUnit", "k")
+    assert process._effective_mbuffer_block() == "512k"
+
+
 def test_estimate_send_size_adds_dry_run_flag(monkeypatch):
     seen = []
 
