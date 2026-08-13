@@ -915,12 +915,27 @@ watch(sourcePool, (v) => {
 watch(destHost, (v) => {
     if (v.trim() !== '') return;
 
+    // Clearing the host also drops the Wire Wizard value and the one-time SSH setup gate
+    if (injectedVpnHost.value) injectedVpnHost.value = null;
+    try { localStorage.removeItem('scheduler-vpn-host'); } catch { /* ignore */ }
+    sshSetupNeeded.value = false;
+    sshSetupPassword.value = '';
+    sshSetupError.value = '';
+    settingUpSSH.value = false;
+    testingSSH.value = false;
+    sshReady.value = false;
+    destHostErrorTag.value = false;
+
     if (isPull.value) {
         sourcePool.value = '';
         sourceDataset.value = '';
+        sourcePools.value = [];
+        sourceDatasets.value = [];
     } else {
         destPool.value = '';
         destDataset.value = '';
+        destPools.value = [];
+        destDatasets.value = [];
     }
 });
 

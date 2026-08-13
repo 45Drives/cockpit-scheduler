@@ -779,6 +779,21 @@ watch(parallelDisabled, (disabled) => {
     }
 });
 
+watch(destHost, (v) => {
+    if (v.trim() !== '') return;
+
+    // Clearing the host also drops the Wire Wizard value and the one-time SSH setup gate
+    if (injectedVpnHost.value) injectedVpnHost.value = null;
+    try { localStorage.removeItem('scheduler-vpn-host'); } catch { /* ignore */ }
+    sshSetupNeeded.value = false;
+    sshSetupPassword.value = '';
+    sshSetupError.value = '';
+    settingUpSSH.value = false;
+    testingSSH.value = false;
+    sshReady.value = false;
+    destHostErrorTag.value = false;
+});
+
 async function initializeData() {
     if (props.task) {
         loading.value = true;
