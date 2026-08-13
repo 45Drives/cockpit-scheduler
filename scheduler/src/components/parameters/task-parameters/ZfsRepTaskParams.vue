@@ -1212,11 +1212,11 @@ const getTargetPools = async () => {
         let result;
         if (targetIsRemote.value) {
             const portToUse = (transferMethod.value === 'netcat' || transferMethod.value === 'mbuffer') ? '22' : String(destPort.value);
-            destPools.value = await getPoolData(destHost.value, portToUse, destUser.value);
+            result = await getPoolData(destHost.value, portToUse, destUser.value);
         } else {
             result = await getPoolData();
         }
-        destPools.value = result;
+        destPools.value = result ?? [];
         if (!result || (Array.isArray(result) && result.length === 0)) {
             if (targetIsRemote.value && destHost.value) {
                 pushNotification(new Notification(
@@ -1628,6 +1628,8 @@ async function handleTestSSH() {
         if (ok) {
             pushNotification(new Notification('Connection Successful!', 'Passwordless SSH connection established.', 'success', 6000));
             sshReady.value = true;
+            sshSetupNeeded.value = false;
+            if (host) await getTargetPools();
             return;
         }
 
