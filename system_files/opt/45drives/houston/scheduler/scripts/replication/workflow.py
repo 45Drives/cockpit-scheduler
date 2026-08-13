@@ -19,6 +19,7 @@ from .planner import build_zfs_send_args
 from .process import _apply_tcp_tuning
 from .retention import destroy_snapshots_with_progress, prune_snapshots_by_retention
 from .schedules import load_schedule_json, match_current_tier
+from .ssh import preflight_ssh
 from .snapshots import (
     create_snapshot_local,
     create_snapshot_remote,
@@ -59,6 +60,23 @@ def _persist_lastrun(task_name):
             f.write(str(int(time.time())))
     except Exception as e:
         dbg(f'WARNING: failed to write lastrun file: {e}')
+
+
+def _require_ssh_access(user, host, port):
+    """Abort early with an actionable message when SSH is not usable."""
+    ok, output = preflight_ssh(user, host, port)
+    if ok:
+        return
+    detail = '\n'.join(
+        line for line in (output or '').splitlines()
+        if line and not line.startswith('debug')
+    ).strip()
+    notifier.notify(f'STATUS=SSH connection to {user}@{host} failed.')
+    safe_print(f'ERROR: Cannot open a non-interactive SSH session to {user}@{host} (port {port}).')
+    if detail:
+        safe_print(detail)
+    safe_print('Hint: confirm the SSH key for this user is installed on the remote host and that the host and port are reachable.')
+    sys.exit(1)
 
 
 def _initialize_run(ctx: ReplicationRun):
@@ -212,9 +230,7 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
                 sys.exit(1)
         dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
         dbg(f'remoteUser={ctx.remoteUser} remoteHost={ctx.remoteHost} sshPort={ctx.sshPort}')
-        p = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-vv', f'{ctx.remoteUser}@{ctx.remoteHost}', 'true'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-        dbg('ssh -vv output:\n' + p.stdout)
-        dbg(f'ssh returncode={p.returncode}')
+        _require_ssh_access(ctx.remoteUser, ctx.remoteHost, ctx.sshPort)
         print(f'Fetching remote source snapshots from {ctx.remoteUser}@{ctx.remoteHost}:{remote_source_fs}…')
         notifier.notify(f'STATUS=Fetching remote source snapshots from {ctx.remoteUser}@{ctx.remoteHost}:{remote_source_fs}…')
         ctx.sourceSnapshots = get_remote_snapshots(ctx.remoteUser, ctx.remoteHost, ctx.sshPort, remote_source_fs) or []
@@ -265,9 +281,7 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
         if ctx.remoteHost:
             dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
             dbg(f'remoteUser={ctx.remoteUser} remoteHost={ctx.remoteHost} sshPort={ctx.sshPort}')
-            p = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-vv', f'{ctx.remoteUser}@{ctx.remoteHost}', 'true'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-            dbg('ssh -vv output:\n' + p.stdout)
-            dbg(f'ssh returncode={p.returncode}')
+            _require_ssh_access(ctx.remoteUser, ctx.remoteHost, ctx.sshPort)
         print(f'Fetching local source snapshots for {local_source_fs}…')
         notifier.notify(f'STATUS=Fetching local source snapshots for {local_source_fs}…')
         ctx.sourceSnapshots = get_local_snapshots(local_source_fs) or []

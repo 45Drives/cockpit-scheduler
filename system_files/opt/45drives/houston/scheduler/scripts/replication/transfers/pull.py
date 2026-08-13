@@ -144,6 +144,11 @@ def send_snapshot_pull(
     if not remoteHost:
         raise RuntimeError("Pull replication requires a remote host.")
 
+    if transferMethod not in ("ssh", "netcat", "mbuffer"):
+        notifier.notify("STATUS=Invalid transfer method for pull replication.")
+        print(f"ERROR: Invalid transferMethod '{transferMethod}'. Pull replication supports 'ssh', 'netcat', or 'mbuffer'.")
+        sys.exit(1)
+
     remote_mbuffer_enabled = False
     if transferMethod in ("ssh", "netcat"):
         remote_mbuffer_enabled = remote_has_command(remoteUser, remoteHost, remoteSshPort, "mbuffer")
@@ -261,17 +266,20 @@ def send_snapshot_pull(
         process_pv = None
         pv_source = process_nc.stdout
         if _has_pv():
-            pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
-            if total_bytes:
-                pv_cmd.extend(["-s", str(total_bytes)])
             process_pv = subprocess.Popen(
-                pv_cmd,
+                _build_pv_cmd(total_bytes),
                 stdin=process_nc.stdout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                bufsize=0,
             )
             _close_pipe(process_nc.stdout)
             pv_source = process_pv.stdout
+        else:
+            safe_print(
+                "WARNING: pv is not installed; progress reporting and the stall watchdog "
+                "are disabled for this netcat transfer."
+            )
 
         mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_mbuffer = subprocess.Popen(
@@ -314,15 +322,17 @@ def send_snapshot_pull(
         # Wait for the pipeline with stall detection
         notifier.notify("STATUS=Receiving data via netcat… waiting for pipeline to complete.")
         stall_timeout = TRANSFER_STALL_TIMEOUT
-        stall_enabled = bool(stall_timeout and stall_timeout > 0)
-        poll_interval = min(30.0, stall_timeout) if stall_enabled else None
+        # pv is the only activity source for this pipeline; without it every poll looks idle.
+        stall_enabled = bool(process_pv and stall_timeout and stall_timeout > 0)
+        poll_interval = min(30.0, stall_timeout) if stall_enabled else 60.0
 
         while True:
             try:
-                recv_stdout, recv_stderr = process_local_recv.communicate(timeout=poll_interval)
+                recv_stdout, recv_stderr = safe_communicate(process_local_recv, timeout=poll_interval)
                 break
             except subprocess.TimeoutExpired:
                 if not stall_enabled:
+                    notifier.notify("STATUS=Receiving data via netcat… still running (no pv, progress unavailable).")
                     continue
                 idle = time.time() - last_activity[0]
                 if idle >= stall_timeout:
@@ -348,9 +358,15 @@ def send_snapshot_pull(
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
-        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
-        if process_pv:
-            _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
+        try:
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+            if process_pv:
+                _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_mbuffer, process_pv, process_nc, ssh_process_sender)
+            notifier.notify("STATUS=Finalization timed out — buffer stage killed.")
+            print(f"ERROR: mbuffer/pv did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after the receive completed. Processes killed.")
+            sys.exit(1)
         try:
             _, nc_stderr = _communicate_with_finalize_heartbeat(
                 process_nc,
@@ -392,7 +408,7 @@ def send_snapshot_pull(
 
         if process_nc.returncode != 0:
             notifier.notify("STATUS=Netcat pull failed.")
-            print(f"[Receiver Side] nc error: {nc_stderr.decode(errors='replace') if isinstance(nc_stderr, bytes) else nc_stderr}")
+            print(f"[Receiver Side] nc error: {nc_stderr}")
             sys.exit(1)
 
         if process_mbuffer.returncode != 0:
@@ -601,6 +617,10 @@ def send_snapshot_pull(
             process_remote_send, m_buff_cmd, recv_cmd, total_bytes,
             label="Transferring",
         )
+        if replay_stop_event:
+            replay_stop_event.set()
+        if replay_thread:
+            replay_thread.join(timeout=1)
         if not ok:
             notifier.notify("STATUS=Local receive (pull) failed.")
             print(f"ERROR: {err_msg}")
@@ -645,6 +665,11 @@ def send_snapshot_pull(
         notifier.notify(f"STATUS=Transfer stalled: {e}")
         print(f"ERROR: {e}")
         sys.exit(1)
+    finally:
+        if replay_stop_event:
+            replay_stop_event.set()
+        if replay_thread:
+            replay_thread.join(timeout=1)
     try:
         _close_pipe(process_m_buff.stdin)
     except Exception:
@@ -735,6 +760,3 @@ def send_snapshot_pull(
     if replay_thread:
         replay_thread.join(timeout=1)
     return
-
-    print("ERROR: Invalid transferMethod specified. Must be 'ssh', 'netcat', or 'mbuffer' for pull replication.")
-    sys.exit(1)

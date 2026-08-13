@@ -15,6 +15,7 @@ from ..process import (
     StallTimeout,
     StreamCapture,
     _build_mbuffer_cmd,
+    _build_pv_cmd,
     _close_pipe,
     _communicate_with_finalize_heartbeat,
     _direct_pipe_transfer,
@@ -24,6 +25,7 @@ from ..process import (
     _wait_with_finalize_heartbeat,
     _effective_mbuffer_block,
     estimate_send_size,
+    safe_communicate,
     stream_with_progress_stall,
 )
 from ..ssh import estimate_send_size_remote, remote_has_command, ssh_base_args, ssh_popen_args, ssh_run_args
@@ -137,6 +139,7 @@ __all__ = [
     "StallTimeout",
     "StreamCapture",
     "_build_mbuffer_cmd",
+    "_build_pv_cmd",
     "_close_pipe",
     "_communicate_with_finalize_heartbeat",
     "_direct_pipe_transfer",
@@ -145,6 +148,7 @@ __all__ = [
     "_pv_monitor_thread",
     "_wait_with_finalize_heartbeat",
     "estimate_send_size",
+    "safe_communicate",
     "stream_with_progress_stall",
     "estimate_send_size_remote",
     "remote_has_command",

@@ -24,7 +24,7 @@ endif
 PLUGIN_SRCS=scheduler
 
 # For installing to a remote machine for testing with `make install-remote`
-REMOTE_TEST_HOST=192.168.207.49
+REMOTE_TEST_HOST=192.168.123.5
 REMOTE_TEST_USER=root
 
 # Restarts cockpit after install
@@ -165,7 +165,7 @@ system-files-install-remote:
 	-rsync -avh system_files/* $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/
 	-ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'mkdir -p $(DESTDIR)/opt/45drives/houston/scheduler/tests'
 	-rsync -avh --exclude '__pycache__/' tests/ $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/opt/45drives/houston/scheduler/tests/
-	-ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'chmod +x $(DESTDIR)/opt/45drives/houston/scheduler/tests/live-replication-harness.sh || true'
+	-ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'chmod +x $(DESTDIR)/opt/45drives/houston/scheduler/tests/*.sh || true'
 
 package-generic: default
 	PKG_NAME="$$(jq -r '[ .name, .version ] | join("_")' ./manifest.json)"'_generic' && \

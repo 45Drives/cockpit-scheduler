@@ -6,7 +6,7 @@ import shlex
 import subprocess
 import time
 
-from .logging_utils import _fmt_cmd, _truncate, dbg
+from .logging_utils import _fmt_cmd, _truncate, dbg, DEBUG_ENABLED
 
 SSH_BASE_OPTS = [
     "-o", "BatchMode=yes",
@@ -32,6 +32,33 @@ def ssh_base_args(user, host, port):
 
 
 _REMOTE_COMMAND_CACHE = {}
+
+
+def preflight_ssh(user, host, port, timeout=30):
+    """Verify non-interactive SSH access before starting a transfer.
+
+    Returns (ok, output). -vv is only requested when debug logging is on, because
+    its output goes to the debug log and nowhere else.
+    """
+    cmd = ssh_base_args(user, host, port)
+    if DEBUG_ENABLED:
+        cmd.insert(1, "-vv")
+    cmd.append("true")
+    dbg(f"RUN ssh (preflight): {_fmt_cmd(cmd)}")
+    try:
+        p = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"SSH connection to {user}@{host} (port {port}) timed out after {timeout}s."
+    except OSError as e:
+        return False, f"Could not run ssh: {e}"
+    dbg(f"ssh preflight rc={p.returncode} output:\n{p.stdout}")
+    return p.returncode == 0, (p.stdout or "")
 
 
 def remote_has_command(user, host, port, command_name, timeout=10):
