@@ -120,12 +120,18 @@
                 <p v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ sshSetupError }}</p>
             </div>
 
-            <label v-if="!sshSetupNeeded" class="block text-sm mt-3 text-default">Destination Pool</label>
-            <div v-if="!sshSetupNeeded && loadingDestPools" class="mt-1 flex items-center gap-2">
+            <!-- Auto SSH check kicked off by the Wire Wizard hand-off -->
+            <div v-if="autoTestingSSH" class="mt-3 flex items-center gap-2">
+                <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
+                <span class="text-sm text-muted">Checking connection to {{ destUser || 'root' }}@{{ destHost }}…</span>
+            </div>
+
+            <label v-if="!destSelectionBlocked" class="block text-sm mt-3 text-default">Destination Pool</label>
+            <div v-if="!destSelectionBlocked && loadingDestPools" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
                 <span class="text-sm text-muted">Loading backup server pools…</span>
             </div>
-            <select v-else-if="!sshSetupNeeded" v-model="destPool" :disabled="!destHost" :class="[
+            <select v-else-if="!destSelectionBlocked" v-model="destPool" :disabled="!destHost" :class="[
                 'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
                 destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
             ]">
@@ -133,7 +139,7 @@
                 <option v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
             </select>
 
-            <template v-if="!sshSetupNeeded">
+            <template v-if="!destSelectionBlocked">
             <label class="block text-sm mt-3 text-default">Destination Dataset</label>
             <div v-if="loadingDestDatasets" class="mt-1 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
@@ -159,7 +165,10 @@
             </template>
 
             <template #footer>
-                <p v-if="sshSetupNeeded" class="text-[11px] text-amber-600 dark:text-amber-400">
+                <p v-if="autoTestingSSH" class="text-[11px] text-muted">
+                    Verifying SSH access to the backup server…
+                </p>
+                <p v-else-if="sshSetupNeeded" class="text-[11px] text-amber-600 dark:text-amber-400">
                     SSH login must be configured before pools can be loaded.
                 </p>
                 <p v-else class="text-[11px] text-muted">
@@ -717,6 +726,10 @@ const sshSetupPassword = ref('');
 const settingUpSSH = ref(false);
 const sshSetupError = ref('');
 const showSshSetupPassword = ref(false);
+const autoTestingSSH = ref(false);
+
+// Pools/datasets can't be trusted until the SSH gate resolves
+const destSelectionBlocked = computed(() => sshSetupNeeded.value || autoTestingSSH.value);
 
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
@@ -923,6 +936,7 @@ watch(destHost, (v) => {
     sshSetupError.value = '';
     settingUpSSH.value = false;
     testingSSH.value = false;
+    autoTestingSSH.value = false;
     sshReady.value = false;
     destHostErrorTag.value = false;
 
@@ -1670,7 +1684,8 @@ async function autoTestAndSetupSSH() {
     
     // Reset testing state in case it was stuck from a previous hang
     testingSSH.value = true;
-    
+    autoTestingSSH.value = true;
+
     try {
         const ok = await testSSH(`${user}@${host}`);
         if (ok) {
@@ -1683,6 +1698,7 @@ async function autoTestAndSetupSSH() {
         sshSetupNeeded.value = true;
     } finally {
         testingSSH.value = false;
+        autoTestingSSH.value = false;
     }
 }
 
