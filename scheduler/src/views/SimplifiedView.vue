@@ -77,6 +77,10 @@
                 <ArrowPathIcon class="w-4 h-4" />
             </button>
 
+            <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="Settings" @click="openSettings">
+                <Cog6ToothIcon class="w-4 h-4" />
+            </button>
+
             <SchedulerNotification />
         </div>
 
@@ -97,9 +101,9 @@
 
             <!-- table -->
             <div v-else class="h-full overflow-hidden flex flex-col">
-                <!-- busy overlay while keeping table visible -->
+                <!-- busy overlay while keeping table visible; stays under the z-30 toast layer -->
                 <div v-if="showOverlaySpinner"
-                    class="absolute inset-0 z-[100] flex items-center justify-center bg-well/60 backdrop-blur-sm">
+                    class="absolute inset-0 z-20 flex items-center justify-center bg-well/60 backdrop-blur-sm">
                     <CustomLoadingSpinner :width="'w-16'" :height="'h-16'" :baseColor="'text-gray-200'"
                         :fillColor="'fill-gray-500'" />
                 </div>
@@ -242,6 +246,11 @@
         <component :is="logViewComponent" @close="closeLogView" :id-key="'simple-log-view'" :task="selectedLogTask!" />
     </div>
 
+    <!-- Settings Modal -->
+    <div v-if="showSettings">
+        <component :is="settingsComponent" @close="showSettings = false" @poll-settings-saved="applyPollSettings" />
+    </div>
+
     <!-- Confirmation Dialogs -->
     <div v-if="showRunNowPrompt">
         <component :is="confirmDialogComponent" @close="(v: boolean) => showRunNowPrompt = v" :showFlag="showRunNowPrompt"
@@ -270,7 +279,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onActivated, onDeactivated, onUnmounted, onMounted, watch, provide } from 'vue';
-import { ArrowPathIcon, PlusIcon, PlayIcon, StopIcon, DocumentTextIcon, PencilSquareIcon, TrashIcon, CircleStackIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, PlusIcon, PlayIcon, StopIcon, DocumentTextIcon, PencilSquareIcon, TrashIcon, CircleStackIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, logInjectionKey } from '../keys/injection-keys';
@@ -356,6 +365,26 @@ async function loadPollingSettings() {
     } catch {
         // Use defaults silently
     }
+}
+
+/* ── Settings modal ── */
+const showSettings = ref(false);
+const settingsComponent = ref();
+
+async function openSettings() {
+    if (!settingsComponent.value) {
+        const mod = await import('../components/simple/SimpleSettings.vue');
+        settingsComponent.value = mod.default;
+    }
+    showSettings.value = true;
+}
+
+function applyPollSettings({ statusPollMs: s, progressPollMs: p }: { statusPollMs: number; progressPollMs: number }) {
+    statusPollMs.value = Math.max(1000, Number(s));
+    progressPollMs.value = Math.max(1000, Number(p));
+    // useLiveTaskStatus reads the intervals through getters, so restart to pick them up
+    live.stop();
+    live.start();
 }
 
 const isBusy = computed(() => fetching.value || loading.value);
