@@ -18,7 +18,66 @@ from .logging_utils import _fmt_cmd, _truncate, dbg, safe_print
 def _close_pipe(pipe):
     """Close an optional subprocess pipe when it was configured."""
     if pipe is not None:
-        pipe.close()
+        try:
+            pipe.close()
+        except (OSError, ValueError):
+            pass  # Already closed
+
+
+def _drop_closed_pipes(proc):
+    """Detach already-closed pipes from a Popen, preserving anything they buffered.
+
+    communicate() registers proc.stdin/stdout/stderr with a selector, and on
+    Python 3.6 (Rocky/RHEL 8) a closed pipe left attached to the Popen raises
+    "ValueError: Invalid file object: <_io.BufferedReader name=N>". Pipes end up
+    closed both when we hand a stdout to a downstream process and close our copy,
+    and when a previous communicate() reached EOF before timing out.
+    """
+    saved = getattr(proc, "_zfsrep_saved_output", None)
+    if saved is None:
+        saved = {}
+        setattr(proc, "_zfsrep_saved_output", saved)
+
+    buffered = getattr(proc, "_fileobj2output", None) or {}
+    for name in ("stdout", "stderr"):
+        stream = getattr(proc, name, None)
+        if stream is None or not getattr(stream, "closed", False):
+            continue
+        chunks = buffered.get(stream)
+        if chunks:
+            joined = b"".join(chunks) if isinstance(chunks[0], bytes) else "".join(chunks)
+            previous = saved.get(name)
+            saved[name] = joined if previous is None else previous + joined
+        setattr(proc, name, None)
+
+    stdin = getattr(proc, "stdin", None)
+    if stdin is not None and getattr(stdin, "closed", False):
+        proc.stdin = None
+    return saved
+
+
+def safe_communicate(proc, timeout=None):
+    """communicate() that tolerates pipes we closed ourselves or already drained."""
+    saved = _drop_closed_pipes(proc)
+    stdout, stderr = proc.communicate(timeout=timeout)
+    if saved.get("stdout") is not None:
+        stdout = saved["stdout"] + stdout if stdout else saved["stdout"]
+    if saved.get("stderr") is not None:
+        stderr = saved["stderr"] + stderr if stderr else saved["stderr"]
+    return stdout, stderr
+
+
+def _build_pv_cmd(total_bytes):
+    """Build the pv progress stage.
+
+    -f is required because pv stays silent when stderr is not a terminal, and -p
+    matters just as much: naming any display flag disables pv's defaults, so
+    without it pv never prints the percentage _pv_monitor_thread parses.
+    """
+    cmd = ["pv", "-f", "-i", "1", "-b", "-r", "-t"]
+    if total_bytes:
+        cmd.extend(["-p", "-e", "-s", str(total_bytes)])
+    return cmd
 
 
 class StreamCapture:
@@ -227,7 +286,12 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activit
     buf = bytearray()
     try:
         while True:
-            ch = pv_stderr.read(1)
+            try:
+                ch = pv_stderr.read(1)
+            except (OSError, ValueError) as e:
+                # File descriptor closed - process died or was killed
+                dbg(f"pv monitor: file descriptor closed: {e}")
+                break
             if not ch:
                 break
             if ch not in (b"\r", b"\n"):
@@ -270,10 +334,7 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
 
     procs = []
     try:
-        # -f is required: pv prints nothing when stderr is not a terminal.
-        pv_cmd = ["pv", "-f", "-i", "1", "-b", "-r", "-t"]
-        if total_bytes:
-            pv_cmd.extend(["-s", str(total_bytes)])
+        pv_cmd = _build_pv_cmd(total_bytes)
 
         # Shared mutable timestamp for stall detection (single-element list for thread safety)
         last_activity = [time.time()]
@@ -327,8 +388,8 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
 
         while True:
             try:
-                recv_stdout, recv_stderr = process_recv.communicate(
-                    timeout=poll_interval
+                recv_stdout, recv_stderr = safe_communicate(
+                    process_recv, timeout=poll_interval
                 )
                 break  # recv finished
             except subprocess.TimeoutExpired:
@@ -619,7 +680,7 @@ def _communicate_with_finalize_heartbeat(proc, wait_on, timeout, heartbeat_inter
         if remaining <= 0:
             raise subprocess.TimeoutExpired(proc.args, timeout)
         try:
-            return proc.communicate(timeout=min(interval, remaining))
+            return safe_communicate(proc, timeout=min(interval, remaining))
         except subprocess.TimeoutExpired:
             elapsed_i = int(time.time() - start)
             remaining_i = max(0, int(timeout - elapsed_i))

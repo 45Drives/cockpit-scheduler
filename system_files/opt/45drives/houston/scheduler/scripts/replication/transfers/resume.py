@@ -194,10 +194,15 @@ def resume_receive_push(
             pass
 
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        process_send.wait()
+        try:
+            process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_recv)
+            notifier.notify("STATUS=Finalization timed out — send process killed.")
+            return False, f"zfs send did not exit within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
 
         try:
-            recv_stdout, recv_stderr = process_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            recv_stdout, recv_stderr = safe_communicate(process_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
         except subprocess.TimeoutExpired:
             process_recv.kill()
             notifier.notify("STATUS=Finalization timed out — recv process killed.")
@@ -257,6 +262,8 @@ def resume_receive_push(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # Close parent's copy so SIGPIPE propagates if nc dies
+        _close_pipe(process_mbuffer.stdout)
 
         if process_send.stdout is None or process_mbuffer.stdin is None:
             raise RuntimeError("Failed to initialize resume netcat pipes.")
@@ -285,18 +292,41 @@ def resume_receive_push(
             pass
 
         try:
-            _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            _, nc_stderr = safe_communicate(process_nc, timeout=PIPELINE_FINALIZE_TIMEOUT)
         except subprocess.TimeoutExpired:
-            _kill_procs(process_nc, ssh_process_listener)
+            _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
             notifier.notify("STATUS=Finalization timed out — netcat process killed.")
             return False, f"Netcat did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
 
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         mbuf_stderr = process_mbuffer.stderr.read().decode(errors="replace") if process_mbuffer.stderr else ""
+        nc_err = nc_stderr.decode(errors="replace") if isinstance(nc_stderr, bytes) else (nc_stderr or "")
+
+        try:
+            process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            process_mbuffer.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
+            return False, f"zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
+
+        if process_send.returncode != 0:
+            notifier.notify("STATUS=Netcat resume send failed.")
+            ssh_process_listener.terminate()
+            err_msg = f"[Sender Side] zfs send error: {send_stderr.strip()}"
+            print(err_msg)
+            return False, err_msg
+
+        if process_mbuffer.returncode != 0:
+            notifier.notify("STATUS=Netcat resume send failed.")
+            ssh_process_listener.terminate()
+            err_msg = f"[Sender Side] mbuffer error: {mbuf_stderr.strip()}"
+            print(err_msg)
+            return False, err_msg
 
         if process_nc.returncode != 0:
             notifier.notify("STATUS=Netcat resume send failed.")
-            print(f"[Sender Side] nc error: {nc_stderr.decode(errors='replace')}")
+            print(f"[Sender Side] nc error: {nc_err}")
             if mbuf_stderr:
                 print(f"[Sender Side] mbuffer error: {mbuf_stderr}")
             if send_stderr:
@@ -305,10 +335,15 @@ def resume_receive_push(
             err_msg = "Netcat resume send failed."
             return False, err_msg
 
-        ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+        try:
+            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+        except subprocess.TimeoutExpired:
+            ssh_process_listener.kill()
+            notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
+            return False, "Remote netcat receiver did not finish within 300s after all data was sent. Process killed."
         if ssh_process_listener.returncode != 0:
             notifier.notify("STATUS=Remote resume receive via netcat failed.")
-            err_msg = f"[Receiver Side] Error during receive: {ssh_stderr.strip()}"
+            err_msg = f"[Receiver Side] Error during receive: {(ssh_stderr or '').strip()}"
             print(err_msg)
             return False, err_msg
 
@@ -379,8 +414,13 @@ def resume_receive_push(
             pass
 
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        process_send.wait()
-        process_mbuffer.wait()
+        try:
+            process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            process_mbuffer.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
+            return False, f"zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
         mbuf_stderr = mbuf_capture.text()
 
         if process_send.returncode != 0:
@@ -397,10 +437,15 @@ def resume_receive_push(
             ssh_process_listener.terminate()
             return False, err_msg
 
-        ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+        try:
+            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+        except subprocess.TimeoutExpired:
+            ssh_process_listener.kill()
+            notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
+            return False, "Remote mbuffer receiver did not finish within 300s after all data was sent. Process killed."
         if ssh_process_listener.returncode != 0:
             notifier.notify("STATUS=Remote resume receive via mBuffer failed.")
-            err_msg = f"[Receiver Side] Error during receive: {ssh_stderr.strip()}"
+            err_msg = f"[Receiver Side] Error during receive: {(ssh_stderr or '').strip()}"
             print(err_msg)
             return False, err_msg
 
@@ -462,11 +507,22 @@ def resume_receive_push(
         pass
 
     send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-    process_send.wait()
-    process_m_buff.wait()
+    mbuf_stderr = ""
+    if process_m_buff.stderr:
+        try:
+            mbuf_stderr = process_m_buff.stderr.read().decode(errors="replace")
+        except (OSError, ValueError):
+            pass
+    try:
+        process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        process_m_buff.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _kill_procs(process_send, process_m_buff, process_remote_recv)
+        notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
+        return False, f"zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
 
     try:
-        stdout, stderr = process_remote_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        stdout, stderr = safe_communicate(process_remote_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
     except subprocess.TimeoutExpired:
         process_remote_recv.kill()
         notifier.notify("STATUS=Finalization timed out — remote recv process killed.")
@@ -477,6 +533,11 @@ def resume_receive_push(
     if process_send.returncode != 0:
         notifier.notify("STATUS=Remote resume send failed.")
         err_msg = f"send error: {send_stderr}"
+        print(err_msg)
+        return False, err_msg
+    if process_m_buff.returncode != 0:
+        notifier.notify("STATUS=Remote resume send failed.")
+        err_msg = f"mbuffer error: {mbuf_stderr}"
         print(err_msg)
         return False, err_msg
     if process_remote_recv.returncode != 0:
@@ -506,6 +567,15 @@ def resume_receive_pull(
 ):
     notifier.notify("STATUS=Resuming ZFS pull pipeline from resume token…")
 
+    if not remoteHost:
+        raise RuntimeError("Pull replication requires a remote host.")
+
+    if transferMethod not in ("ssh", "netcat", "mbuffer"):
+        notifier.notify("STATUS=Invalid transfer method for pull resume.")
+        err_msg = f"Invalid transferMethod '{transferMethod}'. Pull resume supports 'ssh', 'netcat', or 'mbuffer'."
+        print(f"ERROR: {err_msg}")
+        return False, err_msg
+
     remote_mbuffer_enabled = False
     if transferMethod in ("ssh", "netcat"):
         remote_mbuffer_enabled = remote_has_command(remoteUser, remoteHost, remoteSshPort, "mbuffer")
@@ -517,9 +587,6 @@ def resume_receive_pull(
             msg = f"Remote mbuffer not found on {remoteHost}; using local-only buffering for resume."
             notifier.notify(f"STATUS={msg}")
             print(msg)
-
-    if not remoteHost:
-        raise RuntimeError("Pull replication requires a remote host.")
 
     # Estimate resume send size for progress reporting
     send_cmd = ["zfs", "send", "-t", resume_token]
@@ -604,17 +671,20 @@ def resume_receive_pull(
         process_pv = None
         pv_source = process_nc.stdout
         if _has_pv():
-            pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
-            if total_bytes:
-                pv_cmd.extend(["-s", str(total_bytes)])
             process_pv = subprocess.Popen(
-                pv_cmd,
+                _build_pv_cmd(total_bytes),
                 stdin=process_nc.stdout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                bufsize=0,
             )
             _close_pipe(process_nc.stdout)
             pv_source = process_pv.stdout
+        else:
+            safe_print(
+                "WARNING: pv is not installed; progress reporting and the stall watchdog "
+                "are disabled for this netcat resume."
+            )
 
         mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         process_mbuffer = subprocess.Popen(
@@ -654,15 +724,17 @@ def resume_receive_pull(
 
         # Wait for pipeline with stall detection
         _stall_timeout = stall_timeout or TRANSFER_STALL_TIMEOUT
-        _stall_enabled = bool(_stall_timeout and _stall_timeout > 0)
-        _poll = min(30.0, _stall_timeout) if _stall_enabled else None
+        # pv is the only activity source for this pipeline; without it every poll looks idle.
+        _stall_enabled = bool(process_pv and _stall_timeout and _stall_timeout > 0)
+        _poll = min(30.0, _stall_timeout) if _stall_enabled else 60.0
 
         while True:
             try:
-                recv_stdout, recv_stderr = process_local_recv.communicate(timeout=_poll)
+                recv_stdout, recv_stderr = safe_communicate(process_local_recv, timeout=_poll)
                 break
             except subprocess.TimeoutExpired:
                 if not _stall_enabled:
+                    notifier.notify("STATUS=Resuming via netcat… still running (no pv, progress unavailable).")
                     continue
                 idle = time.time() - last_activity[0]
                 if idle >= _stall_timeout:
@@ -686,21 +758,45 @@ def resume_receive_pull(
         recv_stdout = recv_stdout.decode(errors="replace") if isinstance(recv_stdout, bytes) else (recv_stdout or "")
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
 
-        process_mbuffer.wait()
-        if process_pv:
-            process_pv.wait()
-        _, nc_stderr = process_nc.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
+        try:
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+            if process_pv:
+                _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_mbuffer, process_pv, process_nc, ssh_process_sender)
+            notifier.notify("STATUS=Finalization timed out — buffer stage killed.")
+            return False, f"mbuffer/pv did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after the receive completed. Processes killed."
 
-        ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
+        try:
+            _, nc_stderr = _communicate_with_finalize_heartbeat(
+                process_nc,
+                "netcat receiver",
+                PIPELINE_FINALIZE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_nc, ssh_process_sender)
+            notifier.notify("STATUS=Finalization timed out — netcat receiver killed.")
+            return False, f"netcat receiver did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Process killed."
+
+        try:
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_sender,
+                "remote netcat sender",
+                300,
+            )
+        except subprocess.TimeoutExpired:
+            ssh_process_sender.kill()
+            notifier.notify("STATUS=Finalization timed out — remote sender killed.")
+            return False, "Remote sender did not finish during netcat pull resume finalization. Process killed."
 
         mbuf_err = mbuf_capture.text()
 
         if ssh_process_sender.returncode != 0:
             notifier.notify("STATUS=Remote resume send via netcat failed.")
-            err_msg = f"[Remote Side] Error during send: {ssh_stderr.strip()}"
+            err_msg = f"[Remote Side] Error during send: {(ssh_stderr or '').strip()}"
             print(err_msg)
             return False, err_msg
-
         if process_nc.returncode != 0:
             nc_err = nc_stderr.decode(errors="replace") if isinstance(nc_stderr, bytes) else (nc_stderr or "")
             notifier.notify("STATUS=Netcat resume pull failed.")
@@ -826,10 +922,15 @@ def resume_receive_pull(
         except Exception:
             pass
 
-        process_mbuffer.wait()
+        try:
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer listener", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_mbuffer, process_local_recv, ssh_process_sender)
+            notifier.notify("STATUS=Finalization timed out — mbuffer listener killed.")
+            return False, f"mbuffer listener did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Processes killed."
 
         try:
-            recv_stdout, recv_stderr = process_local_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            recv_stdout, recv_stderr = safe_communicate(process_local_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
         except subprocess.TimeoutExpired:
             process_local_recv.kill()
             ssh_process_sender.kill()
@@ -837,7 +938,7 @@ def resume_receive_pull(
             return False, f"Local zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Process killed."
 
         try:
-            ssh_stdout, ssh_stderr = ssh_process_sender.communicate(timeout=300)
+            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_sender, timeout=300)
         except subprocess.TimeoutExpired:
             ssh_process_sender.kill()
             notifier.notify("STATUS=Finalization timed out — remote sender process killed.")
@@ -849,7 +950,7 @@ def resume_receive_pull(
 
         if ssh_process_sender.returncode != 0:
             notifier.notify("STATUS=Remote resume send via mbuffer failed.")
-            err_msg = f"[Remote Side] Error during send: {ssh_stderr.strip()}"
+            err_msg = f"[Remote Side] Error during send: {(ssh_stderr or '').strip()}"
             print(err_msg)
             return False, err_msg
 
@@ -928,11 +1029,22 @@ def resume_receive_pull(
         pass
 
     remote_err = process_remote_send.stderr.read().decode(errors="replace") if process_remote_send.stderr else ""
-    process_remote_send.wait()
-    process_m_buff.wait()
+    mbuf_stderr = ""
+    if process_m_buff.stderr:
+        try:
+            mbuf_stderr = process_m_buff.stderr.read().decode(errors="replace")
+        except (OSError, ValueError):
+            pass
+    try:
+        process_remote_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        process_m_buff.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _kill_procs(process_remote_send, process_m_buff, process_local_recv)
+        notifier.notify("STATUS=Finalization timed out — resume pull pipeline killed.")
+        return False, f"Remote zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
 
     try:
-        stdout, stderr = process_local_recv.communicate(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        stdout, stderr = safe_communicate(process_local_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
     except subprocess.TimeoutExpired:
         process_local_recv.kill()
         notifier.notify("STATUS=Finalization timed out — local recv process killed.")
@@ -953,9 +1065,13 @@ def resume_receive_pull(
         print(err_msg)
         return False, err_msg
 
+    if process_m_buff.returncode != 0:
+        notifier.notify("STATUS=Resume receive failed.")
+        err_msg = f"ERROR: mbuffer error: {mbuf_stderr}"
+        print(err_msg)
+        return False, err_msg
+
     notifier.notify("STATUS=Pull resume receive completed.")
     if stdout:
         print(stdout)
     return True, ""
-
-    return False, "Resume tokens are only supported for ssh, netcat, or mbuffer transfers in this script."

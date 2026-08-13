@@ -288,7 +288,13 @@ def send_snapshot_push(
             sys.exit(1)
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
-        _wait_with_finalize_heartbeat(process_send, "local zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        try:
+            _wait_with_finalize_heartbeat(process_send, "local zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_recv)
+            notifier.notify("STATUS=Finalization timed out — send process killed.")
+            print(f"ERROR: zfs send did not finish within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed.")
+            sys.exit(1)
 
         try:
             _recv_stdout_unused, _recv_stderr_unused = _communicate_with_finalize_heartbeat(
@@ -348,15 +354,14 @@ def send_snapshot_push(
             # Use a custom approach: pipe process_send through pv+mbuffer,
             # then ssh recv reads from mbuffer stdout.
 
-            pv_cmd = ["pv", "-f", "-b", "-r", "-t"]
-            if total_bytes:
-                pv_cmd.extend(["-s", str(total_bytes)])
+            pv_cmd = _build_pv_cmd(total_bytes)
 
             process_pv = subprocess.Popen(
                 pv_cmd,
                 stdin=process_send.stdout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                bufsize=0,
             )
             _close_pipe(process_send.stdout)
 
@@ -408,7 +413,7 @@ def send_snapshot_push(
             try:
                 while True:
                     try:
-                        stdout, stderr = process_remote_recv.communicate(timeout=poll_interval)
+                        stdout, stderr = safe_communicate(process_remote_recv, timeout=poll_interval)
                         break
                     except subprocess.TimeoutExpired:
                         if not stall_enabled:
@@ -432,9 +437,15 @@ def send_snapshot_push(
                 stderr = stderr.decode(errors="replace") if stderr else ""
 
                 notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
-                _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
-                _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
-                _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+                try:
+                    _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+                    _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
+                    _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+                except subprocess.TimeoutExpired:
+                    _kill_procs(process_send, process_pv, process_m_buff, process_remote_recv)
+                    notifier.notify("STATUS=Finalization timed out — send pipeline killed.")
+                    print(f"ERROR: zfs send/pv/mbuffer did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after the remote receive completed. Processes killed.")
+                    sys.exit(1)
             finally:
                 if replay_stop_event:
                     replay_stop_event.set()
@@ -549,8 +560,14 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
-        _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+        try:
+            _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_m_buff, process_remote_recv)
+            notifier.notify("STATUS=Finalization timed out — send pipeline killed.")
+            print(f"ERROR: zfs send/mbuffer did not drain within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed.")
+            sys.exit(1)
 
         try:
             stdout, stderr = _communicate_with_finalize_heartbeat(
@@ -697,8 +714,14 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
-        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+        try:
+            _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
+            notifier.notify("STATUS=Finalization timed out — send pipeline killed.")
+            print(f"ERROR: zfs send/mbuffer did not drain within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed.")
+            sys.exit(1)
 
         try:
             _, nc_stderr = _communicate_with_finalize_heartbeat(
@@ -731,14 +754,20 @@ def send_snapshot_push(
 
         if process_nc.returncode != 0:
             notifier.notify("STATUS=Netcat send failed.")
-            print(f"[Sender Side] nc error: {nc_stderr.decode(errors='replace')}")
+            print(f"[Sender Side] nc error: {nc_stderr.decode(errors='replace') if isinstance(nc_stderr, bytes) else (nc_stderr or '')}")
             ssh_process_listener.terminate()
             sys.exit(1)
 
-        ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+        try:
+            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+        except subprocess.TimeoutExpired:
+            ssh_process_listener.kill()
+            notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
+            print("ERROR: Remote netcat receiver did not finish within 300s after all data was sent. Process killed.")
+            sys.exit(1)
         if ssh_process_listener.returncode != 0:
             notifier.notify("STATUS=Remote receive via netcat failed.")
-            print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
+            print(f"[Receiver Side] Error during receive: {(ssh_stderr or '').strip()}")
             sys.exit(1)
 
         notifier.notify("STATUS=Netcat send/receive completed.")
@@ -823,8 +852,14 @@ def send_snapshot_push(
 
         notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
-        _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer network sender", PIPELINE_FINALIZE_TIMEOUT)
+        try:
+            _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer network sender", PIPELINE_FINALIZE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_procs(process_send, process_mbuffer, ssh_process_listener)
+            notifier.notify("STATUS=Finalization timed out — send pipeline killed.")
+            print(f"ERROR: zfs send/mbuffer did not drain within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed.")
+            sys.exit(1)
 
         mbuf_stderr = mbuf_capture.text()
 
@@ -842,10 +877,16 @@ def send_snapshot_push(
             ssh_process_listener.terminate()
             sys.exit(1)
 
-        ssh_stdout, ssh_stderr = ssh_process_listener.communicate(timeout=300)
+        try:
+            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+        except subprocess.TimeoutExpired:
+            ssh_process_listener.kill()
+            notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
+            print("ERROR: Remote mbuffer receiver did not finish within 300s after all data was sent. Process killed.")
+            sys.exit(1)
         if ssh_process_listener.returncode != 0:
             notifier.notify("STATUS=Remote receive via mBuffer failed.")
-            print(f"[Receiver Side] Error during receive: {ssh_stderr.strip()}")
+            print(f"[Receiver Side] Error during receive: {(ssh_stderr or '').strip()}")
             sys.exit(1)
 
         notifier.notify("STATUS=mBuffer send/receive completed.")

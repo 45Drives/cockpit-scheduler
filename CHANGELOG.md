@@ -1,3 +1,3 @@
-## task scheduler 1.7.2-1
+## task scheduler 1.7.3-1
 
-* Adds mbuffer as a standalone transfer method for ZFS Replication
+* Fixes several backend bugs with process error outputs/silent crashes and progress output
