@@ -18,7 +18,10 @@ from .logging_utils import _fmt_cmd, _truncate, dbg, safe_print
 def _close_pipe(pipe):
     """Close an optional subprocess pipe when it was configured."""
     if pipe is not None:
-        pipe.close()
+        try:
+            pipe.close()
+        except (OSError, ValueError):
+            pass  # Already closed
 
 
 class StreamCapture:
@@ -227,7 +230,12 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activit
     buf = bytearray()
     try:
         while True:
-            ch = pv_stderr.read(1)
+            try:
+                ch = pv_stderr.read(1)
+            except (OSError, ValueError) as e:
+                # File descriptor closed - process died or was killed
+                dbg(f"pv monitor: file descriptor closed: {e}")
+                break
             if not ch:
                 break
             if ch not in (b"\r", b"\n"):
