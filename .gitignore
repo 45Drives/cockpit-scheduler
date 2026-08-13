@@ -38,3 +38,15 @@ packaging/cloud-creds.env
 *.bak
 tests/*.txt
 !tests/live-replication-runbook.md
+
+# Ignore all markdown files
+*.md
+
+# Except these essential project files
+!docs/*.md
+!docs/**/*.md
+!README.md
+!CHANGELOG.md
+!LICENSE.md
+!CONTRIBUTING.md
+
