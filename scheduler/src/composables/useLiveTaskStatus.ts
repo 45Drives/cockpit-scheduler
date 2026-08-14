@@ -152,12 +152,6 @@ export function useLiveTaskStatus(
             ) {
                 statusMap.value[id] = schedulerStatusText;
                 lastRunMap.value[id] = 'Running now...';
-                // Seed progress to 0 so the bar starts empty instead of
-                // showing a misleading full-width indeterminate bar while
-                // waiting for the first progress poll.
-                if (progressMap.value[id] == null) {
-                    progressMap.value[id] = 0;
-                }
                 return;
             }
 
@@ -496,7 +490,6 @@ export function useLiveTaskStatus(
             ) {
                 statusMap.value[id] = schedulerStatusText;
                 lastRunMap.value[id] = 'Running now...';
-                if (progressMap.value[id] == null) progressMap.value[id] = 0;
                 continue;
             }
 
@@ -570,7 +563,8 @@ export function useLiveTaskStatus(
                     const s = statusMap.value[id];
                     if (!s) return;
                     const lower = s.toLowerCase();
-                    const running = lower.includes('running') || lower.includes('starting');
+                    const running = !lower.includes('failed') &&
+                        (lower.includes('running') || lower.includes('starting'));
                     if (!running) {
                         // Clear stale progress when task is no longer running
                         if (progressMap.value[id] !== undefined) {
@@ -581,11 +575,16 @@ export function useLiveTaskStatus(
                     }
                     try {
                         const result = await scheduler.getTaskProgress(t);
-                        progressMap.value[id] = (typeof result?.percent === 'number' && Number.isFinite(result.percent)) ? result.percent : null;
+                        // Keep the last known percent when a poll lands on a
+                        // status without one ("Starting transfer…", "Finishing
+                        // up…"). Dropping to null mid-run flips the bar to the
+                        // indeterminate animation and reads as a stuck 100%.
+                        if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
+                            progressMap.value[id] = result.percent;
+                        }
                         progressLabelMap.value[id] = result?.label ?? null;
                     } catch {
-                        progressMap.value[id] = null;
-                        progressLabelMap.value[id] = null;
+                        /* keep previous progress; the next poll will correct it */
                     }
                 });
             } finally {

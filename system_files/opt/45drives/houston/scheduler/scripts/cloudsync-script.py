@@ -76,6 +76,15 @@ def stats_interval_from_value(value, default):
     return value
 
 PROGRESS_RE = re.compile(r'(\d+(?:\.\d+)?)%')
+# rclone's overall stats percentage always sits between two commas:
+#   "15.808 MiB / 31.616 MiB, 50%, 1.581 MiB/s, ETA 10s"
+# Matching a bare "NN%" anywhere also caught per-file transfer lines, retry
+# notices and filenames, which made the UI progress bar jump around.
+STATS_PERCENT_RE = re.compile(r',\s*(\d+(?:\.\d+)?)\s*%\s*,')
+# rclone substitutes "-" for the percentage while the byte total is still 0,
+# e.g. "0 B / 0 B, -, 0 B/s, ETA -". A sync sits here for its whole listing and
+# compare phase, so it needs its own status instead of looking like 0%.
+STATS_NO_PERCENT_RE = re.compile(r',\s*-\s*,\s*[\d.]+\s*[KMGTPE]?i?B/s', re.IGNORECASE)
 BYTE_PROGRESS_RE = re.compile(
     r'(?P<done>\d+(?:\.\d+)?)\s*(?P<done_unit>[KMGTPE]?i?B|[KMGTPE]?B|B)\s*/\s*'
     r'(?P<total>\d+(?:\.\d+)?)\s*(?P<total_unit>[KMGTPE]?i?B|[KMGTPE]?B|B)',
@@ -498,7 +507,9 @@ def execute_command(
     )
 
     last_percent = None
-    last_journal_percent = None
+    last_total_marker = None
+    checking_notified = False
+    last_journal_fingerprint = None
     last_progress_log_time = 0.0
     last_meaningful_progress_time = time.monotonic()
     last_progress_fingerprint = None
@@ -543,22 +554,24 @@ def execute_command(
                 last_meaningful_progress_time = time.monotonic()
                 last_process_activity_fingerprint = process_activity_fingerprint(process.pid)
 
-            # Keep full detail in the debug log, but avoid repeating the same
-            # transfer percentage in journald/user logs every stats interval.
+            # Keep full detail in the debug log, but avoid repeating identical
+            # stats lines in journald/user logs every stats interval. Keying off
+            # the fingerprint rather than the percentage also collapses the
+            # "0 B / 0 B, -," lines a sync emits throughout its check phase.
             write_progress_line = True
-            if pct is not None:
+            if fingerprint is not None:
                 now = time.monotonic()
                 write_progress_line = (
-                    pct != last_journal_percent or
+                    fingerprint != last_journal_fingerprint or
                     now - last_progress_log_time >= progress_log_heartbeat_seconds
                 )
                 if write_progress_line:
-                    last_journal_percent = pct
+                    last_journal_fingerprint = fingerprint
                     last_progress_log_time = now
 
             dbg(line.rstrip('\n'))
 
-            if pct is None or write_progress_line:
+            if write_progress_line:
                 # write to optional log file
                 if log_fh:
                     try:
@@ -572,13 +585,43 @@ def execute_command(
                 sys.stdout.write(line)
                 sys.stdout.flush()
 
-            if m:
-                if pct != last_percent:
-                    last_percent = pct
-                    if pct >= 100:
-                        notifier.notify("STATUS=Finalizing transfer...")
+            stats_match = STATS_PERCENT_RE.search(line)
+            if stats_match:
+                status_pct = float(stats_match.group(1))
+                byte_match = BYTE_PROGRESS_RE.search(line)
+                total_marker = (
+                    (byte_match.group("total"), byte_match.group("total_unit").lower())
+                    if byte_match else None
+                )
+
+                # rclone re-scopes its stats as it discovers more work, so the
+                # percentage can legitimately fall back. Only let it go
+                # backwards when the total it measures against actually moved,
+                # otherwise the bar oscillates between the two values.
+                if (
+                    last_percent is not None
+                    and status_pct < last_percent
+                    and total_marker == last_total_marker
+                ):
+                    status_pct = last_percent
+
+                last_total_marker = total_marker
+
+                if status_pct != last_percent:
+                    last_percent = status_pct
+                    checking_notified = False
+                    # Always keep a percentage in the status text: a status
+                    # without one makes the UI fall back to an indeterminate
+                    # bar mid-run, which reads as a stuck/flickering 100%.
+                    if status_pct >= 100:
+                        notifier.notify("STATUS=Finalizing transfer... 100.0% complete")
                     else:
-                        notifier.notify(f"STATUS=Transferring... {pct:.1f}% complete")
+                        notifier.notify(f"STATUS=Transferring... {status_pct:.1f}% complete")
+            elif STATS_NO_PERCENT_RE.search(line) and not checking_notified:
+                # No percentage exists yet, so say so rather than letting the
+                # UI sit on a percentage that means nothing.
+                checking_notified = True
+                notifier.notify("STATUS=Checking files…")
 
             if stall_timeout_seconds > 0:
                 stalled_for = time.monotonic() - last_meaningful_progress_time
@@ -602,7 +645,7 @@ def execute_command(
         if stalled_reason is not None:
             notifier.notify("STATUS=Transfer stalled")
         elif process.returncode == 0:
-            notifier.notify("STATUS=Finishing up…")
+            notifier.notify("STATUS=Finishing up… 100.0% complete")
         else:
             notifier.notify("STATUS=Transfer failed")
 

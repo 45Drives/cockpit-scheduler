@@ -355,17 +355,16 @@ async function updateProgress(task: TaskInstanceType) {
 	}
 	try {
 		const result = await myScheduler.getTaskProgress(task);
+		// Keep the last known percent when a poll lands on a status without
+		// one ("Starting transfer…", "Finishing up…"). Dropping to null
+		// mid-run flips the bar to the indeterminate animation, which reads
+		// as the task bouncing between a partial percentage and 100%.
 		if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
 			progress.value = result.percent;
-			progressLabel.value = result?.label ?? null;
-		} else {
-			progress.value = null;
-			progressLabel.value = result?.label ?? null;
 		}
+		progressLabel.value = result?.label ?? null;
 	} catch (e) {
 		console.error('Failed to get progress:', e);
-		progress.value = null;
-		progressLabel.value = null;
 	}
 }
 
