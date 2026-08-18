@@ -174,13 +174,9 @@ This installs the plugin frontend into:
 
 - `~/.local/share/cockpit/scheduler-test/`
 
-The Makefile also attempts a best-effort copy of `system_files/` into `/`, but those copy errors are intentionally ignored for local test installs.
+It also invokes `scripts/install-local.sh` with `sudo` as needed. The script installs the supported-distribution runtime dependencies, copies `system_files/` into the live filesystem, runs the task-service migration, and reloads, enables, and restarts `houston-scheduler-monitor`.
 
-In practice, that means:
-
-- `make install-local` is ideal for frontend/UI testing
-- task execution features may still depend on the backend files already existing under `/opt/45drives/houston/scheduler/` and `/etc/45drives/houston/scheduler/`
-- on a clean machine, use `sudo make install` if you need the full stack installed
+This makes `make install-local` suitable for full local scheduler testing while keeping the UI isolated as `scheduler-test`. It does not alter the production `install`, remote-install, or package build paths, and it does not generate the packaged Cloud Sync OAuth credentials file.
 
 ### Remote Test Install
 
