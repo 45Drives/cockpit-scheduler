@@ -57,11 +57,18 @@ def filter_dataset_snapshots(snaps, dataset: str):
     return [s for s in (snaps or []) if dataset_of_snapshot(s.name) == ds]
 
 
+def _name_prefix_matches(prefix: str, suffix: str) -> bool:
+    """Match `<prefix>[-tN]-<timestamp>` so sibling tasks sharing a prefix stay distinct."""
+    if not prefix:
+        return False
+    return re.match(rf'^{re.escape(prefix)}(?:-t\d+)?-\d{{4}}-\d{{2}}-\d{{2}}', suffix) is not None
+
+
 def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "") -> bool:
     """Check if a snapshot belongs to this task by name pattern (fallback).
     Tier filtering is handled separately via ZFS properties; this function
-    only checks task ownership. Matches new format (customName-timestamp),
-    default format (taskName-timestamp), and legacy formats."""
+    only checks task ownership. Matches the current format (name[-tN]-timestamp)
+    and the legacy customName-taskName-timestamp format."""
     suf = snapshot_suffix(full_snap_name)
     tn = (task_name or "").strip()
     cn = (custom_name or "").strip()
@@ -69,18 +76,12 @@ def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "")
     if not tn:
         return False
 
-    # New format with tier tag: name-tN-timestamp
-    if cn and re.match(rf'^{re.escape(cn)}-t\d+-\d{{4}}', suf):
+    if _name_prefix_matches(cn, suf):
         return True
-    if re.match(rf'^{re.escape(tn)}-t\d+-\d{{4}}', suf):
-        return True
-    # Format without tier tag: name-timestamp
-    if cn and suf.startswith(f"{cn}-"):
-        return True
-    if suf.startswith(f"{tn}-"):
+    if _name_prefix_matches(tn, suf):
         return True
     # Legacy format: customName-taskName-timestamp
-    if cn and suf.startswith(f"{cn}-{tn}-"):
+    if cn and _name_prefix_matches(f"{cn}-{tn}", suf):
         return True
     return False
 
@@ -266,9 +267,14 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
     sys.exit(1)
 
 
-def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
-    prop = f"written@{snapshot_fullname}"
-    base_cmd = ["zfs", "get", "-H", "-p", "-o", "value", prop, dataset]
+def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22", recursive=False):
+    """Bytes written since a snapshot; with recursive=True, summed over the whole hierarchy."""
+    snap_ref = snapshot_suffix(snapshot_fullname) if recursive else snapshot_fullname
+    prop = f"written@{snap_ref}"
+    base_cmd = ["zfs", "get", "-H", "-p"]
+    if recursive:
+        base_cmd.append("-r")
+    base_cmd += ["-o", "value", prop, dataset]
 
     if remote_host:
         p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
@@ -284,10 +290,16 @@ def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, rem
     if not out or out == "-":
         return None
 
-    try:
-        return int(out)
-    except ValueError:
-        return None
+    total = None
+    for line in out.splitlines():
+        value = line.strip()
+        if not value or value == "-":
+            continue
+        try:
+            total = (total or 0) + int(value)
+        except ValueError:
+            continue
+    return total
 
 
 def get_available_bytes(dataset, remote_user=None, remote_host=None, remote_port=22):

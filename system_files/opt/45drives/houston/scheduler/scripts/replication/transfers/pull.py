@@ -309,6 +309,7 @@ def send_snapshot_pull(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(localRecvFs)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         process_local_recv = subprocess.Popen(
             recv_cmd,
@@ -316,6 +317,7 @@ def send_snapshot_pull(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        dbg(f"PIPE recv pid={process_local_recv.pid}")
         # Close parent's copy so SIGPIPE propagates
         _close_pipe(process_mbuffer.stdout)
 
@@ -476,6 +478,7 @@ def send_snapshot_pull(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(localRecvFs)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         process_local_recv = subprocess.Popen(
             recv_cmd,
@@ -483,6 +486,7 @@ def send_snapshot_pull(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        dbg(f"PIPE recv pid={process_local_recv.pid}")
 
         notifier.notify(f"STATUS=Listener ready on local port {data_port}; waiting for remote mbuffer callback from {remoteHost} to {callback_display}:{data_port}…")
 
@@ -612,6 +616,7 @@ def send_snapshot_pull(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(localRecvFs)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         ok, err_msg = _direct_pipe_transfer(
             process_remote_send, m_buff_cmd, recv_cmd, total_bytes,
@@ -641,6 +646,7 @@ def send_snapshot_pull(
     if forceOverwrite:
         recv_cmd.append("-F")
     recv_cmd.append(localRecvFs)
+    dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
     process_local_recv = subprocess.Popen(
         recv_cmd,
@@ -648,6 +654,7 @@ def send_snapshot_pull(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    dbg(f"PIPE recv pid={process_local_recv.pid}")
     # Close parent's copy so SIGPIPE propagates if recv dies
     _close_pipe(process_m_buff.stdout)
 

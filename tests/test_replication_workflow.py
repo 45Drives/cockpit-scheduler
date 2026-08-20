@@ -117,6 +117,32 @@ def test_plan_existing_empty_destination_requires_explicit_overwrite():
     assert ctx.forceOverwrite is True
 
 
+def test_plan_empty_destination_without_use_existing_dest_does_not_force_overwrite():
+    ctx = ReplicationRun()
+    ctx.destinationSnapshots = []
+    ctx.useExistingDest = False
+    ctx.allowOverwrite = True
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_new_task_reuses_untagged_common_snapshot(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.taskName = "new-task"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    old = snap("tank/source@old-task-2026-01-01", "g1", 1)
+    old.task_tag = "old-task"
+    dest_old = snap("backup/target@old-task-2026-01-01", "g1", 1)
+    dest_old.task_tag = "old-task"
+    ctx.sourceSnapshots = [old]
+    ctx.destinationSnapshots = [dest_old]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank/source@old-task-2026-01-01"
+    assert ctx.forceOverwrite is False
+
+
 def test_plan_selects_newest_common_snapshot_and_detects_written_data(monkeypatch):
     ctx = ReplicationRun()
     ctx.sourceFilesystem = "tank/source"
@@ -137,6 +163,180 @@ def test_plan_refuses_destination_ahead_without_overwrite():
     with pytest.raises(SystemExit) as exc:
         workflow._plan_send(ctx)
     assert exc.value.code == 2
+
+
+def _recursive_ctx():
+    ctx = ReplicationRun()
+    ctx.sourceFilesystem = "tank"
+    ctx.destFilesystem = "backup/target"
+    ctx.isRecursiveSnap = True
+    return ctx
+
+
+def test_plan_recursive_skips_base_a_child_never_received(monkeypatch):
+    ctx = _recursive_ctx()
+    ctx.allowOverwrite = True
+    ctx.sourceSnapshots = [
+        snap("tank@s1", "g1", 1),
+        snap("tank@s2", "g2", 2),
+        snap("tank/samba@s1", "c1", 1),
+        snap("tank/samba@s2", "c2", 2),
+    ]
+    # The child never received s2, so only s1 is a usable base for the whole tree.
+    ctx.destinationSnapshots = [
+        snap("backup/target@s1", "g1", 1),
+        snap("backup/target@s2", "g2", 2),
+        snap("backup/target/samba@s1", "c1", 1),
+    ]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank@s1"
+    # Rolling the root back to the child's base is required by ZFS; s2 is re-sent by the same stream.
+    assert ctx.forceOverwrite is True
+
+
+def test_plan_recursive_child_behind_refuses_rollback_without_overwrite():
+    ctx = _recursive_ctx()
+    ctx.sourceSnapshots = [
+        snap("tank@s1", "g1", 1),
+        snap("tank@s2", "g2", 2),
+        snap("tank/samba@s1", "c1", 1),
+        snap("tank/samba@s2", "c2", 2),
+    ]
+    ctx.destinationSnapshots = [
+        snap("backup/target@s1", "g1", 1),
+        snap("backup/target@s2", "g2", 2),
+        snap("backup/target/samba@s1", "c1", 1),
+    ]
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_recursive_never_escalates_to_full_send_when_child_has_no_base():
+    ctx = _recursive_ctx()
+    ctx.allowOverwrite = True
+    ctx.sourceSnapshots = [snap("tank@s2", "g2", 2), snap("tank/samba@s2", "c2", 2)]
+    ctx.destinationSnapshots = [
+        snap("backup/target@s2", "g2", 2),
+        snap("backup/target/samba@old", "c0", 1),
+    ]
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+    assert ctx.incrementalSnapName == ""
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_recursive_clean_hierarchy_stays_incremental(monkeypatch):
+    ctx = _recursive_ctx()
+    ctx.allowOverwrite = True
+    ctx.sourceSnapshots = [snap("tank@s1", "g1", 1), snap("tank/samba@s1", "c1", 1)]
+    ctx.destinationSnapshots = [snap("backup/target@s1", "g1", 1), snap("backup/target/samba@s1", "c1", 1)]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank@s1"
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_recursive_child_ahead_needs_overwrite(monkeypatch):
+    ctx = _recursive_ctx()
+    ctx.sourceSnapshots = [snap("tank@s1", "g1", 1), snap("tank/samba@s1", "c1", 1)]
+    ctx.destinationSnapshots = [
+        snap("backup/target@s1", "g1", 1),
+        snap("backup/target/samba@s1", "c1", 1),
+        snap("backup/target/samba@local", "c9", 5),
+    ]
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+    ctx.allowOverwrite = True
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+def test_plan_recursive_flags_destination_child_without_snapshots():
+    ctx = _recursive_ctx()
+    ctx.allowOverwrite = True
+    ctx.sourceSnapshots = [snap("tank@s1", "g1", 1), snap("tank/samba@s1", "c1", 1)]
+    # backup/target/samba exists on disk but holds no snapshots, so it never appears here.
+    ctx.destinationSnapshots = [snap("backup/target@s1", "g1", 1)]
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_recursive_allows_child_created_after_the_base(monkeypatch):
+    ctx = _recursive_ctx()
+    ctx.allowOverwrite = True
+    ctx.sourceSnapshots = [
+        snap("tank@s1", "g1", 1),
+        snap("tank/samba@s1", "c1", 1),
+        snap("tank/newchild@s2", "n2", 2),
+    ]
+    ctx.destinationSnapshots = [snap("backup/target@s1", "g1", 1), snap("backup/target/samba@s1", "c1", 1)]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank@s1"
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_recursive_ignores_destination_only_child(monkeypatch):
+    ctx = _recursive_ctx()
+    ctx.allowOverwrite = True
+    ctx.sourceSnapshots = [snap("tank@s1", "g1", 1)]
+    ctx.destinationSnapshots = [
+        snap("backup/target@s1", "g1", 1),
+        snap("backup/target/unrelated@keep", "z1", 9),
+    ]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank@s1"
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_detects_untagged_destination_snapshot_ahead_of_base(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.taskName = "job-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    base_src = snap("tank/source@job-a-1", "g1", 1)
+    base_src.task_tag = "job-a"
+    base_dst = snap("backup/target@job-a-1", "g1", 1)
+    base_dst.task_tag = "job-a"
+    ctx.sourceSnapshots = [base_src]
+    # An autosnap on the backup host is newer than the base and breaks the incremental receive.
+    ctx.destinationSnapshots = [base_dst, snap("backup/target@Snapshot_hourly-x", "z9", 9)]
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+    ctx.allowOverwrite = True
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+def test_dry_run_reports_changes_written_since_newest_snapshot(monkeypatch, capsys):
+    ctx = ReplicationRun()
+    ctx.dryRun = True
+    ctx.taskName = "job-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    base = "tank/source@job-a-2026-01-01_00.00.00"
+    ctx.sourceSnapshots = [snap(base, "g1", 1)]
+    ctx.destinationSnapshots = [snap("backup/target@job-a-2026-01-01_00.00.00", "g1", 1)]
+    ctx.incrementalSnapName = base
+    monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "")
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 5 * 1024 * 1024)
+    with pytest.raises(SystemExit) as exc:
+        workflow._report_dry_run(ctx)
+    assert exc.value.code == 0
+    assert "5.0 MiB" in capsys.readouterr().out
 
 
 def test_create_and_transfer_push_reports_post_processing(monkeypatch, capsys):

@@ -41,6 +41,13 @@ def test_task_snapshot_matching_does_not_claim_other_tasks():
     assert not snapshots.is_task_snapshot("tank/data@anything", "")
 
 
+def test_task_snapshot_matching_does_not_claim_sibling_task_sharing_a_prefix():
+    assert snapshots.is_task_snapshot("tank/data@backup-t1-2026-08-04_01.02.03", "backup")
+    assert snapshots.is_task_snapshot("tank/data@backup-daily-2026-08-04_01.02.03", "backup-daily")
+    assert not snapshots.is_task_snapshot("tank/data@backup-daily-2026-08-04_01.02.03", "backup")
+    assert not snapshots.is_task_snapshot("tank/data@backup-daily-t1-2026-08-04_01.02.03", "backup")
+
+
 def test_local_inventory_parses_properties_and_ignores_bad_rows(monkeypatch):
     replies = iter(
         [
@@ -142,6 +149,20 @@ def test_retention_deletes_only_old_owned_matching_tier_and_preserves_excluded(m
     assert deleted == ["tank/data@job-a-old"]
     assert final == 50
     assert recorder.messages[-1].endswith("50% complete")
+
+
+def test_retention_child_snapshots_inherit_root_task_and_tier_tags(monkeypatch):
+    values = [
+        snap("tank/data@job-a-t0-old", age_days=10, task_tag="job-a", tier_tag="t0"),
+        snap("tank/data/samba@job-a-t0-old", age_days=10),
+        snap("tank/data@job-a-t1-old", age_days=10, task_tag="job-a", tier_tag="t1"),
+        snap("tank/data/samba@job-a-t1-old", age_days=10),
+    ]
+    deleted = []
+    monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: values)
+    monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
+    retention.prune_snapshots_by_retention("tank/data", "job-a", 5, "days", "", tier_idx=1)
+    assert deleted == ["tank/data@job-a-t1-old", "tank/data/samba@job-a-t1-old"]
 
 
 def test_retention_does_not_name_match_snapshot_tagged_to_another_task(monkeypatch):

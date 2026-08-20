@@ -16,7 +16,7 @@ from .logging_utils import dbg, dbg_env, dbg_kv, safe_print
 from .models import ReplicationRun
 from .notifications import send_houston_notification
 from .planner import build_zfs_send_args
-from .process import _apply_tcp_tuning
+from .process import _apply_tcp_tuning, format_bytes
 from .retention import destroy_snapshots_with_progress, prune_snapshots_by_retention
 from .schedules import load_schedule_json, match_current_tier
 from .ssh import preflight_ssh
@@ -380,6 +380,10 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                     else:
                         dest_snaps_now = get_local_snapshots(ctx.destFilesystem)
                     if dest_snaps_now:
+                        if not (ctx.allowOverwrite or ctx.forceFullSend):
+                            print(f'Resending the interrupted full send would destroy {len(dest_snaps_now)} existing snapshot(s) on {ctx.destFilesystem}.')
+                            print('Enable Allow Overwrite or Force Full Resync to authorise that, or clear the destination manually.')
+                            sys.exit(2)
                         if ctx.direction == 'pull' or not ctx.remoteHost:
                             destroy_snapshots_with_progress(dest_snaps_now, ctx.destFilesystem, reason='for full resend')
                         else:
@@ -495,6 +499,47 @@ def _announce_dry_run(ctx: ReplicationRun):
         print('No snapshots will be created and no data will be transferred.\n')
 
 
+def _group_snaps_by_relative_dataset(snaps, root):
+    """Key snapshots by dataset path relative to root so source and destination trees line up."""
+    grouped = {}
+    prefix = f'{root}/'
+    for snap in snaps or []:
+        dataset = dataset_of_snapshot(snap.name)
+        if dataset == root:
+            rel = ''
+        elif dataset.startswith(prefix):
+            rel = dataset[len(prefix):]
+        else:
+            continue
+        grouped.setdefault(rel, []).append(snap)
+    return grouped
+
+
+def _dataset_missing_base(src_groups, dst_groups, base_suffix):
+    """Return the first replicated dataset whose destination cannot use base_suffix as an incremental base."""
+    for rel, src_snaps in (src_groups or {}).items():
+        if not any(snapshot_suffix(s.name) == base_suffix for s in src_snaps):
+            # Created after the base snapshot, so the stream carries this dataset in full.
+            continue
+        dst_snaps = dst_groups.get(rel)
+        if not dst_snaps or not any(snapshot_suffix(s.name) == base_suffix for s in dst_snaps):
+            return rel or '(root)'
+    return None
+
+
+def _datasets_ahead_of_base(src_groups, dst_groups, base_suffix):
+    """Return replicated datasets holding snapshots newer than the incremental base."""
+    ahead = []
+    for rel, dst_snaps in dst_groups.items():
+        if rel not in src_groups:
+            continue
+        ordered = sorted(dst_snaps, key=lambda s: s.order_key)
+        idx = next((i for (i, s) in enumerate(ordered) if snapshot_suffix(s.name) == base_suffix), -1)
+        if 0 <= idx < len(ordered) - 1:
+            ahead.append(rel or '(root)')
+    return sorted(ahead)
+
+
 def _plan_send(ctx: ReplicationRun):
     if ctx.destinationSnapshots is None:
         print('Destination dataset does not exist. Will create it via full receive (no -F).')
@@ -518,17 +563,21 @@ def _plan_send(ctx: ReplicationRun):
         src_task_snaps = filter_task_snapshots(ctx.sourceSnapshots, ctx.taskName, custom_name=ctx.customName)
         dst_task_snaps = filter_task_snapshots(ctx.destinationSnapshots, ctx.taskName, custom_name=ctx.customName)
 
-        if ctx.isRecursiveSnap:
-            src_root_snaps = filter_dataset_snapshots(src_task_snaps, ctx.sourceFilesystem)
-            dst_root_snaps = filter_dataset_snapshots(dst_task_snaps, ctx.destFilesystem)
-        else:
-            src_root_snaps = filter_dataset_snapshots(src_task_snaps, ctx.sourceFilesystem)
-            dst_root_snaps = filter_dataset_snapshots(dst_task_snaps, ctx.destFilesystem)
+        src_root_snaps = filter_dataset_snapshots(src_task_snaps, ctx.sourceFilesystem)
+        dst_root_snaps = filter_dataset_snapshots(dst_task_snaps, ctx.destFilesystem)
 
-        if not src_root_snaps:
-            print('No source snapshots found for this task on the root dataset.')
-            print('Run the task once (non-dry-run) to create a task-owned snapshot baseline.')
-            sys.exit(2)
+        if not src_root_snaps or not dst_root_snaps:
+            # A freshly created task owns no snapshots yet, so fall back to every snapshot
+            # on the root datasets. This lets a new task keep replicating incrementally
+            # into a destination that an earlier task already seeded.
+            all_src_root = filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)
+            all_dst_root = filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)
+            if {s.guid for s in all_src_root} & {s.guid for s in all_dst_root}:
+                print('No task-owned snapshot baseline yet; using existing snapshots shared by source and destination to find an incremental base.')
+                src_root_snaps = all_src_root
+                dst_root_snaps = all_dst_root
+            else:
+                print('No task-owned snapshot baseline yet and no snapshots shared with the destination.')
 
         src_guids = {s.guid for s in src_root_snaps}
         common_candidates = [d for d in dst_root_snaps if d.guid in src_guids]
@@ -543,49 +592,77 @@ def _plan_send(ctx: ReplicationRun):
                 sys.exit(2)
         else:
             common_candidates.sort(key=lambda s: s.creation_epoch, reverse=True)
-            mostRecentCommonSnap = common_candidates[0]
             src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
+            src_groups = _group_snaps_by_relative_dataset(ctx.sourceSnapshots, ctx.sourceFilesystem)
+            dst_groups = _group_snaps_by_relative_dataset(ctx.destinationSnapshots, ctx.destFilesystem)
+
+            mostRecentCommonSnap = None
+            blocking_ds = None
+            for candidate in common_candidates:
+                if not ctx.isRecursiveSnap:
+                    mostRecentCommonSnap = candidate
+                    break
+                # A recursive stream is rejected unless every dataset it carries shares the base.
+                blocking_ds = _dataset_missing_base(src_groups, dst_groups, snapshot_suffix(candidate.name))
+                if blocking_ds is None:
+                    mostRecentCommonSnap = candidate
+                    break
+
+            if mostRecentCommonSnap is None:
+                print(f"No incremental base is shared by every replicated dataset: '{blocking_ds}' is missing or out of sync on the destination.")
+                print('This usually means an earlier run failed part-way and left that dataset behind.')
+                print('Enable Force Full Resync for one run to reseed the hierarchy, or repair that dataset manually.')
+                sys.exit(2)
+
             ctx.incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
             print(f'Most recent common snapshot: {ctx.incrementalSnapName}')
-            dest_check_snaps = dst_root_snaps
-            dest_check_snaps_sorted = sorted(dest_check_snaps, key=lambda s: s.creation_epoch)
-            common_idx = -1
-            for (i, d) in enumerate(dest_check_snaps_sorted):
-                if d.guid == mostRecentCommonSnap.guid:
-                    common_idx = i
-                    break
-            destAhead = False
-            if common_idx >= 0:
-                for d in dest_check_snaps_sorted[common_idx + 1:]:
-                    if d.guid not in src_guids:
-                        destAhead = True
-                        break
+
+            if ctx.isRecursiveSnap:
+                ahead_datasets = _datasets_ahead_of_base(src_groups, dst_groups, snapshot_suffix(ctx.incrementalSnapName))
+            else:
+                # Any newer snapshot breaks an incremental receive, task-owned or not.
+                root_src = {'': filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)}
+                root_dst = {'': filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)}
+                ahead_datasets = _datasets_ahead_of_base(root_src, root_dst, snapshot_suffix(ctx.incrementalSnapName))
+            destAhead = bool(ahead_datasets)
+            if destAhead:
+                print('Destination datasets holding snapshots newer than the base: ' + ', '.join(ahead_datasets))
+
             if destAhead and (not ctx.allowOverwrite):
                 print('Destination has newer snapshots than the common base. Enable Allow Overwrite (-F) or choose a different destination.')
                 sys.exit(2)
-            if destAhead and ctx.allowOverwrite:
+            if destAhead:
                 print('Destination is ahead; Allow Overwrite enabled: will roll back with -F.')
                 ctx.forceOverwrite = True
-            if not destAhead and ctx.allowOverwrite:
+                return
+
+            ctx.forceOverwrite = False
+            if not ctx.allowOverwrite:
+                return
+
+            dest_root_snaps = sorted(dst_root_snaps, key=lambda s: s.order_key)
+            written_dest = None
+            if dest_root_snaps:
+                dest_latest = dest_root_snaps[-1]
                 if ctx.direction == 'pull':
-                    dest_root_snaps = list(dst_root_snaps)
-                    written_remote = None
-                    if dest_root_snaps:
-                        dest_root_snaps.sort(key=lambda s: s.order_key)
-                        dest_latest = dest_root_snaps[-1]
-                        written_remote = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name)
+                    written_dest = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, recursive=ctx.isRecursiveSnap)
                 else:
-                    dest_root_snaps = list(dst_root_snaps)
-                    written_remote = None
-                    if dest_root_snaps:
-                        dest_root_snaps.sort(key=lambda s: s.order_key)
-                        dest_latest = dest_root_snaps[-1]
-                        written_remote = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
-                if written_remote is None:
-                    print('Note: Could not determine written@SNAP; proceeding without forcing -F based on that.')
-                elif written_remote > 0:
-                    print('Destination modified since latest snapshot; Allow Overwrite enabled: will receive with -F (rollback).')
-                    ctx.forceOverwrite = True
+                    written_dest = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort, recursive=ctx.isRecursiveSnap)
+            if written_dest is None:
+                print('Note: Could not determine written@SNAP; using -F as a safety measure since Allow Overwrite is enabled.')
+                ctx.forceOverwrite = True
+            elif written_dest > 0:
+                print('Destination modified since latest snapshot; Allow Overwrite enabled: will receive with -F (rollback).')
+                ctx.forceOverwrite = True
+            else:
+                print('Destination appears clean; will attempt incremental receive without -F.')
+
+
+def _written_since_source(ctx: ReplicationRun, snapshot_name: str):
+    """Bytes written on the source since snapshot_name; a real run snapshots these before sending."""
+    if ctx.direction == 'pull':
+        return get_written_since_snapshot(ctx.sourceFilesystem, snapshot_name, remote_user=ctx.remoteUser, remote_host=ctx.remoteHost, remote_port=ctx.sshPort, recursive=ctx.isRecursiveSnap)
+    return get_written_since_snapshot(ctx.sourceFilesystem, snapshot_name, recursive=ctx.isRecursiveSnap)
 
 
 def _report_dry_run(ctx: ReplicationRun):
@@ -619,14 +696,25 @@ def _report_dry_run(ctx: ReplicationRun):
             dry_run_snaps = filter_dataset_snapshots(task_source_snaps, ctx.sourceFilesystem)
             dry_run_snaps.sort(key=lambda s: s.creation_epoch)
             if not dry_run_snaps:
-                print('\n  No task-owned snapshots found on root dataset — cannot preview send command.')
+                dry_run_snaps = filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)
+                dry_run_snaps.sort(key=lambda s: s.creation_epoch)
+                if dry_run_snaps:
+                    print('\n  No task-owned snapshots yet — previewing against the newest existing source snapshot.')
+            if not dry_run_snaps:
+                print('\n  No snapshots found on root dataset — cannot preview send command.')
                 print('\n--- End Dry Run (no changes made) ---')
                 sys.exit(0)
             latest_src = dry_run_snaps[-1].name
+            pending_bytes = _written_since_source(ctx, latest_src)
             if ctx.incrementalSnapName and latest_src == ctx.incrementalSnapName:
                 print(f'\n  Latest source snapshot: {latest_src}')
-                print(f'  Already up to date — the most recent source snapshot is the common base.')
-                print(f'  No new snapshots to transfer.')
+                print('  Source and destination already share the newest snapshot.')
+                if pending_bytes is None:
+                    print('  Could not read written@ on the source, so pending changes are unknown.')
+                elif pending_bytes > 0:
+                    print(f'  A real run would snapshot {format_bytes(pending_bytes)} written since then and send that.')
+                else:
+                    print('  Nothing written since then; a real run would transfer an empty delta.')
                 print('\n--- End Dry Run (no changes made) ---')
                 sys.exit(0)
             send_cmd = build_zfs_send_args(latest_src, ctx.incrementalSnapName, recursive=ctx.isRecursiveSnap, compressed=ctx.isCompressed, raw=ctx.isRaw, include_intermediates=ctx.includeIntermediateSnapshots)
@@ -674,21 +762,34 @@ def _report_dry_run(ctx: ReplicationRun):
             if returncode != 0:
                 print(f'\n  WARNING: zfs send -nvP exited with code {returncode}')
             if total > 0:
-                if total >= 1073741824:
-                    size_str = f'{total / 1073741824:.2f} GiB'
-                elif total >= 1048576:
-                    size_str = f'{total / 1048576:.2f} MiB'
-                else:
-                    size_str = f'{total} bytes'
-                print(f'\n  Total estimated size: {size_str} ({total} bytes)')
+                print(f'\n  Estimated size of existing snapshots: {format_bytes(total)} ({total} bytes)')
+            if pending_bytes is None:
+                print('  Could not read written@ on the source; this excludes changes made since the newest snapshot.')
+            elif pending_bytes > 0:
+                print(f'  Written since {latest_src}: {format_bytes(pending_bytes)} (a real run snapshots this first)')
+                print(f'  Estimated total transfer: {format_bytes(total + pending_bytes)} ({total + pending_bytes} bytes)')
         else:
             print('  WARNING: No source snapshots found — nothing to send.')
         print('\n--- End Dry Run (no changes made) ---')
         sys.exit(0)
 
 
+def _warn_destination_only_datasets(ctx: ReplicationRun):
+    """A recursive receive with -F destroys destination datasets the source does not have."""
+    if not (ctx.forceOverwrite and ctx.isRecursiveSnap and ctx.destinationSnapshots):
+        return
+    src_groups = _group_snaps_by_relative_dataset(ctx.sourceSnapshots, ctx.sourceFilesystem)
+    dst_groups = _group_snaps_by_relative_dataset(ctx.destinationSnapshots, ctx.destFilesystem)
+    orphans = sorted(rel for rel in dst_groups if rel and rel not in src_groups)
+    if orphans:
+        msg = 'WARNING: recursive receive with -F will destroy destination datasets absent from the source: ' + ', '.join(orphans)
+        print(msg)
+        notifier.notify(f'STATUS={msg}')
+
+
 def _create_and_transfer_snapshot(ctx: ReplicationRun):
     notifier.notify('STATUS=Creating source snapshot…')
+    _warn_destination_only_datasets(ctx)
     if ctx.direction == 'pull':
         ctx.newSnap = create_snapshot_remote(ctx.sourceFilesystem, ctx.isRecursiveSnap, ctx.taskName, ctx.customName, ctx.remoteUser, ctx.remoteHost, ctx.sshPort, tier_idx=ctx.tier_idx)
         (exists, dest_snap_name) = snapshot_exists_on_destination(ctx.destFilesystem, snapshot_suffix(ctx.newSnap), remote_user=None, remote_host=None, remote_port=ctx.sshPort)
