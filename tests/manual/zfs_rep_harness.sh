@@ -25,7 +25,20 @@ TASK_NAME="hrepharness"
 LOG="/tmp/zfs_rep_debug_${TASK_NAME}.log"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REP_SCRIPT="${REPO_ROOT}/system_files/opt/45drives/houston/scheduler/scripts/replication-script.py"
+# Works from a checkout (tests/manual/) and from a deployed install (scheduler/tests/manual/).
+REP_SCRIPT="${ZFS_REP_SCRIPT:-}"
+if [[ -z ${REP_SCRIPT} ]]; then
+    for candidate in \
+        "${REPO_ROOT}/system_files/opt/45drives/houston/scheduler/scripts/replication-script.py" \
+        "${REPO_ROOT}/scripts/replication-script.py" \
+        "/opt/45drives/houston/scheduler/scripts/replication-script.py"
+    do
+        if [[ -f ${candidate} ]]; then
+            REP_SCRIPT="${candidate}"
+            break
+        fi
+    done
+fi
 
 FAILURES=0
 
@@ -40,7 +53,11 @@ require_root() {
         exit 1
     fi
     command -v zfs >/dev/null || { echo "zfs not found in PATH" >&2; exit 1; }
-    [[ -f ${REP_SCRIPT} ]] || { echo "Cannot find ${REP_SCRIPT}" >&2; exit 1; }
+    if [[ -z ${REP_SCRIPT} || ! -f ${REP_SCRIPT} ]]; then
+        echo "Cannot find replication-script.py. Set ZFS_REP_SCRIPT to its full path." >&2
+        exit 1
+    fi
+    info "using ${REP_SCRIPT}"
 }
 
 teardown() {
