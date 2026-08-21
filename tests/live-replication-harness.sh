@@ -32,13 +32,21 @@ Usage:
 
 Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools under /var/tmp/hrep):
   live-replication-harness.sh scenario-hierarchy-all
-  live-replication-harness.sh scenario-hierarchy-clean
-  live-replication-harness.sh scenario-hierarchy-child-behind
-  live-replication-harness.sh scenario-hierarchy-child-orphan
-  live-replication-harness.sh scenario-hierarchy-child-no-snaps
-  live-replication-harness.sh scenario-hierarchy-dest-ahead
-  live-replication-harness.sh scenario-hierarchy-existing-data
+  live-replication-harness.sh scenario-hierarchy-matrix
+  live-replication-harness.sh scenario-hierarchy-clean [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-child-behind [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-child-orphan [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-child-no-snaps [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-dest-ahead [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-existing-data [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-tags [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-retention [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-teardown
+
+  direction is push|pull (default push); transport is local|ssh|netcat|mbuffer
+  (default local). Every non-local transport talks to loopback SSH, overridable
+  with HIER_REMOTE_HOST. scenario-hierarchy-matrix sweeps the whole grid and
+  skips modes whose prerequisites (SSH keys, nc, mbuffer) are missing.
 
 Examples:
   live-replication-harness.sh preflight tank
@@ -51,6 +59,8 @@ Examples:
   live-replication-harness.sh scenario-resume-only-no-token-local TestLocalPush tank/sharebackup 90
   live-replication-harness.sh scenario-force-full-send-clears TestLocalPush 900
   live-replication-harness.sh scenario-hierarchy-all
+  live-replication-harness.sh scenario-hierarchy-matrix
+  live-replication-harness.sh scenario-hierarchy-tags pull mbuffer
   ZFS_REP_SCRIPT=/opt/45drives/houston/scheduler/scripts/replication-script.py \
     live-replication-harness.sh scenario-hierarchy-child-behind
 EOF
@@ -695,9 +705,25 @@ HIER_WORK_DIR="/var/tmp/hrep"
 HIER_IMG_SIZE="512M"
 HIER_TASK="hrepharness"
 HIER_LOG="/tmp/zfs_rep_debug_${HIER_TASK}.log"
+HIER_OUT="/tmp/zfs_rep_out_${HIER_TASK}.log"
 HIER_FAILURES=0
 HIER_RC=0
 HIER_SNAP_BEFORE=""
+
+# Transport/direction matrix. Remote modes use loopback SSH so a single box can
+# exercise the remote code paths; both pools stay local, so every zfs query in
+# this file keeps working unchanged regardless of mode.
+HIER_DIRECTION="push"
+HIER_TRANSPORT="local"
+HIER_HOST=""
+HIER_USER="root"
+HIER_SSH_PORT="22"
+HIER_DATA_PORT="31337"
+HIER_SCHEDULE_JSON=""
+HIER_SRC_RET_TIME="0"
+HIER_SRC_RET_UNIT=""
+HIER_DST_RET_TIME="0"
+HIER_DST_RET_UNIT=""
 
 hier_say()  { printf '\n== %s ==\n' "$*"; }
 hier_info() { printf '   %s\n' "$*"; }
@@ -712,6 +738,62 @@ hier_wait_tick() {
   while [[ "$(date +%s)" == "$start" ]]; do
     sleep 0.2
   done
+}
+
+hier_mode_label() {
+  printf '%s/%s' "$HIER_DIRECTION" "$HIER_TRANSPORT"
+}
+
+# hier_set_mode <push|pull> <local|ssh|netcat|mbuffer>
+# `local` means no peer at all; every other transport talks to loopback SSH.
+hier_set_mode() {
+  HIER_DIRECTION="$1"
+  HIER_TRANSPORT="$2"
+  if [[ "$HIER_TRANSPORT" == "local" ]]; then
+    HIER_HOST=""
+  else
+    HIER_HOST="${HIER_REMOTE_HOST:-127.0.0.1}"
+  fi
+}
+
+hier_reset_mode() {
+  hier_set_mode push local
+  HIER_SCHEDULE_JSON=""
+}
+
+# Returns 1 with a reason on stdout when the current mode cannot run here.
+hier_mode_unavailable() {
+  if [[ "$HIER_DIRECTION" == "pull" && "$HIER_TRANSPORT" == "local" ]]; then
+    echo "pull requires a remote source; 'local' is not a pull transport"
+    return 0
+  fi
+  if [[ -n "$HIER_HOST" ]]; then
+    if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+         -p "$HIER_SSH_PORT" "${HIER_USER}@${HIER_HOST}" true >/dev/null 2>&1; then
+      echo "no passwordless SSH to ${HIER_USER}@${HIER_HOST}:${HIER_SSH_PORT}"
+      return 0
+    fi
+  fi
+  case "$HIER_TRANSPORT" in
+    netcat)  command -v nc      >/dev/null 2>&1 || { echo "nc not installed"; return 0; } ;;
+    mbuffer) command -v mbuffer >/dev/null 2>&1 || { echo "mbuffer not installed"; return 0; } ;;
+  esac
+  return 1
+}
+
+# A two-interval all-wildcard schedule ties on specificity, so tier 0 is chosen
+# and every snapshot gets the tier property — which is what we want to assert.
+hier_write_schedule() {
+  mkdir -p "$HIER_WORK_DIR"
+  cat > "$HIER_WORK_DIR/schedule.json" <<'EOF'
+{
+  "intervals": [
+    {"minute": {"value": "*"}, "hour": {"value": "*"}, "day": {"value": "*"}, "month": {"value": "*"}, "year": {"value": "*"}, "dayOfWeek": []},
+    {"minute": {"value": "*"}, "hour": {"value": "*"}, "day": {"value": "*"}, "month": {"value": "*"}, "year": {"value": "*"}, "dayOfWeek": []}
+  ]
+}
+EOF
+  HIER_SCHEDULE_JSON="$HIER_WORK_DIR/schedule.json"
 }
 
 hier_rep_script() {
@@ -744,7 +826,7 @@ hier_teardown() {
   zpool destroy -f "$HIER_SRC_POOL" 2>/dev/null || true
   zpool destroy -f "$HIER_DST_POOL" 2>/dev/null || true
   rm -rf "$HIER_WORK_DIR"
-  rm -f "$HIER_LOG"
+  rm -f "$HIER_LOG" "$HIER_OUT"
 }
 
 hier_create_pools() {
@@ -776,46 +858,59 @@ hier_setup() {
 
 # hier_run_task <allowOverwrite> <useExistingDest> [forceFullSend] [quiet]
 # Never aborts under `set -e`; the exit code lands in HIER_RC.
+# Direction and transport come from HIER_DIRECTION / HIER_TRANSPORT.
 hier_run_task() {
   local allow_overwrite="$1" use_existing="$2" force_full="${3:-false}" quiet="${4:-}"
-  local script
+  local script data_port
   script="$(hier_rep_script)"
-  rm -f "$HIER_LOG"
+  rm -f "$HIER_LOG" "$HIER_OUT"
   HIER_SNAP_BEFORE="$(hier_newest_snap "$HIER_SRC_FS")"
   hier_wait_tick
+
+  if [[ "$HIER_TRANSPORT" == "netcat" || "$HIER_TRANSPORT" == "mbuffer" ]]; then
+    data_port="$HIER_DATA_PORT"
+  else
+    data_port="$HIER_SSH_PORT"
+  fi
 
   local -a env_args=(
     taskName="$HIER_TASK"
     ZFS_REP_DEBUG=1
     ZFS_REP_DEBUG_LOG="$HIER_LOG"
-    zfsRepConfig_direction=push
+    scheduleJsonPath="$HIER_SCHEDULE_JSON"
+    zfsRepConfig_direction="$HIER_DIRECTION"
     zfsRepConfig_sourceDataset_pool="$HIER_SRC_POOL"
     zfsRepConfig_sourceDataset_dataset="$HIER_SRC_FS"
     zfsRepConfig_destDataset_pool="$HIER_DST_POOL"
     zfsRepConfig_destDataset_dataset="$HIER_DST_FS"
-    zfsRepConfig_destDataset_host=""
-    zfsRepConfig_destDataset_user=root
+    zfsRepConfig_destDataset_host="$HIER_HOST"
+    zfsRepConfig_destDataset_user="$HIER_USER"
+    zfsRepConfig_destDataset_sshPort="$HIER_SSH_PORT"
+    zfsRepConfig_destDataset_port="$data_port"
     zfsRepConfig_sendOptions_recursive_flag=true
     zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
-    zfsRepConfig_sendOptions_transferMethod=local
+    zfsRepConfig_sendOptions_transferMethod="$HIER_TRANSPORT"
+    zfsRepConfig_sendOptions_mbufferCallbackHost="$HIER_HOST"
     zfsRepConfig_sendOptions_allowOverwrite="$allow_overwrite"
     zfsRepConfig_sendOptions_useExistingDest="$use_existing"
     zfsRepConfig_sendOptions_forceFullSend="$force_full"
+    zfsRepConfig_snapshotRetention_source_retentionTime="$HIER_SRC_RET_TIME"
+    zfsRepConfig_snapshotRetention_source_retentionUnit="$HIER_SRC_RET_UNIT"
+    zfsRepConfig_snapshotRetention_destination_retentionTime="$HIER_DST_RET_TIME"
+    zfsRepConfig_snapshotRetention_destination_retentionUnit="$HIER_DST_RET_UNIT"
   )
 
   set +e
   if [[ "$quiet" == "quiet" ]]; then
-    env "${env_args[@]}" python3 "$script" >/dev/null 2>&1
+    env "${env_args[@]}" python3 "$script" >"$HIER_OUT" 2>&1
+    HIER_RC=$?
   else
-    env "${env_args[@]}" python3 "$script"
+    env "${env_args[@]}" python3 "$script" >"$HIER_OUT" 2>&1
+    HIER_RC=$?
+    cat "$HIER_OUT"
   fi
-  HIER_RC=$?
   set -e
   return 0
-}
-
-hier_last_recv_cmd() {
-  ( grep 'PIPE recv cmd=' "$HIER_LOG" 2>/dev/null || true ) | tail -1
 }
 
 hier_newest_snap() {
@@ -852,22 +947,24 @@ hier_expect_new_snapshot() {
 
 hier_expect_force_flag() {
   local want="$1" line
-  line="$(hier_last_recv_cmd)"
+  # Every transport prints a reproducible "CLI command" containing the receive
+  # stage, so this assertion is transport-agnostic.
+  line="$( ( grep -o 'zfs recv -s[^|'"'"']*' "$HIER_OUT" 2>/dev/null || true ) | tail -1 )"
   if [[ -z "$line" ]]; then
-    hier_fail "no 'PIPE recv cmd=' line in $HIER_LOG"
+    hier_fail "no 'zfs recv -s' line in $HIER_OUT"
     return 0
   fi
   if [[ "$want" == "yes" ]]; then
-    if [[ "$line" == *" -F"* ]]; then
-      hier_pass "recv used -F: ${line##*cmd=}"
+    if [[ "$line" == "zfs recv -s -F"* ]]; then
+      hier_pass "recv used -F: $line"
     else
-      hier_fail "recv should have used -F: ${line##*cmd=}"
+      hier_fail "recv should have used -F: $line"
     fi
   else
-    if [[ "$line" == *" -F"* ]]; then
-      hier_fail "recv used -F but should not have: ${line##*cmd=}"
+    if [[ "$line" == "zfs recv -s -F"* ]]; then
+      hier_fail "recv used -F but should not have: $line"
     else
-      hier_pass "recv did not use -F: ${line##*cmd=}"
+      hier_pass "recv did not use -F: $line"
     fi
   fi
 }
@@ -882,8 +979,57 @@ hier_expect_base() {
   fi
 }
 
+HIER_TASK_PROP="com.45drives_scheduler:task_name"
+HIER_TIER_PROP="com.45drives_scheduler:scheduler_interval_tier"
+
+hier_dataset_count() {
+  ( zfs list -H -o name -r "$1" 2>/dev/null || true ) | wc -l
+}
+
+# hier_expect_tags <root_fs> <snap_suffix> <property> <expected_value> <label>
+# `zfs snapshot -r` creates the whole tree but `zfs set` only touches what it is
+# told to, so every dataset in the tree must carry the property, not just root.
+hier_expect_tags() {
+  local fs="$1" suffix="$2" prop="$3" want="$4" label="$5"
+  local expected seen=0 bad=0 name value
+  expected="$(hier_dataset_count "$fs")"
+
+  while read -r name value; do
+    [[ "$name" == *"@${suffix}" ]] || continue
+    seen=$((seen + 1))
+    if [[ "$value" != "$want" ]]; then
+      hier_fail "$label: $name has ${prop}='${value}', expected '${want}'"
+      bad=1
+    fi
+  done < <( zfs get -H -o name,value -t snapshot -r "$prop" "$fs" 2>/dev/null || true )
+
+  if [[ "$seen" -ne "$expected" ]]; then
+    hier_fail "$label: ${prop} found on $seen snapshot(s), expected $expected (one per dataset)"
+    return 0
+  fi
+  if [[ "$bad" -eq 0 ]]; then
+    hier_pass "$label: all $seen dataset(s) tagged ${prop}=${want}"
+  fi
+}
+
+hier_snap_suffix() {
+  local snap
+  snap="$(hier_newest_snap "$1")"
+  echo "${snap#*@}"
+}
+
+hier_expect_no_snapshots() {
+  local fs="$1" suffix="$2" label="$3" left
+  left="$( ( zfs list -H -o name -t snapshot -r "$fs" 2>/dev/null || true ) | grep -c "@${suffix}\$" || true )"
+  if [[ "$left" -eq 0 ]]; then
+    hier_pass "$label: generation @${suffix} pruned from the whole tree"
+  else
+    hier_fail "$label: $left snapshot(s) of @${suffix} survived retention"
+  fi
+}
+
 cmd_scenario_hierarchy_clean() {
-  hier_say "hierarchy clean: healthy recursive incremental must not use -F"
+  hier_say "hierarchy clean [$(hier_mode_label)]: healthy recursive incremental must not use -F"
   hier_setup
   hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"; hier_expect_new_snapshot "initial full send"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
@@ -893,7 +1039,7 @@ cmd_scenario_hierarchy_clean() {
 }
 
 cmd_scenario_hierarchy_child_behind() {
-  hier_say "hierarchy child-behind: must fall back to an older base the whole tree shares"
+  hier_say "hierarchy child-behind [$(hier_mode_label)]: must fall back to an older base the whole tree shares"
   hier_setup
   hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
@@ -918,7 +1064,7 @@ cmd_scenario_hierarchy_child_behind() {
 }
 
 cmd_scenario_hierarchy_child_orphan() {
-  hier_say "hierarchy child-orphan: no shared base on a child must fail loudly, never full-send"
+  hier_say "hierarchy child-orphan [$(hier_mode_label)]: no shared base on a child must fail loudly, never full-send"
   hier_setup
   hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
 
@@ -940,7 +1086,7 @@ cmd_scenario_hierarchy_child_orphan() {
 }
 
 cmd_scenario_hierarchy_child_no_snaps() {
-  hier_say "hierarchy child-no-snaps: destination child with zero snapshots must be caught before send"
+  hier_say "hierarchy child-no-snaps [$(hier_mode_label)]: destination child with zero snapshots must be caught before send"
   hier_setup
   hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
 
@@ -961,7 +1107,7 @@ cmd_scenario_hierarchy_child_no_snaps() {
 }
 
 cmd_scenario_hierarchy_dest_ahead() {
-  hier_say "hierarchy dest-ahead: destination-side snapshots require explicit Allow Overwrite"
+  hier_say "hierarchy dest-ahead [$(hier_mode_label)]: destination-side snapshots require explicit Allow Overwrite"
   hier_setup
   hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
   zfs snapshot "$HIER_DST_FS/samba@local-extra"
@@ -979,7 +1125,7 @@ cmd_scenario_hierarchy_dest_ahead() {
 }
 
 cmd_scenario_hierarchy_existing_data() {
-  hier_say "hierarchy existing-data: an unexpected populated destination must not be wiped"
+  hier_say "hierarchy existing-data [$(hier_mode_label)]: an unexpected populated destination must not be wiped"
   hier_create_pools
   zfs create "$HIER_SRC_FS"
   zfs create "$HIER_SRC_FS/samba"
@@ -1010,13 +1156,106 @@ cmd_scenario_hierarchy_existing_data() {
   hier_expect_force_flag yes
 }
 
+cmd_scenario_hierarchy_tags() {
+  hier_say "hierarchy tags [$(hier_mode_label)]: every dataset in the tree must carry task and tier tags"
+  hier_setup
+  hier_write_schedule
+
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"; hier_expect_new_snapshot "initial full send"
+  local suffix
+  suffix="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_info "full-send suffix: $suffix"
+  hier_expect_tags "$HIER_SRC_FS" "$suffix" "$HIER_TASK_PROP" "$HIER_TASK" "source (full)"
+  hier_expect_tags "$HIER_SRC_FS" "$suffix" "$HIER_TIER_PROP" "t0"          "source (full)"
+  hier_expect_tags "$HIER_DST_FS" "$suffix" "$HIER_TASK_PROP" "$HIER_TASK" "destination (full)"
+  hier_expect_tags "$HIER_DST_FS" "$suffix" "$HIER_TIER_PROP" "t0"          "destination (full)"
+
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task false false false quiet; hier_expect_rc 0 "incremental send"; hier_expect_new_snapshot "incremental send"
+  suffix="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_info "incremental suffix: $suffix"
+  hier_expect_tags "$HIER_SRC_FS" "$suffix" "$HIER_TASK_PROP" "$HIER_TASK" "source (incremental)"
+  hier_expect_tags "$HIER_SRC_FS" "$suffix" "$HIER_TIER_PROP" "t0"          "source (incremental)"
+  hier_expect_tags "$HIER_DST_FS" "$suffix" "$HIER_TASK_PROP" "$HIER_TASK" "destination (incremental)"
+  hier_expect_tags "$HIER_DST_FS" "$suffix" "$HIER_TIER_PROP" "t0"          "destination (incremental)"
+
+  HIER_SCHEDULE_JSON=""
+}
+
+cmd_scenario_hierarchy_retention() {
+  hier_say "hierarchy retention [$(hier_mode_label)]: tagged children must prune alongside their root"
+  hier_setup
+  hier_write_schedule
+
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
+  local first_suffix
+  first_suffix="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_info "generation 1 suffix: $first_suffix"
+
+  # The smallest supported retention window is one minute, so the first
+  # generation has to actually age past it before run 2 can prune it.
+  hier_info "waiting 65s for generation 1 to age out of a 1-minute window"
+  sleep 65
+
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  HIER_SRC_RET_TIME=1; HIER_SRC_RET_UNIT=minutes
+  HIER_DST_RET_TIME=1; HIER_DST_RET_UNIT=minutes
+  hier_run_task false false false quiet
+  HIER_SRC_RET_TIME=0; HIER_SRC_RET_UNIT=""
+  HIER_DST_RET_TIME=0; HIER_DST_RET_UNIT=""
+  hier_expect_rc 0 "run 2 with a 1-minute retention window"
+  hier_expect_new_snapshot "run 2"
+
+  hier_expect_no_snapshots "$HIER_SRC_FS" "$first_suffix" "source"
+  hier_expect_no_snapshots "$HIER_DST_FS" "$first_suffix" "destination"
+
+  local newest_suffix
+  newest_suffix="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_tags "$HIER_SRC_FS" "$newest_suffix" "$HIER_TASK_PROP" "$HIER_TASK" "surviving source generation"
+  hier_expect_tags "$HIER_DST_FS" "$newest_suffix" "$HIER_TASK_PROP" "$HIER_TASK" "surviving destination generation"
+
+  HIER_SCHEDULE_JSON=""
+}
+
+HIER_MATRIX_MODES=(
+  "push local"
+  "push ssh"
+  "push netcat"
+  "push mbuffer"
+  "pull ssh"
+  "pull netcat"
+  "pull mbuffer"
+)
+
+cmd_scenario_hierarchy_matrix() {
+  local mode dir transport reason skipped=0
+  for mode in "${HIER_MATRIX_MODES[@]}"; do
+    read -r dir transport <<<"$mode"
+    hier_set_mode "$dir" "$transport"
+    if reason="$(hier_mode_unavailable)"; then
+      hier_say "SKIP $(hier_mode_label): $reason"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    cmd_scenario_hierarchy_clean
+    cmd_scenario_hierarchy_child_behind
+    cmd_scenario_hierarchy_tags
+  done
+  hier_reset_mode
+  hier_teardown
+  hier_say "hierarchy matrix finished with $HIER_FAILURES failure(s), $skipped mode(s) skipped"
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
 cmd_scenario_hierarchy_all() {
+  hier_reset_mode
   cmd_scenario_hierarchy_clean
   cmd_scenario_hierarchy_child_behind
   cmd_scenario_hierarchy_child_orphan
   cmd_scenario_hierarchy_child_no_snaps
   cmd_scenario_hierarchy_dest_ahead
   cmd_scenario_hierarchy_existing_data
+  cmd_scenario_hierarchy_tags
   hier_teardown
   hier_say "hierarchy scenarios finished with $HIER_FAILURES failure(s)"
   [[ "$HIER_FAILURES" -eq 0 ]]
@@ -1108,9 +1347,20 @@ main() {
       hier_require_root
       cmd_scenario_hierarchy_all
       ;;
-    scenario-hierarchy-clean|scenario-hierarchy-child-behind|scenario-hierarchy-child-orphan|scenario-hierarchy-child-no-snaps|scenario-hierarchy-dest-ahead|scenario-hierarchy-existing-data)
+    scenario-hierarchy-matrix)
       [[ $# -eq 0 ]] || { usage; exit 1; }
       hier_require_root
+      cmd_scenario_hierarchy_matrix
+      ;;
+    scenario-hierarchy-clean|scenario-hierarchy-child-behind|scenario-hierarchy-child-orphan|scenario-hierarchy-child-no-snaps|scenario-hierarchy-dest-ahead|scenario-hierarchy-existing-data|scenario-hierarchy-tags|scenario-hierarchy-retention)
+      [[ $# -le 2 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_set_mode "${1:-push}" "${2:-local}"
+      local reason
+      if reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $reason" >&2
+        exit 1
+      fi
       # Pools are left standing for inspection; use scenario-hierarchy-teardown.
       "cmd_${cmd//-/_}"
       hier_say "finished with $HIER_FAILURES failure(s)"

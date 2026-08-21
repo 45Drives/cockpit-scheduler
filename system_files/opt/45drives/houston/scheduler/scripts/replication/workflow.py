@@ -839,9 +839,9 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
 def _tag_received_snapshot(ctx: ReplicationRun):
     snap_suf = snapshot_suffix(ctx.newSnap)
     if ctx.direction == 'pull':
-        tag_received_snapshots(ctx.destFilesystem, snap_suf, ctx.taskName, tier_idx=ctx.tier_idx)
+        tag_received_snapshots(ctx.destFilesystem, snap_suf, ctx.taskName, tier_idx=ctx.tier_idx, recursive=ctx.isRecursiveSnap)
     else:
-        tag_received_snapshots(ctx.destFilesystem, snap_suf, ctx.taskName, tier_idx=ctx.tier_idx, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
+        tag_received_snapshots(ctx.destFilesystem, snap_suf, ctx.taskName, tier_idx=ctx.tier_idx, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort, recursive=ctx.isRecursiveSnap)
     notifier.notify('STATUS=Pruning old snapshots on source/destination…')
     ctx.current_pct = 0
 

@@ -226,7 +226,8 @@ def prune_snapshots_by_retention(
 
     excluded_suffix = excluded_snapshot_name.split("@", 1)[-1] if excluded_snapshot_name else None
 
-    # Recursive snapshots are tagged on the root only, so children inherit by matching suffix.
+    # Compatibility path for snapshots created before children were tagged
+    # directly: fall back to the root's tags for the same suffix.
     root_tags = {}
     for snapshot in snapshots:
         if dataset_of_snapshot(snapshot.name) != filesystem:

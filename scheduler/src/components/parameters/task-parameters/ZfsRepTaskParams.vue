@@ -67,7 +67,8 @@
             <div class="grid grid-cols-3 gap-2">
                 <div>
                     <label class="block text-sm text-default">Server address</label>
-                    <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
+                    <input type="text" v-model="destHost" @input="debouncedDestHostChange()"
+                        @blur="commitDestHostChange()" @keyup.enter="commitDestHostChange()" :class="[
                         'mt-1 block w-full input-textlike text-sm bg-default text-default',
                         destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                     ]" placeholder="e.g. 10.0.0.5 or backup.local" />
@@ -488,7 +489,8 @@
                     <label class="block text-sm leading-6 text-default">Host</label>
                     <ExclamationCircleIcon v-if="destHostErrorTag" class="mt-1 w-5 h-5 text-danger" />
                 </div>
-                <input type="text" v-model="destHost" @input="debouncedDestHostChange($event.target)" :class="[
+                <input type="text" v-model="destHost" @input="debouncedDestHostChange()"
+                    @blur="commitDestHostChange()" @keyup.enter="commitDestHostChange()" :class="[
                     'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                     destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
                 ]" :placeholder="hostPlaceholder" />
@@ -1146,13 +1148,33 @@ function handleCheckboxChange(checkbox: string) {
 
 function debounce(func: any, delay: number) {
     let timerId: any;
-    return function (...args: any[]) {
+    const wrapped = function (...args: any[]) {
         if (timerId) clearTimeout(timerId);
         timerId = setTimeout(() => func(...args), delay);
     };
+    wrapped.cancel = () => {
+        if (timerId) clearTimeout(timerId);
+        timerId = undefined;
+    };
+    return wrapped;
 }
 
+const IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const FQDN_RE = /^(?=.{1,253}$)(?!-)[a-zA-Z0-9-]{1,63}(?<!-)(\.(?!-)[a-zA-Z0-9-]{1,63}(?<!-))+$/;
+
+// While typing we only probe hosts that already look complete; partial input like "h" or
+// "192.168." would otherwise trigger a failed SSH lookup on every keystroke.
+function hostLooksComplete(host: string) {
+    const h = host.trim();
+    if (!h) return false;
+    if (/^[\d.]+$/.test(h)) return IPV4_RE.test(h);
+    return FQDN_RE.test(h);
+}
+
+let lastProbedHost = '';
+
 const handleDestHostChange = async () => {
+    lastProbedHost = destHost.value.trim();
     if (isPull.value) {
         // Pull mode: host is the source — only refresh source pools
         await getSourcePools();
@@ -1166,7 +1188,24 @@ const handleDestHostChange = async () => {
     }
 };
 
-const debouncedDestHostChange = debounce(handleDestHostChange, 500);
+const debouncedInner = debounce(handleDestHostChange, 800);
+
+const debouncedDestHostChange = () => {
+    const h = destHost.value.trim();
+    if (!hostLooksComplete(h) || h === lastProbedHost) {
+        debouncedInner.cancel();
+        return;
+    }
+    debouncedInner();
+};
+
+// Blur/Enter commits whatever the user typed, including single-label hostnames.
+const commitDestHostChange = async () => {
+    debouncedInner.cancel();
+    const h = destHost.value.trim();
+    if (!h || h === lastProbedHost) return;
+    await handleDestHostChange();
+};
 
 /* ---------------- Direction-aware list loading ---------------- */
 

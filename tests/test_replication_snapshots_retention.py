@@ -79,7 +79,43 @@ def test_property_helpers_accept_numbers_and_reject_dash(monkeypatch):
     assert snapshots.get_available_bytes("tank/data") is None
 
 
-def test_create_local_snapshot_builds_recursive_name_and_tags(monkeypatch):
+def test_create_local_snapshot_builds_recursive_name_and_tags_whole_tree(monkeypatch):
+    calls = []
+    suffix = "daily-t2-2026-08-04_15.16.17"
+    listing = "\n".join([
+        f"tank/data@{suffix}",
+        f"tank/data/samba@{suffix}",
+        f"tank/data/media@{suffix}",
+        "tank/data@unrelated-2026-01-01_00.00.00",
+    ])
+
+    class FixedDateTime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 4, 15, 16, 17)
+
+    def fake_run_logged(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["zfs", "list"]:
+            return result(stdout=listing)
+        return result()
+
+    monkeypatch.setattr(snapshots.datetime, "datetime", FixedDateTime)
+    monkeypatch.setattr(snapshots, "get_available_bytes", lambda *args, **kwargs: 1024)
+    monkeypatch.setattr(snapshots, "run_logged", fake_run_logged)
+    name = snapshots.create_snapshot_local("tank/data", True, "job-a", custom_name="daily", tier_idx=2)
+    assert name == f"tank/data@{suffix}"
+
+    targets = [f"tank/data@{suffix}", f"tank/data/samba@{suffix}", f"tank/data/media@{suffix}"]
+    assert calls == [
+        ["zfs", "snapshot", "-r", name],
+        ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", "tank/data"],
+        ["zfs", "set", f"{TASK_PROP}=job-a"] + targets,
+        ["zfs", "set", f"{TIER_PROP}=t2"] + targets,
+    ]
+
+
+def test_non_recursive_snapshot_tags_only_its_own_snapshot(monkeypatch):
     calls = []
 
     class FixedDateTime(datetime.datetime):
@@ -90,13 +126,50 @@ def test_create_local_snapshot_builds_recursive_name_and_tags(monkeypatch):
     monkeypatch.setattr(snapshots.datetime, "datetime", FixedDateTime)
     monkeypatch.setattr(snapshots, "get_available_bytes", lambda *args, **kwargs: 1024)
     monkeypatch.setattr(snapshots, "run_logged", lambda cmd, **kwargs: calls.append(cmd) or result())
-    name = snapshots.create_snapshot_local("tank/data", True, "job-a", custom_name="daily", tier_idx=2)
-    assert name == "tank/data@daily-t2-2026-08-04_15.16.17"
+    name = snapshots.create_snapshot_local("tank/data", False, "job-a")
     assert calls == [
-        ["zfs", "snapshot", "-r", name],
+        ["zfs", "snapshot", name],
         ["zfs", "set", f"{TASK_PROP}=job-a", name],
-        ["zfs", "set", f"{TIER_PROP}=t2", name],
     ]
+
+
+def test_tag_received_snapshots_tags_every_received_dataset(monkeypatch):
+    calls = []
+    suffix = "job-a-2026-08-04_15.16.17"
+    listing = "\n".join([
+        f"backup/data@{suffix}",
+        f"backup/data/samba@{suffix}",
+    ])
+
+    def fake_run_logged(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["zfs", "list"]:
+            return result(stdout=listing)
+        return result()
+
+    monkeypatch.setattr(snapshots, "run_logged", fake_run_logged)
+    snapshots.tag_received_snapshots("backup/data", suffix, "job-a", tier_idx=1, recursive=True)
+
+    targets = [f"backup/data@{suffix}", f"backup/data/samba@{suffix}"]
+    assert calls == [
+        ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", "backup/data"],
+        ["zfs", "set", f"{TASK_PROP}=job-a"] + targets,
+        ["zfs", "set", f"{TIER_PROP}=t1"] + targets,
+    ]
+
+
+def test_tagging_falls_back_to_root_when_listing_fails(monkeypatch):
+    calls = []
+
+    def fake_run_logged(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["zfs", "list"]:
+            return result(returncode=1, stderr="cannot open")
+        return result()
+
+    monkeypatch.setattr(snapshots, "run_logged", fake_run_logged)
+    snapshots.tag_received_snapshots("backup/data", "job-a-2026-08-04_15.16.17", "job-a", recursive=True)
+    assert calls[-1] == ["zfs", "set", f"{TASK_PROP}=job-a", "backup/data@job-a-2026-08-04_15.16.17"]
 
 
 def test_snapshot_creation_refuses_no_available_space(monkeypatch):
