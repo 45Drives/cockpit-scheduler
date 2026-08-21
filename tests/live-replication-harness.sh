@@ -30,6 +30,16 @@ Usage:
   live-replication-harness.sh scenario-resume-only-no-token-local <task_name> <dest_dataset> [finish_wait_sec]
   live-replication-harness.sh scenario-force-full-send-clears <task_name> [finish_wait_sec]
 
+Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools under /var/tmp/hrep):
+  live-replication-harness.sh scenario-hierarchy-all
+  live-replication-harness.sh scenario-hierarchy-clean
+  live-replication-harness.sh scenario-hierarchy-child-behind
+  live-replication-harness.sh scenario-hierarchy-child-orphan
+  live-replication-harness.sh scenario-hierarchy-child-no-snaps
+  live-replication-harness.sh scenario-hierarchy-dest-ahead
+  live-replication-harness.sh scenario-hierarchy-existing-data
+  live-replication-harness.sh scenario-hierarchy-teardown
+
 Examples:
   live-replication-harness.sh preflight tank
   live-replication-harness.sh set-flag TestLocalPush dryRun true
@@ -40,6 +50,9 @@ Examples:
   live-replication-harness.sh autotest-all dry-run 900
   live-replication-harness.sh scenario-resume-only-no-token-local TestLocalPush tank/sharebackup 90
   live-replication-harness.sh scenario-force-full-send-clears TestLocalPush 900
+  live-replication-harness.sh scenario-hierarchy-all
+  ZFS_REP_SCRIPT=/opt/45drives/houston/scheduler/scripts/replication-script.py \
+    live-replication-harness.sh scenario-hierarchy-child-behind
 EOF
 }
 
@@ -665,6 +678,326 @@ cmd_scenario_force_full_send_clears() {
   echo "PASS: successful run and forceFullSend one-shot flag cleared"
 }
 
+# ---------------------------------------------------------------------------
+# Hierarchy scenarios
+#
+# Unlike the scenarios above, these do not drive a configured task. They build
+# disposable file-backed pools because they must corrupt the destination to
+# exercise planner recovery, which is never acceptable on real task data.
+# Only the hrepsrc/hrepdst pools and /var/tmp/hrep are touched.
+# ---------------------------------------------------------------------------
+
+HIER_SRC_POOL="hrepsrc"
+HIER_DST_POOL="hrepdst"
+HIER_SRC_FS="${HIER_SRC_POOL}/data"
+HIER_DST_FS="${HIER_DST_POOL}/backup"
+HIER_WORK_DIR="/var/tmp/hrep"
+HIER_IMG_SIZE="512M"
+HIER_TASK="hrepharness"
+HIER_LOG="/tmp/zfs_rep_debug_${HIER_TASK}.log"
+HIER_FAILURES=0
+HIER_RC=0
+
+hier_say()  { printf '\n== %s ==\n' "$*"; }
+hier_info() { printf '   %s\n' "$*"; }
+hier_pass() { printf '   PASS %s\n' "$*"; }
+hier_fail() { printf '   FAIL %s\n' "$*"; HIER_FAILURES=$((HIER_FAILURES + 1)); }
+
+hier_rep_script() {
+  local base candidate
+  base="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  for candidate in \
+    "${ZFS_REP_SCRIPT:-}" \
+    "$base/system_files/opt/45drives/houston/scheduler/scripts/replication-script.py" \
+    "$base/scripts/replication-script.py" \
+    "/opt/45drives/houston/scheduler/scripts/replication-script.py"
+  do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "error: cannot find replication-script.py; set ZFS_REP_SCRIPT" >&2
+  return 1
+}
+
+hier_require_root() {
+  if [[ ${EUID} -ne 0 ]]; then
+    echo "error: hierarchy scenarios must run as root (they create and destroy zpools)" >&2
+    exit 1
+  fi
+  hier_rep_script >/dev/null
+}
+
+hier_teardown() {
+  zpool destroy -f "$HIER_SRC_POOL" 2>/dev/null || true
+  zpool destroy -f "$HIER_DST_POOL" 2>/dev/null || true
+  rm -rf "$HIER_WORK_DIR"
+  rm -f "$HIER_LOG"
+}
+
+hier_create_pools() {
+  hier_teardown
+  mkdir -p "$HIER_WORK_DIR"
+  truncate -s "$HIER_IMG_SIZE" "$HIER_WORK_DIR/src.img"
+  truncate -s "$HIER_IMG_SIZE" "$HIER_WORK_DIR/dst.img"
+  zpool create -f -m "$HIER_WORK_DIR/mnt-src" "$HIER_SRC_POOL" "$HIER_WORK_DIR/src.img"
+  zpool create -f -m "$HIER_WORK_DIR/mnt-dst" "$HIER_DST_POOL" "$HIER_WORK_DIR/dst.img"
+}
+
+hier_write_data() {
+  local tag="$1" fs mount
+  shift
+  for fs in "$@"; do
+    mount="$(zfs get -H -o value mountpoint "$fs")"
+    dd if=/dev/urandom of="$mount/${tag}.bin" bs=1M count=2 status=none
+  done
+  sync
+}
+
+hier_setup() {
+  hier_create_pools
+  zfs create "$HIER_SRC_FS"
+  zfs create "$HIER_SRC_FS/samba"
+  zfs create "$HIER_SRC_FS/media"
+  hier_write_data seed "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+}
+
+# hier_run_task <allowOverwrite> <useExistingDest> [forceFullSend] [quiet]
+# Never aborts under `set -e`; the exit code lands in HIER_RC.
+hier_run_task() {
+  local allow_overwrite="$1" use_existing="$2" force_full="${3:-false}" quiet="${4:-}"
+  local script
+  script="$(hier_rep_script)"
+  rm -f "$HIER_LOG"
+
+  local -a env_args=(
+    taskName="$HIER_TASK"
+    ZFS_REP_DEBUG=1
+    ZFS_REP_DEBUG_LOG="$HIER_LOG"
+    zfsRepConfig_direction=push
+    zfsRepConfig_sourceDataset_pool="$HIER_SRC_POOL"
+    zfsRepConfig_sourceDataset_dataset="$HIER_SRC_FS"
+    zfsRepConfig_destDataset_pool="$HIER_DST_POOL"
+    zfsRepConfig_destDataset_dataset="$HIER_DST_FS"
+    zfsRepConfig_destDataset_host=""
+    zfsRepConfig_destDataset_user=root
+    zfsRepConfig_sendOptions_recursive_flag=true
+    zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
+    zfsRepConfig_sendOptions_transferMethod=local
+    zfsRepConfig_sendOptions_allowOverwrite="$allow_overwrite"
+    zfsRepConfig_sendOptions_useExistingDest="$use_existing"
+    zfsRepConfig_sendOptions_forceFullSend="$force_full"
+  )
+
+  set +e
+  if [[ "$quiet" == "quiet" ]]; then
+    env "${env_args[@]}" python3 "$script" >/dev/null 2>&1
+  else
+    env "${env_args[@]}" python3 "$script"
+  fi
+  HIER_RC=$?
+  set -e
+  return 0
+}
+
+hier_last_recv_cmd() {
+  ( grep 'PIPE recv cmd=' "$HIER_LOG" 2>/dev/null || true ) | tail -1
+}
+
+hier_newest_snap() {
+  ( zfs list -H -o name -t snapshot -s creation -d 1 "$1" 2>/dev/null || true ) | tail -1
+}
+
+hier_dest_snap_count() {
+  ( zfs list -H -o name -t snapshot -r "$HIER_DST_FS" 2>/dev/null || true ) | wc -l
+}
+
+hier_dest_tree() {
+  ( zfs list -H -o name -t snapshot -r "$HIER_DST_FS" 2>/dev/null || true ) | sed 's/^/     /'
+}
+
+hier_expect_rc() {
+  local expected="$1" what="$2"
+  if [[ "$HIER_RC" -eq "$expected" ]]; then
+    hier_pass "$what (exit $HIER_RC)"
+  else
+    hier_fail "$what: expected exit $expected, got $HIER_RC"
+  fi
+}
+
+hier_expect_force_flag() {
+  local want="$1" line
+  line="$(hier_last_recv_cmd)"
+  if [[ -z "$line" ]]; then
+    hier_fail "no 'PIPE recv cmd=' line in $HIER_LOG"
+    return 0
+  fi
+  if [[ "$want" == "yes" ]]; then
+    if [[ "$line" == *" -F"* ]]; then
+      hier_pass "recv used -F: ${line##*cmd=}"
+    else
+      hier_fail "recv should have used -F: ${line##*cmd=}"
+    fi
+  else
+    if [[ "$line" == *" -F"* ]]; then
+      hier_fail "recv used -F but should not have: ${line##*cmd=}"
+    else
+      hier_pass "recv did not use -F: ${line##*cmd=}"
+    fi
+  fi
+}
+
+hier_expect_base() {
+  local want="$1" line
+  line="$( ( grep 'send_cmd:' "$HIER_LOG" 2>/dev/null || true ) | tail -1 )"
+  if [[ "$line" == *"$want"* ]]; then
+    hier_pass "incremental base is $want"
+  else
+    hier_fail "expected base $want in: $line"
+  fi
+}
+
+cmd_scenario_hierarchy_clean() {
+  hier_say "hierarchy clean: healthy recursive incremental must not use -F"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task false false; hier_expect_rc 0 "second run (incremental)"
+  hier_expect_force_flag no
+  hier_info "destination snapshots:"; hier_dest_tree
+}
+
+cmd_scenario_hierarchy_child_behind() {
+  hier_say "hierarchy child-behind: must fall back to an older base the whole tree shares"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 2"
+
+  local victim shared_suffix
+  victim="$(hier_newest_snap "$HIER_DST_FS/samba")"
+  hier_info "simulating a partial receive by destroying $victim"
+  zfs destroy "$victim"
+  shared_suffix="$(hier_newest_snap "$HIER_DST_FS/samba" | cut -d@ -f2)"
+
+  hier_write_data third "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+
+  hier_info "run 3 without Allow Overwrite (must refuse and change nothing):"
+  hier_run_task false false false quiet; hier_expect_rc 2 "refuses rollback without Allow Overwrite"
+
+  hier_info "run 3 with Allow Overwrite (must resync from the older shared base):"
+  hier_run_task true false; hier_expect_rc 0 "resyncs incrementally"
+  hier_expect_base "${HIER_SRC_FS}@${shared_suffix}"
+  hier_expect_force_flag yes
+  hier_info "destination snapshots:"; hier_dest_tree
+}
+
+cmd_scenario_hierarchy_child_orphan() {
+  hier_say "hierarchy child-orphan: no shared base on a child must fail loudly, never full-send"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+
+  hier_info "destroying every destination snapshot on the child and planting a foreign one"
+  zfs destroy "$HIER_DST_FS/samba@%" 2>/dev/null || true
+  zfs snapshot "$HIER_DST_FS/samba@foreign"
+  local before after
+  before="$(hier_dest_snap_count)"
+
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task true false; hier_expect_rc 2 "refuses even with Allow Overwrite enabled"
+
+  after="$(hier_dest_snap_count)"
+  if [[ "$before" -eq "$after" ]]; then
+    hier_pass "destination untouched ($after snapshots)"
+  else
+    hier_fail "destination snapshot count changed $before -> $after"
+  fi
+}
+
+cmd_scenario_hierarchy_child_no_snaps() {
+  hier_say "hierarchy child-no-snaps: destination child with zero snapshots must be caught before send"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+
+  hier_info "destroying every snapshot on $HIER_DST_FS/samba while leaving the dataset in place"
+  zfs destroy "$HIER_DST_FS/samba@%" 2>/dev/null || true
+  local before after
+  before="$(hier_dest_snap_count)"
+
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task true false; hier_expect_rc 2 "refuses instead of sending an unreceivable stream"
+
+  after="$(hier_dest_snap_count)"
+  if [[ "$before" -eq "$after" ]]; then
+    hier_pass "destination untouched ($after snapshots)"
+  else
+    hier_fail "destination snapshot count changed $before -> $after"
+  fi
+}
+
+cmd_scenario_hierarchy_dest_ahead() {
+  hier_say "hierarchy dest-ahead: destination-side snapshots require explicit Allow Overwrite"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+  zfs snapshot "$HIER_DST_FS/samba@local-extra"
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+
+  hier_run_task false false false quiet; hier_expect_rc 2 "refuses to roll back without Allow Overwrite"
+  if zfs list -t snapshot "$HIER_DST_FS/samba@local-extra" >/dev/null 2>&1; then
+    hier_pass "destination-only snapshot survived the refusal"
+  else
+    hier_fail "destination-only snapshot was destroyed without Allow Overwrite"
+  fi
+
+  hier_run_task true false; hier_expect_rc 0 "proceeds with Allow Overwrite"
+  hier_expect_force_flag yes
+}
+
+cmd_scenario_hierarchy_existing_data() {
+  hier_say "hierarchy existing-data: an unexpected populated destination must not be wiped"
+  hier_create_pools
+  zfs create "$HIER_SRC_FS"
+  zfs create "$HIER_SRC_FS/samba"
+  hier_write_data seed "$HIER_SRC_FS" "$HIER_SRC_FS/samba"
+
+  zfs create "$HIER_DST_FS"
+  local dst_mount
+  dst_mount="$(zfs get -H -o value mountpoint "$HIER_DST_FS")"
+  echo "irreplaceable customer data" > "$dst_mount/precious.txt"
+  sync
+
+  hier_info "Allow Overwrite ON, Use Existing Destination OFF -> must refuse to force"
+  hier_run_task true false
+  if [[ "$HIER_RC" -ne 0 ]]; then
+    hier_pass "run failed safely instead of forcing (exit $HIER_RC)"
+  else
+    hier_fail "run succeeded; check whether it overwrote the destination"
+  fi
+  hier_expect_force_flag no
+  if [[ -f "$dst_mount/precious.txt" ]]; then
+    hier_pass "unsnapshotted destination data survived"
+  else
+    hier_fail "unsnapshotted destination data was destroyed"
+  fi
+
+  hier_info "Use Existing Destination ON + Allow Overwrite ON -> destructive BY DESIGN"
+  hier_run_task true true; hier_expect_rc 0 "explicit overwrite accepted"
+  hier_expect_force_flag yes
+}
+
+cmd_scenario_hierarchy_all() {
+  cmd_scenario_hierarchy_clean
+  cmd_scenario_hierarchy_child_behind
+  cmd_scenario_hierarchy_child_orphan
+  cmd_scenario_hierarchy_child_no_snaps
+  cmd_scenario_hierarchy_dest_ahead
+  cmd_scenario_hierarchy_existing_data
+  hier_teardown
+  hier_say "hierarchy scenarios finished with $HIER_FAILURES failure(s)"
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage
@@ -745,6 +1078,25 @@ main() {
     scenario-force-full-send-clears)
       [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
       cmd_scenario_force_full_send_clears "$@"
+      ;;
+    scenario-hierarchy-all)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_hierarchy_all
+      ;;
+    scenario-hierarchy-clean|scenario-hierarchy-child-behind|scenario-hierarchy-child-orphan|scenario-hierarchy-child-no-snaps|scenario-hierarchy-dest-ahead|scenario-hierarchy-existing-data)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      # Pools are left standing for inspection; use scenario-hierarchy-teardown.
+      "cmd_${cmd//-/_}"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-hierarchy-teardown)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_teardown
+      echo "torn down $HIER_SRC_POOL / $HIER_DST_POOL and $HIER_WORK_DIR"
       ;;
     *)
       usage
