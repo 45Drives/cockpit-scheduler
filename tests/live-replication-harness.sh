@@ -697,11 +697,22 @@ HIER_TASK="hrepharness"
 HIER_LOG="/tmp/zfs_rep_debug_${HIER_TASK}.log"
 HIER_FAILURES=0
 HIER_RC=0
+HIER_SNAP_BEFORE=""
 
 hier_say()  { printf '\n== %s ==\n' "$*"; }
 hier_info() { printf '   %s\n' "$*"; }
 hier_pass() { printf '   PASS %s\n' "$*"; }
 hier_fail() { printf '   FAIL %s\n' "$*"; HIER_FAILURES=$((HIER_FAILURES + 1)); }
+
+# Snapshot names carry second resolution, so back-to-back runs collide on the
+# name and trip the workflow's duplicate-start guard, which exits 0 silently.
+hier_wait_tick() {
+  local start
+  start="$(date +%s)"
+  while [[ "$(date +%s)" == "$start" ]]; do
+    sleep 0.2
+  done
+}
 
 hier_rep_script() {
   local base candidate
@@ -770,6 +781,8 @@ hier_run_task() {
   local script
   script="$(hier_rep_script)"
   rm -f "$HIER_LOG"
+  HIER_SNAP_BEFORE="$(hier_newest_snap "$HIER_SRC_FS")"
+  hier_wait_tick
 
   local -a env_args=(
     taskName="$HIER_TASK"
@@ -806,7 +819,7 @@ hier_last_recv_cmd() {
 }
 
 hier_newest_snap() {
-  ( zfs list -H -o name -t snapshot -s creation -d 1 "$1" 2>/dev/null || true ) | tail -1
+  ( zfs list -H -o name -t snapshot -s createtxg -d 1 "$1" 2>/dev/null || true ) | tail -1
 }
 
 hier_dest_snap_count() {
@@ -823,6 +836,17 @@ hier_expect_rc() {
     hier_pass "$what (exit $HIER_RC)"
   else
     hier_fail "$what: expected exit $expected, got $HIER_RC"
+  fi
+}
+
+# Exit 0 alone is not proof of work; the duplicate-start guard also exits 0.
+hier_expect_new_snapshot() {
+  local what="$1" now
+  now="$(hier_newest_snap "$HIER_SRC_FS")"
+  if [[ -n "$now" && "$now" != "$HIER_SNAP_BEFORE" ]]; then
+    hier_pass "$what created ${now#*@}"
+  else
+    hier_fail "$what created no new snapshot (still ${HIER_SNAP_BEFORE:-none})"
   fi
 }
 
@@ -861,9 +885,9 @@ hier_expect_base() {
 cmd_scenario_hierarchy_clean() {
   hier_say "hierarchy clean: healthy recursive incremental must not use -F"
   hier_setup
-  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"; hier_expect_new_snapshot "initial full send"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
-  hier_run_task false false; hier_expect_rc 0 "second run (incremental)"
+  hier_run_task false false; hier_expect_rc 0 "second run (incremental)"; hier_expect_new_snapshot "second run"
   hier_expect_force_flag no
   hier_info "destination snapshots:"; hier_dest_tree
 }
@@ -871,9 +895,9 @@ cmd_scenario_hierarchy_clean() {
 cmd_scenario_hierarchy_child_behind() {
   hier_say "hierarchy child-behind: must fall back to an older base the whole tree shares"
   hier_setup
-  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
-  hier_run_task false false false quiet; hier_expect_rc 0 "run 2"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 2"; hier_expect_new_snapshot "run 2"
 
   local victim shared_suffix
   victim="$(hier_newest_snap "$HIER_DST_FS/samba")"
@@ -887,7 +911,7 @@ cmd_scenario_hierarchy_child_behind() {
   hier_run_task false false false quiet; hier_expect_rc 2 "refuses rollback without Allow Overwrite"
 
   hier_info "run 3 with Allow Overwrite (must resync from the older shared base):"
-  hier_run_task true false; hier_expect_rc 0 "resyncs incrementally"
+  hier_run_task true false; hier_expect_rc 0 "resyncs incrementally"; hier_expect_new_snapshot "run 3"
   hier_expect_base "${HIER_SRC_FS}@${shared_suffix}"
   hier_expect_force_flag yes
   hier_info "destination snapshots:"; hier_dest_tree
@@ -896,7 +920,7 @@ cmd_scenario_hierarchy_child_behind() {
 cmd_scenario_hierarchy_child_orphan() {
   hier_say "hierarchy child-orphan: no shared base on a child must fail loudly, never full-send"
   hier_setup
-  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
 
   hier_info "destroying every destination snapshot on the child and planting a foreign one"
   zfs destroy "$HIER_DST_FS/samba@%" 2>/dev/null || true
@@ -918,7 +942,7 @@ cmd_scenario_hierarchy_child_orphan() {
 cmd_scenario_hierarchy_child_no_snaps() {
   hier_say "hierarchy child-no-snaps: destination child with zero snapshots must be caught before send"
   hier_setup
-  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
 
   hier_info "destroying every snapshot on $HIER_DST_FS/samba while leaving the dataset in place"
   zfs destroy "$HIER_DST_FS/samba@%" 2>/dev/null || true
@@ -939,7 +963,7 @@ cmd_scenario_hierarchy_child_no_snaps() {
 cmd_scenario_hierarchy_dest_ahead() {
   hier_say "hierarchy dest-ahead: destination-side snapshots require explicit Allow Overwrite"
   hier_setup
-  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
   zfs snapshot "$HIER_DST_FS/samba@local-extra"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
 
@@ -950,7 +974,7 @@ cmd_scenario_hierarchy_dest_ahead() {
     hier_fail "destination-only snapshot was destroyed without Allow Overwrite"
   fi
 
-  hier_run_task true false; hier_expect_rc 0 "proceeds with Allow Overwrite"
+  hier_run_task true false; hier_expect_rc 0 "proceeds with Allow Overwrite"; hier_expect_new_snapshot "overwrite run"
   hier_expect_force_flag yes
 }
 
