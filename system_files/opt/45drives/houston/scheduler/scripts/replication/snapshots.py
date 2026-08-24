@@ -57,11 +57,18 @@ def filter_dataset_snapshots(snaps, dataset: str):
     return [s for s in (snaps or []) if dataset_of_snapshot(s.name) == ds]
 
 
+def _name_prefix_matches(prefix: str, suffix: str) -> bool:
+    """Match `<prefix>[-tN]-<timestamp>` so sibling tasks sharing a prefix stay distinct."""
+    if not prefix:
+        return False
+    return re.match(rf'^{re.escape(prefix)}(?:-t\d+)?-\d{{4}}-\d{{2}}-\d{{2}}', suffix) is not None
+
+
 def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "") -> bool:
     """Check if a snapshot belongs to this task by name pattern (fallback).
     Tier filtering is handled separately via ZFS properties; this function
-    only checks task ownership. Matches new format (customName-timestamp),
-    default format (taskName-timestamp), and legacy formats."""
+    only checks task ownership. Matches the current format (name[-tN]-timestamp)
+    and the legacy customName-taskName-timestamp format."""
     suf = snapshot_suffix(full_snap_name)
     tn = (task_name or "").strip()
     cn = (custom_name or "").strip()
@@ -69,18 +76,12 @@ def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "")
     if not tn:
         return False
 
-    # New format with tier tag: name-tN-timestamp
-    if cn and re.match(rf'^{re.escape(cn)}-t\d+-\d{{4}}', suf):
+    if _name_prefix_matches(cn, suf):
         return True
-    if re.match(rf'^{re.escape(tn)}-t\d+-\d{{4}}', suf):
-        return True
-    # Format without tier tag: name-timestamp
-    if cn and suf.startswith(f"{cn}-"):
-        return True
-    if suf.startswith(f"{tn}-"):
+    if _name_prefix_matches(tn, suf):
         return True
     # Legacy format: customName-taskName-timestamp
-    if cn and suf.startswith(f"{cn}-{tn}-"):
+    if cn and _name_prefix_matches(f"{cn}-{tn}", suf):
         return True
     return False
 
@@ -266,9 +267,14 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
     sys.exit(1)
 
 
-def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22"):
-    prop = f"written@{snapshot_fullname}"
-    base_cmd = ["zfs", "get", "-H", "-p", "-o", "value", prop, dataset]
+def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22", recursive=False):
+    """Bytes written since a snapshot; with recursive=True, summed over the whole hierarchy."""
+    snap_ref = snapshot_suffix(snapshot_fullname) if recursive else snapshot_fullname
+    prop = f"written@{snap_ref}"
+    base_cmd = ["zfs", "get", "-H", "-p"]
+    if recursive:
+        base_cmd.append("-r")
+    base_cmd += ["-o", "value", prop, dataset]
 
     if remote_host:
         p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
@@ -284,10 +290,16 @@ def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, rem
     if not out or out == "-":
         return None
 
-    try:
-        return int(out)
-    except ValueError:
-        return None
+    total = None
+    for line in out.splitlines():
+        value = line.strip()
+        if not value or value == "-":
+            continue
+        try:
+            total = (total or 0) + int(value)
+        except ValueError:
+            continue
+    return total
 
 
 def get_available_bytes(dataset, remote_user=None, remote_host=None, remote_port=22):
@@ -311,6 +323,61 @@ def get_available_bytes(dataset, remote_user=None, remote_host=None, remote_port
         return int(out)
     except ValueError:
         return None
+
+
+TAG_BATCH_SIZE = 50
+
+
+def _list_snapshot_names(filesystem, remote_user=None, remote_host=None, remote_port="22"):
+    cmd = ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", filesystem]
+    try:
+        if remote_host:
+            p = ssh_run_args(remote_user, remote_host, remote_port, cmd,
+                             capture_output=True, check=False, text=True, timeout=ZFS_LIST_TIMEOUT)
+        else:
+            p = run_logged(cmd, text=True, timeout=ZFS_LIST_TIMEOUT)
+    except Exception:
+        return []
+    if p.returncode != 0:
+        return []
+    return [line.strip() for line in (p.stdout or "").splitlines() if line.strip()]
+
+
+def snapshot_tag_targets(filesystem, snap_suffix, recursive,
+                         remote_user=None, remote_host=None, remote_port="22"):
+    """Every snapshot `zfs snapshot -r` created; `zfs set` alone would touch the root only."""
+    root = f"{filesystem}@{snap_suffix}"
+    if not recursive:
+        return [root]
+    names = _list_snapshot_names(filesystem, remote_user, remote_host, remote_port)
+    matched = [n for n in names if snapshot_suffix(n) == snap_suffix]
+    return matched or [root]
+
+
+def apply_snapshot_tags(filesystem, snap_suffix, task_name, tier_idx=None, recursive=False,
+                        remote_user=None, remote_host=None, remote_port="22", label="snapshot"):
+    targets = snapshot_tag_targets(filesystem, snap_suffix, recursive,
+                                   remote_user=remote_user, remote_host=remote_host,
+                                   remote_port=remote_port)
+    props = [(TASK_PROP, task_name)]
+    if tier_idx is not None:
+        props.append((TIER_PROP, f"t{tier_idx}"))
+
+    for prop, value in props:
+        for start in range(0, len(targets), TAG_BATCH_SIZE):
+            batch = targets[start:start + TAG_BATCH_SIZE]
+            cmd = ["zfs", "set", f"{prop}={value}"] + batch
+            try:
+                if remote_host:
+                    p = ssh_run_args(remote_user, remote_host, remote_port, cmd,
+                                     capture_output=True, check=False, text=True)
+                    if p.returncode != 0:
+                        raise RuntimeError((p.stderr or p.stdout or "").strip())
+                else:
+                    run_logged(cmd, check=True, text=True)
+            except Exception as e:
+                print(f"WARNING: failed to tag {label} {', '.join(batch)} with {prop}={value}: {e}")
+    return targets
 
 
 def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None, tier_idx=None):
@@ -354,17 +421,8 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     print(f"new snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Snapshot created: {new_snap}")
 
-    # Tag snapshot with task ownership and tier index via ZFS properties
-    try:
-        run_logged(["zfs", "set", f"{TASK_PROP}={task_name}", new_snap], check=True, text=True)
-    except Exception as e:
-        print(f"WARNING: failed to tag snapshot {new_snap}: {e}")
-
-    if tier_idx is not None:
-        try:
-            run_logged(["zfs", "set", f"{TIER_PROP}=t{tier_idx}", new_snap], check=True, text=True)
-        except Exception as e:
-            print(f"WARNING: failed to set tier property on {new_snap}: {e}")
+    apply_snapshot_tags(filesystem, snapshot_suffix(new_snap), task_name,
+                        tier_idx=tier_idx, recursive=is_recursive, label="snapshot")
 
     return new_snap
 
@@ -430,50 +488,29 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
     print(f"new remote snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Remote snapshot created: {new_snap}")
 
-    # Tag remote snapshot with task ownership and tier index via ZFS properties
-    try:
-        ssh_run_args(remote_user, remote_host, ssh_port,
-                     ["zfs", "set", f"{TASK_PROP}={task_name}", new_snap],
-                     capture_output=True, check=False, text=True)
-    except Exception as e:
-        print(f"WARNING: failed to tag remote snapshot {new_snap}: {e}")
-
-    if tier_idx is not None:
-        try:
-            ssh_run_args(remote_user, remote_host, ssh_port,
-                         ["zfs", "set", f"{TIER_PROP}=t{tier_idx}", new_snap],
-                         capture_output=True, check=False, text=True)
-        except Exception as e:
-            print(f"WARNING: failed to set tier property on remote {new_snap}: {e}")
+    apply_snapshot_tags(filesystem, snapshot_suffix(new_snap), task_name,
+                        tier_idx=tier_idx, recursive=is_recursive,
+                        remote_user=remote_user, remote_host=remote_host, remote_port=ssh_port,
+                        label="remote snapshot")
 
     return new_snap
 
 
 def tag_received_snapshots(dest_filesystem, snap_suffix, task_name, tier_idx=None,
-                           remote_user=None, remote_host=None, remote_port="22"):
+                           remote_user=None, remote_host=None, remote_port="22",
+                           recursive=False):
     """
     After a successful receive, tag the destination snapshot(s) with our custom
     ZFS properties (task_name, tier). ZFS send/receive does not propagate user
     properties, so we must set them explicitly on the receive side.
 
-    For recursive receives, tags only the root dataset snapshot (matching the
-    source tagging behavior).
+    For recursive receives every dataset in the received tree is tagged, so
+    retention can tell tiers apart on children as well as the root.
     """
-    dest_snap = f"{dest_filesystem}@{snap_suffix}"
-    props_to_set = [(TASK_PROP, task_name)]
-    if tier_idx is not None:
-        props_to_set.append((TIER_PROP, f"t{tier_idx}"))
-
-    for prop, value in props_to_set:
-        try:
-            if remote_user and remote_host:
-                ssh_run_args(remote_user, remote_host, remote_port,
-                             ["zfs", "set", f"{prop}={value}", dest_snap],
-                             capture_output=True, check=True, text=True)
-            else:
-                run_logged(["zfs", "set", f"{prop}={value}", dest_snap], check=True, text=True)
-        except Exception as e:
-            print(f"WARNING: failed to tag received snapshot {dest_snap} with {prop}={value}: {e}")
+    apply_snapshot_tags(dest_filesystem, snap_suffix, task_name,
+                        tier_idx=tier_idx, recursive=recursive,
+                        remote_user=remote_user, remote_host=remote_host, remote_port=remote_port,
+                        label="received snapshot")
 
 
 def snapshot_exists_on_destination(

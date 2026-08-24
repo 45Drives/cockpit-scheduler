@@ -41,6 +41,13 @@ def test_task_snapshot_matching_does_not_claim_other_tasks():
     assert not snapshots.is_task_snapshot("tank/data@anything", "")
 
 
+def test_task_snapshot_matching_does_not_claim_sibling_task_sharing_a_prefix():
+    assert snapshots.is_task_snapshot("tank/data@backup-t1-2026-08-04_01.02.03", "backup")
+    assert snapshots.is_task_snapshot("tank/data@backup-daily-2026-08-04_01.02.03", "backup-daily")
+    assert not snapshots.is_task_snapshot("tank/data@backup-daily-2026-08-04_01.02.03", "backup")
+    assert not snapshots.is_task_snapshot("tank/data@backup-daily-t1-2026-08-04_01.02.03", "backup")
+
+
 def test_local_inventory_parses_properties_and_ignores_bad_rows(monkeypatch):
     replies = iter(
         [
@@ -72,7 +79,43 @@ def test_property_helpers_accept_numbers_and_reject_dash(monkeypatch):
     assert snapshots.get_available_bytes("tank/data") is None
 
 
-def test_create_local_snapshot_builds_recursive_name_and_tags(monkeypatch):
+def test_create_local_snapshot_builds_recursive_name_and_tags_whole_tree(monkeypatch):
+    calls = []
+    suffix = "daily-t2-2026-08-04_15.16.17"
+    listing = "\n".join([
+        f"tank/data@{suffix}",
+        f"tank/data/samba@{suffix}",
+        f"tank/data/media@{suffix}",
+        "tank/data@unrelated-2026-01-01_00.00.00",
+    ])
+
+    class FixedDateTime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 4, 15, 16, 17)
+
+    def fake_run_logged(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["zfs", "list"]:
+            return result(stdout=listing)
+        return result()
+
+    monkeypatch.setattr(snapshots.datetime, "datetime", FixedDateTime)
+    monkeypatch.setattr(snapshots, "get_available_bytes", lambda *args, **kwargs: 1024)
+    monkeypatch.setattr(snapshots, "run_logged", fake_run_logged)
+    name = snapshots.create_snapshot_local("tank/data", True, "job-a", custom_name="daily", tier_idx=2)
+    assert name == f"tank/data@{suffix}"
+
+    targets = [f"tank/data@{suffix}", f"tank/data/samba@{suffix}", f"tank/data/media@{suffix}"]
+    assert calls == [
+        ["zfs", "snapshot", "-r", name],
+        ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", "tank/data"],
+        ["zfs", "set", f"{TASK_PROP}=job-a"] + targets,
+        ["zfs", "set", f"{TIER_PROP}=t2"] + targets,
+    ]
+
+
+def test_non_recursive_snapshot_tags_only_its_own_snapshot(monkeypatch):
     calls = []
 
     class FixedDateTime(datetime.datetime):
@@ -83,13 +126,50 @@ def test_create_local_snapshot_builds_recursive_name_and_tags(monkeypatch):
     monkeypatch.setattr(snapshots.datetime, "datetime", FixedDateTime)
     monkeypatch.setattr(snapshots, "get_available_bytes", lambda *args, **kwargs: 1024)
     monkeypatch.setattr(snapshots, "run_logged", lambda cmd, **kwargs: calls.append(cmd) or result())
-    name = snapshots.create_snapshot_local("tank/data", True, "job-a", custom_name="daily", tier_idx=2)
-    assert name == "tank/data@daily-t2-2026-08-04_15.16.17"
+    name = snapshots.create_snapshot_local("tank/data", False, "job-a")
     assert calls == [
-        ["zfs", "snapshot", "-r", name],
+        ["zfs", "snapshot", name],
         ["zfs", "set", f"{TASK_PROP}=job-a", name],
-        ["zfs", "set", f"{TIER_PROP}=t2", name],
     ]
+
+
+def test_tag_received_snapshots_tags_every_received_dataset(monkeypatch):
+    calls = []
+    suffix = "job-a-2026-08-04_15.16.17"
+    listing = "\n".join([
+        f"backup/data@{suffix}",
+        f"backup/data/samba@{suffix}",
+    ])
+
+    def fake_run_logged(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["zfs", "list"]:
+            return result(stdout=listing)
+        return result()
+
+    monkeypatch.setattr(snapshots, "run_logged", fake_run_logged)
+    snapshots.tag_received_snapshots("backup/data", suffix, "job-a", tier_idx=1, recursive=True)
+
+    targets = [f"backup/data@{suffix}", f"backup/data/samba@{suffix}"]
+    assert calls == [
+        ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", "backup/data"],
+        ["zfs", "set", f"{TASK_PROP}=job-a"] + targets,
+        ["zfs", "set", f"{TIER_PROP}=t1"] + targets,
+    ]
+
+
+def test_tagging_falls_back_to_root_when_listing_fails(monkeypatch):
+    calls = []
+
+    def fake_run_logged(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["zfs", "list"]:
+            return result(returncode=1, stderr="cannot open")
+        return result()
+
+    monkeypatch.setattr(snapshots, "run_logged", fake_run_logged)
+    snapshots.tag_received_snapshots("backup/data", "job-a-2026-08-04_15.16.17", "job-a", recursive=True)
+    assert calls[-1] == ["zfs", "set", f"{TASK_PROP}=job-a", "backup/data@job-a-2026-08-04_15.16.17"]
 
 
 def test_snapshot_creation_refuses_no_available_space(monkeypatch):
@@ -142,6 +222,20 @@ def test_retention_deletes_only_old_owned_matching_tier_and_preserves_excluded(m
     assert deleted == ["tank/data@job-a-old"]
     assert final == 50
     assert recorder.messages[-1].endswith("50% complete")
+
+
+def test_retention_child_snapshots_inherit_root_task_and_tier_tags(monkeypatch):
+    values = [
+        snap("tank/data@job-a-t0-old", age_days=10, task_tag="job-a", tier_tag="t0"),
+        snap("tank/data/samba@job-a-t0-old", age_days=10),
+        snap("tank/data@job-a-t1-old", age_days=10, task_tag="job-a", tier_tag="t1"),
+        snap("tank/data/samba@job-a-t1-old", age_days=10),
+    ]
+    deleted = []
+    monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: values)
+    monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
+    retention.prune_snapshots_by_retention("tank/data", "job-a", 5, "days", "", tier_idx=1)
+    assert deleted == ["tank/data@job-a-t1-old", "tank/data/samba@job-a-t1-old"]
 
 
 def test_retention_does_not_name_match_snapshot_tagged_to_another_task(monkeypatch):

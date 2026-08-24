@@ -7,7 +7,7 @@ import time
 from .constants import ZFS_DESTROY_TIMEOUT
 from .context import notifier
 from .logging_utils import _fmt_cmd, dbg, safe_print
-from .snapshots import get_local_snapshots, get_remote_snapshots, is_task_snapshot, snapshot_suffix
+from .snapshots import dataset_of_snapshot, get_local_snapshots, get_remote_snapshots, is_task_snapshot, snapshot_suffix
 from .ssh import SSH_BASE_OPTS, ssh_run_args
 
 def _snapshot_has_holds_local(snap_name: str) -> bool:
@@ -226,13 +226,28 @@ def prune_snapshots_by_retention(
 
     excluded_suffix = excluded_snapshot_name.split("@", 1)[-1] if excluded_snapshot_name else None
 
+    # Compatibility path for snapshots created before children were tagged
+    # directly: fall back to the root's tags for the same suffix.
+    root_tags = {}
     for snapshot in snapshots:
+        if dataset_of_snapshot(snapshot.name) != filesystem:
+            continue
+        tags = (getattr(snapshot, "task_tag", None), getattr(snapshot, "tier_tag", None))
+        if tags[0] or tags[1]:
+            root_tags[snapshot_suffix(snapshot.name)] = tags
+
+    for snapshot in snapshots:
+        task_tag = getattr(snapshot, "task_tag", None)
+        tier_tag = getattr(snapshot, "tier_tag", None)
+        if not task_tag and not tier_tag:
+            task_tag, tier_tag = root_tags.get(snapshot_suffix(snapshot.name), (None, None))
+
         # Primary: check ZFS property tag (most reliable, works with any naming scheme)
-        belongs = (hasattr(snapshot, 'task_tag') and snapshot.task_tag == task_name)
+        belongs = (task_tag == task_name)
 
         # Fallback: name-based matching, but ONLY for untagged snapshots.
         # If a snapshot is tagged for a different task, never claim it.
-        if not belongs and not getattr(snapshot, 'task_tag', None):
+        if not belongs and not task_tag:
             belongs = is_task_snapshot(snapshot.name, task_name, custom_name=custom_name)
 
         if not belongs:
@@ -240,8 +255,7 @@ def prune_snapshots_by_retention(
 
         # Tier filtering via ZFS property
         if tier_idx is not None:
-            snap_tier = getattr(snapshot, 'tier_tag', None)
-            if snap_tier is not None and snap_tier != f"t{tier_idx}":
+            if tier_tag is not None and tier_tag != f"t{tier_idx}":
                 continue  # belongs to a different tier
 
         snap_suffix = snapshot_suffix(snapshot.name)

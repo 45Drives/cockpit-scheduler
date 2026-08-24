@@ -1,3 +1,10 @@
+cockpit-scheduler (1.7.5-1trixie) trixie; urgency=medium
+
+  * Testing Package - Fixes several critical issues with replication handling
+  * Testing Package - Fixes several critical issues with replication handling
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 21 Aug 2026 12:08:08 -0300
+
 cockpit-scheduler (1.7.4-1trixie) trixie; urgency=medium
 
   * Fixes issues with rclone sync method for cloudsync task

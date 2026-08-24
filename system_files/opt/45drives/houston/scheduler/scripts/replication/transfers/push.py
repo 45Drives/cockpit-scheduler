@@ -227,6 +227,7 @@ def send_snapshot_push(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(recvName)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         process_recv = subprocess.Popen(
             recv_cmd,
@@ -235,6 +236,7 @@ def send_snapshot_push(
             stderr=subprocess.PIPE,
         )
         recv_capture = StreamCapture(process_recv.stderr)
+        dbg(f"PIPE recv pid={process_recv.pid}")
 
         if process_send.stdout is None or process_recv.stdin is None:
             raise RuntimeError("Failed to initialize send/recv pipes.")

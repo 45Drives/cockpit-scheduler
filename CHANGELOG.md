@@ -1,3 +1,4 @@
-## task scheduler 1.7.4-1
+## task scheduler 1.7.5-1
 
-* Fixes issues with rclone sync method for cloudsync task
+* Testing Package - Fixes several critical issues with replication handling
+* Testing Package - Fixes several critical issues with replication handling

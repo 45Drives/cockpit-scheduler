@@ -158,12 +158,14 @@ def resume_receive_push(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(recvName)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
         process_recv = subprocess.Popen(
             recv_cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        dbg(f"PIPE recv pid={process_recv.pid}")
 
         if process_send.stdout is None or process_recv.stdin is None:
             raise RuntimeError("Failed to initialize resume send/recv pipes.")
@@ -713,6 +715,7 @@ def resume_receive_pull(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(localRecvFs)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         process_local_recv = subprocess.Popen(
             recv_cmd,
@@ -720,6 +723,7 @@ def resume_receive_pull(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        dbg(f"PIPE recv pid={process_local_recv.pid}")
         _close_pipe(process_mbuffer.stdout)
 
         # Wait for pipeline with stall detection
@@ -869,6 +873,7 @@ def resume_receive_pull(
         if forceOverwrite:
             recv_cmd.append("-F")
         recv_cmd.append(localRecvFs)
+        dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
         process_local_recv = subprocess.Popen(
             recv_cmd,
             stdin=subprocess.PIPE,
@@ -876,6 +881,7 @@ def resume_receive_pull(
             stderr=subprocess.PIPE,
             universal_newlines=False,
         )
+        dbg(f"PIPE recv pid={process_local_recv.pid}")
 
         notifier.notify(f"STATUS=Listener ready on local port {data_port}; waiting for remote mbuffer callback from {remoteHost} to {callback_display}:{data_port}…")
 
@@ -994,6 +1000,7 @@ def resume_receive_pull(
     if forceOverwrite:
         recv_cmd.append("-F")
     recv_cmd.append(localRecvFs)
+    dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
     process_local_recv = subprocess.Popen(
         recv_cmd,
         stdin=process_m_buff.stdout,
@@ -1001,6 +1008,7 @@ def resume_receive_pull(
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+    dbg(f"PIPE recv pid={process_local_recv.pid}")
 
     if process_remote_send.stdout is None or process_m_buff.stdin is None:
         raise RuntimeError("Failed to initialize resume pull pipes.")
