@@ -1,11 +1,11 @@
 <template>
     <div class="mt-3">
         <ZfsRepTaskParams v-if="template!.name == 'ZFS Replication Task'" ref="activeComponent" :simple="props.simple"
-            :parameterSchema="template!.parameterSchema" :task="props.task" @open-wire-wizard="emit('open-wire-wizard')" />
+            :parameterSchema="template!.parameterSchema" :task="props.task" @open-wireshield="emit('open-wireshield')" />
         <AutomatedSnapshotTaskParams v-else-if="template!.name == 'Automated Snapshot Task'" ref="activeComponent"
             :simple="props.simple" :parameterSchema="template!.parameterSchema" :task="props.task" />
         <RsyncTaskParams v-else-if="template!.name == 'Rsync Task'" ref="activeComponent" :simple="props.simple"
-            :parameterSchema="template!.parameterSchema" :task="props.task" @open-wire-wizard="emit('open-wire-wizard')" />
+            :parameterSchema="template!.parameterSchema" :task="props.task" @open-wireshield="emit('open-wireshield')" />
         <ScrubTaskParams v-else-if="template!.name == 'Scrub Task'" ref="activeComponent"
             :parameterSchema="template!.parameterSchema" :task="props.task" />
         <SmartTestTaskParams v-else-if="template!.name == 'SMART Test'" ref="activeComponent"
@@ -34,7 +34,7 @@ interface ParameterInputProps {
 }
 
 const props = defineProps<ParameterInputProps>();
-const emit = defineEmits<{ 'open-wire-wizard': [] }>();
+const emit = defineEmits<{ 'open-wireshield': [] }>();
 
 // Define allowed template names for simple mode
 const simpleAllowed = [

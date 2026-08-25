@@ -53,7 +53,7 @@
             description="Enter the backup server details and pick the destination ZFS pool and dataset.">
             <template #header-right>
                 <div class="flex items-center gap-2">
-                    <button @click="openWireWizard" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a secure connection to a backup server at another location, so backups travel safely over the internet.">
+                    <button @click="openWireShield" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a secure connection to a backup server at another location, so backups travel safely over the internet.">
                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         Connect Off-Site Server
                     </button>
@@ -121,7 +121,7 @@
                 <p v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ sshSetupError }}</p>
             </div>
 
-            <!-- Auto SSH check kicked off by the Wire Wizard hand-off -->
+            <!-- Auto SSH check kicked off by the WireShield hand-off -->
             <div v-if="autoTestingSSH" class="mt-3 flex items-center gap-2">
                 <CustomLoadingSpinner :width="'w-5'" :height="'h-5'" :baseColor="'text-gray-200'" :fillColor="'fill-gray-500'" />
                 <span class="text-sm text-muted">Checking connection to {{ destUser || 'root' }}@{{ destHost }}…</span>
@@ -930,7 +930,7 @@ watch(sourcePool, (v) => {
 watch(destHost, (v) => {
     if (v.trim() !== '') return;
 
-    // Clearing the host also drops the Wire Wizard value and the one-time SSH setup gate
+    // Clearing the host also drops the WireShield value and the one-time SSH setup gate
     if (injectedVpnHost.value) injectedVpnHost.value = null;
     try { localStorage.removeItem('scheduler-vpn-host'); } catch { /* ignore */ }
     sshSetupNeeded.value = false;
@@ -1631,13 +1631,13 @@ function setParams() {
     parameters.value = newParams;
 }
 
-/* ---------------- Wire Wizard ---------------- */
+/* ---------------- WireShield ---------------- */
 
-const emit = defineEmits<{ 'open-wire-wizard': [] }>();
+const emit = defineEmits<{ 'open-wireshield': [] }>();
 
-function openWireWizard() {
+function openWireShield() {
     setParams(); // sync current form values to the shared parameters ref
-    emit('open-wire-wizard');
+    emit('open-wireshield');
 }
 
 /* ---------------- Test buttons ---------------- */
@@ -1702,7 +1702,7 @@ onMounted(async () => {
     }
     await initializeData();
 
-    // Apply VPN host from Wire Wizard if provided
+    // Apply VPN host from WireShield if provided
     if (injectedVpnHost.value) {
         destHost.value = injectedVpnHost.value;
         await autoTestAndSetupSSH();

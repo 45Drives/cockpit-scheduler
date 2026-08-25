@@ -680,7 +680,7 @@ const showResumeDraftPrompt = ref(false);
 
 async function checkResumableDraft() {
     if (showResumeDraftPrompt.value) return;
-    // A same-session draft belongs to a Wire Wizard round trip and is restored automatically.
+    // A same-session draft belongs to a WireShield round trip and is restored automatically.
     if (!hasSavedDraft() || isDraftSessionActive()) return;
     await loadConfirmDialog();
     showResumeDraftPrompt.value = true;

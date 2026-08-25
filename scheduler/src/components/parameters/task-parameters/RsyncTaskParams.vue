@@ -80,7 +80,7 @@
             description="Leave “Server address” empty to copy on this machine.">
             <template #header-right>
                 <div class="flex items-center gap-2">
-                    <button @click="openWireWizard" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a secure connection to a backup server at another location, so backups travel safely over the internet.">
+                    <button @click="openWireShield" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a secure connection to a backup server at another location, so backups travel safely over the internet.">
                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         Connect Off-Site Server
                     </button>
@@ -663,11 +663,11 @@ const tooltips = {
         "Number of parallel workers. Higher can be faster but uses more CPU, disk, and network."
 } as const;
 
-const emit = defineEmits<{ 'open-wire-wizard': [] }>();
+const emit = defineEmits<{ 'open-wireshield': [] }>();
 
-function openWireWizard() {
+function openWireShield() {
     setParams(); // sync current form values to the shared parameters ref
-    emit('open-wire-wizard');
+    emit('open-wireshield');
 }
 
 async function handleTestSSH() {
@@ -782,7 +782,7 @@ watch(parallelDisabled, (disabled) => {
 watch(destHost, (v) => {
     if (v.trim() !== '') return;
 
-    // Clearing the host also drops the Wire Wizard value and the one-time SSH setup gate
+    // Clearing the host also drops the WireShield value and the one-time SSH setup gate
     if (injectedVpnHost.value) injectedVpnHost.value = null;
     try { localStorage.removeItem('scheduler-vpn-host'); } catch { /* ignore */ }
     sshSetupNeeded.value = false;
@@ -1072,7 +1072,7 @@ Make sure passwordless SSH connection has been configured for target system.`,
 onMounted(async () => {
     await initializeData();
 
-    // Apply VPN host from Wire Wizard if provided
+    // Apply VPN host from WireShield if provided
     if (injectedVpnHost.value) {
         destHost.value = injectedVpnHost.value;
         await autoTestAndSetupSSH();

@@ -34,7 +34,7 @@ router.beforeEach((to, from) => {
     const store = useTaskDraftStore();
     const comingBackFromRemotes = from.name === 'SimpleManageRemotes';
 
-    // Redirect straight back to the task form only for a Wire Wizard round trip within
+    // Redirect straight back to the task form only for a WireShield round trip within
     // this same session. A draft left over from a previous session (app closed/server
     // disconnected) is offered as a resume prompt by SimplifiedView instead.
     if (to.name === 'SimpleTasks' && hasSavedDraft() && isDraftSessionActive()) {

@@ -60,7 +60,7 @@
                             <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
                                 :selectedTemplate="selectedTemplate" :simple="true"
                                 :task="originalTask || draftTask || undefined"
-                                @open-wire-wizard="handleOpenWireWizard" />
+                                @open-wireshield="handleOpenWireShield" />
                         </div>
                     </div>
                 </div>
@@ -141,8 +141,8 @@ const draftTask = ref<TaskInstanceType | null>(null);
 const vpnHostRef = ref<string | null>(null);
 provide('vpnHost', vpnHostRef);
 
-// Listen for localStorage changes from Wire Wizard (same origin, hidden iframe)
-// This fires when another iframe (Wire Wizard) modifies localStorage
+// Listen for localStorage changes from WireShield (same origin, hidden iframe)
+// This fires when another iframe (WireShield) modifies localStorage
 function handleStorageEvent(event: StorageEvent) {
     if (event.key === 'scheduler-task-draft' && event.newValue) {
         try {
@@ -179,13 +179,13 @@ watch(isEditMode, (edit) => {
 onMounted(async () => {
     await nextTick();
 
-    // Check for standalone vpnHost fallback (Wire Wizard couldn't find draft)
+    // Check for standalone vpnHost fallback (WireShield couldn't find draft)
     const standaloneVpn = takeVpnHost();
     if (standaloneVpn) {
         vpnHostRef.value = standaloneVpn;
     }
 
-    // Restore an in-progress draft (Wire Wizard round trip, or a resumed session).
+    // Restore an in-progress draft (WireShield round trip, or a resumed session).
     // The draft stays in storage so it remains resumable until the task is
     // created or explicitly discarded.
     const snap = isEditMode.value ? null : readSavedDraft();
@@ -547,8 +547,8 @@ function goBack() {
     router.push({ name: 'SimpleTasks' });
 }
 
-function handleOpenWireWizard() {
-    // Snapshot form state to localStorage before jumping to Wire Wizard
+function handleOpenWireShield() {
+    // Snapshot form state to localStorage before jumping to WireShield
     parameterInputComponent.value?.syncParams?.();
     saveDraft(snapshotForm());
     markDraftSession();
@@ -560,10 +560,15 @@ function handleOpenWireWizard() {
     }, 'info', 'Opening WireShield to connect an off-site server for this task');
 
     const cockpit = (window as any).cockpit;
+    // if (cockpit?.jump) {
+    //     cockpit.jump('/wireshield-test#/simple?from=scheduler');
+    // } else {
+    //     window.open('/cockpit/@localhost/wireshield-test/index.html#/simple?from=scheduler', '_blank');
+    // }
     if (cockpit?.jump) {
-        cockpit.jump('/wireshield-test#/simple?from=scheduler');
+        cockpit.jump('/wireshield#/simple?from=scheduler');
     } else {
-        window.open('/cockpit/@localhost/wireshield-test/index.html#/simple?from=scheduler', '_blank');
+        window.open('/cockpit/@localhost/wireshield/index.html#/simple?from=scheduler', '_blank');
     }
 }
 

@@ -27,7 +27,7 @@ export function saveDraft(snapshot: Record<string, unknown>): void {
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...snapshot, _savedAt: Date.now() })); } catch { /* ignore */ }
 }
 
-/** Reads and consumes the one-shot host handed over by the Wire Wizard. */
+/** Reads and consumes the one-shot host handed over by WireShield. */
 export function takeVpnHost(): string | null {
     const host = read(VPN_HOST_KEY);
     if (host) {
@@ -37,7 +37,7 @@ export function takeVpnHost(): string | null {
 }
 
 /**
- * Flags the stored draft as part of the current browsing session (a Wire Wizard
+ * Flags the stored draft as part of the current browsing session (a WireShield
  * round trip). Session storage dies with the tab/webview, so a draft left over
  * from a previous run of the client app is never treated as an active round trip.
  */
