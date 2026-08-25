@@ -104,6 +104,8 @@ import type { TaskInstance as TaskInstanceType, TaskTemplate as TaskTemplateType
 import type { TaskSchedule as UITaskSchedule } from '@45drives/houston-common-lib';
 import { useTaskDraftStore } from '../../stores/taskDraft';
 import { injectWithCheck, getPoolData } from '../../composables/utility';
+import { logTaskEvent, logToClient } from '../../composables/useTaskLogBridge';
+import { clearSavedDraft, markDraftSession } from '../../composables/taskDraftStorage';
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
 defineOptions({ name: 'SimpleTaskForm' });
@@ -485,8 +487,7 @@ const isDirty = computed(() => {
 // ---- navigation ----
 function goBack() {
     // Clear any leftover draft/vpnHost so router guard doesn't redirect back
-    localStorage.removeItem('scheduler-task-draft');
-    localStorage.removeItem('scheduler-vpn-host');
+    clearSavedDraft();
     router.push({ name: 'SimpleTasks' });
 }
 
@@ -501,6 +502,13 @@ function handleOpenWireWizard() {
         _savedAt: Date.now(), // Timestamp for expiration check
     };
     localStorage.setItem('scheduler-task-draft', JSON.stringify(snapshot));
+    markDraftSession();
+
+    logToClient('scheduler:vpn_tunnel_open', {
+        task: newTaskName.value,
+        template: selectedTemplate.value?.name ?? '',
+        origin: 'simple-view',
+    }, 'info', 'Opening WireShield to connect an off-site server for this task');
 
     const cockpit = (window as any).cockpit;
     if (cockpit?.jump) {
@@ -515,6 +523,9 @@ async function saveAll() {
     if (!(await validateComponentParams())) return;
     const built = buildTask();
     if (!built) return;
+
+    const mode = isEditMode.value ? 'update' : 'create';
+    const startedAt = Date.now();
 
     try {
         adding.value = true; loading.value = true;
@@ -534,18 +545,33 @@ async function saveAll() {
             await (myScheduler as any).updateSchedule(built);
             await (myScheduler as any).updateTaskNotes?.(built);
             await myScheduler.loadTaskInstances();
+            logTaskEvent('scheduler:task_update', built, {
+                previousName: originalName.value,
+                renamed: nameChanged,
+                templateChanged,
+                durationMs: Date.now() - startedAt,
+                origin: 'simple-view',
+            });
             pushNotification(new Notification('Task Updated', 'Your task changes were saved.', 'success', 6000));
         } else {
             await myScheduler.registerTaskInstance(built);
             await myScheduler.loadTaskInstances();
+            logTaskEvent('scheduler:task_create', built, {
+                durationMs: Date.now() - startedAt,
+                origin: 'simple-view',
+            });
             pushNotification(new Notification('Task Created', 'Your task was created and scheduled.', 'success', 6000));
         }
 
         // Clear any leftover draft/vpnHost so router guard doesn't redirect back
-        localStorage.removeItem('scheduler-task-draft');
-        localStorage.removeItem('scheduler-vpn-host');
+        clearSavedDraft();
         router.push({ name: 'SimpleTasks' });
     } catch (e: any) {
+        logTaskEvent(`scheduler:task_${mode}.error`, built, {
+            durationMs: Date.now() - startedAt,
+            origin: 'simple-view',
+            error: String(e?.message ?? e),
+        }, 'error');
         pushNotification(new Notification('Save Failed', String(e?.message ?? e), 'error', 6000));
     } finally { adding.value = false; loading.value = false; }
 }

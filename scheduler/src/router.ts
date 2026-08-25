@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw, RouteLocationNormalized } from 'vue-router';
 import { useTaskDraftStore } from './stores/taskDraft';
+import { hasSavedDraft, isDraftSessionActive } from './composables/taskDraftStorage';
 
 const SimplifiedView = () => import('./views/SimplifiedView.vue');
 const AddTaskView = () => import('./components/simple/SimpleAddTask.vue');
@@ -33,41 +34,11 @@ router.beforeEach((to, from) => {
     const store = useTaskDraftStore();
     const comingBackFromRemotes = from.name === 'SimpleManageRemotes';
 
-    // Redirect to task form if returning from Wire Wizard with a saved draft or vpnHost
-    // Only redirect if the draft is recent (within 1 hour) to prevent stale drafts from persisting
-    if (to.name === 'SimpleTasks') {
-        const draftStr = localStorage.getItem('scheduler-task-draft');
-        const vpnHost = localStorage.getItem('scheduler-vpn-host');
-        
-        if (draftStr || vpnHost) {
-            let shouldRedirect = false;
-            
-            if (draftStr) {
-                try {
-                    const draft = JSON.parse(draftStr);
-                    const savedTime = draft._savedAt || 0;
-                    const oneHourAgo = Date.now() - (60 * 60 * 1000);
-                    
-                    if (savedTime > oneHourAgo) {
-                        shouldRedirect = true;
-                    } else {
-                        // Draft is stale, remove it
-                        localStorage.removeItem('scheduler-task-draft');
-                    }
-                } catch {
-                    // Invalid draft, remove it
-                    localStorage.removeItem('scheduler-task-draft');
-                }
-            }
-            
-            if (vpnHost) {
-                shouldRedirect = true;
-            }
-            
-            if (shouldRedirect) {
-                return { name: 'SimpleAddTask' };
-            }
-        }
+    // Redirect straight back to the task form only for a Wire Wizard round trip within
+    // this same session. A draft left over from a previous session (app closed/server
+    // disconnected) is offered as a resume prompt by SimplifiedView instead.
+    if (to.name === 'SimpleTasks' && hasSavedDraft() && isDraftSessionActive()) {
+        return { name: 'SimpleAddTask' };
     }
 
     if (to.name === 'SimpleAddTask' && !comingBackFromRemotes) store.clear?.();

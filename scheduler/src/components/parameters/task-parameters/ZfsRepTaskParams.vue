@@ -53,10 +53,10 @@
             description="Enter the backup server details and pick the destination ZFS pool and dataset.">
             <template #header-right>
                 <div class="flex items-center gap-2">
-                    <!-- <button @click="openWireWizard" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a VPN tunnel to the backup server">
+                    <button @click="openWireWizard" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a secure connection to a backup server at another location, so backups travel safely over the internet.">
                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                        VPN Tunnel
-                    </button> -->
+                        Connect Off-Site Server
+                    </button>
                     <button v-if="!testingSSH" @click="handleTestSSH" :disabled="!destHost" class="btn btn-secondary h-fit">
                         Test Connection (SSH)
                     </button>

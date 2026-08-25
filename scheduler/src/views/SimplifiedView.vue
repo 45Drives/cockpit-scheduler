@@ -275,6 +275,12 @@
             :confirmYes="batchDeleteYes" :confirmNo="() => showBatchDeletePrompt = false"
             :operating="batchDeleting" operation="deleting" />
     </div>
+    <div v-if="showResumeDraftPrompt">
+        <component :is="confirmDialogComponent" @close="(v: boolean) => showResumeDraftPrompt = v"
+            :showFlag="showResumeDraftPrompt" title="Unfinished Task Setup"
+            message="An abandoned task creation was detected. Resume where you left off?"
+            :confirmYes="resumeDraftYes" :confirmNo="resumeDraftNo" :operating="false" operation="resuming" />
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -282,10 +288,12 @@ import { computed, ref, onActivated, onDeactivated, onUnmounted, onMounted, watc
 import { ArrowPathIcon, PlusIcon, PlayIcon, StopIcon, DocumentTextIcon, PencilSquareIcon, TrashIcon, CircleStackIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline';
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
+import { logTaskEvent } from '../composables/useTaskLogBridge';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, logInjectionKey } from '../keys/injection-keys';
 import { Notification, pushNotification, confirm } from '@45drives/houston-common-ui';
 import { useRouter } from 'vue-router';
 import { useTaskDraftStore } from '../stores/taskDraft';
+import { clearSavedDraft, hasSavedDraft, isDraftSessionActive } from '../composables/taskDraftStorage';
 import { useLiveTaskStatus, taskStatusClass, taskStatusBadgeClass } from '../composables/useLiveTaskStatus';
 import SchedulerNotification from '../components/notification/SchedulerNotification.vue';
 import { runCommand } from '../models/Scheduler';
@@ -408,8 +416,8 @@ const boot = async () => {
     }
 };
 
-onMounted(() => { isActive = true; boot(); });
-onActivated(() => { isActive = true; boot(); });
+onMounted(() => { isActive = true; boot(); checkResumableDraft(); });
+onActivated(() => { isActive = true; boot(); checkResumableDraft(); });
 onDeactivated(() => { isActive = false; live.stop(); });
 onUnmounted(() => { isActive = false; live.stop(); });
 
@@ -667,6 +675,28 @@ async function loadConfirmDialog() {
     }
 }
 
+/* ── Abandoned task-creation draft ────────────────────── */
+const showResumeDraftPrompt = ref(false);
+
+async function checkResumableDraft() {
+    if (showResumeDraftPrompt.value) return;
+    // A same-session draft belongs to a Wire Wizard round trip and is restored automatically.
+    if (!hasSavedDraft() || isDraftSessionActive()) return;
+    await loadConfirmDialog();
+    showResumeDraftPrompt.value = true;
+}
+
+const resumeDraftYes = async () => {
+    showResumeDraftPrompt.value = false;
+    draftStore.clear();
+    router.push({ name: 'SimpleAddTask', query: { session: Date.now().toString() } });
+};
+
+const resumeDraftNo = async () => {
+    showResumeDraftPrompt.value = false;
+    clearSavedDraft();
+};
+
 async function confirmRunNow(t: any) {
     selected.value = t;
     await loadConfirmDialog();
@@ -679,8 +709,11 @@ const runNowYes = async () => {
 
     operatingRun.value = true;
     showRunNowPrompt.value = false;
+    const runStartedAt = Date.now();
 
     pushNotification(new Notification('Task Started', `Task ${t?.name ?? ''} has started running.`, 'info', 6000));
+
+    logTaskEvent('scheduler:task_run', t, { origin: 'simple-view', trigger: 'manual' });
 
     // Immediately mark as running so the UI updates before the server responds
     const id = t?.id ?? t?.uuid ?? t?.name;
@@ -700,6 +733,13 @@ const runNowYes = async () => {
             if (latest && typeof latest.exitCode === 'number') exitCode = latest.exitCode;
         } catch { /* fall back to generic */ }
 
+        logTaskEvent(
+            'scheduler:task_run.done',
+            t,
+            { origin: 'simple-view', exitCode, durationMs: Date.now() - runStartedAt },
+            exitCode !== null && exitCode !== 0 ? 'error' : 'info'
+        );
+
         if (exitCode === 0) {
             pushNotification(new Notification('Task Successful', `Task ${t.name} completed.`, 'success', 6000));
         } else if (exitCode !== null) {
@@ -707,7 +747,12 @@ const runNowYes = async () => {
         } else {
             pushNotification(new Notification('Task Finished', `Task ${t.name} finished.`, 'success', 6000));
         }
-    } catch {
+    } catch (e: any) {
+        logTaskEvent('scheduler:task_run.error', t, {
+            origin: 'simple-view',
+            durationMs: Date.now() - runStartedAt,
+            error: String(e?.message ?? e),
+        }, 'error');
         pushNotification(new Notification('Task Failed', `Task ${t?.name ?? ''} failed.`, 'error', 6000));
     } finally {
         operatingRun.value = false;
@@ -732,8 +777,13 @@ const stopNowYes = async () => {
 
     try {
         await myScheduler.stopTaskNow(t);
+        logTaskEvent('scheduler:task_stop', t, { origin: 'simple-view' });
         pushNotification(new Notification('Task Stopped', `Task ${t?.name ?? ''} has been stopped.`, 'success', 6000));
-    } catch {
+    } catch (e: any) {
+        logTaskEvent('scheduler:task_stop.error', t, {
+            origin: 'simple-view',
+            error: String(e?.message ?? e),
+        }, 'error');
         pushNotification(new Notification('Stop Failed', `Failed to stop task ${t?.name ?? ''}.`, 'error', 6000));
     } finally {
         operatingStop.value = false;
@@ -757,9 +807,14 @@ const removeYes = async () => {
     fetching.value = true;
     try {
         await myScheduler.unregisterTaskInstance(t);
+        logTaskEvent('scheduler:task_delete', t, { origin: 'simple-view' });
         pushNotification(new Notification('Task Removed', 'Backup task deleted.', 'success', 6000));
         await myScheduler.loadTaskInstances();
     } catch (e: any) {
+        logTaskEvent('scheduler:task_delete.error', t, {
+            origin: 'simple-view',
+            error: String(e?.message ?? e),
+        }, 'error');
         pushNotification(new Notification('Delete Failed', String(e?.message ?? e), 'error', 6000));
     } finally {
         operatingRemove.value = false;
@@ -825,9 +880,15 @@ const batchDeleteYes = async () => {
     for (const task of tasksToDelete) {
         try {
             await myScheduler.unregisterTaskInstance(task);
+            logTaskEvent('scheduler:task_delete', task, { origin: 'simple-view', batch: true });
             deleted++;
         } catch (e: any) {
             errors++;
+            logTaskEvent('scheduler:task_delete.error', task, {
+                origin: 'simple-view',
+                batch: true,
+                error: String(e?.message ?? e),
+            }, 'error');
             console.error(`Failed to delete task ${task?.name}:`, e);
         }
         batchDeleteProgress.value++;
@@ -862,13 +923,19 @@ async function toggleEnabled(row: any) {
     try {
         if (row.enabled) {
             await myScheduler.disableSchedule(t);
+            logTaskEvent('scheduler:schedule_disable', t, { origin: 'simple-view' });
             pushNotification(new Notification('Schedule Disabled', `"${t.name}" will no longer run on schedule.`, 'info', 5000));
         } else {
             await myScheduler.enableSchedule(t);
+            logTaskEvent('scheduler:schedule_enable', t, { origin: 'simple-view' });
             pushNotification(new Notification('Schedule Enabled', `"${t.name}" schedule is now active.`, 'success', 5000));
         }
         await myScheduler.loadTaskInstances();
     } catch (e: any) {
+        logTaskEvent('scheduler:schedule_toggle.error', t, {
+            origin: 'simple-view',
+            error: String(e?.message ?? e),
+        }, 'error');
         pushNotification(new Notification('Error', String(e?.message ?? e), 'error', 6000));
     } finally {
         fetching.value = false;

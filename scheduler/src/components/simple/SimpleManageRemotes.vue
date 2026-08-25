@@ -280,6 +280,7 @@ import { useRouter, useRoute } from 'vue-router'
 import SimpleFormCard from '../../components/simple/SimpleFormCard.vue'
 import CustomLoadingSpinner from '../common/CustomLoadingSpinner.vue'
 import { injectWithCheck } from '../../composables/utility'
+import { logToClient } from '../../composables/useTaskLogBridge'
 import { loadingInjectionKey, remoteManagerInjectionKey, rcloneRemotesInjectionKey } from '../../keys/injection-keys'
 import { CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, getProviderLogo, getButtonStyles } from '../../models/CloudSync'
 import { pushNotification, Notification, CardContainer } from '@45drives/houston-common-ui'
@@ -549,11 +550,23 @@ async function saveCreate() {
 
         await myRemoteManager.createRemote(remoteName.value.trim(), selectedProvider.value.type, normalized);
 
+        logToClient('scheduler:cloud_remote_create', {
+            remote: remoteName.value.trim(),
+            provider: selectedProvider.value.type,
+            origin: 'simple-view',
+        }, 'info', `Added cloud account "${remoteName.value.trim()}" (${selectedProvider.value.type})`);
+
         pushNotification(new Notification('Saved', 'Cloud account added', 'success', 6000));
         await myRemoteManager.getRemotes();
         query.value = '';
         panel.value = 'idle';
     } catch (e: any) {
+        logToClient('scheduler:cloud_remote_create.error', {
+            remote: remoteName.value.trim(),
+            provider: selectedProvider.value?.type,
+            origin: 'simple-view',
+            error: String(e?.message ?? e),
+        }, 'error', 'Failed to add cloud account');
         pushNotification(new Notification('Save Failed', e.message ?? 'Unknown error', 'error', 6000));
     } finally {
         creating.value = false;
@@ -620,8 +633,19 @@ async function saveEdit() {
         }
 
         editMode.value = false
+        logToClient('scheduler:cloud_remote_update', {
+            remote: newName,
+            previousName: selectedRemote.value?.name,
+            provider: providerType,
+            origin: 'simple-view',
+        }, 'info', `Updated cloud account "${newName}"`)
         pushNotification(new Notification('Updated', 'Changes saved', 'success', 6000))
     } catch (e: any) {
+        logToClient('scheduler:cloud_remote_update.error', {
+            remote: selectedRemote.value?.name,
+            origin: 'simple-view',
+            error: String(e?.message ?? e),
+        }, 'error', 'Failed to update cloud account')
         pushNotification(new Notification('Save Failed', e.message ?? 'Unknown error', 'error', 6000))
     } finally {
         saving.value = false
@@ -637,11 +661,15 @@ async function deleteRemote() {
     try {
         deleting.value = true
         await myRemoteManager.deleteRemote(name)
+        logToClient('scheduler:cloud_remote_delete', { remote: name, origin: 'simple-view' }, 'info', `Removed cloud account "${name}"`)
         pushNotification(new Notification('Deleted', `Removed ${name}`, 'success', 6000))
         selectedRemote.value = undefined
         panel.value = 'idle'
         await myRemoteManager.getRemotes()
     } catch (e: any) {
+        logToClient('scheduler:cloud_remote_delete.error', {
+            remote: name, origin: 'simple-view', error: String(e?.message ?? e),
+        }, 'error', 'Failed to remove cloud account')
         pushNotification(new Notification('Delete Failed', e.message ?? 'Unknown error', 'error', 6000))
     } finally {
         deleting.value = false
