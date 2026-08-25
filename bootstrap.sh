@@ -12,7 +12,9 @@ jq 'del(.packageManager)' ./package.json | sponge ./package.json
 
 rm .yarnrc.yml .yarn -rf
 
-yarn set version stable
+# Must match houston-common's packageManager pin, otherwise corepack picks a
+# different Yarn when the submodule build shells out from inside houston-common/.
+yarn set version 4.6.0
 
 yarn config set nodeLinker node-modules
 yarn config set enableScripts true
