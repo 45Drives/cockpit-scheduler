@@ -1,3 +1,9 @@
+cockpit-scheduler (1.7.6-1jammy) jammy; urgency=medium
+
+  * Testing package with wireshield integration and replication fixes both
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 25 Aug 2026 15:00:19 -0300
+
 cockpit-scheduler (1.7.5-1jammy) jammy; urgency=medium
 
   * Testing Package - Fixes several critical issues with replication handling
