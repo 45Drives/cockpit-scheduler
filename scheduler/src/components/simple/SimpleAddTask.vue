@@ -58,7 +58,8 @@
                         <!-- Parameters -->
                         <div v-if="selectedTemplate" class="min-h-0">
                             <ParameterInput :key="paramInputKey" ref="parameterInputComponent"
-                                :selectedTemplate="selectedTemplate" :simple="true" :task="originalTask || undefined"
+                                :selectedTemplate="selectedTemplate" :simple="true"
+                                :task="originalTask || draftTask || undefined"
                                 @open-wire-wizard="handleOpenWireWizard" />
                         </div>
                     </div>
@@ -82,7 +83,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue';
+import { computed, inject, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, provide, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import ParameterInput from '../parameters/ParameterInput.vue';
 import SimpleCalendar from './SimpleCalendar.vue';
@@ -105,7 +106,7 @@ import type { TaskSchedule as UITaskSchedule } from '@45drives/houston-common-li
 import { useTaskDraftStore } from '../../stores/taskDraft';
 import { injectWithCheck, getPoolData } from '../../composables/utility';
 import { logTaskEvent, logToClient } from '../../composables/useTaskLogBridge';
-import { clearSavedDraft, markDraftSession } from '../../composables/taskDraftStorage';
+import { clearSavedDraft, markDraftSession, readSavedDraft, saveDraft, takeVpnHost } from '../../composables/taskDraftStorage';
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
 defineOptions({ name: 'SimpleTaskForm' });
@@ -131,6 +132,10 @@ const parameterInputComponent = ref();
 const parameters = ref<any>();
 const notesTask = ref('');
 const paramInputKey = ref(0);
+
+// Stand-in "existing task" built from a restored draft so the parameter components
+// rehydrate their own internal form state (pools, datasets, hosts, flags, …).
+const draftTask = ref<TaskInstanceType | null>(null);
 
 // vpnHost ref — will be set from draft in onMounted, before child components mount
 const vpnHostRef = ref<string | null>(null);
@@ -175,36 +180,44 @@ onMounted(async () => {
     await nextTick();
 
     // Check for standalone vpnHost fallback (Wire Wizard couldn't find draft)
-    const standaloneVpn = localStorage.getItem('scheduler-vpn-host');
+    const standaloneVpn = takeVpnHost();
     if (standaloneVpn) {
-        localStorage.removeItem('scheduler-vpn-host');
         vpnHostRef.value = standaloneVpn;
     }
 
-    // Check for saved draft from Wire Wizard round-trip
-    const savedDraft = localStorage.getItem('scheduler-task-draft');
-    if (savedDraft && !isEditMode.value) {
-        localStorage.removeItem('scheduler-task-draft');
-        try {
-            const snap = JSON.parse(savedDraft);
-            newTaskName.value = snap.name ?? '';
-            if (snap.vpnHost) {
-                vpnHostRef.value = snap.vpnHost;
-            }
-            const found = taskTemplates.find((t: any) => t.name === snap.templateName);
-            if (found) selectedTemplate.value = found;
-            const localSchema = makeLocalSchemaByName(snap.templateName);
-            parameters.value = localSchema ? hydrateSchemaWithRaw(localSchema, snap.parameters) : snap.parameters;
-            notesTask.value = snap.notes ?? '';
-            if (snap.schedule) {
-                // Restore Date objects from serialized strings
-                const sched = snap.schedule;
-                if (sched.startDate) sched.startDate = new Date(sched.startDate);
-                uiSchedule.value = sched;
-            }
-            paramInputKey.value++;
-            return; // skip default initialization
-        } catch { /* ignore corrupt data, fall through to defaults */ }
+    // Restore an in-progress draft (Wire Wizard round trip, or a resumed session).
+    // The draft stays in storage so it remains resumable until the task is
+    // created or explicitly discarded.
+    const snap = isEditMode.value ? null : readSavedDraft();
+    if (snap) {
+        newTaskName.value = snap.name ?? '';
+        if (snap.vpnHost) {
+            vpnHostRef.value = snap.vpnHost;
+        }
+        const found = taskTemplates.find((t: any) => t.name === snap.templateName);
+        if (found) selectedTemplate.value = found;
+        const localSchema = makeLocalSchemaByName(snap.templateName);
+        parameters.value = localSchema ? hydrateSchemaWithRaw(localSchema, snap.parameters) : snap.parameters;
+        notesTask.value = snap.notes ?? '';
+        if (snap.schedule) {
+            // Restore Date objects from serialized strings
+            const sched = snap.schedule;
+            if (sched.startDate) sched.startDate = new Date(sched.startDate);
+            uiSchedule.value = sched;
+        }
+        const tpl = templateFromSelection();
+        if (tpl && parameters.value) {
+            draftTask.value = new TaskInstance(
+                sanitizeName(newTaskName.value) || 'draft',
+                tpl,
+                parameters.value,
+                toModelSchedule(uiSchedule.value),
+                notesTask.value,
+            ) as unknown as TaskInstanceType;
+        }
+        paramInputKey.value++;
+        startAutosave();
+        return; // skip default initialization
     }
     if (isEditMode.value && originalTask.value) {
         // Editing: load the task's existing schedule + other fields
@@ -215,6 +228,7 @@ onMounted(async () => {
         resetForm();                   // clears name/template/params/notes
         uiSchedule.value = toUISchedule(null); // default blank UI schedule
     }
+    startAutosave();
 });
 
 
@@ -484,24 +498,59 @@ const isDirty = computed(() => {
     );
 });
 
+// ---- draft autosave ----
+const AUTOSAVE_INTERVAL_MS = 2000;
+let autosaveTimer: number | undefined;
+
+function snapshotForm() {
+    return {
+        name: newTaskName.value,
+        templateName: selectedTemplate.value?.name ?? '',
+        parameters: parameters.value ? JSON.parse(JSON.stringify(parameters.value)) : null,
+        notes: notesTask.value,
+        schedule: uiSchedule.value ? JSON.parse(JSON.stringify(uiSchedule.value)) : null,
+    };
+}
+
+function autosaveDraft() {
+    if (isEditMode.value) return;
+    // Nothing worth resuming yet — don't leave a draft that triggers the resume prompt.
+    if (!selectedTemplate.value && !newTaskName.value.trim()) return;
+    // Parameter components own their form state; ask the active one to publish it first.
+    if (parameterInputComponent.value && parameterInputComponent.value.syncParams?.() === false) return;
+    saveDraft(snapshotForm());
+}
+
+function startAutosave() {
+    if (isEditMode.value || autosaveTimer !== undefined) return;
+    autosaveTimer = window.setInterval(autosaveDraft, AUTOSAVE_INTERVAL_MS);
+    window.addEventListener('pagehide', autosaveDraft);
+}
+
+function stopAutosave() {
+    if (autosaveTimer !== undefined) {
+        window.clearInterval(autosaveTimer);
+        autosaveTimer = undefined;
+    }
+    window.removeEventListener('pagehide', autosaveDraft);
+}
+
+onActivated(startAutosave);
+onDeactivated(stopAutosave);
+onUnmounted(stopAutosave);
+
 // ---- navigation ----
 function goBack() {
-    // Clear any leftover draft/vpnHost so router guard doesn't redirect back
+    // Discarding the task also discards its draft
+    stopAutosave();
     clearSavedDraft();
     router.push({ name: 'SimpleTasks' });
 }
 
 function handleOpenWireWizard() {
     // Snapshot form state to localStorage before jumping to Wire Wizard
-    const snapshot = {
-        name: newTaskName.value,
-        templateName: selectedTemplate.value?.name ?? '',
-        parameters: parameters.value ? JSON.parse(JSON.stringify(parameters.value)) : null,
-        notes: notesTask.value,
-        schedule: uiSchedule.value ? JSON.parse(JSON.stringify(uiSchedule.value)) : null,
-        _savedAt: Date.now(), // Timestamp for expiration check
-    };
-    localStorage.setItem('scheduler-task-draft', JSON.stringify(snapshot));
+    parameterInputComponent.value?.syncParams?.();
+    saveDraft(snapshotForm());
     markDraftSession();
 
     logToClient('scheduler:vpn_tunnel_open', {
@@ -564,6 +613,7 @@ async function saveAll() {
         }
 
         // Clear any leftover draft/vpnHost so router guard doesn't redirect back
+        stopAutosave();
         clearSavedDraft();
         router.push({ name: 'SimpleTasks' });
     } catch (e: any) {

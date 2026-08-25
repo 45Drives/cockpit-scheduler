@@ -1471,7 +1471,9 @@ function setParams() {
 defineExpose({
     validateParams,
     clearErrorTags,
-    hasChanges
+    hasChanges,
+    setParams,
+    initializing: loading
 });
 
 provide('show-create-remote', showCreateRemote);

@@ -67,9 +67,18 @@ function hasChanges() {
     return activeComponent.value?.hasChanges();
 }
 
+/** Pushes the child's current form state into the shared `parameters` ref. Returns false while the child is still loading an existing task. */
+function syncParams(): boolean {
+    const child = activeComponent.value as any;
+    if (!child || child.initializing) return false;
+    try { child.setParams?.(); } catch { /* form not complete enough yet */ }
+    return true;
+}
+
 defineExpose({
     validation,
     clearTaskParamErrorTags,
-    hasChanges
+    hasChanges,
+    syncParams
 });
 </script>

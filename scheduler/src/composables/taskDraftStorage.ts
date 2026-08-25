@@ -7,17 +7,33 @@ function read(key: string): string | null {
     try { return localStorage.getItem(key); } catch { return null; }
 }
 
-/** Drops a stale/corrupt draft, then reports whether a usable one is still stored. */
+/** Returns the stored draft, discarding it first if it is stale or corrupt. */
+export function readSavedDraft(): any | null {
+    const raw = read(DRAFT_KEY);
+    if (!raw) return null;
+    try {
+        const draft = JSON.parse(raw);
+        if ((draft?._savedAt || 0) > Date.now() - DRAFT_MAX_AGE_MS) return draft;
+    } catch { /* corrupt draft, fall through to removal */ }
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    return null;
+}
+
 export function hasSavedDraft(): boolean {
-    const draftStr = read(DRAFT_KEY);
-    if (draftStr) {
-        try {
-            const savedAt = JSON.parse(draftStr)._savedAt || 0;
-            if (savedAt > Date.now() - DRAFT_MAX_AGE_MS) return true;
-        } catch { /* corrupt draft, fall through to removal */ }
-        try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    return !!readSavedDraft() || !!read(VPN_HOST_KEY);
+}
+
+export function saveDraft(snapshot: Record<string, unknown>): void {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...snapshot, _savedAt: Date.now() })); } catch { /* ignore */ }
+}
+
+/** Reads and consumes the one-shot host handed over by the Wire Wizard. */
+export function takeVpnHost(): string | null {
+    const host = read(VPN_HOST_KEY);
+    if (host) {
+        try { localStorage.removeItem(VPN_HOST_KEY); } catch { /* ignore */ }
     }
-    return !!read(VPN_HOST_KEY);
+    return host;
 }
 
 /**

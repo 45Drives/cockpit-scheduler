@@ -948,6 +948,7 @@ async function toggleEnabled(row: any) {
  */
 async function openAdd() {
     draftStore.clear();
+    clearSavedDraft(); // starting a fresh task explicitly discards any abandoned one
     // router.push({ name: 'SimpleAddTask' });
     const session = Date.now().toString(); // or nanoid/uuid
     router.push({ name: 'SimpleAddTask', query: { session } });

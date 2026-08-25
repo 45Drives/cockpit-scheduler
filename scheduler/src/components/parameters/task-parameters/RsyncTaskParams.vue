@@ -1142,6 +1142,7 @@ defineExpose({
     validateParams,
     clearErrorTags,
     hasChanges,
-    setParams
+    setParams,
+    initializing: loading
 });
 </script>
