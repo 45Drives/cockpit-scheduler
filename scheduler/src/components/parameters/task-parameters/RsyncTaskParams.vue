@@ -80,10 +80,12 @@
             description="Leave “Server address” empty to copy on this machine.">
             <template #header-right>
                 <div class="flex items-center gap-2">
-                    <button @click="openWireShield" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1" title="Set up a secure connection to a backup server at another location, so backups travel safely over the internet.">
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                        Connect Off-Site Server
-                    </button>
+                    <span :title="wireShieldMissing ? wireShieldMissingMessage : 'Set up a secure connection to a backup server at another location, so backups travel safely over the internet.'">
+                        <button @click="openWireShield" :disabled="wireShieldMissing" class="btn btn-secondary h-fit text-xs inline-flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            Connect Off-Site Server
+                        </button>
+                    </span>
                     <button v-if="!testingSSH" @click="handleTestSSH" class="btn btn-secondary h-fit">
                         Test Connection (SSH)
                     </button>
@@ -536,6 +538,7 @@ import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 import PathAutoComplete from '../../common/PathAutoComplete.vue';
 import { useUserScopedFolderListByInstall } from '../../../composables/useUserScopedFolderListByInstall';
+import { useWireShieldInstalled, WIRESHIELD_MISSING_MESSAGE } from '../../../composables/useWireShieldInstalled';
 import { useClientContextStore } from '../../../stores/clientContext';
 
 interface RsyncTaskParamsProps {
@@ -665,7 +668,11 @@ const tooltips = {
 
 const emit = defineEmits<{ 'open-wireshield': [] }>();
 
+const { wireShieldMissing } = useWireShieldInstalled();
+const wireShieldMissingMessage = WIRESHIELD_MISSING_MESSAGE;
+
 function openWireShield() {
+    if (wireShieldMissing.value) return;
     setParams(); // sync current form values to the shared parameters ref
     emit('open-wireshield');
 }
