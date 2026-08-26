@@ -18,4 +18,3 @@ yarn set version 4.6.0
 
 yarn config set nodeLinker node-modules
 yarn config set enableScripts true
-yarn config set approvedGitRepositories --json '["**"]'
