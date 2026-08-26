@@ -1,3 +1,9 @@
+cockpit-scheduler (1.7.6-2focal) focal; urgency=medium
+
+  * Rebuilding with .yarnrc.yml fixed
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 26 Aug 2026 05:10:12 -0300
+
 cockpit-scheduler (1.7.6-1focal) focal; urgency=medium
 
   * Testing package with wireshield integration and replication fixes both
