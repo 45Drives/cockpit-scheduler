@@ -1,3 +1,3 @@
-## task scheduler 1.7.6-2
+## task scheduler 1.7.7-1
 
-* Rebuilding with .yarnrc.yml fixed
+* Adds replication backend improvements and WireShield integration in Simple views for use with 45Drives Storage Wizard
