@@ -1,6 +1,6 @@
 cockpit-scheduler (1.7.7-3jammy) jammy; urgency=medium
 
-  * Fixes UI blur in simple view showing on top of notifications
+  * Fixes UI blur in simple view showing on top of notifications + removes email alerts button/nav
 
  -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Aug 2026 08:26:39 -0300
 
