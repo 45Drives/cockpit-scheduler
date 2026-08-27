@@ -1,3 +1,9 @@
+cockpit-scheduler (1.7.7-2focal) focal; urgency=medium
+
+  * Rebuilding after github issues
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Aug 2026 05:08:20 -0300
+
 cockpit-scheduler (1.7.7-1focal) focal; urgency=medium
 
   * Adds replication backend improvements and WireShield integration in Simple views

@@ -1,3 +1,3 @@
-## task scheduler 1.7.7-1
+## task scheduler 1.7.7-2
 
-* Adds replication backend improvements and WireShield integration in Simple views for use with 45Drives Storage Wizard
+* Rebuilding after github issues
