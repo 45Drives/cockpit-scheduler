@@ -44,7 +44,10 @@
                     </div>
                 </div>
 
-                <!-- Email Notifications -->
+                <!--
+                    Email Notifications — hidden until cockpit-alerts has a simple view.
+                    Navigating to Alerts from here is a dead end: there is no way back.
+
                 <div class="border border-default rounded-md p-4 bg-accent">
                     <h4 class="text-sm font-semibold text-default mb-1">Email Notifications</h4>
 
@@ -71,6 +74,7 @@
                         </div>
                     </template>
                 </div>
+                -->
 
                 <!-- Status Refresh -->
                 <div class="border border-default rounded-md p-4 bg-accent">
@@ -108,6 +112,7 @@ import { ref, computed, onMounted } from 'vue';
 import Modal from '../common/Modal.vue';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { runCommand } from '../../models/Scheduler';
+import { markSettingsReturn, schedulerModulePath } from '../../composables/moduleReturn';
 
 const emit = defineEmits<{
     close: [];
@@ -183,11 +188,14 @@ async function detectAlerts() {
 }
 
 function openAlertsPage() {
+    markSettingsReturn();
+    const back = `${schedulerModulePath()}#/simple`;
+    const target = `/alerts#/simple?from=scheduler&return=${encodeURIComponent(back)}`;
     const cockpit = (window as any).cockpit;
     if (cockpit?.jump) {
-        cockpit.jump('/alerts');
+        cockpit.jump(target);
     } else {
-        window.open('/cockpit/@localhost/alerts/index.html', '_blank');
+        window.location.href = `/cockpit/@localhost/alerts/index.html#/simple?from=scheduler&return=${encodeURIComponent(back)}`;
     }
 }
 
@@ -294,7 +302,7 @@ async function savePollPreset(id: PollPresetId) {
 }
 
 onMounted(() => {
-    detectAlerts();
+    // detectAlerts(); — re-enable with the Email Notifications section
     loadSettings();
 });
 </script>

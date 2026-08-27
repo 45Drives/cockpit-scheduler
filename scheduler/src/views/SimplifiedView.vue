@@ -294,6 +294,7 @@ import { Notification, pushNotification, confirm } from '@45drives/houston-commo
 import { useRouter } from 'vue-router';
 import { useTaskDraftStore } from '../stores/taskDraft';
 import { clearSavedDraft, hasSavedDraft, isDraftSessionActive } from '../composables/taskDraftStorage';
+import { takeSettingsReturn } from '../composables/moduleReturn';
 import { useLiveTaskStatus, taskStatusClass, taskStatusBadgeClass } from '../composables/useLiveTaskStatus';
 import SchedulerNotification from '../components/notification/SchedulerNotification.vue';
 import { runCommand } from '../models/Scheduler';
@@ -387,6 +388,11 @@ async function openSettings() {
     showSettings.value = true;
 }
 
+/** Reopen Settings after a round trip to another module (e.g. Alerts). */
+function restoreSettingsModal() {
+    if (takeSettingsReturn()) openSettings();
+}
+
 function applyPollSettings({ statusPollMs: s, progressPollMs: p }: { statusPollMs: number; progressPollMs: number }) {
     statusPollMs.value = Math.max(1000, Number(s));
     progressPollMs.value = Math.max(1000, Number(p));
@@ -416,8 +422,8 @@ const boot = async () => {
     }
 };
 
-onMounted(() => { isActive = true; boot(); checkResumableDraft(); });
-onActivated(() => { isActive = true; boot(); checkResumableDraft(); });
+onMounted(() => { isActive = true; boot(); checkResumableDraft(); restoreSettingsModal(); });
+onActivated(() => { isActive = true; boot(); checkResumableDraft(); restoreSettingsModal(); });
 onDeactivated(() => { isActive = false; live.stop(); });
 onUnmounted(() => { isActive = false; live.stop(); });
 
