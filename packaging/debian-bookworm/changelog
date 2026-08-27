@@ -1,3 +1,9 @@
+cockpit-scheduler (1.7.7-4bookworm) bookworm; urgency=medium
+
+  * Fixes wireshield existence check for simple mode button
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 27 Aug 2026 09:57:09 -0300
+
 cockpit-scheduler (1.7.7-3bookworm) bookworm; urgency=medium
 
   * Fixes UI blur in simple view showing on top of notifications + removes email alerts button/nav + removes email

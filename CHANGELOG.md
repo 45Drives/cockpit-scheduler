@@ -1,3 +1,3 @@
-## task scheduler 1.7.7-3
+## task scheduler 1.7.7-4
 
-* Fixes UI blur in simple view showing on top of notifications + removes email alerts button/nav
+* Fixes wireshield existence check for simple mode button
