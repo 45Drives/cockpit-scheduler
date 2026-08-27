@@ -101,9 +101,9 @@
 
             <!-- table -->
             <div v-else class="h-full overflow-hidden flex flex-col">
-                <!-- busy overlay while keeping table visible; stays under the z-30 toast layer -->
+                <!-- busy overlay while keeping table visible; no backdrop-filter, it blurs the teleported toast layer -->
                 <div v-if="showOverlaySpinner"
-                    class="absolute inset-0 z-20 flex items-center justify-center bg-well/60 backdrop-blur-sm">
+                    class="absolute inset-0 z-20 flex items-center justify-center bg-well/60">
                     <CustomLoadingSpinner :width="'w-16'" :height="'h-16'" :baseColor="'text-gray-200'"
                         :fillColor="'fill-gray-500'" />
                 </div>
