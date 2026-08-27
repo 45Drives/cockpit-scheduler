@@ -1,3 +1,3 @@
-## task scheduler 1.7.7-2
+## task scheduler 1.7.7-3
 
-* Rebuilding after github issues
+* Fixes UI blur in simple view showing on top of notifications
