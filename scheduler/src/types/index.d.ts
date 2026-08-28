@@ -49,6 +49,8 @@ type TaskScheduleIntervalType = {
 	[K in TimeUnit]?: TimeComponentType;
 } & {
 	dayOfWeek?: (DayOfWeek)[];
+	/** Original cron string, retained so the advanced editor can repopulate it verbatim. */
+	cronExpression?: string;
 	retention?: {
 		source?: { retentionTime: number; retentionUnit: string; };
 		destination?: { retentionTime: number; retentionUnit: string; };

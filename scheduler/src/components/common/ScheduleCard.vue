@@ -7,19 +7,17 @@
             >t{{ index }}</span>
             <p class="text-sm text-default break-words">Run {{ description }}.</p>
         </div>
-        <template v-if="retention">
-            <p v-if="retention.source || retention.destination" class="text-xs text-muted">
-                Retention:
-                <span v-if="retention.source">
-                    Src {{ retention.source.retentionTime }} {{ retention.source.retentionUnit }}
-                </span>
-                <span v-if="retention.source && retention.destination"> / </span>
-                <span v-if="retention.destination">
-                    {{ isReplicationTask ? 'Dst ' : '' }}{{ retention.destination.retentionTime }} {{ retention.destination.retentionUnit }}
-                </span>
-            </p>
-            <p v-else class="text-xs text-muted">No retention policy</p>
-        </template>
+        <p v-if="retention?.source || retention?.destination" class="text-xs text-muted">
+            Retention:
+            <span v-if="retention?.source">
+                Src {{ retention.source.retentionTime }} {{ retention.source.retentionUnit }}
+            </span>
+            <span v-if="retention?.source && retention?.destination"> / </span>
+            <span v-if="retention?.destination">
+                {{ isReplicationTask ? 'Dst ' : '' }}{{ retention.destination.retentionTime }} {{ retention.destination.retentionUnit }}
+            </span>
+        </p>
+        <p v-else class="text-xs text-muted">Retention: keep forever (no pruning)</p>
     </div>
 </template>
 

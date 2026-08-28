@@ -166,7 +166,7 @@
                             <!-- Per-Interval Retention (ZFS Replication / Automated Snapshot) -->
                             <div v-if="isRetentionCapableTask" name="interval-retention" class="col-span-2 border border-default rounded-md p-2 mt-2 bg-well">
                                 <label class="block text-sm font-medium leading-6 text-default">Interval Retention Policy</label>
-                                <p class="text-xs text-muted mb-2">Override the task default retention for this interval. Leave at 0 to use the task-level default.</p>
+                                <p class="text-xs text-muted mb-2">Snapshots taken by this interval are pruned once they exceed this age. Leave at 0 to keep them forever.</p>
                                 <div class="grid gap-2" :class="isReplicationTask ? 'grid-cols-2' : 'grid-cols-1'">
                                     <!-- Source Retention (replication only) -->
                                     <div v-if="isReplicationTask">
@@ -634,7 +634,7 @@ function applyCronExpression() {
     forceUpdateCalendar();
 
     // Store cron expression for repopulation on edit
-    (newInterval as any).cronExpression = raw;
+    newInterval.cronExpression = raw;
 
     // Auto-save the interval so the user doesn't have to click Save Interval separately
     saveInterval(newInterval);
