@@ -143,6 +143,38 @@ def test_plan_new_task_reuses_untagged_common_snapshot(monkeypatch):
     assert ctx.forceOverwrite is False
 
 
+def test_plan_falls_back_to_untagged_base_when_task_chain_diverged(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.taskName = "job-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    src_task = snap("tank/source@job-a-2026-01-03_00.00.00", "g-src", 3)
+    src_task.task_tag = "job-a"
+    # An orphaned task snapshot predating the shared base: the two task chains share no GUID.
+    dst_task = snap("backup/target@job-a-2026-01-01_00.00.00", "g-dst", 0)
+    dst_task.task_tag = "job-a"
+    ctx.sourceSnapshots = [snap("tank/source@manual", "gm", 1), src_task]
+    ctx.destinationSnapshots = [dst_task, snap("backup/target@manual", "gm", 1)]
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank/source@manual"
+    assert ctx.forceOverwrite is False
+
+
+def test_plan_prefers_task_owned_base_on_creation_tie(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.taskName = "job-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    src_task = snap("tank/source@job-a-2026-01-01_00.00.00", "g-task", 5)
+    src_task.task_tag = "job-a"
+    dst_task = snap("backup/target@job-a-2026-01-01_00.00.00", "g-task", 5)
+    dst_task.task_tag = "job-a"
+    ctx.sourceSnapshots = [snap("tank/source@manual", "gm", 5), src_task]
+    ctx.destinationSnapshots = [snap("backup/target@manual", "gm", 5), dst_task]
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank/source@job-a-2026-01-01_00.00.00"
+
+
 def test_plan_selects_newest_common_snapshot_and_detects_written_data(monkeypatch):
     ctx = ReplicationRun()
     ctx.sourceFilesystem = "tank/source"

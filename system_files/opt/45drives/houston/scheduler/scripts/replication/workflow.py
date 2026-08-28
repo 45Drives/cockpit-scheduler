@@ -560,24 +560,16 @@ def _plan_send(ctx: ReplicationRun):
         ctx.forceOverwrite = True
         ctx.incrementalSnapName = ''
     else:
-        src_task_snaps = filter_task_snapshots(ctx.sourceSnapshots, ctx.taskName, custom_name=ctx.customName)
-        dst_task_snaps = filter_task_snapshots(ctx.destinationSnapshots, ctx.taskName, custom_name=ctx.customName)
+        # Any snapshot shared by both sides is a valid incremental base, task-owned or not.
+        # Ownership only breaks ties between candidates created at the same time, so a task
+        # whose own chain has diverged still avoids a full resend when a shared base exists.
+        src_root_snaps = filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)
+        dst_root_snaps = filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)
 
-        src_root_snaps = filter_dataset_snapshots(src_task_snaps, ctx.sourceFilesystem)
-        dst_root_snaps = filter_dataset_snapshots(dst_task_snaps, ctx.destFilesystem)
-
-        if not src_root_snaps or not dst_root_snaps:
-            # A freshly created task owns no snapshots yet, so fall back to every snapshot
-            # on the root datasets. This lets a new task keep replicating incrementally
-            # into a destination that an earlier task already seeded.
-            all_src_root = filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)
-            all_dst_root = filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)
-            if {s.guid for s in all_src_root} & {s.guid for s in all_dst_root}:
-                print('No task-owned snapshot baseline yet; using existing snapshots shared by source and destination to find an incremental base.')
-                src_root_snaps = all_src_root
-                dst_root_snaps = all_dst_root
-            else:
-                print('No task-owned snapshot baseline yet and no snapshots shared with the destination.')
+        task_base_guids = {
+            s.guid
+            for s in filter_task_snapshots(src_root_snaps, ctx.taskName, custom_name=ctx.customName)
+        }
 
         src_guids = {s.guid for s in src_root_snaps}
         common_candidates = [d for d in dst_root_snaps if d.guid in src_guids]
@@ -591,7 +583,7 @@ def _plan_send(ctx: ReplicationRun):
                 print('Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.')
                 sys.exit(2)
         else:
-            common_candidates.sort(key=lambda s: s.creation_epoch, reverse=True)
+            common_candidates.sort(key=lambda s: (s.creation_epoch, s.guid in task_base_guids), reverse=True)
             src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
             src_groups = _group_snaps_by_relative_dataset(ctx.sourceSnapshots, ctx.sourceFilesystem)
             dst_groups = _group_snaps_by_relative_dataset(ctx.destinationSnapshots, ctx.destFilesystem)
@@ -615,6 +607,8 @@ def _plan_send(ctx: ReplicationRun):
                 sys.exit(2)
 
             ctx.incrementalSnapName = src_guid_to_name[mostRecentCommonSnap.guid]
+            if mostRecentCommonSnap.guid not in task_base_guids:
+                print('Incremental base is shared with the destination but not owned by this task.')
             print(f'Most recent common snapshot: {ctx.incrementalSnapName}')
 
             if ctx.isRecursiveSnap:

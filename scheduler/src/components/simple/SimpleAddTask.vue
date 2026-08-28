@@ -107,6 +107,7 @@ import { useTaskDraftStore } from '../../stores/taskDraft';
 import { injectWithCheck, getPoolData } from '../../composables/utility';
 import { logTaskEvent, logToClient } from '../../composables/useTaskLogBridge';
 import { clearSavedDraft, markDraftSession, readSavedDraft, saveDraft, takeVpnHost } from '../../composables/taskDraftStorage';
+import { schedulerModulePath } from '../../composables/moduleReturn';
 import { loadingInjectionKey, schedulerInjectionKey, taskTemplatesInjectionKey, taskInstancesInjectionKey } from '../../keys/injection-keys';
 
 defineOptions({ name: 'SimpleTaskForm' });
@@ -559,16 +560,13 @@ function handleOpenWireShield() {
         origin: 'simple-view',
     }, 'info', 'Opening WireShield to connect an off-site server for this task');
 
+    const back = `${schedulerModulePath()}#/simple`;
+    const query = `from=scheduler&return=${encodeURIComponent(back)}`;
     const cockpit = (window as any).cockpit;
-    // if (cockpit?.jump) {
-    //     cockpit.jump('/wireshield-test#/simple?from=scheduler');
-    // } else {
-    //     window.open('/cockpit/@localhost/wireshield-test/index.html#/simple?from=scheduler', '_blank');
-    // }
     if (cockpit?.jump) {
-        cockpit.jump('/wireshield#/simple?from=scheduler');
+        cockpit.jump(`/wireshield#/simple?${query}`);
     } else {
-        window.open('/cockpit/@localhost/wireshield/index.html#/simple?from=scheduler', '_blank');
+        window.open(`/cockpit/@localhost/wireshield/index.html#/simple?${query}`, '_blank');
     }
 }
 

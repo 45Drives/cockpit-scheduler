@@ -570,6 +570,11 @@ export function isTaskSnapshotName(fullSnapName: string, taskName: string, custo
 	return false;
 }
 
+export function filterDatasetSnapshots(snaps: ZfsSnap[], dataset: string): ZfsSnap[] {
+	const ds = (dataset || '').trim();
+	return (snaps || []).filter((snap) => (snap.name || '').split('@', 1)[0] === ds);
+}
+
 export function filterTaskSnapshots(snaps: ZfsSnap[], taskName: string, customName = ''): ZfsSnap[] {
 	return (snaps || []).filter((snap) => {
 		const taggedOwner = (snap.taskTag || '').trim();

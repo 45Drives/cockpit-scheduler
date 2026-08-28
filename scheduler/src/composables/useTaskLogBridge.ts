@@ -40,7 +40,8 @@ function zfsEndpoint(env: Record<string, string>, prefix: string): { host: strin
     const user = env[`${prefix}_user`] || 'root';
     const pool = env[`${prefix}_pool`] || '';
     const dataset = env[`${prefix}_dataset`] || '';
-    const path = pool && dataset ? `${pool}/${dataset}` : pool || dataset;
+    const datasetIsQualified = !!pool && (dataset === pool || dataset.startsWith(`${pool}/`));
+    const path = pool && dataset && !datasetIsQualified ? `${pool}/${dataset}` : dataset || pool;
     return { host, text: host ? `${user}@${host}:${path}` : path };
 }
 

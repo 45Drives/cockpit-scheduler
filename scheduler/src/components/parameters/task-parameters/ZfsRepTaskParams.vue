@@ -567,7 +567,11 @@
                 It will apply automatically once a common snapshot exists.
             </p>
             <p v-if="useExistingDest && includeIntermediatesApplicability === 'empty-destination'" class="text-xs text-yellow-500">
-                Destination has no task snapshots yet, so there is no incremental chain for intermediate snapshots to apply to on this run.
+                Destination has no snapshots yet, so there is no incremental chain for intermediate snapshots to apply to on this run.
+            </p>
+            <p v-if="useExistingDest && includeIntermediatesApplicability === 'applicable-untagged-base'" class="text-xs text-yellow-500">
+                This task owns no snapshots on the destination yet. It will replicate incrementally from a snapshot the
+                two datasets already share.
             </p>
             <p class="mt-1 text-xs text-muted">
                 Encryption note: for recursive hierarchies with encrypted datasets, choose an explicit encryption
@@ -669,6 +673,7 @@ import {
     mostRecentCommonSnapshot,
     listSnapshots,
     filterTaskSnapshots,
+    filterDatasetSnapshots,
     ZfsSnap,
     destAheadOfCommon
 } from '../../../composables/utility';
@@ -811,7 +816,7 @@ const netCatPortError = ref(false);
 const errorList = inject<Ref<string[]>>('errors')!;
 
 const sshReady = ref(false);
-const includeIntermediatesApplicability = ref<'unknown' | 'applicable' | 'no-common-base' | 'empty-destination'>('unknown');
+const includeIntermediatesApplicability = ref<'unknown' | 'applicable' | 'applicable-untagged-base' | 'no-common-base' | 'empty-destination'>('unknown');
 
 const canEvaluateIncludeIntermediates = computed(() => {
     if (!useExistingDest.value) return false;
@@ -1412,6 +1417,17 @@ function normalizeDatasetNameForPool(poolName: string, datasetName: string): str
     return ds;
 }
 
+// Mirrors join_zfs_path() in the replication script: the dataset selector already
+// returns pool-qualified names, so blind concatenation yields pool/pool/dataset.
+function joinZfsPath(poolName: string, datasetName: string): string {
+    const pool = (poolName || '').trim();
+    const ds = (datasetName || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!pool) return ds;
+    if (!ds) return pool;
+    if (ds === pool || ds.startsWith(`${pool}/`)) return ds;
+    return `${pool}/${ds}`;
+}
+
 function datasetExistsInPool(poolName: string, datasetName: string, datasets: string[]): boolean {
     const raw = (datasetName || '').trim();
     const normalized = normalizeDatasetNameForPool(poolName, raw);
@@ -1479,8 +1495,8 @@ async function checkDestDatasetContents() {
 
     try {
         includeIntermediatesApplicability.value = 'unknown';
-        const srcFs = `${sourcePool.value}/${sourceDataset.value}`;
-        const dstFs = `${destPool.value}/${destDataset.value}`;
+        const srcFs = joinZfsPath(sourcePool.value, sourceDataset.value);
+        const dstFs = joinZfsPath(destPool.value, destDataset.value);
 
         const portToUse = (transferMethod.value === "netcat" || transferMethod.value === "mbuffer") ? "22" : String(destPort.value);
 
@@ -1505,10 +1521,13 @@ async function checkDestDatasetContents() {
 
         const taskName = effectiveTaskName.value;
         const customScope = useCustomName.value ? customName.value : '';
-        if (taskName) {
-            srcSnaps = filterTaskSnapshots(srcSnaps, taskName, customScope);
-            dstSnaps = filterTaskSnapshots(dstSnaps, taskName, customScope);
-        }
+
+        // Mirrors _plan_send(): any snapshot shared by both sides is a valid incremental
+        // base, task-owned or not.
+        const srcRoot = filterDatasetSnapshots(srcSnaps, srcFs);
+        const dstRoot = filterDatasetSnapshots(dstSnaps, dstFs);
+        srcSnaps = srcRoot;
+        dstSnaps = dstRoot;
 
         if (!dstSnaps.length) {
             includeIntermediatesApplicability.value = 'empty-destination';
@@ -1529,7 +1548,9 @@ async function checkDestDatasetContents() {
             return;
         }
 
-        includeIntermediatesApplicability.value = 'applicable';
+        includeIntermediatesApplicability.value = taskName && !filterTaskSnapshots(dstRoot, taskName, customScope).length
+            ? 'applicable-untagged-base'
+            : 'applicable';
 
         const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
         if (diverged && !allowOverwrite.value) {
