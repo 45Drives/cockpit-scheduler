@@ -1,3 +1,3 @@
-## task scheduler 1.7.7-4
+## task scheduler 1.7.7-5
 
-* Fixes wireshield existence check for simple mode button
+* Fixes language around snapshot retention
