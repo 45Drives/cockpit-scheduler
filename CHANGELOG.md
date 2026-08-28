@@ -1,3 +1,3 @@
-## task scheduler 1.7.7-5
+## task scheduler 1.7.8-1
 
-* Fixes language around snapshot retention
+* Fixes incremental base detection in UI preflight and widens backend base selection

@@ -1,3 +1,9 @@
+cockpit-scheduler (1.7.8-1jammy) jammy; urgency=medium
+
+  * Fixes incremental base detection in UI preflight and widens backend base selection
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 28 Aug 2026 13:17:16 -0300
+
 cockpit-scheduler (1.7.7-5jammy) jammy; urgency=medium
 
   * Fixes language around snapshot retention
