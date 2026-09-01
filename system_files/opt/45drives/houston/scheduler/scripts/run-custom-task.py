@@ -16,6 +16,7 @@ import concurrent.futures
 import shlex
 
 from notify import get_notifier
+from task_retry import run_with_retry_policy
 
 
 class SafeStream:
@@ -215,4 +216,5 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    # A user script's own exit codes carry no permanent-failure convention.
+    run_with_retry_policy(main)

@@ -436,7 +436,8 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
                     fail_msg = f'Failed to clear resume token for {ctx.destFilesystem}: {clear_err}'
                     notifier.notify(f'STATUS={fail_msg}')
                     print(fail_msg)
-                    sys.exit(2)
+                    # Transient (busy dataset / network); exit 1 keeps the bounded retry budget.
+                    sys.exit(1)
                 if needs_overwrite:
                     ctx.forceOverwrite = True
             elif 'modified since' in err_lower or 'has been modified' in err_lower:
@@ -474,7 +475,8 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
                     fail_msg = f'Failed to clear resume token for {ctx.destFilesystem}: {clear_err}'
                     notifier.notify(f'STATUS={fail_msg}')
                     print(fail_msg)
-                    sys.exit(2)
+                    # Transient (busy dataset / network); exit 1 keeps the bounded retry budget.
+                    sys.exit(1)
                 if needs_overwrite:
                     ctx.forceOverwrite = True
             elif 'modified since' in err_lower or 'has been modified' in err_lower:
@@ -791,7 +793,8 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
             msg = f'Destination already has snapshot {dest_snap_name}. This typically means a prior receive completed or a timestamp reused. Refusing to overwrite an existing snapshot name.'
             notifier.notify(f'STATUS={msg}')
             print(msg)
-            sys.exit(2)
+            # Snapshot names carry a second-resolution timestamp, so a retry gets a fresh name.
+            sys.exit(1)
         notifier.notify('STATUS=Pulling snapshot from remote source to local target…')
         if ctx.forceFullSend and (not ctx.incrementalSnapName) and ctx.destinationSnapshots:
             destroy_snapshots_with_progress(ctx.destinationSnapshots, ctx.destFilesystem)
@@ -805,7 +808,8 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
             msg = f'Destination already has snapshot {dest_snap_name}. This typically means a prior receive completed or a timestamp reused. Refusing to overwrite an existing snapshot name.'
             notifier.notify(f'STATUS={msg}')
             print(msg)
-            sys.exit(2)
+            # Snapshot names carry a second-resolution timestamp, so a retry gets a fresh name.
+            sys.exit(1)
         notifier.notify('STATUS=Sending snapshot to destination…')
         dbg(f"baseSnap={ctx.incrementalSnapName} baseDs={(dataset_of_snapshot(ctx.incrementalSnapName) if ctx.incrementalSnapName else '')} newSnap={ctx.newSnap} newDs={dataset_of_snapshot(ctx.newSnap)} recursive={ctx.isRecursiveSnap}")
         if (not ctx.remoteHost) and ctx.isRecursiveSnap and (not ctx.incrementalSnapName):

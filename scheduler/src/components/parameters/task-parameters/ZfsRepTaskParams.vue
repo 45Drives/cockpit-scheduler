@@ -784,7 +784,7 @@ const hasRemoteEndpoint = computed(() => isPull.value || destHost.value.trim() !
 const sendRaw = ref(false);
 const sendCompressed = ref(true);
 const sendRecursive = ref(false);
-const includeIntermediateSnapshots = ref(true);
+const includeIntermediateSnapshots = ref(false);
 const mbufferSize = ref(1);
 const mbufferUnit = ref('G');
 const mbufferBlockSize = ref(256);

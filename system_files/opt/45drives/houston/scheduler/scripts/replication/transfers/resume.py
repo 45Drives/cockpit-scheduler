@@ -197,14 +197,16 @@ def resume_receive_push(
 
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         try:
-            process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
         except subprocess.TimeoutExpired:
             _kill_procs(process_send, process_recv)
             notifier.notify("STATUS=Finalization timed out — send process killed.")
             return False, f"zfs send did not exit within {PIPELINE_FINALIZE_TIMEOUT}s after all data was sent. Process killed."
 
         try:
-            recv_stdout, recv_stderr = safe_communicate(process_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
+            recv_stdout, recv_stderr = _communicate_with_finalize_heartbeat(
+                process_recv, "local zfs recv", PIPELINE_FINALIZE_TIMEOUT
+            )
         except subprocess.TimeoutExpired:
             process_recv.kill()
             notifier.notify("STATUS=Finalization timed out — recv process killed.")
@@ -294,7 +296,9 @@ def resume_receive_push(
             pass
 
         try:
-            _, nc_stderr = safe_communicate(process_nc, timeout=PIPELINE_FINALIZE_TIMEOUT)
+            _, nc_stderr = _communicate_with_finalize_heartbeat(
+                process_nc, "netcat sender", PIPELINE_FINALIZE_TIMEOUT
+            )
         except subprocess.TimeoutExpired:
             _kill_procs(process_send, process_mbuffer, process_nc, ssh_process_listener)
             notifier.notify("STATUS=Finalization timed out — netcat process killed.")
@@ -305,8 +309,8 @@ def resume_receive_push(
         nc_err = nc_stderr.decode(errors="replace") if isinstance(nc_stderr, bytes) else (nc_stderr or "")
 
         try:
-            process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
-            process_mbuffer.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
         except subprocess.TimeoutExpired:
             _kill_procs(process_send, process_mbuffer, ssh_process_listener)
             notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
@@ -338,7 +342,9 @@ def resume_receive_push(
             return False, err_msg
 
         try:
-            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_listener, "remote netcat receiver", 300
+            )
         except subprocess.TimeoutExpired:
             ssh_process_listener.kill()
             notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
@@ -417,8 +423,8 @@ def resume_receive_push(
 
         send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
         try:
-            process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
-            process_mbuffer.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+            _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer network sender", PIPELINE_FINALIZE_TIMEOUT)
         except subprocess.TimeoutExpired:
             _kill_procs(process_send, process_mbuffer, ssh_process_listener)
             notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
@@ -440,7 +446,9 @@ def resume_receive_push(
             return False, err_msg
 
         try:
-            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_listener, "remote mbuffer receiver", 300
+            )
         except subprocess.TimeoutExpired:
             ssh_process_listener.kill()
             notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
@@ -516,15 +524,17 @@ def resume_receive_push(
         except (OSError, ValueError):
             pass
     try:
-        process_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
-        process_m_buff.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
     except subprocess.TimeoutExpired:
         _kill_procs(process_send, process_m_buff, process_remote_recv)
         notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
         return False, f"zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
 
     try:
-        stdout, stderr = safe_communicate(process_remote_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
+        stdout, stderr = _communicate_with_finalize_heartbeat(
+            process_remote_recv, "remote zfs recv", PIPELINE_FINALIZE_TIMEOUT
+        )
     except subprocess.TimeoutExpired:
         process_remote_recv.kill()
         notifier.notify("STATUS=Finalization timed out — remote recv process killed.")
@@ -1044,15 +1054,17 @@ def resume_receive_pull(
         except (OSError, ValueError):
             pass
     try:
-        process_remote_send.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
-        process_m_buff.wait(timeout=PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_remote_send, "remote zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
     except subprocess.TimeoutExpired:
         _kill_procs(process_remote_send, process_m_buff, process_local_recv)
         notifier.notify("STATUS=Finalization timed out — resume pull pipeline killed.")
         return False, f"Remote zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
 
     try:
-        stdout, stderr = safe_communicate(process_local_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
+        stdout, stderr = _communicate_with_finalize_heartbeat(
+            process_local_recv, "local zfs recv", PIPELINE_FINALIZE_TIMEOUT
+        )
     except subprocess.TimeoutExpired:
         process_local_recv.kill()
         notifier.notify("STATUS=Finalization timed out — local recv process killed.")

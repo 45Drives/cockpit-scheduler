@@ -8,6 +8,7 @@ import traceback
 import datetime as dt
 
 from notify import get_notifier
+from task_retry import run_with_retry_policy
 
 
 class SafeStream:
@@ -190,4 +191,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_with_retry_policy(main)

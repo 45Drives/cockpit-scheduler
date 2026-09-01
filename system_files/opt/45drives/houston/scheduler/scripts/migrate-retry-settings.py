@@ -25,6 +25,9 @@ import sys
 CONF_PATH = "/opt/45drives/houston/scheduler/scheduler.conf"
 SERVICE_GLOB = "/etc/systemd/system/houston_scheduler_*.service"
 
+# Must match replication/retry.py: NO_RETRY_EXIT_CODE.
+NO_RETRY_EXIT_CODE = 90
+
 DEFAULTS = {
     "restart_sec": 5,
     "start_limit_burst": 3,
@@ -96,6 +99,22 @@ def write_config(settings):
         config.write(f)
 
 
+def _ensure_service_directive(content, key, value, anchor):
+    """Set ``key=value`` in the [Service] section, inserting it after ``anchor`` if absent."""
+    line = f"{key}={value}"
+    (content, replaced) = re.subn(
+        rf"^{re.escape(key)}=.*$", line, content, flags=re.MULTILINE
+    )
+    if replaced:
+        return content
+    (content, inserted) = re.subn(
+        rf"^{anchor}$", f"\\g<0>\n{line}", content, count=1, flags=re.MULTILINE
+    )
+    if inserted == 0:
+        content = content.rstrip("\n") + f"\n{line}\n"
+    return content
+
+
 def patch_service_file(path, settings):
     """Patch a single .service file with the new retry settings."""
     with open(path, "r") as f:
@@ -125,6 +144,22 @@ def patch_service_file(path, settings):
         f"RestartSec={settings['restart_sec']}sec",
         content,
         flags=re.MULTILINE,
+    )
+
+    # systemd's start rate limiter cannot bound retries for a long-running task,
+    # so the task script counts attempts and exits with NO_RETRY_EXIT_CODE once
+    # the budget is spent. These directives are what make that work.
+    content = _ensure_service_directive(
+        content, "RestartPreventExitStatus", NO_RETRY_EXIT_CODE, r"RestartSec=.*"
+    )
+    content = _ensure_service_directive(
+        content, "Environment=HOUSTON_SCHEDULER_UNIT", "%n", r"Type=notify"
+    )
+    content = _ensure_service_directive(
+        content,
+        "Environment=HOUSTON_SCHEDULER_MAX_ATTEMPTS",
+        settings["start_limit_burst"],
+        r"Environment=HOUSTON_SCHEDULER_UNIT=.*",
     )
 
     # Patch Restart policy based on max attempts.

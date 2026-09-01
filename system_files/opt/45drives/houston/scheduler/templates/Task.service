@@ -8,12 +8,15 @@ Type=notify
 NotifyAccess=all
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=HOUSTON_SCHEDULER_UNIT=%n
+Environment=HOUSTON_SCHEDULER_MAX_ATTEMPTS={start_limit_burst}
 StandardOutput=journal
 StandardError=journal
 EnvironmentFile={env_path}
 ExecStart={ExecStart}
 Restart=on-failure
 RestartSec={restart_sec}sec
+RestartPreventExitStatus=90
 TimeoutStartSec=0
 TimeoutStopSec=90
 

@@ -6,6 +6,7 @@ import shlex
 import traceback
 import datetime as dt
 from notify import get_notifier
+from task_retry import run_with_retry_policy
 
 
 class SafeStream:
@@ -408,4 +409,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # Exit 2 marks unsupported parallel-mode configurations, which retrying cannot fix.
+    run_with_retry_policy(main, permanent_exit_codes=(2,))

@@ -45,12 +45,13 @@ def configure_standard_streams():
         sys.stderr = SafeStream(sys.stderr)
 
 _DEBUG_TASK_NAME = os.environ.get("taskName", "").strip()
-DEBUG_LOG = os.environ.get(
-    "ZFS_REP_DEBUG_LOG",
-    f"/tmp/zfs_rep_debug_{_DEBUG_TASK_NAME}.log" if _DEBUG_TASK_NAME else "/tmp/zfs_rep_debug.log",
+# An empty ZFS_REP_DEBUG_LOG in the unit's env file would otherwise win over the default.
+DEBUG_LOG = os.environ.get("ZFS_REP_DEBUG_LOG", "").strip() or (
+    f"/tmp/zfs_rep_debug_{_DEBUG_TASK_NAME}.log" if _DEBUG_TASK_NAME else "/tmp/zfs_rep_debug.log"
 )
 DEBUG_ENABLED = os.environ.get("ZFS_REP_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
 DEBUG_MAX_TEXT = int(os.environ.get("ZFS_REP_DEBUG_MAX_TEXT", "4000"))
+_DEBUG_WRITE_FAILED = False
 
 def safe_print(msg: str):
     try:
@@ -73,14 +74,19 @@ def _truncate(s: str, limit: int = DEBUG_MAX_TEXT) -> str:
 
 
 def dbg(msg: str):
+    global _DEBUG_WRITE_FAILED
     if not DEBUG_ENABLED:
         return
     try:
         line = f"{datetime.datetime.now().isoformat()} {msg}\n"
         with open(DEBUG_LOG, "a") as f:
             f.write(line)
-    except Exception:
-        pass
+    except Exception as e:
+        # Without this the debug log simply stays empty with no trace of why.
+        if not _DEBUG_WRITE_FAILED:
+            _DEBUG_WRITE_FAILED = True
+            safe_print(f"WARNING: debug log {DEBUG_LOG} is not writable ({e}); debug output goes to the journal only.")
+        safe_print(f"[debug] {msg}")
 
 
 def dbg_kv(title: str, kv: dict):
