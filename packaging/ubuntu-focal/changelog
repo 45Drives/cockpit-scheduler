@@ -1,3 +1,9 @@
+cockpit-scheduler (1.7.9-2focal) focal; urgency=medium
+
+  * Fixes missing heartbeat calls in push and pull scripts
+
+ -- Jordan Keough <jkeough@45drives.com>  Wed, 02 Sep 2026 08:20:41 -0300
+
 cockpit-scheduler (1.7.9-1focal) focal; urgency=medium
 
   * fix: stop scheduler tasks looping forever on repeated failures
