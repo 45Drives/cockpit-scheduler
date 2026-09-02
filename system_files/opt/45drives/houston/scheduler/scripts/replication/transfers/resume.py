@@ -946,7 +946,9 @@ def resume_receive_pull(
             return False, f"mbuffer listener did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Processes killed."
 
         try:
-            recv_stdout, recv_stderr = safe_communicate(process_local_recv, timeout=PIPELINE_FINALIZE_TIMEOUT)
+            recv_stdout, recv_stderr = _communicate_with_finalize_heartbeat(
+                process_local_recv, "local zfs recv", PIPELINE_FINALIZE_TIMEOUT
+            )
         except subprocess.TimeoutExpired:
             process_local_recv.kill()
             ssh_process_sender.kill()
@@ -954,7 +956,9 @@ def resume_receive_pull(
             return False, f"Local zfs recv did not finish within {PIPELINE_FINALIZE_TIMEOUT}s after all data was received. Process killed."
 
         try:
-            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_sender, timeout=300)
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_sender, "remote sender", 300
+            )
         except subprocess.TimeoutExpired:
             ssh_process_sender.kill()
             notifier.notify("STATUS=Finalization timed out — remote sender process killed.")

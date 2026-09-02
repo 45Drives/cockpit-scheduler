@@ -761,7 +761,9 @@ def send_snapshot_push(
             sys.exit(1)
 
         try:
-            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_listener, "remote netcat receiver", 300
+            )
         except subprocess.TimeoutExpired:
             ssh_process_listener.kill()
             notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
@@ -880,7 +882,9 @@ def send_snapshot_push(
             sys.exit(1)
 
         try:
-            ssh_stdout, ssh_stderr = safe_communicate(ssh_process_listener, timeout=300)
+            ssh_stdout, ssh_stderr = _communicate_with_finalize_heartbeat(
+                ssh_process_listener, "remote mbuffer receiver", 300
+            )
         except subprocess.TimeoutExpired:
             ssh_process_listener.kill()
             notifier.notify("STATUS=Finalization timed out — remote receiver killed.")
