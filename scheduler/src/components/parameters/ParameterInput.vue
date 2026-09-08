@@ -64,7 +64,9 @@ function clearTaskParamErrorTags() {
 }
 
 function hasChanges() {
-    return activeComponent.value?.hasChanges();
+    const child = activeComponent.value as any;
+    if (!child || child.initializing) return false;
+    return child.hasChanges?.() === true;
 }
 
 /** Pushes the child's current form state into the shared `parameters` ref. Returns false while the child is still loading an existing task. */

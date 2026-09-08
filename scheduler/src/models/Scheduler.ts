@@ -1323,7 +1323,7 @@ export class Scheduler implements SchedulerType {
 
     }
 
-    async updateTaskInstance(taskInstance, opts?:{oldName?: string}) {
+    async updateTaskInstance(taskInstance, opts?:{oldName?: string, oldTemplateName?: string}) {
         await this.ensureBackend();
         //populate data from env file and then delete + recreate task files
         const envKeyValues = taskInstance.parameters.asEnvKeyValues();
@@ -1443,6 +1443,23 @@ export class Scheduler implements SchedulerType {
             .join('\n');
 
         const houstonSchedulerPrefix = 'houston_scheduler_';
+        const oldTemplateName = opts?.oldTemplateName
+            ? this.normalizeTemplateKey(opts.oldTemplateName)
+            : templateName;
+        const oldName = opts?.oldName ?? taskInstance.name;
+
+        // A rename or template change moves every unit/env/json/notes file to a new base
+        // name, so the old set has to be torn down and the task recreated from scratch.
+        if (oldName !== taskInstance.name || oldTemplateName !== templateName) {
+            const oldFullName = `${houstonSchedulerPrefix}${oldTemplateName}_${oldName}`;
+            try { await runCommand(['systemctl', 'stop', `${oldFullName}.timer`], { superuser: 'try' }); } catch { }
+            try { await runCommand(['systemctl', 'disable', `${oldFullName}.timer`], { superuser: 'try' }); } catch { }
+            try { await runCommand(['systemctl', 'stop', `${oldFullName}.service`], { superuser: 'try' }); } catch { }
+            try { await removeTask(oldFullName); } catch (e) { console.warn(`failed to remove ${oldFullName}:`, e); }
+            await this.registerTaskInstance(taskInstance);
+            return;
+        }
+
         const baseName = `${houstonSchedulerPrefix}${templateName}_${taskInstance.name}`;
         const envFilePath = `/etc/systemd/system/${baseName}.env`;
         const jsonFilePath = `/etc/systemd/system/${baseName}.json`;
@@ -1457,7 +1474,8 @@ export class Scheduler implements SchedulerType {
             finalEnvString += `\nscheduleJsonPath=${jsonFilePath}`;
         }
         const envFile = new File(server, envFilePath);
-        await unwrap(envFile.replace(finalEnvString, { superuser: 'try' }));
+        // write (not replace) — the env file may not exist yet for tasks created elsewhere
+        await unwrap(envFile.write(finalEnvString, { superuser: 'try' }));
         console.log('env file updated successfully');
 
         // Regenerate the systemd units from the env
@@ -2021,8 +2039,9 @@ export class Scheduler implements SchedulerType {
 
         const jsonFile = new File(server, jsonFilePath);
         const jsonString = JSON.stringify(taskInstance.schedule, null, 2);
-        await unwrap(jsonFile.replace(jsonString, { superuser: 'try' }));
-        
+        // write (not replace) — a task saved without a schedule has no JSON file yet
+        await unwrap(jsonFile.write(jsonString, { superuser: 'try' }));
+
         // Validate the write succeeded
         const written = await unwrap(jsonFile.read());
         try {

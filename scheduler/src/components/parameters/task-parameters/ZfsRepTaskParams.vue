@@ -1146,35 +1146,7 @@ async function initializeData() {
             useCustomTarget.value = true;
         }
 
-        initialParameters.value = JSON.parse(JSON.stringify({
-            sourcePool: sourcePool.value,
-            sourceDataset: sourceDataset.value,
-            useCustomSource: useCustomSource.value,
-            destHost: destHost.value,
-            destPort: destPort.value,
-            destUser: destUser.value,
-            destPool: destPool.value,
-            destDataset: destDataset.value,
-            useCustomTarget: useCustomTarget.value,
-            directionSwitched: directionSwitched.value,
-            sendCompressed: sendCompressed.value,
-            sendRaw: sendRaw.value,
-            sendRecursive: sendRecursive.value,
-            includeIntermediateSnapshots: includeIntermediateSnapshots.value,
-            mbufferSize: mbufferSize.value,
-            mbufferUnit: mbufferUnit.value,
-            mbufferBlockSize: mbufferBlockSize.value,
-            mbufferBlockUnit: mbufferBlockUnit.value,
-            mbufferCallbackHost: mbufferCallbackHost.value,
-            useCustomName: useCustomName.value,
-            customName: customName.value,
-            transferMethod: transferMethod.value,
-            allowOverwrite: allowOverwrite.value,
-            resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
-            resumeStallTimeout: resumeStallTimeout.value,
-            useExistingDest: useExistingDest.value,
-            forceFullSend: forceFullSend.value,
-        }));
+        initialParameters.value = JSON.parse(JSON.stringify(formSnapshot()));
 
         loading.value = false;
     } else {
@@ -1185,8 +1157,10 @@ async function initializeData() {
 
 /* ---------------- Change detection ---------------- */
 
-function hasChanges() {
-    const currentParams = {
+// Baseline and current state must come from the same builder — a key set or ordering
+// mismatch between the two makes the JSON comparison report a change every time.
+function formSnapshot() {
+    return {
         sourcePool: sourcePool.value,
         sourceDataset: sourceDataset.value,
         useCustomSource: useCustomSource.value,
@@ -1208,13 +1182,17 @@ function hasChanges() {
         mbufferCallbackHost: mbufferCallbackHost.value,
         useCustomName: useCustomName.value,
         customName: customName.value,
+        transferMethod: transferMethod.value,
         allowOverwrite: allowOverwrite.value,
         resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
         resumeStallTimeout: resumeStallTimeout.value,
         useExistingDest: useExistingDest.value,
         forceFullSend: forceFullSend.value,
     };
-    return JSON.stringify(currentParams) !== JSON.stringify(initialParameters.value);
+}
+
+function hasChanges() {
+    return JSON.stringify(formSnapshot()) !== JSON.stringify(initialParameters.value);
 }
 
 /* ---------------- UI logic ---------------- */

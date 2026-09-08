@@ -487,6 +487,14 @@ function buildTask(): TaskInstance | null {
 
 // ---- dirty tracking ----
 function jsonStable(v: any) { try { return JSON.stringify(v); } catch { return String(v); } }
+
+// Parameter components keep their form state internally and only publish to `parameters`
+// on a successful validate, so ask the active one directly instead of diffing stale params.
+function paramComponentDirty(): boolean {
+    try { return (parameterInputComponent.value as any)?.hasChanges?.() === true; }
+    catch { return false; }
+}
+
 const isDirty = computed(() => {
     if (!originalTask.value) return true; // creating
     const candidate = buildTask();
@@ -495,6 +503,7 @@ const isDirty = computed(() => {
     return (
         a.name !== candidate.name ||
         a.template?.name !== candidate.template?.name ||
+        paramComponentDirty() ||
         jsonStable(a.parameters) !== jsonStable(candidate.parameters) ||
         jsonStable(a.schedule) !== jsonStable(candidate.schedule) ||
         (a.notes || '') !== (candidate.notes || '')
@@ -590,7 +599,10 @@ async function saveAll() {
             const templateChanged = old.template?.name !== built.template?.name;
 
             if (nameChanged || templateChanged) {
-                await myScheduler.updateTaskInstance(built, { oldName: originalName.value });
+                await myScheduler.updateTaskInstance(built, {
+                    oldName: originalName.value ?? old.name,
+                    oldTemplateName: old.template?.name,
+                });
             } else {
                 await (myScheduler as any).updateTaskInstance(built);
             }
