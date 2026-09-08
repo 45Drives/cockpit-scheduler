@@ -1,3 +1,3 @@
-## task scheduler 1.7.9-2
+## task scheduler 1.8.0-1
 
-* Fixes missing heartbeat calls in push and pull scripts
+* Adds SSH Cipher selection, fixes resume token fallback logic, send size estimates and incremental base selection (All for Replication Tasks)
