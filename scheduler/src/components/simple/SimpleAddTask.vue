@@ -446,8 +446,10 @@ async function validateTaskName() {
 
 async function validateComponentParams() {
     clearAllErrors();
-    await validateTaskName();
+    // Parameter components reset the shared error list when they validate, so they must
+    // run first — otherwise they wipe the task name errors and the save proceeds anyway.
     await parameterInputComponent.value?.validation?.();
+    await validateTaskName();
     if (errorList.value.length > 0) {
         pushNotification(new Notification('Task Save Failed', `Task submission has errors:\n- ${errorList.value.join('\n- ')}`, 'error', 6000));
         return false;
