@@ -206,8 +206,13 @@ async function saveChangesBtn() {
     const hasChanges = parameterInputComponent.value.hasChanges();
     if (hasChanges) {
         errorList.value = [];
-        if (await validateComponentParams()) {
-            showConfirmationDialog();
+        saving.value = true; // preflight validation can hit the network (SSH/ZFS lookups); show the spinner right away
+        try {
+            if (await validateComponentParams()) {
+                showConfirmationDialog();
+            }
+        } finally {
+            saving.value = false;
         }
     } else {
         showEditTaskWizard.value = false;

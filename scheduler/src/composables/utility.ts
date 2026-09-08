@@ -6,6 +6,8 @@ import test_ssh_script from "../scripts/test-ssh.py?raw";
 // @ts-ignore
 import test_netcat_script from '../scripts/test-netcat.py?raw'
 //@ts-ignore
+import list_ssh_ciphers_script from "../scripts/list-ssh-ciphers.py?raw";
+//@ts-ignore
 import task_file_creation_script from "../scripts/legacy-task-file-creation.py?raw";
 //@ts-ignore
 import remove_task_script from "../scripts/legacy-remove-task-files.py?raw";
@@ -183,6 +185,44 @@ export async function testSSH(sshTarget) {
 	} catch (err) {
 		console.error(err);
 		return false;
+	}
+}
+
+export interface SshCipherAvailability {
+	local: string[];
+	remote: string[];
+	remoteError: string;
+}
+
+/**
+ * Query the ciphers this host's SSH client supports and, when a host is supplied,
+ * the ciphers that host offers during key exchange.
+ */
+export async function getSshCiphers(
+	host?: string,
+	user?: string,
+	port?: string | number
+): Promise<SshCipherAvailability> {
+	const empty: SshCipherAvailability = { local: [], remote: [], remoteError: "" };
+	try {
+		const argv = ["/usr/bin/env", "python3", "-c", list_ssh_ciphers_script];
+		const trimmedHost = (host ?? "").trim();
+		if (trimmedHost) {
+			argv.push("--host", trimmedHost);
+			argv.push("--user", (user ?? "root").trim() || "root");
+			argv.push("--port", String(port || 22));
+		}
+
+		const { stdout } = await runCommand(argv, { superuser: "try" });
+		const parsed = JSON.parse(stdout);
+		return {
+			local: Array.isArray(parsed.local) ? parsed.local : [],
+			remote: Array.isArray(parsed.remote) ? parsed.remote : [],
+			remoteError: typeof parsed.remoteError === "string" ? parsed.remoteError : "",
+		};
+	} catch (err) {
+		console.error(err);
+		return empty;
 	}
 }
 
@@ -599,52 +639,56 @@ export async function listSnapshots(
 			: ["ssh", `${user}@${host}`, ...base])
 		: base;
 
-	try {
-		const { stdout } = await runCommand(cmd, { superuser: "try" });
-		const snaps: ZfsSnap[] = stdout
-			.trim()
-			.split("\n")
-			.filter(Boolean)
-			.map(line => {
-				const [name, guid, cstr] = line.split(/\s+/, 3);
-				const ms = Date.parse(cstr);
-				const creation = Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
-				return { name, guid, creation };
-			});
+	const tagCmdBase = [
+		"zfs", "get", "-H", "-t", "snapshot", "-o", "name,property,value", ZFS_TASK_PROP, "-r", dataset
+	];
+	const tagCmd: string[] = user && host
+		? (port && port !== "22"
+			? ["ssh", "-p", String(port), `${user}@${host}`, ...tagCmdBase]
+			: ["ssh", `${user}@${host}`, ...tagCmdBase])
+		: tagCmdBase;
 
-		const tagCmdBase = [
-			"zfs", "get", "-H", "-t", "snapshot", "-o", "name,property,value", ZFS_TASK_PROP, "-r", dataset
-		];
-		const tagCmd: string[] = user && host
-			? (port && port !== "22"
-				? ["ssh", "-p", String(port), `${user}@${host}`, ...tagCmdBase]
-				: ["ssh", `${user}@${host}`, ...tagCmdBase])
-			: tagCmdBase;
+	// Fire both zfs calls in parallel over the same SSH host instead of waiting on
+	// each round-trip serially; halves the wall-clock time of a remote lookup.
+	const [listResult, tagResult] = await Promise.allSettled([
+		runCommand(cmd, { superuser: "try" }),
+		runCommand(tagCmd, { superuser: "try" }),
+	]);
 
-		try {
-			const { stdout: tagOut } = await runCommand(tagCmd, { superuser: "try" });
-			const tagMap = new Map<string, string>();
-			for (const line of tagOut.trim().split("\n").filter(Boolean)) {
-				const parts = line.split("\t");
-				if (parts.length < 3) continue;
-				const [name, prop, value] = parts;
-				if (prop === ZFS_TASK_PROP && value && value !== '-') {
-					tagMap.set(name, value);
-				}
-			}
-			for (const snap of snaps) {
-				snap.taskTag = tagMap.get(snap.name);
-			}
-		} catch {
-			// Tag lookups are best-effort. Matching falls back to snapshot names.
-		}
-
-		snaps.sort((a, b) => a.creation - b.creation);
-		return snaps;
-	} catch (e) {
-		console.error("listSnapshots error:", e);
+	if (listResult.status === "rejected") {
+		console.error("listSnapshots error:", listResult.reason);
 		return [];
 	}
+
+	const snaps: ZfsSnap[] = listResult.value.stdout
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map(line => {
+			const [name, guid, cstr] = line.split(/\s+/, 3);
+			const ms = Date.parse(cstr);
+			const creation = Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+			return { name, guid, creation };
+		});
+
+	if (tagResult.status === "fulfilled") {
+		const tagMap = new Map<string, string>();
+		for (const line of tagResult.value.stdout.trim().split("\n").filter(Boolean)) {
+			const parts = line.split("\t");
+			if (parts.length < 3) continue;
+			const [name, prop, value] = parts;
+			if (prop === ZFS_TASK_PROP && value && value !== '-') {
+				tagMap.set(name, value);
+			}
+		}
+		for (const snap of snaps) {
+			snap.taskTag = tagMap.get(snap.name);
+		}
+	}
+	// Tag lookups are best-effort. Matching falls back to snapshot names on failure.
+
+	snaps.sort((a, b) => a.creation - b.creation);
+	return snaps;
 }
 
 // Find most-recent common by GUID

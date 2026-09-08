@@ -1868,6 +1868,8 @@ export class Scheduler implements SchedulerType {
         const s = txt
             // New replication statuses may end with an explicit duplicate "— 29.9%".
             .replace(/[\s—-]+\d+(?:\.\d+)?\s*%\s*$/, '')
+            // Liveness statuses carry the percentage mid-string: "Transferring… 33.3% complete (still active; …)".
+            .replace(/\s*\d+(?:\.\d+)?\s*%\s*complete\b/i, '')
             .replace(/\s*\d+\s*\/\s*\d+\s*\(\s*\d+(?:\.\d+)?\s*%\s*\)\s*$/, '')
             .replace(/\s*\d+(?:\.\d+)?\s*%\s*(?:complete)?\s*$/i, '')
             .replace(/[…\.]+\s*$/, '')
@@ -1876,7 +1878,20 @@ export class Scheduler implements SchedulerType {
         return s || null;
     }
 
-    async getTaskProgress(taskInstance: TaskInstanceType): Promise<{ percent: number | null; label: string | null }> {
+    /** A byte-count status ("1.2 MiB sent") means no percentage exists, unlike a transitional status that merely omits one. */
+    private isByteProgress(txt: string): boolean {
+        return /\b\d+(?:\.\d+)?\s*(?:[KMGT]iB|B)\s+sent\b/i.test(txt);
+    }
+
+    private parseProgressText(txt: string): { percent: number | null; label: string | null; indeterminate: boolean } {
+        const match = txt.match(/(\d+(?:\.\d+)?)%/);
+        if (match) {
+            return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt), indeterminate: false };
+        }
+        return { percent: null, label: txt || null, indeterminate: this.isByteProgress(txt) };
+    }
+
+    async getTaskProgress(taskInstance: TaskInstanceType): Promise<{ percent: number | null; label: string | null; indeterminate: boolean }> {
         await this.ensureBackend();
         const templateName = this.normalizeTemplateKey(taskInstance.template.name);
 
@@ -1884,13 +1899,9 @@ export class Scheduler implements SchedulerType {
         if (this.isDaemon()) {
             try {
                 const st: any = await daemon.getStatus(templateName, taskInstance.name);
-                const txt = String(st?.service || '');
-
-                const match = txt.match(/(\d+(?:\.\d+)?)%/);
-                if (match) return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt) };
-                return { percent: null, label: txt || null };
+                return this.parseProgressText(String(st?.service || ''));
             } catch {
-                return { percent: null, label: null };
+                return { percent: null, label: null, indeterminate: false };
             }
         }
 
@@ -1903,12 +1914,9 @@ export class Scheduler implements SchedulerType {
                 ['systemctl', 'show', `${fullTaskName}.service`, '--property=StatusText', '--value'],
                 { superuser: 'try' }
             );
-            const txt = (stdout || '').trim();
-            const match = txt.match(/(\d+(?:\.\d+)?)%/);
-            if (match) return { percent: parseFloat(match[1]), label: this.extractProgressLabel(txt) };
-            return { percent: null, label: txt || null };
+            return this.parseProgressText((stdout || '').trim());
         } catch {
-            return { percent: null, label: null };
+            return { percent: null, label: null, indeterminate: false };
         }
     }
 

@@ -22,6 +22,34 @@ def test_parse_send_size_output(raw, expected):
     assert process._parse_send_size_output(raw) == expected
 
 
+# `zfs send -nP -t <token>` prints a negative remainder as an unsigned 64-bit value
+# when the resumed stream is already complete. Feeding that to pv pins progress at
+# 0.0% and yields a multi-million-year ETA, so it must be rejected.
+@pytest.mark.parametrize(
+    "total,expected",
+    [
+        (18446744072580570568, None),
+        (process.MAX_PLAUSIBLE_SEND_SIZE, None),
+        (process.MAX_PLAUSIBLE_SEND_SIZE - 1, process.MAX_PLAUSIBLE_SEND_SIZE - 1),
+        (0, None),
+        (-5, None),
+        (None, None),
+        (1048576, 1048576),
+    ],
+)
+def test_validated_send_size(total, expected):
+    assert process._validated_send_size(total) == expected
+
+
+def test_parse_send_size_output_rejects_wrapped_negative():
+    assert process._parse_send_size_output(b"size\t18446744072580570568\n") is None
+
+
+def test_parse_send_size_output_rejects_wrapped_negative_summary():
+    raw = b"incremental\ttank/a@s1\ttank/a@s2\t18446744072580570568\n"
+    assert process._parse_send_size_output(raw) is None
+
+
 def test_effective_mbuffer_block_defaults_when_transfer_is_not_mbuffer(monkeypatch):
     monkeypatch.setenv("zfsRepConfig_sendOptions_transferMethod", "ssh")
     monkeypatch.setenv("zfsRepConfig_sendOptions_mbufferBlockSize", "512")
@@ -81,14 +109,15 @@ def test_stream_copy_reports_broken_downstream(monkeypatch, capsys):
     assert "pipe broken" in capsys.readouterr().out
 
 
-def test_progress_holds_at_99_9_when_estimate_is_too_small(monkeypatch):
+def test_progress_switches_to_bytes_when_estimate_is_too_small(monkeypatch):
     recorder = RecordingNotifier()
     monkeypatch.setattr(process, "notifier", recorder)
     with tempfile.TemporaryFile() as src, tempfile.TemporaryFile() as dst:
         src.write(b"x" * 100)
         src.seek(0)
         process.stream_with_progress_stall(src, dst, 10, min_interval=0, stall_timeout=0)
-    assert any("99.9% complete" in message for message in recorder.messages)
+    assert any("stream is larger than zfs estimated" in message for message in recorder.messages)
+    assert not any("99.9% complete" in message for message in recorder.messages)
     assert recorder.messages[-1].endswith("100.0% complete")
 
 
@@ -160,16 +189,17 @@ def test_progress_liveness_notice_mentions_receive_finalization_near_99_9(monkey
     monkeypatch.setattr(process.time, "time", StepClock())
     monkeypatch.setenv("ZFS_REP_CHUNK_SIZE", "5")
 
-    # Deliberately overrun estimate in many small chunks so percent caps at 99.9
-    # and liveness notice is emitted while transfer remains active.
-    payload = b"x" * 1000
+    # Land exactly on the estimate so percent clamps at 99.9 for the final chunks
+    # without overrunning, which is the only case that genuinely means the send is
+    # done and we are waiting on the receive side.
+    payload = b"x" * 10000
     with tempfile.TemporaryFile() as src, tempfile.TemporaryFile() as dst:
         src.write(payload)
         src.seek(0)
         process.stream_with_progress_stall(
             src,
             dst,
-            10,
+            len(payload),
             min_interval=0,
             stall_timeout=0,
         )

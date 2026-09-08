@@ -10,7 +10,7 @@ import time
 from collections import deque
 
 from .config import as_bool
-from .constants import MBUFFER_BLOCK_SIZE, PIPELINE_FINALIZE_TIMEOUT
+from .constants import MAX_PLAUSIBLE_SEND_SIZE, MBUFFER_BLOCK_SIZE, PIPELINE_FINALIZE_TIMEOUT
 from .context import notifier
 from .logging_utils import _fmt_cmd, _truncate, dbg, safe_print
 
@@ -107,6 +107,19 @@ class StallTimeout(Exception):
     pass
 
 
+def _validated_send_size(total):
+    """Return the estimate, or None when zfs reported an implausible/wrapped value."""
+    if total is None or total <= 0:
+        return None
+    if total >= MAX_PLAUSIBLE_SEND_SIZE:
+        dbg(
+            f"Ignoring implausible send size estimate {total} "
+            f"(likely a wrapped negative value from a resume token); progress will be indeterminate."
+        )
+        return None
+    return total
+
+
 def _parse_send_size_output(raw: bytes):
     """Parse zfs send -nP output and return total estimated bytes.
 
@@ -124,7 +137,7 @@ def _parse_send_size_output(raw: bytes):
         if "size" in line.lower():
             m = re.search(r"\bsize\b\s*=?\s*(\d+)", line, re.IGNORECASE)
             if m:
-                return int(m.group(1))
+                return _validated_send_size(int(m.group(1)))
         # Sum per-stream sizes for recursive sends
         if line.startswith("full") or line.startswith("incremental"):
             parts = line.split("\t")
@@ -134,7 +147,9 @@ def _parse_send_size_output(raw: bytes):
                     found_size_line = True
                 except (ValueError, IndexError):
                     pass
-    return total if found_size_line and total > 0 else None
+    if not found_size_line or total <= 0:
+        return None
+    return _validated_send_size(total)
 
 
 def run_logged(cmd, *, check=False, text=True, timeout=None, env=None):
@@ -527,6 +542,7 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
     last_pct_change = 0.0
     last_liveness_notice = 0.0
     liveness_notice_interval = 45.0
+    estimate_exceeded = False
     last_data_time = time.time()
     start_time = last_data_time
     window_bytes = 0
@@ -581,7 +597,24 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
         window_bytes += len(chunk)
         now = time.time()
 
-        if total_bytes:
+        if total_bytes and bytes_sent > total_bytes:
+            # `zfs send -nP` underestimates streams carrying thousands of snapshot
+            # records, and a percentage pinned at 99.9 for the remaining hour reads
+            # as a hang. Report bytes instead so the UI falls back to indeterminate.
+            if not estimate_exceeded:
+                estimate_exceeded = True
+                dbg(
+                    f"{label}: estimate of {total_bytes} bytes exceeded at {bytes_sent}; "
+                    f"switching to indeterminate progress for the rest of the stream."
+                )
+            if (now - last_emit) >= max(5.0, min_interval):
+                mib = bytes_sent / (1024 * 1024)
+                notifier.notify(
+                    f"STATUS={label}… {mib:.1f} MiB sent (replaying snapshot deltas; "
+                    f"stream is larger than zfs estimated)"
+                )
+                last_emit = now
+        elif total_bytes:
             # Hold at 99.9% if we overrun the estimate; only EOF means 100%.
             pct = min(round(bytes_sent * 100.0 / total_bytes, 1), 99.9)
             if pct > last_pct and (now - last_emit) >= min_interval:
@@ -620,10 +653,12 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
             window_elapsed = now - window_start
             current_rate = window_bytes / window_elapsed if window_elapsed > 0 else 0
             eta_str = ""
-            if total_bytes and avg_rate > 0:
+            if total_bytes and avg_rate > 0 and bytes_sent < total_bytes:
                 remaining = total_bytes - bytes_sent
                 eta_secs = remaining / avg_rate
                 eta_str = f" ETA={int(eta_secs)}s"
+            elif estimate_exceeded:
+                eta_str = " ETA=unknown (estimate exceeded)"
             dbg(
                 f"heartbeat {label}: bytes_sent={bytes_sent} ({bytes_sent/(1024*1024):.1f} MiB) "
                 f"current_rate={current_rate/(1024*1024):.1f} MiB/s "

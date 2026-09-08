@@ -341,6 +341,7 @@ const progressLabel = ref<string | null>(null);
 const showProgressBar = computed(() => isRunning.value);
 const isIndeterminate = computed(() => isRunning.value && progress.value === null);
 const progressText = computed(() => {
+	if (isIndeterminate.value) return progressLabel.value ?? '';
 	const pct = `${(progress.value ?? 0).toFixed(1)}%`;
 	return progressLabel.value ? `${progressLabel.value} — ${pct}` : pct;
 });
@@ -359,7 +360,11 @@ async function updateProgress(task: TaskInstanceType) {
 		// one ("Starting transfer…", "Finishing up…"). Dropping to null
 		// mid-run flips the bar to the indeterminate animation, which reads
 		// as the task bouncing between a partial percentage and 100%.
-		if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
+		// A byte-count status is different: no percentage exists any more,
+		// so holding the stale one would misreport a long replay phase.
+		if (result?.indeterminate) {
+			progress.value = null;
+		} else if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
 			progress.value = result.percent;
 		}
 		progressLabel.value = result?.label ?? null;

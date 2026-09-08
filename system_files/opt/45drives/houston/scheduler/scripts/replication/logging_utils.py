@@ -100,6 +100,7 @@ def dbg_env():
         "taskName",
         "zfsRepConfig_direction",
         "zfsRepConfig_sendOptions_transferMethod",
+        "zfsRepConfig_sendOptions_sshCipher",
         "zfsRepConfig_sendOptions_recursive_flag",
         "zfsRepConfig_sendOptions_compressed_flag",
         "zfsRepConfig_sendOptions_raw_flag",

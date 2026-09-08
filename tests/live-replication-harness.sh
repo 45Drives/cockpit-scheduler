@@ -12,6 +12,7 @@ usage() {
   cat <<'EOF'
 Usage:
   live-replication-harness.sh preflight [pool]
+  live-replication-harness.sh list-disks
   live-replication-harness.sh start <task_name>
   live-replication-harness.sh stop <task_name>
   live-replication-harness.sh status <task_name>
@@ -30,7 +31,7 @@ Usage:
   live-replication-harness.sh scenario-resume-only-no-token-local <task_name> <dest_dataset> [finish_wait_sec]
   live-replication-harness.sh scenario-force-full-send-clears <task_name> [finish_wait_sec]
 
-Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools under /var/tmp/hrep):
+Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools):
   live-replication-harness.sh scenario-hierarchy-all
   live-replication-harness.sh scenario-hierarchy-matrix
   live-replication-harness.sh scenario-hierarchy-clean [direction] [transport]
@@ -42,11 +43,48 @@ Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools under /var/tmp
   live-replication-harness.sh scenario-hierarchy-tags [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-retention [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-teardown
+  live-replication-harness.sh hier-notify-run [direction] [transport]
+
+  hier-notify-run replays one replication over the pools an earlier scenario left
+  standing, inside a transient Type=notify unit, so systemd StatusText carries the
+  live progress percentage. The scenarios themselves exec the script directly and
+  therefore show no percentage at all.
+
+Regression suite for the resume + SSH cipher work (also disposable pools):
+  live-replication-harness.sh verify-fixes
+  live-replication-harness.sh unit-tests
+  live-replication-harness.sh scenario-resume-all
+  live-replication-harness.sh scenario-resume-continues
+  live-replication-harness.sh scenario-resume-only-stops
+  live-replication-harness.sh scenario-cipher-all
+  live-replication-harness.sh scenario-cipher-availability [host] [user] [port]
+  live-replication-harness.sh scenario-cipher-send <cipher>
+  live-replication-harness.sh scenario-cipher-send-all
+  live-replication-harness.sh scenario-cipher-bench [cipher ...]
+
+  verify-fixes is the one-shot entry point: it runs pytest (source checkout only),
+  the resume-continuation scenarios, and the cipher scenarios, skipping the cipher
+  group when loopback SSH is unavailable. scenario-cipher-bench times a full send
+  per cipher over loopback SSH; set CIPHER_BENCH_MB to change the 256 MiB payload.
 
   direction is push|pull (default push); transport is local|ssh|netcat|mbuffer
   (default local). Every non-local transport talks to loopback SSH, overridable
   with HIER_REMOTE_HOST. scenario-hierarchy-matrix sweeps the whole grid and
   skips modes whose prerequisites (SSH keys, nc, mbuffer) are missing.
+
+Backing store for the hierarchy pools:
+  By default hrepsrc/hrepdst are sparse files under /var/tmp/hrep, sized by
+  HIER_IMG_SIZE (default 512M). That is only large enough for smoke tests; any
+  workload with real volume should use spare disks instead:
+
+    HIER_SRC_DISKS   space/comma separated devices for hrepsrc (e.g. 'sdb sdc')
+    HIER_DST_DISKS   space/comma separated devices for hrepdst
+    HIER_VDEV        optional vdev type applied to both pools (mirror, raidz...)
+    HIER_SEED_MB     MiB of random data seeded per dataset (default 2)
+    HIER_DISK_FORCE  1 to skip the mounted/foreign-pool/root-disk guards
+
+  Devices are wiped on every setup and labelcleared on teardown. Run list-disks
+  to see which devices are free.
 
 Examples:
   live-replication-harness.sh preflight tank
@@ -61,6 +99,8 @@ Examples:
   live-replication-harness.sh scenario-hierarchy-all
   live-replication-harness.sh scenario-hierarchy-matrix
   live-replication-harness.sh scenario-hierarchy-tags pull mbuffer
+  live-replication-harness.sh verify-fixes
+  live-replication-harness.sh scenario-cipher-bench aes128-gcm@openssh.com aes128-ctr
   ZFS_REP_SCRIPT=/opt/45drives/houston/scheduler/scripts/replication-script.py \
     live-replication-harness.sh scenario-hierarchy-child-behind
 EOF
@@ -328,6 +368,39 @@ cmd_preflight() {
   else
     zpool status
   fi
+}
+
+# Candidate block devices for HIER_SRC_DISKS / HIER_DST_DISKS, annotated with
+# why each one is or is not safe to hand to the hierarchy scenarios.
+cmd_list_disks() {
+  local name size model root_disk dev status mounts labels
+
+  root_disk="$(hier_root_disk)"
+  printf '%-12s %-10s %-24s %s\n' DEVICE SIZE MODEL STATUS
+
+  while read -r name size model; do
+    dev="/dev/$name"
+    status="free"
+
+    if [[ -n "$root_disk" && "$name" == "$root_disk"* ]]; then
+      status="IN USE (root filesystem)"
+    else
+      mounts="$(lsblk -nro MOUNTPOINT "$dev" 2>/dev/null | grep -v '^$' | paste -sd, - || true)"
+      labels="$(lsblk -nro FSTYPE,LABEL "$dev" 2>/dev/null | awk '$1 == "zfs_member" {print $2}' | sort -u | paste -sd, - || true)"
+      if [[ -n "$mounts" ]]; then
+        status="IN USE (mounted: $mounts)"
+      elif [[ -n "$labels" ]]; then
+        status="zpool label: $labels"
+      fi
+    fi
+
+    printf '%-12s %-10s %-24s %s\n' "$name" "$size" "${model:--}" "$status"
+  done < <(lsblk -dno NAME,SIZE,MODEL 2>/dev/null | grep -Ev '^(loop|sr|zd|ram)')
+
+  echo
+  echo "Example:"
+  echo "  HIER_SRC_DISKS='sdb sdc' HIER_DST_DISKS='sdd sde' HIER_SEED_MB=512 \\"
+  echo "    ./live-replication-harness.sh scenario-hierarchy-clean push local"
 }
 
 cmd_start() {
@@ -692,9 +765,14 @@ cmd_scenario_force_full_send_clears() {
 # Hierarchy scenarios
 #
 # Unlike the scenarios above, these do not drive a configured task. They build
-# disposable file-backed pools because they must corrupt the destination to
-# exercise planner recovery, which is never acceptable on real task data.
+# disposable pools because they must corrupt the destination to exercise planner
+# recovery, which is never acceptable on real task data.
 # Only the hrepsrc/hrepdst pools and /var/tmp/hrep are touched.
+#
+# Backing store: sparse files under /var/tmp/hrep by default, or real block
+# devices when HIER_SRC_DISKS/HIER_DST_DISKS are set. Prefer real disks for
+# anything that needs volume — file vdevs on the boot drive run out of space
+# long before a realistic snapshot workload finishes.
 # ---------------------------------------------------------------------------
 
 HIER_SRC_POOL="hrepsrc"
@@ -702,7 +780,11 @@ HIER_DST_POOL="hrepdst"
 HIER_SRC_FS="${HIER_SRC_POOL}/data"
 HIER_DST_FS="${HIER_DST_POOL}/backup"
 HIER_WORK_DIR="/var/tmp/hrep"
-HIER_IMG_SIZE="512M"
+HIER_IMG_SIZE="${HIER_IMG_SIZE:-512M}"
+HIER_SRC_DISKS="${HIER_SRC_DISKS:-}"
+HIER_DST_DISKS="${HIER_DST_DISKS:-}"
+HIER_VDEV="${HIER_VDEV:-}"
+HIER_DISK_FORCE="${HIER_DISK_FORCE:-0}"
 HIER_TASK="hrepharness"
 HIER_LOG="/tmp/zfs_rep_debug_${HIER_TASK}.log"
 HIER_OUT="/tmp/zfs_rep_out_${HIER_TASK}.log"
@@ -724,6 +806,11 @@ HIER_SRC_RET_TIME="0"
 HIER_SRC_RET_UNIT=""
 HIER_DST_RET_TIME="0"
 HIER_DST_RET_UNIT=""
+HIER_RECURSIVE="true"
+HIER_RESUME_ONLY="false"
+HIER_SSH_CIPHER=""
+HIER_RESUME_SNAP="resumeseed"
+HIER_LASTRUN="/etc/systemd/system/houston_scheduler_ZfsReplicationTask_${HIER_TASK}.lastrun"
 
 hier_say()  { printf '\n== %s ==\n' "$*"; }
 hier_info() { printf '   %s\n' "$*"; }
@@ -759,6 +846,9 @@ hier_set_mode() {
 hier_reset_mode() {
   hier_set_mode push local
   HIER_SCHEDULE_JSON=""
+  HIER_RECURSIVE="true"
+  HIER_RESUME_ONLY="false"
+  HIER_SSH_CIPHER=""
 }
 
 # Returns 1 with a reason on stdout when the current mode cannot run here.
@@ -825,17 +915,126 @@ hier_require_root() {
 hier_teardown() {
   zpool destroy -f "$HIER_SRC_POOL" 2>/dev/null || true
   zpool destroy -f "$HIER_DST_POOL" 2>/dev/null || true
+  if hier_disk_mode; then
+    local dev
+    for dev in $(hier_disk_list "$HIER_SRC_DISKS") $(hier_disk_list "$HIER_DST_DISKS"); do
+      zpool labelclear -f "$dev" 2>/dev/null || true
+      wipefs -a "$dev" >/dev/null 2>&1 || true
+    done
+  fi
   rm -rf "$HIER_WORK_DIR"
-  rm -f "$HIER_LOG" "$HIER_OUT"
+  rm -f "$HIER_LOG" "$HIER_OUT" "$HIER_LASTRUN"
+}
+
+hier_disk_mode() {
+  [[ -n "$HIER_SRC_DISKS" && -n "$HIER_DST_DISKS" ]]
+}
+
+# Accepts "sdb sdc" or "/dev/sdb,/dev/disk/by-id/..."; emits absolute paths.
+hier_disk_list() {
+  local raw dev
+  raw="${1//,/ }"
+  for dev in $raw; do
+    [[ "$dev" == /* ]] || dev="/dev/$dev"
+    printf '%s\n' "$dev"
+  done
+}
+
+hier_root_disk() {
+  local src
+  src="$(findmnt -no SOURCE / 2>/dev/null || true)"
+  [[ -n "$src" ]] || return 0
+  lsblk -no PKNAME "$src" 2>/dev/null | head -1
+}
+
+# Refuse anything that is mounted, holds a foreign zpool label, or backs /.
+# HIER_DISK_FORCE=1 skips the checks; it will destroy whatever is on the device.
+hier_assert_disk_safe() {
+  local dev="$1" root_disk base mp fstype label
+
+  if [[ ! -b "$dev" ]]; then
+    echo "error: $dev is not a block device" >&2
+    exit 1
+  fi
+  [[ "$HIER_DISK_FORCE" == "1" ]] && return 0
+
+  base="$(basename "$(readlink -f "$dev")")"
+  root_disk="$(hier_root_disk)"
+  if [[ -n "$root_disk" && "$base" == "$root_disk"* ]]; then
+    echo "error: $dev backs the root filesystem; refusing to use it" >&2
+    exit 1
+  fi
+
+  while read -r mp; do
+    if [[ -n "$mp" ]]; then
+      echo "error: $dev (or a partition of it) is mounted at $mp; refusing to use it" >&2
+      exit 1
+    fi
+  done < <(lsblk -nro MOUNTPOINT "$dev" 2>/dev/null)
+
+  while read -r fstype label; do
+    if [[ "$fstype" == "zfs_member" && -n "$label" \
+          && "$label" != "$HIER_SRC_POOL" && "$label" != "$HIER_DST_POOL" ]]; then
+      echo "error: $dev carries a label for foreign zpool '$label'; refusing to use it" >&2
+      echo "       set HIER_DISK_FORCE=1 only if that pool is genuinely disposable" >&2
+      exit 1
+    fi
+  done < <(lsblk -nro FSTYPE,LABEL "$dev" 2>/dev/null)
+}
+
+hier_img_size_mb() {
+  case "$HIER_IMG_SIZE" in
+    *[Gg]) echo $(( ${HIER_IMG_SIZE%[Gg]} * 1024 )) ;;
+    *[Mm]) echo "${HIER_IMG_SIZE%[Mm]}" ;;
+    *) echo "" ;;
+  esac
+}
+
+# The images are sparse, so ZFS only discovers a short filesystem mid-write, and a
+# file vdev that runs out of space suspends the pool — wedging every writer in
+# uninterruptible sleep that no signal can clear. Refuse up front instead.
+hier_require_space() {
+  local need_mb avail_mb size_mb
+  size_mb="$(hier_img_size_mb)"
+  if [[ -z "$size_mb" ]]; then
+    echo "error: unrecognised HIER_IMG_SIZE '$HIER_IMG_SIZE' (use an M or G suffix)" >&2
+    exit 1
+  fi
+  need_mb=$(( size_mb * 2 + 512 ))
+  avail_mb="$(df -Pm "$HIER_WORK_DIR" | awk 'NR==2 {print $4}')"
+  if [[ -z "$avail_mb" ]] || (( avail_mb < need_mb )); then
+    echo "error: $HIER_WORK_DIR has ${avail_mb:-0} MiB free but src.img + dst.img need ${need_mb} MiB" >&2
+    echo "       free space, or lower the payload (CIPHER_BENCH_MB), before retrying" >&2
+    exit 1
+  fi
 }
 
 hier_create_pools() {
   hier_teardown
   mkdir -p "$HIER_WORK_DIR"
+
+  # failmode=continue so a disposable pool returns EIO instead of suspending and hanging the run.
+  if hier_disk_mode; then
+    local dev
+    local -a src_devs=() dst_devs=()
+    mapfile -t src_devs < <(hier_disk_list "$HIER_SRC_DISKS")
+    mapfile -t dst_devs < <(hier_disk_list "$HIER_DST_DISKS")
+    for dev in "${src_devs[@]}" "${dst_devs[@]}"; do
+      hier_assert_disk_safe "$dev"
+    done
+    echo "   using real disks: src=[${src_devs[*]}] dst=[${dst_devs[*]}] vdev=${HIER_VDEV:-stripe}"
+    zpool create -f -o failmode=continue -m "$HIER_WORK_DIR/mnt-src" \
+      "$HIER_SRC_POOL" ${HIER_VDEV:+$HIER_VDEV} "${src_devs[@]}"
+    zpool create -f -o failmode=continue -m "$HIER_WORK_DIR/mnt-dst" \
+      "$HIER_DST_POOL" ${HIER_VDEV:+$HIER_VDEV} "${dst_devs[@]}"
+    return 0
+  fi
+
+  hier_require_space
   truncate -s "$HIER_IMG_SIZE" "$HIER_WORK_DIR/src.img"
   truncate -s "$HIER_IMG_SIZE" "$HIER_WORK_DIR/dst.img"
-  zpool create -f -m "$HIER_WORK_DIR/mnt-src" "$HIER_SRC_POOL" "$HIER_WORK_DIR/src.img"
-  zpool create -f -m "$HIER_WORK_DIR/mnt-dst" "$HIER_DST_POOL" "$HIER_WORK_DIR/dst.img"
+  zpool create -f -o failmode=continue -m "$HIER_WORK_DIR/mnt-src" "$HIER_SRC_POOL" "$HIER_WORK_DIR/src.img"
+  zpool create -f -o failmode=continue -m "$HIER_WORK_DIR/mnt-dst" "$HIER_DST_POOL" "$HIER_WORK_DIR/dst.img"
 }
 
 hier_write_data() {
@@ -843,7 +1042,7 @@ hier_write_data() {
   shift
   for fs in "$@"; do
     mount="$(zfs get -H -o value mountpoint "$fs")"
-    dd if=/dev/urandom of="$mount/${tag}.bin" bs=1M count=2 status=none
+    dd if=/dev/urandom of="$mount/${tag}.bin" bs=1M count="${HIER_SEED_MB:-2}" status=none
   done
   sync
 }
@@ -856,16 +1055,11 @@ hier_setup() {
   hier_write_data seed "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
 }
 
-# hier_run_task <allowOverwrite> <useExistingDest> [forceFullSend] [quiet]
-# Never aborts under `set -e`; the exit code lands in HIER_RC.
-# Direction and transport come from HIER_DIRECTION / HIER_TRANSPORT.
-hier_run_task() {
-  local allow_overwrite="$1" use_existing="$2" force_full="${3:-false}" quiet="${4:-}"
-  local script data_port
-  script="$(hier_rep_script)"
-  rm -f "$HIER_LOG" "$HIER_OUT"
-  HIER_SNAP_BEFORE="$(hier_newest_snap "$HIER_SRC_FS")"
-  hier_wait_tick
+# hier_env_kv <allowOverwrite> <useExistingDest> [forceFullSend]
+# Emits the task configuration as KEY=VALUE lines so the direct runner and the
+# systemd-run wrapper drive an identical environment.
+hier_env_kv() {
+  local allow_overwrite="$1" use_existing="$2" force_full="${3:-false}" data_port
 
   if [[ "$HIER_TRANSPORT" == "netcat" || "$HIER_TRANSPORT" == "mbuffer" ]]; then
     data_port="$HIER_DATA_PORT"
@@ -873,32 +1067,49 @@ hier_run_task() {
     data_port="$HIER_SSH_PORT"
   fi
 
-  local -a env_args=(
-    taskName="$HIER_TASK"
-    ZFS_REP_DEBUG=1
-    ZFS_REP_DEBUG_LOG="$HIER_LOG"
-    scheduleJsonPath="$HIER_SCHEDULE_JSON"
-    zfsRepConfig_direction="$HIER_DIRECTION"
-    zfsRepConfig_sourceDataset_pool="$HIER_SRC_POOL"
-    zfsRepConfig_sourceDataset_dataset="$HIER_SRC_FS"
-    zfsRepConfig_destDataset_pool="$HIER_DST_POOL"
-    zfsRepConfig_destDataset_dataset="$HIER_DST_FS"
-    zfsRepConfig_destDataset_host="$HIER_HOST"
-    zfsRepConfig_destDataset_user="$HIER_USER"
-    zfsRepConfig_destDataset_sshPort="$HIER_SSH_PORT"
-    zfsRepConfig_destDataset_port="$data_port"
-    zfsRepConfig_sendOptions_recursive_flag=true
-    zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
-    zfsRepConfig_sendOptions_transferMethod="$HIER_TRANSPORT"
-    zfsRepConfig_sendOptions_mbufferCallbackHost="$HIER_HOST"
-    zfsRepConfig_sendOptions_allowOverwrite="$allow_overwrite"
-    zfsRepConfig_sendOptions_useExistingDest="$use_existing"
-    zfsRepConfig_sendOptions_forceFullSend="$force_full"
-    zfsRepConfig_snapshotRetention_source_retentionTime="$HIER_SRC_RET_TIME"
-    zfsRepConfig_snapshotRetention_source_retentionUnit="$HIER_SRC_RET_UNIT"
-    zfsRepConfig_snapshotRetention_destination_retentionTime="$HIER_DST_RET_TIME"
-    zfsRepConfig_snapshotRetention_destination_retentionUnit="$HIER_DST_RET_UNIT"
-  )
+  cat <<EOF
+taskName=$HIER_TASK
+ZFS_REP_DEBUG=1
+ZFS_REP_DEBUG_LOG=$HIER_LOG
+scheduleJsonPath=$HIER_SCHEDULE_JSON
+zfsRepConfig_direction=$HIER_DIRECTION
+zfsRepConfig_sourceDataset_pool=$HIER_SRC_POOL
+zfsRepConfig_sourceDataset_dataset=$HIER_SRC_FS
+zfsRepConfig_destDataset_pool=$HIER_DST_POOL
+zfsRepConfig_destDataset_dataset=$HIER_DST_FS
+zfsRepConfig_destDataset_host=$HIER_HOST
+zfsRepConfig_destDataset_user=$HIER_USER
+zfsRepConfig_destDataset_sshPort=$HIER_SSH_PORT
+zfsRepConfig_destDataset_port=$data_port
+zfsRepConfig_sendOptions_recursive_flag=$HIER_RECURSIVE
+zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
+zfsRepConfig_sendOptions_transferMethod=$HIER_TRANSPORT
+zfsRepConfig_sendOptions_sshCipher=$HIER_SSH_CIPHER
+zfsRepConfig_sendOptions_resumeOnly=$HIER_RESUME_ONLY
+zfsRepConfig_sendOptions_mbufferCallbackHost=$HIER_HOST
+zfsRepConfig_sendOptions_allowOverwrite=$allow_overwrite
+zfsRepConfig_sendOptions_useExistingDest=$use_existing
+zfsRepConfig_sendOptions_forceFullSend=$force_full
+zfsRepConfig_snapshotRetention_source_retentionTime=$HIER_SRC_RET_TIME
+zfsRepConfig_snapshotRetention_source_retentionUnit=$HIER_SRC_RET_UNIT
+zfsRepConfig_snapshotRetention_destination_retentionTime=$HIER_DST_RET_TIME
+zfsRepConfig_snapshotRetention_destination_retentionUnit=$HIER_DST_RET_UNIT
+EOF
+}
+
+# hier_run_task <allowOverwrite> <useExistingDest> [forceFullSend] [quiet]
+# Never aborts under `set -e`; the exit code lands in HIER_RC.
+# Direction and transport come from HIER_DIRECTION / HIER_TRANSPORT.
+hier_run_task() {
+  local allow_overwrite="$1" use_existing="$2" force_full="${3:-false}" quiet="${4:-}"
+  local script
+  script="$(hier_rep_script)"
+  rm -f "$HIER_LOG" "$HIER_OUT"
+  HIER_SNAP_BEFORE="$(hier_newest_snap "$HIER_SRC_FS")"
+  hier_wait_tick
+
+  local -a env_args=()
+  mapfile -t env_args < <(hier_env_kv "$allow_overwrite" "$use_existing" "$force_full")
 
   set +e
   if [[ "$quiet" == "quiet" ]]; then
@@ -915,6 +1126,86 @@ hier_run_task() {
 
 hier_newest_snap() {
   ( zfs list -H -o name -t snapshot -s createtxg -d 1 "$1" 2>/dev/null || true ) | tail -1
+}
+
+# hier-notify-run: drive the existing hrepsrc/hrepdst pools through a transient
+# Type=notify unit. The scenarios above exec the script directly, so NOTIFY_SOCKET
+# is unset and every STATUS= line is discarded — this is the only path where the
+# progress percentage the UI shows is actually observable.
+HIER_NOTIFY_UNIT="hrep-notify-run"
+
+cmd_hier_notify_run() {
+  local direction="${1:-push}" transport="${2:-local}"
+  local script env_file reason
+
+  hier_require_root
+  script="$(hier_rep_script)"
+
+  if ! zfs list -H -o name "$HIER_SRC_FS" >/dev/null 2>&1; then
+    echo "error: $HIER_SRC_FS does not exist; run a scenario-hierarchy-* command first" >&2
+    exit 1
+  fi
+
+  hier_set_mode "$direction" "$transport"
+  if reason="$(hier_mode_unavailable)"; then
+    echo "error: $(hier_mode_label) unavailable: $reason" >&2
+    exit 1
+  fi
+
+  hier_write_schedule
+  env_file="$HIER_WORK_DIR/task.env"
+  hier_env_kv false false false > "$env_file"
+  rm -f "$HIER_LOG" "$HIER_OUT"
+
+  systemctl reset-failed "${HIER_NOTIFY_UNIT}.service" >/dev/null 2>&1 || true
+  # No --collect: a failed start job must leave the unit behind for status/journal.
+  if ! systemd-run --unit="$HIER_NOTIFY_UNIT" --service-type=notify \
+       -p EnvironmentFile="$env_file" \
+       -p TimeoutStartSec=0 \
+       -p WorkingDirectory="$(dirname "$script")" \
+       "$(command -v python3)" "$script"; then
+    echo
+    echo "=== ${HIER_NOTIFY_UNIT}.service failed to start ==="
+    systemctl status "${HIER_NOTIFY_UNIT}.service" --no-pager -l || true
+    echo
+    journalctl -u "${HIER_NOTIFY_UNIT}.service" -n 60 --no-pager || true
+    echo
+    echo "=== tail $HIER_LOG ==="
+    tail -n 40 "$HIER_LOG" 2>/dev/null || echo "(no debug log written)"
+    exit 1
+  fi
+
+  echo "started ${HIER_NOTIFY_UNIT}.service [$(hier_mode_label)]"
+  echo "interrupt from another shell with:"
+  echo "  systemctl kill --kill-who=main --signal=KILL ${HIER_NOTIFY_UNIT}.service"
+  echo
+  hier_notify_follow
+}
+
+# Prints StatusText whenever it changes and returns once the unit leaves the
+# running state, so it terminates by itself instead of pinning a terminal.
+hier_notify_follow() {
+  local state status last=""
+
+  while :; do
+    state="$(systemctl show "${HIER_NOTIFY_UNIT}.service" -p ActiveState --value 2>/dev/null || echo inactive)"
+    status="$(systemctl show "${HIER_NOTIFY_UNIT}.service" -p StatusText --value 2>/dev/null || true)"
+    if [[ -n "$status" && "$status" != "$last" ]]; then
+      printf '%s  %s\n' "$(date +%H:%M:%S)" "$status"
+      last="$status"
+    fi
+    case "$state" in
+      activating|active|deactivating) sleep 1 ;;
+      *) break ;;
+    esac
+  done
+
+  echo
+  systemctl show "${HIER_NOTIFY_UNIT}.service" \
+    -p ActiveState -p Result -p ExecMainStatus -p StatusText 2>/dev/null || true
+  echo
+  echo "debug log: $HIER_LOG"
+  echo "journal:   journalctl -u ${HIER_NOTIFY_UNIT}.service --no-pager"
 }
 
 hier_dest_snap_count() {
@@ -1227,6 +1518,478 @@ HIER_MATRIX_MODES=(
   "pull mbuffer"
 )
 
+# ---------------------------------------------------------------------------
+# Resume-continuation scenarios
+#
+# These cover the fix where a successful resume used to end the run outright,
+# so the pending incremental never went out, retention never ran, and the UI
+# reported a task that had in fact just run as "never run".
+# ---------------------------------------------------------------------------
+
+hier_expect_log() {
+  local pattern="$1" label="$2"
+  if grep -qF -- "$pattern" "$HIER_OUT" 2>/dev/null || grep -qF -- "$pattern" "$HIER_LOG" 2>/dev/null; then
+    hier_pass "$label"
+  else
+    hier_fail "$label: '$pattern' missing from run output and debug log"
+  fi
+}
+
+hier_expect_no_log() {
+  local pattern="$1" label="$2"
+  if grep -qF -- "$pattern" "$HIER_OUT" 2>/dev/null || grep -qF -- "$pattern" "$HIER_LOG" 2>/dev/null; then
+    hier_fail "$label: '$pattern' should not appear but did"
+  else
+    hier_pass "$label"
+  fi
+}
+
+hier_expect_rc_nonzero() {
+  local what="$1"
+  if [[ "$HIER_RC" -ne 0 ]]; then
+    hier_pass "$what (exit $HIER_RC)"
+  else
+    hier_fail "$what: expected a non-zero exit, got 0"
+  fi
+}
+
+hier_expect_no_new_snapshot() {
+  local what="$1" now
+  now="$(hier_newest_snap "$HIER_SRC_FS")"
+  if [[ "$now" == "$HIER_SNAP_BEFORE" ]]; then
+    hier_pass "$what created no new snapshot, as expected"
+  else
+    hier_fail "$what created ${now#*@} but should not have"
+  fi
+}
+
+hier_dest_token() {
+  ( zfs get -H -o value receive_resume_token "$HIER_DST_FS" 2>/dev/null || echo '-' ) | tr -d '\r'
+}
+
+# hier_expect_token <present|absent> <label>
+hier_expect_token() {
+  local want="$1" label="$2" token
+  token="$(hier_dest_token)"
+  if [[ "$want" == "present" ]]; then
+    if [[ -n "$token" && "$token" != "-" ]]; then
+      hier_pass "$label (token ${token:0:24}…)"
+    else
+      hier_fail "$label: no receive_resume_token on $HIER_DST_FS"
+    fi
+  else
+    if [[ -z "$token" || "$token" == "-" ]]; then
+      hier_pass "$label"
+    else
+      hier_fail "$label: token still present (${token:0:24}…)"
+    fi
+  fi
+}
+
+hier_expect_dest_snapshot() {
+  local suffix="$1" label="$2"
+  if zfs list -H -o name -t snapshot "$HIER_DST_FS@$suffix" >/dev/null 2>&1; then
+    hier_pass "$label: destination holds @$suffix"
+  else
+    hier_fail "$label: destination is missing @$suffix"
+    hier_dest_tree
+  fi
+}
+
+hier_expect_lastrun() {
+  local label="$1" age
+  if [[ ! -f "$HIER_LASTRUN" ]]; then
+    hier_fail "$label: $HIER_LASTRUN was never written"
+    return 0
+  fi
+  age=$(( $(date +%s) - $(stat -c %Y "$HIER_LASTRUN") ))
+  if [[ "$age" -le 600 ]]; then
+    hier_pass "$label (stamp is ${age}s old)"
+  else
+    hier_fail "$label: stamp is stale (${age}s old)"
+  fi
+}
+
+# Manufacture a genuine resume token by truncating an incremental stream mid-flight.
+# Killing a live task instead would be timing-dependent; this is deterministic.
+hier_make_resume_token() {
+  local payload_mb="${1:-48}" cut_bytes="${2:-4194304}"
+  local base mount
+
+  base="$(hier_newest_snap "$HIER_SRC_FS")"
+  if [[ -z "$base" ]]; then
+    hier_fail "cannot manufacture a resume token: source has no snapshot to send from"
+    return 0
+  fi
+
+  mount="$(zfs get -H -o value mountpoint "$HIER_SRC_FS")"
+  dd if=/dev/urandom of="$mount/resume-payload.bin" bs=1M count="$payload_mb" status=none
+  sync
+  zfs snapshot "$HIER_SRC_FS@$HIER_RESUME_SNAP"
+
+  hier_info "truncating an incremental ${base#*@} -> $HIER_RESUME_SNAP after ${cut_bytes} bytes"
+  set +e
+  zfs send -i "$base" "$HIER_SRC_FS@$HIER_RESUME_SNAP" 2>/dev/null \
+    | head -c "$cut_bytes" \
+    | zfs recv -s -F "$HIER_DST_FS" >/dev/null 2>&1
+  set -e
+}
+
+cmd_scenario_resume_continues() {
+  local previous_recursive="$HIER_RECURSIVE"
+  HIER_RECURSIVE=false
+
+  hier_say "resume-continues [$(hier_mode_label)]: a successful resume must fall through to the pending send"
+  hier_setup
+  rm -f "$HIER_LASTRUN"
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"
+
+  hier_make_resume_token
+  hier_expect_token present "interrupted receive left a resume token"
+
+  # New source data after the token, so there is genuinely more to send once the
+  # resume finishes. Without the fix the run stops here and this never ships.
+  hier_write_data post "$HIER_SRC_FS"
+
+  hier_run_task false false
+  hier_expect_rc 0 "resume + continue run"
+  hier_expect_log 'Attempting to resume receive' "token was detected"
+  hier_expect_log 'Resume completed; continuing with the rest of this replication run' "run continued instead of returning"
+  hier_expect_token absent "resume token was consumed"
+  hier_expect_dest_snapshot "$HIER_RESUME_SNAP" "resumed stream committed"
+  hier_expect_new_snapshot "post-resume incremental"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "post-resume incremental landed"
+  hier_expect_log '=== task completed successfully ===' "run reached the completion marker"
+  hier_expect_lastrun "lastrun stamp written on the resume path"
+  hier_expect_no_log 'zfs_replication_resume_token' "no pre-attempt Resume Token Found notification"
+  hier_expect_no_log 'Resume Token Found' "no Resume Token Found subject line"
+
+  hier_info "destination snapshots:"; hier_dest_tree
+  HIER_RECURSIVE="$previous_recursive"
+}
+
+cmd_scenario_resume_only_stops() {
+  local previous_recursive="$HIER_RECURSIVE"
+  HIER_RECURSIVE=false
+
+  hier_say "resume-only-stops [$(hier_mode_label)]: Resume Only must still end after the resume"
+  hier_setup
+  rm -f "$HIER_LASTRUN"
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"
+
+  hier_make_resume_token
+  hier_expect_token present "interrupted receive left a resume token"
+  hier_write_data post "$HIER_SRC_FS"
+
+  HIER_RESUME_ONLY=true
+  hier_run_task false false
+  HIER_RESUME_ONLY=false
+
+  hier_expect_rc 0 "resumeOnly run"
+  hier_expect_log 'Resume transfer completed successfully' "resume finished"
+  hier_expect_token absent "resume token was consumed"
+  hier_expect_dest_snapshot "$HIER_RESUME_SNAP" "resumed stream committed"
+  hier_expect_no_new_snapshot "resumeOnly"
+  hier_expect_lastrun "lastrun stamp written on the resumeOnly path"
+
+  HIER_RECURSIVE="$previous_recursive"
+}
+
+cmd_scenario_resume_all() {
+  hier_reset_mode
+  cmd_scenario_resume_continues
+  cmd_scenario_resume_only_stops
+  hier_teardown
+  hier_say "resume scenarios finished with $HIER_FAILURES failure(s)"
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
+# ---------------------------------------------------------------------------
+# SSH cipher scenarios
+#
+# Mirrors the option list in scheduler/src/models/SshCiphers.ts. Kept in bash so
+# it also runs on an installed server, where only tests/ is deployed.
+# ---------------------------------------------------------------------------
+
+CIPHER_UI_OPTIONS=(
+  "aes128-gcm@openssh.com"
+  "aes256-gcm@openssh.com"
+  "aes128-ctr"
+  "aes256-ctr"
+  "chacha20-poly1305@openssh.com"
+)
+CIPHER_RECOMMENDED="aes128-gcm@openssh.com"
+
+cipher_local_list() {
+  ( ssh -Q cipher 2>/dev/null || true ) | tr -d '\r'
+}
+
+# Reads the server's offer out of the pre-auth KEXINIT proposal, so it works even
+# without key-based login. The client prints its own proposal first, hence the
+# anchor; ssh -vv writes CRLF when stderr is a tty, hence the tr. awk must not
+# exit early or the upstream stages die on SIGPIPE under `set -o pipefail`.
+cipher_remote_list() {
+  local user="$1" host="$2" port="${3:-22}" raw
+  raw="$( ssh -vv -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+            -p "$port" "${user}@${host}" exit 2>&1 || true )"
+  printf '%s\n' "$raw" | tr -d '\r' | awk '
+        /peer server KEXINIT proposal/ { seen = 1; next }
+        seen && !done && /ciphers stoc:/ {
+          sub(/.*ciphers stoc:[[:space:]]*/, "");
+          gsub(/,/, "\n");
+          print;
+          done = 1
+        }'
+}
+
+cmd_scenario_cipher_availability() {
+  local host="${1:-}" user="${2:-root}" port="${3:-22}"
+  local locals remotes c
+
+  hier_say "cipher availability: what this client supports and what the peer offers"
+  locals="$(cipher_local_list)"
+  if [[ -z "$locals" ]]; then
+    hier_fail "ssh -Q cipher returned nothing; the UI cannot validate cipher choices here"
+    return 0
+  fi
+  hier_info "client supports: $(echo "$locals" | tr '\n' ' ')"
+
+  for c in "${CIPHER_UI_OPTIONS[@]}"; do
+    if grep -qxF "$c" <<<"$locals"; then
+      hier_pass "client supports $c"
+    else
+      hier_info "client does NOT support $c — the task form must flag it in red"
+    fi
+  done
+
+  if grep -qxF "$CIPHER_RECOMMENDED" <<<"$locals"; then
+    hier_pass "recommended default $CIPHER_RECOMMENDED is available"
+  else
+    hier_fail "recommended default $CIPHER_RECOMMENDED is missing from this client"
+  fi
+
+  [[ -n "$host" ]] || host="${HIER_HOST:-}"
+  if [[ -z "$host" ]]; then
+    hier_info "no host given; skipping the remote offer probe"
+    return 0
+  fi
+
+  remotes="$(cipher_remote_list "$user" "$host" "$port")"
+  if [[ -z "$remotes" ]]; then
+    hier_fail "could not read the cipher offer from ${user}@${host}:${port}"
+    return 0
+  fi
+  hier_info "${host} offers: $(echo "$remotes" | tr '\n' ' ')"
+  for c in "${CIPHER_UI_OPTIONS[@]}"; do
+    if grep -qxF "$c" <<<"$remotes"; then
+      hier_pass "${host} offers $c"
+    else
+      hier_info "${host} does NOT offer $c — the task form must flag it in red"
+    fi
+  done
+}
+
+# An empty cipher is the UI's Automatic option: nothing must be injected at all.
+cmd_scenario_cipher_send() {
+  local cipher="$1"
+  local previous="$HIER_SSH_CIPHER"
+  local label="${cipher:-automatic (no override)}"
+
+  hier_say "cipher send [$(hier_mode_label)]: $label must reach the ssh argv and complete a run"
+  if [[ -n "$cipher" ]] && ! grep -qxF "$cipher" <<<"$(cipher_local_list)"; then
+    hier_info "SKIP: this client does not support $cipher"
+    return 0
+  fi
+
+  HIER_SSH_CIPHER="$cipher"
+  hier_setup
+  hier_run_task false false false quiet
+  hier_expect_rc 0 "run with $label"
+  hier_expect_new_snapshot "run with $label"
+  if [[ -n "$cipher" ]]; then
+    hier_expect_log "SSH cipher override: $cipher" "cipher override was picked up from the task env"
+    hier_expect_log "Ciphers=$cipher" "cipher reached the ssh argv"
+  else
+    hier_expect_no_log "Ciphers=" "no cipher option is injected on Automatic"
+  fi
+  HIER_SSH_CIPHER="$previous"
+}
+
+# Every value the dropdown can produce, end to end, so a cipher cannot ship in
+# the UI without a run proving the scripts accept it.
+cmd_scenario_cipher_send_all() {
+  local c
+  cmd_scenario_cipher_send ""
+  for c in "${CIPHER_UI_OPTIONS[@]}"; do
+    cmd_scenario_cipher_send "$c"
+  done
+}
+
+cmd_scenario_cipher_rejects_unknown() {
+  local previous="$HIER_SSH_CIPHER"
+
+  hier_say "cipher rejects-unknown [$(hier_mode_label)]: an unsupported cipher must fail before any data moves"
+  HIER_SSH_CIPHER="not-a-real-cipher"
+  hier_setup
+  hier_run_task false false false quiet
+  hier_expect_rc_nonzero "run with an unknown cipher"
+  hier_expect_no_new_snapshot "run with an unknown cipher"
+  hier_expect_log "SSH cipher override: not-a-real-cipher" "bad cipher was still logged for diagnosis"
+  HIER_SSH_CIPHER="$previous"
+}
+
+# Indicative only: this runs over loopback SSH, so it isolates cipher cost rather
+# than reproducing real link throughput. Wall clock covers the whole task (snapshot,
+# ssh preflight, remote listings, retention), which on a small payload dwarfs the
+# encryption itself, so the pipeline's own summary line is reported alongside it.
+cmd_scenario_cipher_bench() {
+  local -a ciphers=("$@")
+  local -a results=()
+  local previous_size="$HIER_IMG_SIZE" previous="$HIER_SSH_CIPHER"
+  local payload_mb="${CIPHER_BENCH_MB:-256}"
+  local c label start end mount pipe_rate rate_mib
+
+  for c in "${ciphers[@]}"; do
+    if [[ "$c" == *=* ]]; then
+      hier_fail "'$c' looks like a variable assignment; run it as: CIPHER_BENCH_MB=2048 $0 scenario-cipher-bench ..."
+      return 1
+    fi
+  done
+
+  if [[ ${#ciphers[@]} -eq 0 ]]; then
+    ciphers=("" "${CIPHER_UI_OPTIONS[@]}")
+  fi
+
+  hier_say "cipher bench [$(hier_mode_label)]: ${payload_mb} MiB full send per cipher"
+  # Random data does not compress and ZFS reserves slop, so a flat margin is not enough.
+  HIER_IMG_SIZE="$(( payload_mb * 3 / 2 + 512 ))M"
+
+  for c in "${ciphers[@]}"; do
+    label="${c:-automatic (OpenSSH default)}"
+    if [[ -n "$c" ]] && ! grep -qxF "$c" <<<"$(cipher_local_list)"; then
+      hier_info "skip $label: not supported by this client"
+      continue
+    fi
+
+    HIER_SSH_CIPHER="$c"
+    hier_setup
+    mount="$(zfs get -H -o value mountpoint "$HIER_SRC_FS")"
+    if ! dd if=/dev/urandom of="$mount/bench.bin" bs=1M count="$payload_mb" status=none; then
+      hier_fail "could not write the ${payload_mb} MiB payload into $HIER_SRC_FS"
+      break
+    fi
+    sync
+
+    start="$(date +%s.%N)"
+    hier_run_task false false false quiet
+    end="$(date +%s.%N)"
+
+    if [[ "$HIER_RC" -ne 0 ]]; then
+      hier_fail "bench run failed for $label (exit $HIER_RC)"
+      continue
+    fi
+    pipe_rate="$( grep -h 'average of' "$HIER_OUT" "$HIER_LOG" 2>/dev/null \
+                    | tail -1 | sed -n 's/.*average of *\(.*\)$/\1/p' )"
+    awk -v s="$start" -v e="$end" -v mb="$payload_mb" -v l="$label" -v p="${pipe_rate:-n/a}" \
+      'BEGIN { d = e - s; printf "   %-34s %7.2fs task  %8.1f MB/s task  %12s stream\n", l, d, (d > 0 ? mb / d : 0), p }'
+    rate_mib="$( awk -v p="$pipe_rate" 'BEGIN {
+        n = p + 0
+        if (p ~ /kiB/) n /= 1024
+        else if (p ~ /GiB/) n *= 1024
+        print (n > 0 ? n : 0)
+      }' )"
+    results+=("$(printf '%s\t%s' "$rate_mib" "$label")")
+  done
+
+  if [[ ${#results[@]} -gt 1 ]]; then
+    hier_say "cipher bench summary (stream throughput, fastest first)"
+    printf '%s\n' "${results[@]}" | sort -rn | awk -F'\t' '
+      NR == 1 { best = $1 }
+      { printf "   %-34s %8.1f MiB/s  %+6.1f%%\n", $2, $1, (best > 0 ? ($1 - best) / best * 100 : 0) }'
+  fi
+
+  HIER_SSH_CIPHER="$previous"
+  HIER_IMG_SIZE="$previous_size"
+  hier_teardown
+}
+
+cmd_scenario_cipher_all() {
+  local reason
+  hier_set_mode push ssh
+  if reason="$(hier_mode_unavailable)"; then
+    hier_say "SKIP cipher scenarios: $reason"
+    hier_reset_mode
+    return 0
+  fi
+  cmd_scenario_cipher_availability "$HIER_HOST" "$HIER_USER" "$HIER_SSH_PORT"
+  cmd_scenario_cipher_send_all
+  cmd_scenario_cipher_rejects_unknown
+  hier_reset_mode
+  hier_teardown
+  hier_say "cipher scenarios finished with $HIER_FAILURES failure(s)"
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
+# ---------------------------------------------------------------------------
+# Aggregate entry points
+# ---------------------------------------------------------------------------
+
+repo_root() {
+  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
+}
+
+cmd_unit_tests() {
+  local base rc
+  base="$(repo_root)"
+
+  hier_say "unit tests (pytest)"
+  # Source checkout keeps the scripts under system_files/; the installed appliance
+  # layout puts scripts/ and tests/ side by side under the scheduler directory.
+  if [[ ! -d "$base/system_files/opt/45drives/houston/scheduler/scripts/replication" \
+     && ! -d "$base/scripts/replication" ]]; then
+    hier_info "replication scripts not found next to tests/; skipping pytest"
+    return 0
+  fi
+  if ! python3 -c 'import pytest' >/dev/null 2>&1; then
+    hier_info "pytest is not installed; skipping (pip install pytest)"
+    return 0
+  fi
+
+  set +e
+  ( cd "$base" && python3 -m pytest tests -q )
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    hier_pass "pytest suite"
+  else
+    hier_fail "pytest suite (exit $rc)"
+  fi
+}
+
+cmd_verify_fixes() {
+  local reason
+  hier_say "verify-fixes: unit tests, resume continuation, and SSH cipher plumbing"
+  cmd_unit_tests
+
+  hier_reset_mode
+  cmd_scenario_resume_continues
+  cmd_scenario_resume_only_stops
+
+  hier_set_mode push ssh
+  if reason="$(hier_mode_unavailable)"; then
+    hier_say "SKIP cipher scenarios: $reason"
+  else
+    cmd_scenario_cipher_availability "$HIER_HOST" "$HIER_USER" "$HIER_SSH_PORT"
+    cmd_scenario_cipher_send_all
+    cmd_scenario_cipher_rejects_unknown
+  fi
+
+  hier_reset_mode
+  hier_teardown
+  hier_say "verify-fixes finished with $HIER_FAILURES failure(s)"
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
 cmd_scenario_hierarchy_matrix() {
   local mode dir transport reason skipped=0
   for mode in "${HIER_MATRIX_MODES[@]}"; do
@@ -1273,6 +2036,12 @@ main() {
   case "$cmd" in
     preflight)
       cmd_preflight "$@"
+      ;;
+    list-disks)
+      cmd_list_disks
+      ;;
+    hier-notify-run)
+      cmd_hier_notify_run "$@"
       ;;
     start)
       [[ $# -eq 1 ]] || { usage; exit 1; }
@@ -1346,6 +2115,82 @@ main() {
       [[ $# -eq 0 ]] || { usage; exit 1; }
       hier_require_root
       cmd_scenario_hierarchy_all
+      ;;
+    verify-fixes)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_verify_fixes
+      ;;
+    unit-tests)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      cmd_unit_tests
+      hier_say "unit tests finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-resume-all)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_resume_all
+      ;;
+    scenario-resume-continues|scenario-resume-only-stops)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_reset_mode
+      # Pools are left standing for inspection; use scenario-hierarchy-teardown.
+      "cmd_${cmd//-/_}"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-cipher-all)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_cipher_all
+      ;;
+    scenario-cipher-availability)
+      [[ $# -le 3 ]] || { usage; exit 1; }
+      cmd_scenario_cipher_availability "$@"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-cipher-send)
+      [[ $# -eq 1 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_set_mode push ssh
+      local send_reason
+      if send_reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $send_reason" >&2
+        exit 1
+      fi
+      cmd_scenario_cipher_send "$1"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-cipher-send-all)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_set_mode push ssh
+      local send_all_reason
+      if send_all_reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $send_all_reason" >&2
+        exit 1
+      fi
+      cmd_scenario_cipher_send_all
+      hier_reset_mode
+      hier_teardown
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-cipher-bench)
+      hier_require_root
+      hier_set_mode push ssh
+      local bench_reason
+      if bench_reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $bench_reason" >&2
+        exit 1
+      fi
+      cmd_scenario_cipher_bench "$@"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
       ;;
     scenario-hierarchy-matrix)
       [[ $# -eq 0 ]] || { usage; exit 1; }

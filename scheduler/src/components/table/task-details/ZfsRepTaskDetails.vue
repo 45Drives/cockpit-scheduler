@@ -49,6 +49,7 @@
                 <DetailField label="Resume on Failure"
                     :value="boolToYesNo(!!findValue(taskInstance.parameters, 'sendOptions', 'resumeFailAllowOverwrite'))" />
                 <DetailField v-if="isRemote" label="Transfer Method" :value="remoteProtoLabel" />
+                <DetailField v-if="isRemote" label="SSH Cipher" :value="sshCipherValue" wrap />
             </div>
             <div v-if="!props.isRunning" class="flex flex-row gap-2 mt-4 pt-3 border-t border-default/50 justify-end">
                 <button @click="dryRunBtn"
@@ -71,6 +72,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { boolToYesNo, findValue } from '../../../composables/utility';
+import { sshCipherLabel } from '../../../models/SshCiphers';
 import { ChevronDoubleRightIcon, BeakerIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 import DetailField from '../../common/DetailField.vue';
 import DetailSection from '../../common/DetailSection.vue';
@@ -122,6 +124,10 @@ const remoteProtoLabel = computed(() => {
     if (effectiveTransferMethod.value === 'mbuffer') return 'mBuffer';
     return 'SSH';
 });
+
+const sshCipherValue = computed(() =>
+    sshCipherLabel(String(findValue(taskInstance.value.parameters, 'sendOptions', 'sshCipher') ?? ''))
+);
 
 const compressionValue = computed(() => {
     if (findValue(taskInstance.value.parameters, 'sendOptions', 'raw_flag')) return 'Raw';

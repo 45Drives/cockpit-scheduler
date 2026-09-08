@@ -409,6 +409,21 @@ def _recover_pending_full_send(ctx: ReplicationRun):
     return False
 
 
+def _finish_successful_resume(ctx: ReplicationRun):
+    """Return True to end the run, False to fall through to the normal send path."""
+    _persist_lastrun(ctx.taskName)
+    if ctx.resumeOnly:
+        notifier.notify('STATUS=Resume transfer completed. 100% complete')
+        print('Resume transfer completed successfully.')
+        return True
+    msg = 'Resume completed; continuing with the rest of this replication run.'
+    notifier.notify(f'STATUS={msg}')
+    print(msg)
+    # The inventory was read before the resume committed its snapshot, so it is now stale.
+    _load_snapshot_inventory(ctx)
+    return False
+
+
 def _resume_interrupted_receive(ctx: ReplicationRun):
     if not ctx.pending_state and ctx.direction == 'pull':
         resume_token = get_receive_resume_token(ctx.destFilesystem)
@@ -416,10 +431,9 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
             msg = f'Found resume token on destination {ctx.destFilesystem}. Attempting to resume receive.'
             notifier.notify(f'STATUS={msg}')
             print(msg)
-            send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_token', 'subject': 'ZFS Replication Resume Token Found', 'email_message': f'{msg} Token: {resume_token}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': resume_token})
             (ok, err) = resume_receive_pull(resume_token=resume_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
             if ok:
-                return True
+                return _finish_successful_resume(ctx)
             err_lower = (err or '').lower()
             needs_overwrite = 'destination exists' in err_lower or 'must specify -f' in err_lower
             if needs_overwrite and (not ctx.allowOverwrite):
@@ -455,10 +469,9 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
             msg = f'Found resume token on destination {ctx.destFilesystem}. Attempting to resume receive.'
             notifier.notify(f'STATUS={msg}')
             print(msg)
-            send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_token', 'subject': 'ZFS Replication Resume Token Found', 'email_message': f'{msg} Token: {resume_token}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': resume_token})
             (ok, err) = resume_receive_push(resume_token=resume_token, recvName=ctx.destFilesystem, recvHost=ctx.remoteHost, recvSshPort=ctx.sshPort, recvHostUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, transferMethod=ctx.transferMethod if ctx.transferMethod else 'ssh', recvDataPort=ctx.dataPort, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout)
             if ok:
-                return True
+                return _finish_successful_resume(ctx)
             err_lower = (err or '').lower()
             needs_overwrite = 'destination exists' in err_lower or 'must specify -f' in err_lower
             if needs_overwrite and (not ctx.allowOverwrite):
@@ -585,7 +598,10 @@ def _plan_send(ctx: ReplicationRun):
                 print('Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.')
                 sys.exit(2)
         else:
-            common_candidates.sort(key=lambda s: (s.creation_epoch, s.guid in task_base_guids), reverse=True)
+            # Order by the destination's own createtxg, not by creation time: two snapshots
+            # taken in the same second tie on the timestamp, and picking the wrong one makes
+            # a perfectly valid destination look "ahead of the base" and aborts the run.
+            common_candidates.sort(key=lambda s: (s.order_key, s.creation_epoch, s.guid in task_base_guids), reverse=True)
             src_guid_to_name = {s.guid: s.name for s in src_root_snaps}
             src_groups = _group_snaps_by_relative_dataset(ctx.sourceSnapshots, ctx.sourceFilesystem)
             dst_groups = _group_snaps_by_relative_dataset(ctx.destinationSnapshots, ctx.destFilesystem)

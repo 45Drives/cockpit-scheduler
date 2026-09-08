@@ -280,8 +280,13 @@ async function saveTask() {
 }
 
 async function addTaskBtn() {
-    if (await validateComponentParams()) {
-        showSchedulePromptDialog();
+    adding.value = true; // preflight validation can hit the network (SSH/ZFS lookups); show the spinner right away
+    try {
+        if (await validateComponentParams()) {
+            showSchedulePromptDialog();
+        }
+    } finally {
+        adding.value = false;
     }
 }
 

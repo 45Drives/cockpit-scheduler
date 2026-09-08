@@ -143,6 +143,24 @@ def test_plan_new_task_reuses_untagged_common_snapshot(monkeypatch):
     assert ctx.forceOverwrite is False
 
 
+def test_plan_prefers_newest_by_txg_when_creation_times_tie(monkeypatch):
+    """A manual snapshot taken in the same second as the task's own must still win as the base."""
+    ctx = ReplicationRun()
+    ctx.taskName = "job-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    task_snap = Snapshot("tank/source@job-a-2026-01-01_00.00.00", "g-task", None, creation_epoch=100, order_key=10)
+    manual = Snapshot("tank/source@resumeseed", "g-manual", None, creation_epoch=100, order_key=11)
+    dest_task = Snapshot("backup/target@job-a-2026-01-01_00.00.00", "g-task", None, creation_epoch=100, order_key=40)
+    dest_manual = Snapshot("backup/target@resumeseed", "g-manual", None, creation_epoch=100, order_key=41)
+    ctx.sourceSnapshots = [task_snap, manual]
+    ctx.destinationSnapshots = [dest_task, dest_manual]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "tank/source@resumeseed"
+    assert ctx.forceOverwrite is False
+
+
 def test_plan_falls_back_to_untagged_base_when_task_chain_diverged(monkeypatch):
     ctx = ReplicationRun()
     ctx.taskName = "job-a"
@@ -389,15 +407,50 @@ def test_create_and_transfer_push_reports_post_processing(monkeypatch, capsys):
     assert "Snapshot transfer completed" in capsys.readouterr().out
 
 
-def test_resume_interrupted_receive_success_stops_normal_workflow(monkeypatch):
+def test_resume_interrupted_receive_success_continues_normal_workflow(monkeypatch):
     ctx = ReplicationRun()
     ctx.direction = "push"
     ctx.destFilesystem = "backup/target"
     ctx.remoteHost = "host"
+    reloaded = []
     monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
     monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
     monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: None)
+    monkeypatch.setattr(workflow, "_persist_lastrun", lambda task_name: None)
+    monkeypatch.setattr(workflow, "_load_snapshot_inventory", lambda c: reloaded.append(c))
+    assert workflow._resume_interrupted_receive(ctx) is False
+    assert reloaded == [ctx]
+
+
+def test_resume_interrupted_receive_success_stops_in_resume_only_mode(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.direction = "push"
+    ctx.destFilesystem = "backup/target"
+    ctx.remoteHost = "host"
+    ctx.resumeOnly = True
+    reloaded = []
+    monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
+    monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: None)
+    monkeypatch.setattr(workflow, "_persist_lastrun", lambda task_name: None)
+    monkeypatch.setattr(workflow, "_load_snapshot_inventory", lambda c: reloaded.append(c))
     assert workflow._resume_interrupted_receive(ctx) is True
+    assert reloaded == []
+
+
+def test_resume_token_found_does_not_notify_before_attempt(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.direction = "push"
+    ctx.destFilesystem = "backup/target"
+    ctx.remoteHost = "host"
+    notifications = []
+    monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
+    monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: notifications.append(payload))
+    monkeypatch.setattr(workflow, "_persist_lastrun", lambda task_name: None)
+    monkeypatch.setattr(workflow, "_load_snapshot_inventory", lambda c: None)
+    workflow._resume_interrupted_receive(ctx)
+    assert notifications == []
 
 
 def test_resume_overwrite_requirement_is_refused_without_permission(monkeypatch):

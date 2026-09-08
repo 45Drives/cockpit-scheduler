@@ -579,7 +579,11 @@ export function useLiveTaskStatus(
                         // status without one ("Starting transfer…", "Finishing
                         // up…"). Dropping to null mid-run flips the bar to the
                         // indeterminate animation and reads as a stuck 100%.
-                        if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
+                        // A byte-count status is different: no percentage exists
+                        // any more, so the stale one must be cleared.
+                        if (result?.indeterminate) {
+                            progressMap.value[id] = null;
+                        } else if (typeof result?.percent === 'number' && Number.isFinite(result.percent)) {
                             progressMap.value[id] = result.percent;
                         }
                         progressLabelMap.value[id] = result?.label ?? null;

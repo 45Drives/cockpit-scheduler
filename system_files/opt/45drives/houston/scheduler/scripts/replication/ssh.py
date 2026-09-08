@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import time
 
+from .constants import MAX_PLAUSIBLE_SEND_SIZE
 from .logging_utils import _fmt_cmd, _truncate, dbg, DEBUG_ENABLED
 
 SSH_BASE_OPTS = [
@@ -17,7 +18,12 @@ SSH_BASE_OPTS = [
     "-o", "Compression=no",
 ]
 
-_SSH_CIPHER = os.environ.get("ZFS_REP_SSH_CIPHER", "").strip()
+# The task-scoped setting from the scheduler UI wins; ZFS_REP_SSH_CIPHER stays as a
+# host-wide override for installs that were tuned before the UI option existed.
+_SSH_CIPHER = (
+    os.environ.get("zfsRepConfig_sendOptions_sshCipher", "").strip()
+    or os.environ.get("ZFS_REP_SSH_CIPHER", "").strip()
+)
 if _SSH_CIPHER:
     SSH_BASE_OPTS.extend(["-o", f"Ciphers={_SSH_CIPHER}"])
     dbg(f"SSH cipher override: {_SSH_CIPHER}")
@@ -204,8 +210,14 @@ def estimate_send_size_remote(remote_user, remote_host, remote_port, send_cmd):
 
         if p.returncode != 0:
             return None
-        if found_summary:
-            return total
-        return total if found_size_line and total > 0 else None
+        if not found_summary and (not found_size_line or total <= 0):
+            return None
+        if total <= 0 or total >= MAX_PLAUSIBLE_SEND_SIZE:
+            dbg(
+                f"Ignoring implausible send size estimate {total} "
+                f"(likely a wrapped negative value from a resume token); progress will be indeterminate."
+            )
+            return None
+        return total
     except Exception:
         return None

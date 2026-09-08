@@ -528,6 +528,42 @@
                     Use this when pull+mbuffer runs across multi-homed networks and auto-detected callback IP is not reachable.
                 </p>
             </div>
+
+            <div v-if="hasRemoteEndpoint" name="ssh-cipher" class="mt-2 border-t border-default pt-2">
+                <div class="flex flex-row justify-between items-center">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        SSH Cipher
+                        <InfoTile class="ml-1"
+                            :title="`Encryption algorithm used for the SSH connection. On CPUs with AES-NI, AES-GCM is noticeably faster than the ChaCha20 default that OpenSSH usually negotiates. Leave on Automatic if you are unsure.`" />
+                    </label>
+                    <ExclamationCircleIcon v-if="sshCipherUnsupportedLocally || sshCipherUnsupportedRemotely"
+                        class="mt-1 w-5 h-5 text-danger" />
+                </div>
+                <select v-model="sshCipher" :class="[
+                    'text-default bg-default mt-1 block w-full input-textlike sm:text-sm sm:leading-6',
+                    (sshCipherUnsupportedLocally || sshCipherUnsupportedRemotely) ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" id="ssh-cipher">
+                    <option v-for="option in sshCipherOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+                <p class="mt-1 text-xs text-muted">{{ selectedSshCipherDetail }}</p>
+                <p v-if="sshCipherUnsupportedLocally" class="mt-1 text-xs text-red-400">
+                    This server's SSH client does not support {{ sshCipher }}. The transfer will fail to start until
+                    you choose another cipher.
+                </p>
+                <p v-else-if="sshCipherUnsupportedRemotely" class="mt-1 text-xs text-red-400">
+                    {{ destHost }} does not offer {{ sshCipher }}. The connection will be refused with "no matching
+                    cipher found".
+                </p>
+                <p v-else-if="sshCipherProbeError" class="mt-1 text-xs text-yellow-500">
+                    {{ sshCipherProbeError }} Availability could not be verified.
+                </p>
+                <p v-if="sshCipher && !sshCipherAffectsThroughput" class="mt-1 text-xs text-yellow-500">
+                    With {{ transferMethod }}, only the control channel is encrypted. The bulk data stream bypasses
+                    SSH entirely, so this setting will not change transfer speed.
+                </p>
+            </div>
         </div>
 
         <!-- BOTTOM RIGHT -->
@@ -670,6 +706,7 @@ import {
     testSSH,
     testOrSetupSSH,
     testNetcat,
+    getSshCiphers,
     mostRecentCommonSnapshot,
     listSnapshots,
     filterTaskSnapshots,
@@ -677,6 +714,7 @@ import {
     ZfsSnap,
     destAheadOfCommon
 } from '../../../composables/utility';
+import { SSH_CIPHER_OPTIONS } from '../../../models/SshCiphers';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -812,6 +850,38 @@ const netCatTestResult = ref(false);
 
 const transferMethod = ref('ssh');
 const netCatPortError = ref(false);
+
+/* ---------------- SSH cipher selection ---------------- */
+
+const sshCipherOptions = SSH_CIPHER_OPTIONS;
+const sshCipher = ref('');
+const localSshCiphers = ref<string[]>([]);
+const remoteSshCiphers = ref<string[]>([]);
+const sshCipherProbeError = ref('');
+
+const selectedSshCipherDetail = computed(() =>
+    sshCipherOptions.find(option => option.value === sshCipher.value)?.detail ?? ''
+);
+
+const sshCipherUnsupportedLocally = computed(() =>
+    !!sshCipher.value && localSshCiphers.value.length > 0 && !localSshCiphers.value.includes(sshCipher.value)
+);
+
+const sshCipherUnsupportedRemotely = computed(() =>
+    !!sshCipher.value && remoteSshCiphers.value.length > 0 && !remoteSshCiphers.value.includes(sshCipher.value)
+);
+
+// The bulk stream only rides the SSH channel for the 'ssh' method; netcat and mbuffer
+// move data over a plain socket, so the cipher there covers control traffic only.
+const sshCipherAffectsThroughput = computed(() => transferMethod.value === 'ssh');
+
+async function refreshSshCipherAvailability() {
+    const host = destHost.value.trim();
+    const result = await getSshCiphers(host, (destUser.value || 'root').trim(), destPort.value);
+    localSshCiphers.value = result.local;
+    remoteSshCiphers.value = result.remote;
+    sshCipherProbeError.value = host ? result.remoteError : '';
+}
 
 const errorList = inject<Ref<string[]>>('errors')!;
 
@@ -1016,6 +1086,9 @@ async function initializeData() {
         const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
         useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
 
+        const sshCipherParam = sendOptionsParams.find(p => p.key === 'sshCipher');
+        sshCipher.value = sshCipherParam ? String(sshCipherParam.value || '') : '';
+
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
         sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
@@ -1194,6 +1267,7 @@ const handleDestHostChange = async () => {
         destPool.value = '';
         destDataset.value = '';
     }
+    await refreshSshCipherAvailability();
 };
 
 const debouncedInner = debounce(handleDestHostChange, 800);
@@ -1510,13 +1584,17 @@ async function checkDestDatasetContents() {
                 destDatasetErrorTag.value = true;
                 return;
             }
-            srcSnaps = await listSnapshots(srcFs, destUser.value, destHost.value, portToUse);
-            dstSnaps = await listSnapshots(dstFs);
+            [srcSnaps, dstSnaps] = await Promise.all([
+                listSnapshots(srcFs, destUser.value, destHost.value, portToUse),
+                listSnapshots(dstFs),
+            ]);
         } else {
-            srcSnaps = await listSnapshots(srcFs);
-            dstSnaps = destHost.value
-                ? await listSnapshots(dstFs, destUser.value, destHost.value, portToUse)
-                : await listSnapshots(dstFs);
+            [srcSnaps, dstSnaps] = await Promise.all([
+                listSnapshots(srcFs),
+                destHost.value
+                    ? listSnapshots(dstFs, destUser.value, destHost.value, portToUse)
+                    : listSnapshots(dstFs),
+            ]);
         }
 
         const taskName = effectiveTaskName.value;
@@ -1645,6 +1723,7 @@ function setParams() {
             .addChild(new BoolParameter('Custom Name Flag', 'customName_flag', useCustomName.value))
             .addChild(new StringParameter('Custom Name', 'customName', customName.value))
             .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
+            .addChild(new StringParameter('SSH Cipher', 'sshCipher', sshCipher.value))
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
             .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
             .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', resumeStallTimeout.value))
@@ -1729,12 +1808,19 @@ onMounted(async () => {
         destPort.value = 22;
     }
     await initializeData();
+    await refreshSshCipherAvailability();
 
     // Apply VPN host from WireShield if provided
     if (injectedVpnHost.value) {
         destHost.value = injectedVpnHost.value;
         await autoTestAndSetupSSH();
     }
+});
+
+const debouncedCipherRefresh = debounce(refreshSshCipherAvailability, 800);
+watch([destUser, destPort], () => {
+    if (!destHost.value.trim()) return;
+    debouncedCipherRefresh();
 });
 
 // Watch for vpnHost arriving after mount (e.g., from storage event while iframe was hidden)
