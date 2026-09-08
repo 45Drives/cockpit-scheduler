@@ -1,3 +1,3 @@
-## task scheduler 1.8.0-1
+## task scheduler 1.8.0-2
 
-* Adds SSH Cipher selection, fixes resume token fallback logic, send size estimates and incremental base selection (All for Replication Tasks)
+* Fixes bug with task name error validation timing
