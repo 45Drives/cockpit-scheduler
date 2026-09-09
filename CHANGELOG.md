@@ -1,3 +1,3 @@
-## task scheduler 1.8.0-2
+## task scheduler 1.8.1-1
 
-* Fixes bug with task name error validation timing
+* Fixes issues found in storagewiz testing
