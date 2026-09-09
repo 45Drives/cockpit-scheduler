@@ -691,6 +691,31 @@ export async function listSnapshots(
 	return snaps;
 }
 
+// Bytes stored by a dataset and its children; null when the query fails.
+export async function datasetUsedBytes(
+	dataset: string,
+	user?: string,
+	host?: string,
+	port?: string
+): Promise<number | null> {
+	const base = ["zfs", "get", "-H", "-p", "-o", "value", "usedbydataset,usedbychildren", dataset];
+	const cmd: string[] = user && host
+		? (port && port !== "22"
+			? ["ssh", "-p", String(port), `${user}@${host}`, ...base]
+			: ["ssh", `${user}@${host}`, ...base])
+		: base;
+
+	try {
+		const result = await runCommand(cmd, { superuser: "try" });
+		const values = result.stdout.trim().split("\n").filter(Boolean).map(v => Number(v.trim()));
+		if (!values.length || values.some(v => !Number.isFinite(v))) return null;
+		return values.reduce((total, v) => total + v, 0);
+	} catch (err) {
+		console.error("datasetUsedBytes error:", err);
+		return null;
+	}
+}
+
 // Find most-recent common by GUID
 export function mostRecentCommonSnapshot(src: ZfsSnap[], dst: ZfsSnap[]): ZfsSnap | null {
 	const srcByGuid = new Map(src.map(s => [s.guid, s]));

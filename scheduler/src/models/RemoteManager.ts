@@ -11,6 +11,31 @@ import update_cloud_sync_remote_script from '../scripts/update-rclone-remote.py?
 
 const textDecoder = new TextDecoder('utf-8');
 
+/**
+ * Callers hand us one of two shapes: the flat map the advanced create modal builds
+ * (`{ provider: 'Wasabi' }`) or the CloudAuthParameter envelope the simple view builds
+ * (`{ parameters: { provider: { value: 'Wasabi', type: 'select' } } }`). Reduce both to
+ * the flat key → parameter map that the rclone.conf writer consumes.
+ */
+function toParameterMap(parameters: any): Record<string, any> {
+    if (parameters && typeof parameters === 'object' && parameters.parameters
+        && typeof parameters.parameters === 'object') {
+        return parameters.parameters;
+    }
+    return parameters ?? {};
+}
+
+/** Read a parameter that may be a raw value or a `{ value, type }` descriptor. */
+function paramValue(paramMap: Record<string, any>, key: string): any {
+    const raw = paramMap[key];
+    return raw && typeof raw === 'object' && 'value' in raw ? raw.value : raw;
+}
+
+/** The writer scripts expect a flat auth map, not the CloudAuthParameter envelope. */
+function remotePayload(remote: CloudSyncRemote, paramMap: Record<string, any>): string {
+    return JSON.stringify({ ...remote, authParams: paramMap });
+}
+
 async function runCommand(
     argv: string[],
     opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
@@ -126,12 +151,14 @@ export class RemoteManager implements RemoteManagerType {
     }
 
     async createRemote(name: string, type: string, parameters: any): Promise<CloudSyncRemote> {
+        const paramMap = toParameterMap(parameters);
         let provider: CloudSyncProvider;
         if (type === 's3') {
-            provider = cloudSyncProviders[`s3-${parameters.provider}`];
+            const s3Provider = paramValue(paramMap, 'provider');
+            provider = cloudSyncProviders[`s3-${s3Provider}`];
 
             if (!provider) {
-                throw new Error(`Unsupported S3 provider: ${parameters.provider}`);
+                throw new Error(`Unsupported S3 provider: ${s3Provider ?? 'none selected'}`);
             }
 
         } else {
@@ -142,10 +169,10 @@ export class RemoteManager implements RemoteManagerType {
             }
         }
 
-        const authParams: CloudAuthParameter = parameters;
+        const authParams = { parameters: paramMap } as CloudAuthParameter;
 
         const remote = new CloudSyncRemote(name, type, authParams, provider);
-        const remoteJsonString = JSON.stringify(remote);
+        const remoteJsonString = remotePayload(remote, paramMap);
 
         const cockpitUser = await (window as any).cockpit.user();
         const username: string = cockpitUser?.name;
@@ -162,13 +189,15 @@ export class RemoteManager implements RemoteManagerType {
 
 
     async editRemote(oldName: string, newName: string, newType: string, newParams: any) {
+        const paramMap = toParameterMap(newParams);
         let provider;
 
         if (newType === 's3') {
-            provider = cloudSyncProviders[`s3-${newParams.parameters.provider.value}`];
+            const s3Provider = paramValue(paramMap, 'provider');
+            provider = cloudSyncProviders[`s3-${s3Provider}`];
 
             if (!provider) {
-                throw new Error(`Unsupported S3 provider: ${newParams.parameters.provider.value}`);
+                throw new Error(`Unsupported S3 provider: ${s3Provider ?? 'none selected'}`);
             }
         } else {
             provider = cloudSyncProviders[newType];
@@ -178,9 +207,9 @@ export class RemoteManager implements RemoteManagerType {
             }
         }
 
-        const authParams = newParams.parameters;
+        const authParams = { parameters: paramMap } as CloudAuthParameter;
         const remote = new CloudSyncRemote(newName, newType, authParams, provider);
-        const remoteJson = JSON.stringify(remote);
+        const remoteJson = remotePayload(remote, paramMap);
 
         const cockpitUser = await (window as any).cockpit.user();
         const username: string = cockpitUser?.name;

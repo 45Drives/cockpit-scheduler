@@ -41,7 +41,7 @@ from .state import (
     clear_receive_resume_token,
     get_receive_resume_token,
 )
-from .ssh import SSH_BASE_OPTS, _SSH_CIPHER
+from .ssh import SSH_BASE_OPTS, _SSH_CIPHER, ssh_run_args
 from .transfers import (
     resume_receive_pull,
     resume_receive_push,
@@ -555,21 +555,157 @@ def _datasets_ahead_of_base(src_groups, dst_groups, base_suffix):
     return sorted(ahead)
 
 
+def _dest_run(ctx: ReplicationRun, args, timeout=30):
+    """Run a read-only command wherever the destination lives."""
+    if ctx.direction == 'pull' or not (ctx.remoteHost and ctx.remoteUser):
+        return subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=timeout,
+        )
+    return ssh_run_args(ctx.remoteUser, ctx.remoteHost, ctx.sshPort, args, text=True, timeout=timeout)
+
+
+def _dataset_property(ctx: ReplicationRun, dataset, prop, timeout=30):
+    """Read one zfs property from the destination, wherever the destination lives."""
+    args = ['zfs', 'get', '-H', '-p', '-o', 'value', prop, dataset]
+    try:
+        p = _dest_run(ctx, args, timeout)
+    except Exception as e:
+        dbg(f'could not read {prop} of {dataset}: {e}')
+        return None
+    if p.returncode != 0:
+        dbg(f'zfs get {prop} {dataset} rc={p.returncode}')
+        return None
+    out = p.stdout
+    if isinstance(out, bytes):
+        out = out.decode(errors='replace')
+    return (out or '').strip()
+
+
+def _dest_list(ctx: ReplicationRun, dataset, list_type):
+    """Names of the given zfs type at or below the destination, or None if unreadable."""
+    args = ['zfs', 'list', '-H', '-o', 'name', '-t', list_type, '-r', dataset]
+    try:
+        p = _dest_run(ctx, args)
+    except Exception as e:
+        dbg(f'could not list {list_type} under {dataset}: {e}')
+        return None
+    if p.returncode != 0:
+        dbg(f'zfs list -t {list_type} {dataset} rc={p.returncode}')
+        return None
+    out = p.stdout
+    if isinstance(out, bytes):
+        out = out.decode(errors='replace')
+    return [line.strip() for line in (out or '').splitlines() if line.strip()]
+
+
+# A dataset that has only just been created still carries a little metadata, so "empty"
+# cannot mean literally zero bytes.
+EMPTY_DEST_MAX_BYTES = 1024 * 1024
+
+
+def _destination_is_empty(ctx: ReplicationRun):
+    """True only when the destination provably holds nothing worth keeping.
+
+    The caller uses this to decide whether receiving with -F is safe, so every check has to
+    pass and anything that cannot be verified counts as occupied. The caller has already
+    established that the destination has no snapshots.
+    """
+    dest = ctx.destFilesystem
+
+    children = _dest_list(ctx, dest, 'filesystem,volume')
+    if children is None:
+        return False
+    children = [name for name in children if name != dest]
+    if children:
+        dbg(f'{dest} has child datasets ({len(children)}): not empty')
+        return False
+
+    # Bookmarks outlive the snapshots they were made from, so they are real state to lose.
+    bookmarks = _dest_list(ctx, dest, 'bookmark')
+    if bookmarks is None:
+        return False
+    if bookmarks:
+        dbg(f'{dest} has bookmarks ({len(bookmarks)}): not empty')
+        return False
+
+    token = _dataset_property(ctx, dest, 'receive_resume_token')
+    partial = bool(token) and token != '-'
+    if partial:
+        dbg(f'{dest} carries a receive_resume_token: an interrupted receive of ours')
+
+    written = _dataset_property(ctx, dest, 'usedbydataset')
+    if written is None:
+        return False
+    try:
+        used = int(written)
+    except (TypeError, ValueError):
+        dbg(f'unexpected usedbydataset value: {written}')
+        return False
+    if not partial:
+        # A partial receive parks its data in a hidden child clone, so children only count
+        # towards "occupied" when there is no receive in flight.
+        child_bytes = _dataset_property(ctx, dest, 'usedbychildren')
+        if child_bytes is None:
+            return False
+        try:
+            used += int(child_bytes)
+        except (TypeError, ValueError):
+            dbg(f'unexpected usedbychildren value: {child_bytes}')
+            return False
+    dbg(f'{dest} holds {used} bytes (threshold {EMPTY_DEST_MAX_BYTES})')
+    if used > EMPTY_DEST_MAX_BYTES:
+        return False
+
+    # Byte counts alone cannot rule out a pile of tiny files, so when the dataset is mounted
+    # the directory listing is the authority.
+    mounted = _dataset_property(ctx, dest, 'mounted')
+    mountpoint = _dataset_property(ctx, dest, 'mountpoint')
+    if mounted == 'yes' and mountpoint and mountpoint.startswith('/'):
+        try:
+            p = _dest_run(ctx, ['ls', '-A', '--', mountpoint])
+        except Exception as e:
+            dbg(f'could not list {mountpoint}: {e}')
+            return False
+        if p.returncode != 0:
+            dbg(f'ls {mountpoint} rc={p.returncode}')
+            return False
+        out = p.stdout
+        if isinstance(out, bytes):
+            out = out.decode(errors='replace')
+        entries = [line.strip() for line in (out or '').splitlines() if line.strip()]
+        if entries:
+            dbg(f'{mountpoint} contains {len(entries)} entries: not empty')
+            return False
+        dbg(f'{mountpoint} is an empty directory')
+    return True
+
+
 def _plan_send(ctx: ReplicationRun):
     if ctx.destinationSnapshots is None:
         print('Destination dataset does not exist. Will create it via full receive (no -F).')
         ctx.forceOverwrite = False
     elif not ctx.destinationSnapshots:
-        print('Destination exists but has no snapshots.')
+        print(f'Destination {ctx.destFilesystem} exists but has no snapshots.')
         if ctx.useExistingDest and ctx.allowOverwrite:
             print('Using existing destination with overwrite: full send with -F into existing dataset.')
             ctx.forceOverwrite = True
+        elif _destination_is_empty(ctx):
+            # A full receive into any existing dataset needs -F, but -F only rolls back to the
+            # most recent snapshot. With no snapshots and nothing stored, there is nothing to
+            # roll back or lose, so requiring "Allow Overwrite" protects nothing and dead-ends
+            # a destination the setup wizard just created.
+            print(f'{ctx.destFilesystem} exists but is verifiably empty: full send with -F into existing dataset.')
+            ctx.forceOverwrite = True
         elif ctx.useExistingDest:
-            print('Destination dataset already exists and has no snapshots.\nZFS requires -F for a full send into an existing dataset.\nEnable Allow Overwrite to permit rollback, or point to a new/empty destination.')
+            print(f'Destination dataset {ctx.destFilesystem} already exists, has no snapshots, and is not empty.\nZFS requires -F for a full send into an existing dataset, which discards its current contents.\nEnable Allow Overwrite to permit that, or point to a new/empty destination.')
             sys.exit(2)
         else:
-            print('Treating destination as new dataset path. Full send (no -F).')
-            ctx.forceOverwrite = False
+            print(f'Destination path {ctx.destFilesystem} already exists and holds data.\nA full send into it requires -F, which would discard those contents.\nEnable Allow Overwrite, or choose a destination path that does not exist yet.')
+            sys.exit(2)
     elif ctx.forceFullSend:
         print('FORCE FULL SEND enabled: ignoring common snapshots and performing full send.')
         ctx.forceOverwrite = True

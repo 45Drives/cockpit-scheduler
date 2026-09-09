@@ -364,6 +364,13 @@
                         </option>
                         <option v-if="loadingDestDatasets">Loading...</option>
                     </select>
+                    <p v-if="emptyDestState === 'empty'" class="mt-1 text-xs text-muted">
+                        This dataset is empty, so the first run will seed it with a full send.
+                    </p>
+                    <p v-else-if="emptyDestState === 'occupied'" class="mt-1 text-xs text-yellow-500">
+                        This dataset has no snapshots but already contains data. A first send has to overwrite it,
+                        which needs Allow Overwrite below.
+                    </p>
                 </div>
 
                 <div v-else>
@@ -709,6 +716,7 @@ import {
     getSshCiphers,
     mostRecentCommonSnapshot,
     listSnapshots,
+    datasetUsedBytes,
     filterTaskSnapshots,
     filterDatasetSnapshots,
     ZfsSnap,
@@ -887,6 +895,9 @@ const errorList = inject<Ref<string[]>>('errors')!;
 
 const sshReady = ref(false);
 const includeIntermediatesApplicability = ref<'unknown' | 'applicable' | 'applicable-untagged-base' | 'no-common-base' | 'empty-destination'>('unknown');
+// Matches EMPTY_DEST_MAX_BYTES in the replication script.
+const EMPTY_DEST_MAX_BYTES = 1024 * 1024;
+const emptyDestState = ref<'unknown' | 'empty' | 'occupied'>('unknown');
 
 const canEvaluateIncludeIntermediates = computed(() => {
     if (!useExistingDest.value) return false;
@@ -1547,6 +1558,7 @@ async function checkDestDatasetContents() {
 
     try {
         includeIntermediatesApplicability.value = 'unknown';
+        emptyDestState.value = 'unknown';
         const srcFs = joinZfsPath(sourcePool.value, sourceDataset.value);
         const dstFs = joinZfsPath(destPool.value, destDataset.value);
 
@@ -1587,9 +1599,30 @@ async function checkDestDatasetContents() {
 
         if (!dstSnaps.length) {
             includeIntermediatesApplicability.value = 'empty-destination';
+            const used = isPull.value || !destHost.value
+                ? await datasetUsedBytes(dstFs)
+                : await datasetUsedBytes(dstFs, destUser.value, destHost.value, portToUse);
+            if (used === null) {
+                emptyDestState.value = 'unknown';
+                destDatasetErrorTag.value = false;
+                return;
+            }
+            if (used > EMPTY_DEST_MAX_BYTES) {
+                emptyDestState.value = 'occupied';
+                if (!allowOverwrite.value) {
+                    errorList.value.push("Destination has no snapshots but already contains data. A first send must overwrite it: enable 'Allow overwrite', or pick an empty/new destination.");
+                    destDatasetErrorTag.value = true;
+                    return;
+                }
+                destDatasetErrorTag.value = false;
+                return;
+            }
+            emptyDestState.value = 'empty';
             destDatasetErrorTag.value = false;
             return;
         }
+
+        emptyDestState.value = 'unknown';
 
         const common = mostRecentCommonSnapshot(srcSnaps, dstSnaps);
 
@@ -1619,6 +1652,7 @@ async function checkDestDatasetContents() {
     } catch (err) {
         console.error("checkDestDatasetContents:", err);
         includeIntermediatesApplicability.value = 'unknown';
+        emptyDestState.value = 'unknown';
         errorList.value.push("Failed to verify destination snapshots.");
         destDatasetErrorTag.value = true;
     }

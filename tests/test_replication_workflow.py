@@ -105,7 +105,98 @@ def test_plan_new_destination_uses_full_send_without_force():
     assert ctx.forceOverwrite is False
 
 
-def test_plan_existing_empty_destination_requires_explicit_overwrite():
+def _stub_destination_probe(
+    monkeypatch,
+    *,
+    children=(),
+    bookmarks=(),
+    token="-",
+    used=0,
+    child_used=0,
+    mounted="no",
+    mountpoint="-",
+    entries=(),
+    readable=True,
+):
+    responses = {
+        "filesystem,volume": "\n".join(["tank/dest", *children]),
+        "bookmark": "\n".join(bookmarks),
+        "receive_resume_token": token,
+        "usedbydataset": str(used),
+        "usedbychildren": str(child_used),
+        "mounted": mounted,
+        "mountpoint": mountpoint,
+    }
+
+    def run(ctx, args, timeout=30):
+        if not readable:
+            return SimpleNamespace(returncode=1, stdout="")
+        if args[0] == "ls":
+            return SimpleNamespace(returncode=0, stdout="\n".join(entries))
+        for key, out in responses.items():
+            if key in args:
+                return SimpleNamespace(returncode=0, stdout=out)
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(workflow, "_dest_run", run)
+
+
+def _dest_ctx():
+    ctx = ReplicationRun()
+    ctx.destFilesystem = "tank/dest"
+    ctx.destinationSnapshots = []
+    return ctx
+
+
+def test_destination_is_empty_accepts_freshly_created_dataset(monkeypatch):
+    _stub_destination_probe(monkeypatch, used=24576, mounted="yes", mountpoint="/tank/dest")
+    assert workflow._destination_is_empty(_dest_ctx()) is True
+
+
+def test_destination_is_empty_rejects_child_datasets(monkeypatch):
+    _stub_destination_probe(monkeypatch, children=["tank/dest/child"])
+    assert workflow._destination_is_empty(_dest_ctx()) is False
+
+
+def test_destination_is_empty_rejects_bookmarks(monkeypatch):
+    _stub_destination_probe(monkeypatch, bookmarks=["tank/dest#keep"])
+    assert workflow._destination_is_empty(_dest_ctx()) is False
+
+
+def test_destination_is_empty_rejects_stored_data(monkeypatch):
+    _stub_destination_probe(monkeypatch, used=8 * 1024 * 1024)
+    assert workflow._destination_is_empty(_dest_ctx()) is False
+
+
+def test_destination_is_empty_rejects_small_files(monkeypatch):
+    _stub_destination_probe(
+        monkeypatch,
+        used=4096,
+        mounted="yes",
+        mountpoint="/tank/dest",
+        entries=["notes.txt"],
+    )
+    assert workflow._destination_is_empty(_dest_ctx()) is False
+
+
+def test_destination_is_empty_allows_interrupted_receive(monkeypatch):
+    _stub_destination_probe(
+        monkeypatch,
+        token="1-abc-def",
+        child_used=32 * 1024 * 1024 * 1024,
+        mounted="yes",
+        mountpoint="/tank/dest",
+    )
+    assert workflow._destination_is_empty(_dest_ctx()) is True
+
+
+def test_destination_is_empty_refuses_when_unverifiable(monkeypatch):
+    _stub_destination_probe(monkeypatch, readable=False)
+    assert workflow._destination_is_empty(_dest_ctx()) is False
+
+
+def test_plan_existing_empty_destination_requires_explicit_overwrite(monkeypatch):
+    monkeypatch.setattr(workflow, "_destination_is_empty", lambda ctx: False)
     ctx = ReplicationRun()
     ctx.destinationSnapshots = []
     ctx.useExistingDest = True
@@ -117,13 +208,24 @@ def test_plan_existing_empty_destination_requires_explicit_overwrite():
     assert ctx.forceOverwrite is True
 
 
-def test_plan_empty_destination_without_use_existing_dest_does_not_force_overwrite():
+def test_plan_verified_empty_destination_forces_overwrite(monkeypatch):
+    monkeypatch.setattr(workflow, "_destination_is_empty", lambda ctx: True)
+    for use_existing in (True, False):
+        ctx = ReplicationRun()
+        ctx.destinationSnapshots = []
+        ctx.useExistingDest = use_existing
+        workflow._plan_send(ctx)
+        assert ctx.forceOverwrite is True
+
+
+def test_plan_occupied_destination_aborts_without_use_existing_dest(monkeypatch):
+    monkeypatch.setattr(workflow, "_destination_is_empty", lambda ctx: False)
     ctx = ReplicationRun()
     ctx.destinationSnapshots = []
     ctx.useExistingDest = False
-    ctx.allowOverwrite = True
-    workflow._plan_send(ctx)
-    assert ctx.forceOverwrite is False
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
 
 
 def test_plan_new_task_reuses_untagged_common_snapshot(monkeypatch):
