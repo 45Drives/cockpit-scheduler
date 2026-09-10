@@ -1,3 +1,3 @@
-## task scheduler 1.8.1-1
+## task scheduler 1.8.1-2
 
-* Fixes issues found in storagewiz testing
+* Fixes Rsync simple UI ordering + fixes Google Drive scope for CloudSync
