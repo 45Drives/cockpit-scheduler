@@ -1,137 +1,211 @@
 #!/usr/bin/env python3
 # ensure_passwordless_ssh.py
-import argparse, json, os, shutil, subprocess, sys
+import argparse, getpass, json, os, shutil, subprocess, sys, tempfile
+
+STEPS = []
+LOG_LINES = []
+
+SSH_BASE = [
+    "-o", "ConnectTimeout=8",
+    "-o", "StrictHostKeyChecking=accept-new",
+]
 
 def log(msg, quiet=False):
+    text = str(msg)
+    LOG_LINES.append(text)
     if not quiet:
-        sys.stderr.write(str(msg) + "\n")
+        sys.stderr.write(text + "\n")
         sys.stderr.flush()
 
-def run(cmd, check=False, quiet=False, env=None):
-    if not quiet:
-        log(f"$ {' '.join(cmd)}", quiet)
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
-    return result
+def record(step, ok, detail=""):
+    STEPS.append({"step": step, "ok": bool(ok), "detail": (detail or "")[-2000:]})
+
+def run(cmd, env=None):
+    return subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        env=env,
+    )
+
+def decode(b) -> str:
+    return (b or b"").decode("utf-8", "replace")
 
 def have_cmd(name:str) -> bool:
     return shutil.which(name) is not None
 
-def test_passwordless(user, host, port, quiet=False) -> bool:
-    cp = run([
-        "ssh", "-p", str(port),
-        "-o", "BatchMode=yes",
-        "-o", "ConnectTimeout=5",
-        "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "NumberOfPasswordPrompts=0",
-        f"{user}@{host}", "true"
-    ], quiet=True)
-    return cp.returncode == 0
+def classify(text: str):
+    """Map raw ssh output onto a machine-readable reason plus a human explanation."""
+    t = (text or "").lower()
+    if "remote host identification has changed" in t or "host key verification failed" in t:
+        return ("host_key_changed",
+                "The target's SSH host key does not match the one already saved on this server. "
+                "This happens when the target was reinstalled or its IP was reused by another machine. "
+                f"Clear the stale entry on this server with: ssh-keygen -R <host>")
+    if "could not resolve hostname" in t or "name or service not known" in t:
+        return ("host_unresolved",
+                "The server address could not be resolved. Check the hostname or use an IP address.")
+    if "connection refused" in t:
+        return ("connection_refused",
+                "The target refused the connection on this port. Check that sshd is running and the port is correct.")
+    if "connection timed out" in t or "operation timed out" in t or "timed out" in t:
+        return ("connection_timeout",
+                "The target did not answer. Check the network path, VPN tunnel and firewall rules.")
+    if "no route to host" in t or "network is unreachable" in t:
+        return ("network_unreachable",
+                "There is no network route to the target. For an off-site server, confirm the VPN tunnel is up.")
+    if "permission denied" in t:
+        return ("permission_denied",
+                "The target rejected the credentials. Check the username and password.")
+    if "too many authentication failures" in t:
+        return ("too_many_auth_failures",
+                "The target closed the connection after too many key offers. Reduce the keys offered or set IdentitiesOnly=yes.")
+    return ("", "")
 
-def ensure_keypair(kind: str, key_dir: str, quiet=False) -> str:
-    os.makedirs(key_dir, exist_ok=True)
+def parse_auth_methods(verbose_text: str):
+    """Pull the last 'Authentications that can continue' list out of ssh -v output."""
+    marker = "Authentications that can continue:"
+    methods = []
+    for line in (verbose_text or "").splitlines():
+        if marker in line:
+            methods = [m.strip() for m in line.split(marker, 1)[1].strip().split(",") if m.strip()]
+    return methods
+
+def test_passwordless(user, host, port, quiet=False):
+    cp = run(["ssh", "-p", str(port)] + SSH_BASE + [
+        "-o", "BatchMode=yes",
+        "-o", "NumberOfPasswordPrompts=0",
+        f"{user}@{host}", "true",
+    ])
+    return cp.returncode == 0, decode(cp.stderr).strip()
+
+def probe(user, host, port):
+    """Verbose reachability/auth probe. Never sends a password."""
+    cp = run(["ssh", "-v", "-p", str(port)] + SSH_BASE + [
+        "-o", "BatchMode=yes",
+        "-o", "NumberOfPasswordPrompts=0",
+        f"{user}@{host}", "true",
+    ])
+    err = decode(cp.stderr)
+    reason, detail = classify(err)
+    return {
+        "reachable": reason not in ("host_unresolved", "connection_refused", "connection_timeout", "network_unreachable"),
+        "reason": reason,
+        "detail": detail,
+        "auth_methods": parse_auth_methods(err),
+        "stderr": err,
+    }
+
+def ensure_keypair(kind: str, key_dir: str, quiet=False):
+    os.makedirs(key_dir, mode=0o700, exist_ok=True)
     if kind == "ed25519":
         pk = os.path.join(key_dir, "id_ed25519")
-        pub = pk + ".pub"
-        if os.path.isfile(pk) and os.path.isfile(pub): return pk
-        log(f"Generating ed25519 keypair at {pk}", quiet)
-        run(["ssh-keygen", "-t", "ed25519", "-N", "", "-f", pk, "-C", "auto"], check=True, quiet=True)
-        return pk
+        args = ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", pk, "-C", "cockpit-scheduler"]
     elif kind == "rsa":
         pk = os.path.join(key_dir, "id_rsa")
-        pub = pk + ".pub"
-        if os.path.isfile(pk) and os.path.isfile(pub): return pk
-        log(f"Generating rsa-4096 keypair at {pk}", quiet)
-        run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-N", "", "-f", pk, "-C", "auto"], check=True, quiet=True)
+        args = ["ssh-keygen", "-t", "rsa", "-b", "4096", "-N", "", "-f", pk, "-C", "cockpit-scheduler"]
+    else:
+        raise ValueError("unknown key type")
+
+    if os.path.isfile(pk) and os.path.isfile(pk + ".pub"):
+        record(f"keypair:{kind}", True, f"reused existing key {pk}")
         return pk
-    raise ValueError("unknown key type")
 
-def ensure_sshpass(quiet=False) -> bool:
-    if have_cmd("sshpass"): return True
-    log("sshpass not found; attempting to install…", quiet)
-    pm = None
-    for cand in ("apt-get","dnf","yum","zypper","pacman","apk"):
-        if have_cmd(cand):
-            pm = cand
-            break
-    if pm is None:
-        log("Could not auto-install sshpass. Please install it manually and re-run.", quiet)
-        return False
+    log(f"Generating {kind} keypair at {pk}", quiet)
+    cp = run(args)
+    if cp.returncode != 0:
+        record(f"keypair:{kind}", False, decode(cp.stderr).strip())
+        return None
+    record(f"keypair:{kind}", True, f"generated {pk}")
+    return pk
 
-    def maybe_sudo(cmd):
-        sudo = ["sudo"]
-        # Attempt non-interactive test; if it fails we still try sudo (may prompt)
-        run(["sudo","-n","true"], quiet=True)
-        return sudo + cmd
+REMOTE_INSTALL = (
+    'umask 077; '
+    'mkdir -p ~/.ssh; '
+    'touch ~/.ssh/authorized_keys; '
+    'grep -qxF "{key}" ~/.ssh/authorized_keys || printf "%s\\n" "{key}" >> ~/.ssh/authorized_keys; '
+    'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; chmod go-w ~ 2>/dev/null; '
+    'command -v restorecon >/dev/null 2>&1 && restorecon -R ~/.ssh >/dev/null 2>&1; '
+    'exit 0'
+)
 
-    try:
-        if pm == "apt-get":
-            env = os.environ.copy()
-            env["DEBIAN_FRONTEND"] = "noninteractive"
-            run(maybe_sudo(["apt-get","update","-y"]), quiet=quiet)
-            run(maybe_sudo(["apt-get","install","-y","sshpass"]), check=True, quiet=quiet, env=env)
-        elif pm == "dnf":
-            run(maybe_sudo(["dnf","-y","install","epel-release"]), quiet=True)
-            run(maybe_sudo(["dnf","-y","install","sshpass"]), check=True, quiet=quiet)
-        elif pm == "yum":
-            run(maybe_sudo(["yum","-y","install","epel-release"]), quiet=True)
-            run(maybe_sudo(["yum","-y","install","sshpass"]), check=True, quiet=quiet)
-        elif pm == "zypper":
-            run(maybe_sudo(["zypper","-n","install","sshpass"]), check=True, quiet=quiet)
-        elif pm == "pacman":
-            run(maybe_sudo(["pacman","-Sy","--noconfirm","sshpass"]), check=True, quiet=quiet)
-        elif pm == "apk":
-            run(maybe_sudo(["apk","add","--no-cache","sshpass"]), check=True, quiet=quiet)
-    except subprocess.CalledProcessError as e:
-        log(f"Failed to install sshpass: {e}", quiet)
-        return False
-
-    return have_cmd("sshpass")
-
-def push_pubkey_with_password(user, host, port, password, pubkey_text, quiet=False) -> bool:
-    if not have_cmd("sshpass"):
-        log("sshpass is required locally to automate the password step. Install it and retry.", quiet)
-        return False
-    # Escape for remote double-quoted context
+def _remote_cmd(pubkey_text: str) -> str:
     esc = pubkey_text.replace("\\", "\\\\").replace('"', '\\"')
+    return REMOTE_INSTALL.format(key=esc)
+
+def _push_with_sshpass(user, host, port, password, pubkey_text):
     env = os.environ.copy()
     env["SSHPASS"] = password
-    cmd = [
-        "sshpass","-e","ssh","-p",str(port),
-        "-o","StrictHostKeyChecking=accept-new",
-        "-o","PubkeyAuthentication=no",
-        f"{user}@{host}",
-        f'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; '
-        f'grep -qxF "{esc}" ~/.ssh/authorized_keys || echo "{esc}" >> ~/.ssh/authorized_keys; '
-        f'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-    ]
-    cp = run(cmd, quiet=True, env=env)
-    return cp.returncode == 0
+    cp = run(["sshpass", "-e", "ssh", "-p", str(port)] + SSH_BASE + [
+        "-o", "PubkeyAuthentication=no",
+        "-o", "PreferredAuthentications=password,keyboard-interactive",
+        "-o", "NumberOfPasswordPrompts=1",
+        f"{user}@{host}", _remote_cmd(pubkey_text),
+    ], env=env)
+    return cp.returncode, decode(cp.stdout) + decode(cp.stderr)
 
-def try_key_then_install(user, host, port, password, privkey_path, quiet=False) -> bool:
-    pub = privkey_path + ".pub"
-    if not os.path.isfile(pub):
-        log(f"Missing {pub}", quiet)
-        return False
+def _push_with_askpass(user, host, port, password, pubkey_text):
+    """Password auth without sshpass, driven by SSH_ASKPASS. Works on stock OpenSSH."""
+    tmpdir = tempfile.mkdtemp(prefix="cockpit-scheduler-askpass-")
+    script = os.path.join(tmpdir, "askpass.sh")
+    try:
+        with open(script, "w", encoding="utf-8") as f:
+            f.write('#!/bin/sh\nprintf \'%s\\n\' "$COCKPIT_SSH_PASSWORD"\n')
+        os.chmod(script, 0o700)
 
-    if test_passwordless(user, host, port, quiet=True):
-        return True
+        env = os.environ.copy()
+        env["SSH_ASKPASS"] = script
+        env["SSH_ASKPASS_REQUIRE"] = "force"
+        env["COCKPIT_SSH_PASSWORD"] = password
+        env.setdefault("DISPLAY", ":0")
 
-    if not password:
-        return False
+        ssh_cmd = ["ssh", "-p", str(port)] + SSH_BASE + [
+            "-o", "PubkeyAuthentication=no",
+            "-o", "PreferredAuthentications=password,keyboard-interactive",
+            "-o", "NumberOfPasswordPrompts=1",
+            f"{user}@{host}", _remote_cmd(pubkey_text),
+        ]
 
-    if not ensure_sshpass(quiet=quiet):
-        return False
+        cp = run(ssh_cmd, env=env)
+        out = decode(cp.stdout) + decode(cp.stderr)
+        if cp.returncode == 0:
+            return cp.returncode, out
 
-    with open(pub, "r", encoding="utf-8") as f:
-        pubkey_text = f.read().strip()
+        # OpenSSH < 8.4 ignores SSH_ASKPASS_REQUIRE and needs no controlling terminal.
+        if have_cmd("setsid"):
+            cp2 = run(["setsid", "-w"] + ssh_cmd, env=env)
+            out2 = decode(cp2.stdout) + decode(cp2.stderr)
+            if cp2.returncode == 0:
+                return cp2.returncode, out2
+            return cp2.returncode, out + out2
+        return cp.returncode, out
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
-    log("Passwordless not ready; attempting one-time key install via password…", quiet)
-    if not push_pubkey_with_password(user, host, port, password, pubkey_text, quiet):
-        return False
+def install_pubkey(user, host, port, password, pubkey_text, quiet=False):
+    """Returns (ok, reason, detail)."""
+    attempts = []
+    if have_cmd("sshpass"):
+        log("Installing public key using sshpass…", quiet)
+        rc, out = _push_with_sshpass(user, host, port, password, pubkey_text)
+        record("install:sshpass", rc == 0, out.strip())
+        if rc == 0:
+            return True, "", ""
+        attempts.append(out)
 
-    return test_passwordless(user, host, port, quiet=True)
+    log("Installing public key using SSH_ASKPASS…", quiet)
+    rc, out = _push_with_askpass(user, host, port, password, pubkey_text)
+    record("install:askpass", rc == 0, out.strip())
+    if rc == 0:
+        return True, "", ""
+    attempts.append(out)
+
+    reason, detail = classify("\n".join(attempts))
+    if not reason:
+        reason = "key_install_failed"
+        detail = "The one-time key install over password authentication did not complete."
+    return False, reason, detail
 
 def main():
     parser = argparse.ArgumentParser(description="Ensure passwordless SSH by installing a public key remotely if needed.")
@@ -139,8 +213,9 @@ def main():
     parser.add_argument("--user", default="root")
     parser.add_argument("--port", default="22")
     parser.add_argument("--password", default="")
+    parser.add_argument("--password-stdin", action="store_true", help="Read the password from stdin instead of argv.")
     parser.add_argument("--key-type", default="auto", choices=["auto","ed25519","rsa","both"])
-    parser.add_argument("--key-dir", default=os.path.expanduser("~/.ssh"))
+    parser.add_argument("--key-dir", default="")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -150,47 +225,111 @@ def main():
         port = int(str(args.port).strip() or "22")
     except ValueError:
         port = 22
-    password = args.password
+    password = sys.stdin.read().rstrip("\n") if args.password_stdin else args.password
     key_mode = args.key_type
-    key_dir = args.key_dir
+    key_dir = args.key_dir or os.path.join(os.path.expanduser("~"), ".ssh")
     quiet = args.quiet
 
-    # Quick success if already passwordless
-    if test_passwordless(user, host, port, quiet=True):
+    try:
+        local_user = getpass.getuser()
+    except Exception:
+        local_user = str(os.geteuid())
+
+    base = {
+        "user": user,
+        "host": host,
+        "port": port,
+        "local_user": local_user,
+        "key_dir": key_dir,
+        "sshpass_available": have_cmd("sshpass"),
+    }
+
+    def emit(success, message, reason="", detail="", extra=None):
+        payload = dict(base)
+        payload.update({
+            "success": success,
+            "message": message,
+            "reason": reason,
+            "detail": detail,
+            "steps": STEPS,
+            "log": "\n".join(LOG_LINES)[-4000:],
+        })
+        if extra:
+            payload.update(extra)
+        print(json.dumps(payload))
+        sys.exit(0 if success else 1)
+
+    ok, err = test_passwordless(user, host, port)
+    record("precheck", ok, err)
+    if ok:
         msg = f"Passwordless SSH already works for {user}@{host}"
         log(msg, quiet)
-        print(json.dumps({"success": True, "message": msg, "user": user, "host": host, "port": port}))
-        sys.exit(0)
+        emit(True, msg)
 
-    ed_pk = rsa_pk = None
-    if key_mode in ("ed25519","both","auto"):
-        ed_pk = ensure_keypair("ed25519", key_dir, quiet=quiet)
-    if key_mode in ("rsa","both"):
-        rsa_pk = ensure_keypair("rsa", key_dir, quiet=quiet)
+    info = probe(user, host, port)
+    record("probe", info["reachable"], (info["reason"] or "reachable") + " | auth: " + ", ".join(info["auth_methods"]))
 
-    # Try ed25519 first for auto
-    if ed_pk:
-        if try_key_then_install(user, host, port, password, ed_pk, quiet=quiet):
-            msg = "Passwordless SSH ready (ed25519)."
+    if not info["reachable"]:
+        emit(False, f"Cannot reach {user}@{host}:{port}.", info["reason"] or "unreachable", info["detail"])
+
+    if info["reason"] == "host_key_changed":
+        emit(False, f"Host key mismatch for {host}.", info["reason"], info["detail"])
+
+    if not password:
+        emit(False, f"A password for {user}@{host} is required to install the SSH key.",
+             "password_required",
+             "Enter the account password once so the key can be installed. It is not stored.")
+
+    methods = info["auth_methods"]
+    if methods and not any(m in ("password", "keyboard-interactive") for m in methods):
+        emit(False, f"{host} does not accept password logins for {user}.",
+             "password_auth_disabled",
+             "The target's sshd only offers: " + ", ".join(methods) +
+             ". Enable PasswordAuthentication on the target (and PermitRootLogin yes when connecting as root), "
+             "or add this server's public key to the target's authorized_keys manually.")
+
+    key_types = ["ed25519", "rsa"] if key_mode in ("auto", "both") else [key_mode]
+
+    last_reason, last_detail = "", ""
+    for kind in key_types:
+        pk = ensure_keypair(kind, key_dir, quiet=quiet)
+        if not pk:
+            last_reason = "keygen_failed"
+            last_detail = f"Could not generate a local {kind} keypair in {key_dir}."
+            continue
+
+        with open(pk + ".pub", "r", encoding="utf-8") as f:
+            pubkey_text = f.read().strip()
+
+        installed, reason, detail = install_pubkey(user, host, port, password, pubkey_text, quiet=quiet)
+        if not installed:
+            last_reason, last_detail = reason, detail
+            if reason in ("permission_denied", "password_auth_disabled", "host_key_changed"):
+                break
+            continue
+
+        ok, err = test_passwordless(user, host, port)
+        record(f"verify:{kind}", ok, err)
+        if ok:
+            msg = f"Passwordless SSH ready ({kind})."
             log(msg, quiet)
-            print(json.dumps({"success": True, "message": msg, "user": user, "host": host, "port": port, "key_type": "ed25519"}))
-            sys.exit(0)
-        log("ed25519 attempt failed.", quiet)
+            emit(True, msg, extra={"key_type": kind, "key_path": pk})
 
-    # Fallback to RSA if requested/auto/both
-    if key_mode in ("auto","both") or rsa_pk:
-        if not rsa_pk:
-            rsa_pk = ensure_keypair("rsa", key_dir, quiet=quiet)
-        if try_key_then_install(user, host, port, password, rsa_pk, quiet=quiet):
-            msg = "Passwordless SSH ready (rsa)."
-            log(msg, quiet)
-            print(json.dumps({"success": True, "message": msg, "user": user, "host": host, "port": port, "key_type": "rsa"}))
-            sys.exit(0)
+        last_reason = "verify_failed"
+        last_detail = (
+            "The key was copied to the target but key-based login still failed. On the target, check that sshd "
+            "allows public key authentication, that ~/.ssh is 700 and authorized_keys is 600, and on RHEL-family "
+            "systems that SELinux contexts are correct (restorecon -R ~/.ssh). ssh reported: " + (err or "no output")
+        )
 
-    msg = f"Failed to establish passwordless SSH for {user}@{host}"
-    log(msg, quiet)
-    print(json.dumps({"success": False, "message": msg, "user": user, "host": host, "port": port}))
-    sys.exit(1)
+    if last_reason == "permission_denied":
+        last_detail = (
+            f"{host} rejected the password for {user}. Confirm the password, and when connecting as root confirm "
+            "the target allows root password logins (PermitRootLogin yes, PasswordAuthentication yes)."
+        )
+
+    emit(False, f"Failed to establish passwordless SSH for {user}@{host}.",
+         last_reason or "unknown", last_detail)
 
 if __name__ == "__main__":
     main()

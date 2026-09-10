@@ -120,7 +120,16 @@
                         {{ settingUpSSH ? 'Setting up…' : 'Connect' }}
                     </button>
                 </div>
-                <p v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ sshSetupError }}</p>
+                <div v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">
+                    <p class="font-medium">{{ sshSetupError }}</p>
+                    <p v-if="sshSetupDetail" class="mt-1 text-red-500 dark:text-red-300">{{ sshSetupDetail }}</p>
+                    <button v-if="sshSetupLog" type="button" class="mt-1 underline"
+                        @click="showSshSetupLog = !showSshSetupLog">
+                        {{ showSshSetupLog ? 'Hide' : 'Show' }} technical details
+                    </button>
+                    <pre v-if="showSshSetupLog && sshSetupLog"
+                        class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-default/60 p-2 text-[10px] text-default">{{ sshSetupLog }}</pre>
+                </div>
             </div>
 
             <!-- Auto SSH check kicked off by the WireShield hand-off -->
@@ -781,6 +790,9 @@ const sshSetupNeeded = ref(false);
 const sshSetupPassword = ref('');
 const settingUpSSH = ref(false);
 const sshSetupError = ref('');
+const sshSetupDetail = ref('');
+const sshSetupLog = ref('');
+const showSshSetupLog = ref(false);
 const showSshSetupPassword = ref(false);
 const autoTestingSSH = ref(false);
 
@@ -1873,6 +1885,9 @@ async function autoTestAndSetupSSH() {
 async function handleSSHKeySetup() {
     settingUpSSH.value = true;
     sshSetupError.value = '';
+    sshSetupDetail.value = '';
+    sshSetupLog.value = '';
+    showSshSetupLog.value = false;
     try {
         const res = await testOrSetupSSH({
             host: destHost.value.trim(),
@@ -1880,7 +1895,7 @@ async function handleSSHKeySetup() {
             port: destPort.value || 22,
             passwordRef: sshSetupPassword,
             onEvent: ({ type, title, message }) => {
-                pushNotification(new Notification(title, message, type, 6000));
+                pushNotification(new Notification(title, message, type, 8000));
             }
         });
         if (res.success) {
@@ -1889,6 +1904,8 @@ async function handleSSHKeySetup() {
             await getTargetPools();
         } else {
             sshSetupError.value = res.message || 'SSH setup failed. Check the password and try again.';
+            sshSetupDetail.value = res.detail || '';
+            sshSetupLog.value = formatSshDiagnostics(res.details);
         }
     } catch (err: any) {
         sshSetupError.value = err?.message || 'Unexpected error during SSH setup.';
@@ -1896,6 +1913,19 @@ async function handleSSHKeySetup() {
         settingUpSSH.value = false;
         sshSetupPassword.value = '';
     }
+}
+
+// Flatten the helper script's step list into something a support tech can read
+function formatSshDiagnostics(data: any): string {
+    if (!data) return '';
+    const lines: string[] = [];
+    if (data.reason) lines.push(`reason: ${data.reason}`);
+    if (data.local_user) lines.push(`running as: ${data.local_user} (keys in ${data.key_dir})`);
+    if (data.sshpass_available === false) lines.push('sshpass: not installed (used SSH_ASKPASS fallback)');
+    for (const s of data.steps || []) {
+        lines.push(`[${s.ok ? 'ok' : 'fail'}] ${s.step}${s.detail ? ` — ${s.detail}` : ''}`);
+    }
+    return lines.join('\n');
 }
 
 defineExpose({

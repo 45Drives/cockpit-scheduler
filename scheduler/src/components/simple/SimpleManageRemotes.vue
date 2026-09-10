@@ -175,8 +175,7 @@
 
                             <label class="block text-sm text-default mt-3">Provider</label>
                             <select v-model="edit.provider" class="input-textlike w-full mt-1" :disabled="!editMode">
-                                <option :value="edit.provider">{{ edit.provider?.name }}</option>
-                                <option v-for="p in allProviders" :key="p.type" :value="p">{{ p.name }}</option>
+                                <option v-for="([key, p]) in providerEntries" :key="key" :value="p">{{ p.name }}</option>
                             </select>
                         </SimpleFormCard>
 
@@ -332,6 +331,7 @@ const filteredRemotes = computed(() =>
 const oauthTypes = ['dropbox', 'drive', 'google cloud storage']
 const s3ProviderOptions = ['AWS', 'Wasabi', 'MinIO', 'Ceph', 'Other'];
 const allProviders = Object.values(cloudSyncProviders)
+const providerEntries = Object.entries(cloudSyncProviders)
 const oauthProviders = computed(() => allProviders.filter(p => oauthTypes.includes(p.type)))
 const nonOauthProviders = computed(() => allProviders.filter(p => !oauthTypes.includes(p.type)))
 
@@ -380,19 +380,30 @@ const deleting = ref(false)
 
 type Baseline = {
     name: string
-    providerType: string
+    providerKey: string
     params: any              // plain JSON (no class instances)
+}
+
+// cloudSyncProviders is keyed "s3-Wasabi", "s3-AWS", … while every S3 provider reports type "s3".
+function providerKeyFor(r: CloudSyncRemote): string {
+    const type = r.provider?.type ?? r.type
+    if (type === 's3') {
+        const sub = r.provider?.providerParams?.parameters?.provider?.value
+            ?? r.authParams?.parameters?.provider?.value
+        if (sub) return `s3-${sub}`
+    }
+    return type
 }
 
 const snapshot = (r: CloudSyncRemote) => ({
     name: r.name,
-    providerType: r.provider?.type ?? r.type,
+    providerKey: providerKeyFor(r),
     params: JSON.parse(JSON.stringify(r.authParams)) as CloudAuthParameter
 });
 
 function setEditFromBaseline(baseline: ReturnType<typeof snapshot>) {
     edit.name = baseline.name;
-    edit.provider = cloudSyncProviders[baseline.providerType];
+    edit.provider = cloudSyncProviders[baseline.providerKey] ?? selectedRemote.value?.provider;
     // FLATTEN here:
     edit.params = toFlat(baseline.params);
 }
@@ -403,7 +414,6 @@ const baseline = ref<Baseline | null>(null)
 watch(selectedRemote, (r) => {
     if (!r) { panel.value = 'idle'; return }
     panel.value = 'edit'
-    editMode.value = false
 
     // snapshot + populate form from plain data
     const b = snapshot(r)
@@ -415,17 +425,37 @@ const hasEdits = computed(() => {
     if (!baseline.value) return false
 
     if (edit.name !== baseline.value.name) return true
-    if (edit.provider?.type !== baseline.value.providerType) return true
+    if (editProviderKey.value !== baseline.value.providerKey) return true
 
-    const a = edit.params?.parameters || {}
-    const b = baseline.value.params?.parameters || {}
+    const a = edit.params || {}
+    const b = toFlat(baseline.value.params)
     const keys = new Set([...Object.keys(a), ...Object.keys(b)])
     for (const k of keys) {
-        if (JSON.stringify(a[k]?.value) !== JSON.stringify(b[k]?.value)) {
+        if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) {
             return true
         }
     }
     return false
+})
+
+const editProviderKey = computed(() => {
+    const p = edit.provider
+    if (!p) return baseline.value?.providerKey ?? ''
+    if (p.type === 's3') {
+        const sub = edit.params?.provider ?? p.providerParams?.parameters?.provider?.value
+        return sub ? `s3-${sub}` : 's3'
+    }
+    return p.type
+})
+
+// Switching provider keeps existing values but seeds any field the new schema adds.
+watch(() => edit.provider, (p, prev) => {
+    if (!p || !prev || p === prev) return
+    const schema = p.providerParams?.parameters ?? {}
+    for (const [k, param] of Object.entries(schema)) {
+        if (edit.params[k] === undefined) edit.params[k] = (param as any).value ?? (param as any).defaultValue
+    }
+    if (p.type === 's3') edit.params.provider = schema.provider?.value
 })
 
 const editDisplayToken = computed({
@@ -604,9 +634,8 @@ async function saveEdit() {
         const newName = (edit.name ?? '').trim()
         if (!newName) throw new Error('Account name is required.')
 
-        // Narrow to a definite string (fallback to baseline or original)
-        const providerType = edit.provider?.type ?? baseline.value?.providerType ?? selectedRemote.value!.type;
-
+        // Narrow to a definite string (fallback to the original remote's type)
+        const providerType = edit.provider?.type ?? selectedRemote.value!.type;
 
         if (!providerType) throw new Error('Provider type is required.')
 

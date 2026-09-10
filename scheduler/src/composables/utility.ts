@@ -740,40 +740,54 @@ export async function ensurePasswordlessSSH(
 	port: number | string = 22,
 	password?: string,
 	quiet: boolean = true
-): Promise<{ success: boolean; message: string; data?: any; raw?: string; status?: number }> {
+): Promise<{ success: boolean; message: string; reason?: string; detail?: string; data?: any; raw?: string; status?: number }> {
 	const args = ["--host", host, "--user", user, "--port", String(port), "--key-type", "auto"];
-	if (password) args.push("--password", password);
+	if (password) args.push("--password-stdin");
 	if (quiet) args.push("--quiet");
 
 	const argv = ["/usr/bin/env", "python3", "-c", ensure_ssh_script, ...args];
 
 	try {
-		const { stdout, proc } = await runCommand(argv, { superuser: "try" });
+		// Password goes over stdin so it never lands in the process table.
+		const child = server.spawnProcess(new Command(argv, { superuser: "try" }));
+		child.write(new TextEncoder().encode((password ?? "") + "\n"), false);
+		const proc: any = await unwrap(child.wait(/* failIfNonZero */ false));
+		const stdout = textDecoder.decode(proc.stdout ?? new Uint8Array());
 
 		const parsed = safeParseJsonLoose(stdout);
-		if (proc.exitStatus === 0) {
+		const stderr =
+			typeof proc?.stderr === "string"
+				? proc.stderr
+				: proc?.stderr instanceof Uint8Array
+					? textDecoder.decode(proc.stderr)
+					: "";
+
+		if (parsed?.success === true || proc?.exitStatus === 0) {
 			return {
 				success: true,
-				message: (parsed?.message || stdout || "OK"),
+				message: parsed?.message || stdout || "OK",
 				data: parsed || undefined,
 				raw: stdout,
-				status: proc.exitStatus,
+				status: proc?.exitStatus,
 			};
 		}
 
-		// Non-zero exit, but we still have output
 		return {
 			success: false,
-			message: (parsed?.message || stdout || "Unknown error"),
+			message: parsed?.message || stderr || stdout || "Unknown error",
+			reason: parsed?.reason,
+			detail: parsed?.detail,
 			data: parsed || undefined,
-			raw: stdout,
-			status: proc.exitStatus,
+			raw: stdout || stderr,
+			status: proc?.exitStatus,
 		};
 	} catch (err: any) {
 		const msg = (err?.message ?? String(err));
 		return {
 			success: false,
 			message: msg,
+			reason: "exec_failed",
+			detail: "The SSH setup helper could not be run on this server. Check that python3 and the openssh client are installed.",
 			raw: msg,
 		};
 	}
@@ -785,6 +799,8 @@ export interface TestOrSetupSSHResult {
 	success: boolean;
 	outcome: SshOutcome;
 	message: string;
+	reason?: string;
+	detail?: string;
 	details?: any;
 }
 
@@ -792,6 +808,7 @@ export async function testOrSetupSSH(opts: {
 	host: string;
 	user?: string;
 	port?: number | string;
+	password?: string;            // preferred: value read straight from the form
 	passwordRef?: Ref<string>;   // cleared if provided
 	onEvent?: (e: { type: 'info' | 'success' | 'error'; title: string; message: string }) => void; // optional hook
 }): Promise<TestOrSetupSSHResult> {
@@ -821,7 +838,7 @@ export async function testOrSetupSSH(opts: {
 	});
 
 	try {
-		const password = opts.passwordRef?.value;
+		const password = opts.password ?? opts.passwordRef?.value;
 		const res = await ensurePasswordlessSSH(host, user, port, password, /*quiet*/ true);
 		if (opts.passwordRef) opts.passwordRef.value = ''; // always scrub
 
@@ -829,14 +846,15 @@ export async function testOrSetupSSH(opts: {
 			opts.onEvent?.({ type: 'success', title: 'SSH Ready', message: 'Passwordless SSH is configured.' });
 			return { success: true, outcome: 'ok-configured', message: res.message || 'Configured', details: res.data };
 		} else {
-			opts.onEvent?.({ type: 'error', title: 'SSH Setup Failed', message: res.message?.toString().slice(0, 800) || 'Unknown error' });
-			return { success: false, outcome: 'failed', message: res.message || 'Failed', details: res.data };
+			const shown = [res.message, res.detail].filter(Boolean).join(' ');
+			opts.onEvent?.({ type: 'error', title: 'SSH Setup Failed', message: shown.toString().slice(0, 800) || 'Unknown error' });
+			return { success: false, outcome: 'failed', message: res.message || 'Failed', reason: res.reason, detail: res.detail, details: res.data };
 		}
 	} catch (err: any) {
 		if (opts.passwordRef) opts.passwordRef.value = '';
 		const msg = (err?.message || errorString(err) || 'Unknown error').toString().slice(0, 800);
 		opts.onEvent?.({ type: 'error', title: 'SSH Setup Error', message: msg });
-		return { success: false, outcome: 'error', message: msg };
+		return { success: false, outcome: 'error', message: msg, reason: 'exec_failed' };
 	}
 }
 

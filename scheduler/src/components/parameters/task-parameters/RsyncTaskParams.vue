@@ -128,38 +128,35 @@
                 Tip: End the path with <code>/</code> to copy the folder's contents, or leave it off to copy the folder itself.
             </p>
 
-            <!-- SSH Key Setup Prompt (one-time, shown when VPN host set but SSH not configured) -->
+            <!-- SSH Key Setup Prompt (one-time, shown when a remote host is set but SSH is not configured) -->
             <div v-if="sshSetupNeeded" class="mt-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
                 <p class="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
                     First-time setup
                 </p>
                 <p class="text-xs text-amber-600 dark:text-amber-400 mb-3">
-                    Enter the password for <strong>{{ destUser || 'root' }}@{{ destHost }}</strong> to set up automatic login.
-                    This is a one-time step — your servers will use SSH keys for all future connections.
+                    This server needs an SSH key on <strong>{{ destUser || 'root' }}@{{ destHost }}</strong> before it can copy files there.
+                    We'll use the password you entered above to install one — this is a one-time step and the password is not saved.
                 </p>
-                <div class="flex items-end gap-2">
-                    <div class="flex-1">
-                        <label class="block text-xs text-amber-700 dark:text-amber-300">{{ destUser || 'root' }} password</label>
-                        <div class="relative mt-1">
-                            <input :type="showSshSetupPassword ? 'text' : 'password'" v-model="sshSetupPassword"
-                                class="block w-full input-textlike text-sm pr-10"
-                                placeholder="Enter password"
-                                @keyup.enter="handleSSHKeySetup"
-                                :disabled="settingUpSSH" />
-                            <button type="button" @click="showSshSetupPassword = !showSshSetupPassword"
-                                class="absolute inset-y-0 right-0 px-3 flex items-center text-muted"
-                                :aria-label="showSshSetupPassword ? 'Hide password' : 'Show password'">
-                                <EyeIcon v-if="!showSshSetupPassword" class="w-4 h-4" />
-                                <EyeSlashIcon v-else class="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
-                    <button @click="handleSSHKeySetup" :disabled="!sshSetupPassword || settingUpSSH"
+                <div class="flex items-center gap-2">
+                    <button @click="handleSSHKeySetup" :disabled="!destUserPass || settingUpSSH"
                         class="btn btn-primary h-fit text-sm">
-                        {{ settingUpSSH ? 'Setting up…' : 'Connect' }}
+                        {{ settingUpSSH ? 'Setting up…' : 'Create + Use SSH Key' }}
                     </button>
+                    <span v-if="!destUserPass" class="text-xs text-amber-700 dark:text-amber-300">
+                        Enter the {{ destUser || 'root' }} password in the Password field above first.
+                    </span>
                 </div>
-                <p v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ sshSetupError }}</p>
+
+                <div v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">
+                    <p class="font-medium">{{ sshSetupError }}</p>
+                    <p v-if="sshSetupDetail" class="mt-1 text-red-500 dark:text-red-300">{{ sshSetupDetail }}</p>
+                    <button v-if="sshSetupLog" type="button" class="mt-1 underline"
+                        @click="showSshSetupLog = !showSshSetupLog">
+                        {{ showSshSetupLog ? 'Hide' : 'Show' }} technical details
+                    </button>
+                    <pre v-if="showSshSetupLog && sshSetupLog"
+                        class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-default/60 p-2 text-[10px] text-default">{{ sshSetupLog }}</pre>
+                </div>
             </div>
 
             <template #footer>
@@ -570,10 +567,11 @@ const showPassword = ref(false);
 
 // SSH key auto-setup state
 const sshSetupNeeded = ref(false);
-const sshSetupPassword = ref('');
 const settingUpSSH = ref(false);
 const sshSetupError = ref('');
-const showSshSetupPassword = ref(false);
+const sshSetupDetail = ref('');
+const sshSetupLog = ref('');
+const showSshSetupLog = ref(false);
 
 const directionSwitched = ref(false);
 
@@ -682,6 +680,9 @@ function openWireShield() {
 
 async function handleTestSSH() {
     testingSSH.value = true;
+    sshSetupError.value = '';
+    sshSetupDetail.value = '';
+    sshSetupLog.value = '';
     try {
         const host = destHost.value.trim();
         const user = (destUser.value || 'root').trim();
@@ -802,8 +803,9 @@ watch(destHost, (v) => {
     if (injectedVpnHost.value) injectedVpnHost.value = null;
     try { localStorage.removeItem('scheduler-vpn-host'); } catch { /* ignore */ }
     sshSetupNeeded.value = false;
-    sshSetupPassword.value = '';
     sshSetupError.value = '';
+    sshSetupDetail.value = '';
+    sshSetupLog.value = '';
     settingUpSSH.value = false;
     testingSSH.value = false;
     sshReady.value = false;
@@ -1133,32 +1135,50 @@ async function autoTestAndSetupSSH() {
     }
 }
 
-// Handle one-time SSH key setup with password
+// Handle one-time SSH key setup using the password already entered above
 async function handleSSHKeySetup() {
     settingUpSSH.value = true;
     sshSetupError.value = '';
+    sshSetupDetail.value = '';
+    sshSetupLog.value = '';
+    showSshSetupLog.value = false;
     try {
         const res = await testOrSetupSSH({
             host: destHost.value.trim(),
             user: (destUser.value || 'root').trim(),
             port: destPort.value || 22,
-            passwordRef: sshSetupPassword,
+            password: destUserPass.value,
             onEvent: ({ type, title, message }) => {
-                pushNotification(new Notification(title, message, type, 6000));
+                pushNotification(new Notification(title, message, type, 8000));
             }
         });
         if (res.success) {
             sshSetupNeeded.value = false;
-            sshSetupError.value = '';
+            sshReady.value = true;
+            destUserPass.value = '';
         } else {
             sshSetupError.value = res.message || 'SSH setup failed. Check the password and try again.';
+            sshSetupDetail.value = res.detail || '';
+            sshSetupLog.value = formatSshDiagnostics(res.details);
         }
     } catch (err: any) {
         sshSetupError.value = err?.message || 'Unexpected error during SSH setup.';
     } finally {
         settingUpSSH.value = false;
-        sshSetupPassword.value = '';
     }
+}
+
+// Flatten the helper script's step list into something a support tech can read
+function formatSshDiagnostics(data: any): string {
+    if (!data) return '';
+    const lines: string[] = [];
+    if (data.reason) lines.push(`reason: ${data.reason}`);
+    if (data.local_user) lines.push(`running as: ${data.local_user} (keys in ${data.key_dir})`);
+    if (data.sshpass_available === false) lines.push('sshpass: not installed (used SSH_ASKPASS fallback)');
+    for (const s of data.steps || []) {
+        lines.push(`[${s.ok ? 'ok' : 'fail'}] ${s.step}${s.detail ? ` — ${s.detail}` : ''}`);
+    }
+    return lines.join('\n');
 }
 
 defineExpose({
