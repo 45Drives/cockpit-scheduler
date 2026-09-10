@@ -1,3 +1,9 @@
+cockpit-scheduler (1.8.1-3focal) focal; urgency=medium
+
+  * Fixes cloudsync s3 blank config objects and remote ssh key creation
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 10 Sep 2026 08:35:32 -0300
+
 cockpit-scheduler (1.8.1-2focal) focal; urgency=medium
 
   * Fixes Rsync simple UI ordering + fixes Google Drive scope for CloudSync

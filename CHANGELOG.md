@@ -1,3 +1,3 @@
-## task scheduler 1.8.1-2
+## task scheduler 1.8.1-3
 
-* Fixes Rsync simple UI ordering + fixes Google Drive scope for CloudSync
+* Fixes cloudsync s3 blank config objects and remote ssh key creation
