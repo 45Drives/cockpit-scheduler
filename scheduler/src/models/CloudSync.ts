@@ -30,10 +30,11 @@ export const cloudSyncProviders: { [key: string]: CloudSyncProvider } = {
     "drive": new CloudSyncProvider("Google Drive", "drive", {
         parameters: {
             token: { value: "", type: 'object', defaultValue: "" },
-            scope: { value: "drive", type: 'select', allowedValues: ["drive", "drive.readonly", "drive.file", "drive.appfolder", "drive.metadata.readonly"], defaultValue: "drive" },
+            // The built-in OAuth client only ever receives drive.file consent.
+            scope: { value: "drive.file", type: 'select', allowedValues: ["drive", "drive.readonly", "drive.file", "drive.appfolder", "drive.metadata.readonly"], defaultValue: "drive.file" },
             client_id: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client ID." },
             client_secret: { value: "", type: 'string', defaultValue: "Leave blank to use the built-in OAuth client secret." },
-            root_folder_id: { value: "", type: 'string', defaultValue: "" },
+            root_folder_id: { value: "root", type: 'string', defaultValue: "root" },
             service_account_file: { value: "", type: 'string', defaultValue: "" }
         },
         oAuthSupported: true

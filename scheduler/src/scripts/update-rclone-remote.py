@@ -67,6 +67,31 @@ def _merge_default_client_creds(
                 auth_params[field] = default_value
 
 
+def _apply_drive_oauth_scope(
+    auth_params: Dict[str, Any],
+    remote_type: str,
+) -> None:
+    """
+    Pin Google Drive OAuth remotes to the scope their token actually carries.
+
+    Tokens issued by the 45Drives OAuth service only grant 'drive.file'. Writing
+    any wider scope makes rclone resolve the Drive root via files.get("root"),
+    which Google rejects with 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT. rclone only
+    falls back to the literal "root" alias on a 404, so it aborts instead.
+    Pinning root_folder_id skips that lookup entirely.
+    """
+    if str(remote_type).lower() != "drive":
+        return
+
+    # Service-account remotes authenticate separately and may hold a wider scope.
+    if _is_blank(auth_params.get("token")) or not _is_blank(auth_params.get("service_account_file")):
+        return
+
+    auth_params["scope"] = "drive.file"
+    if _is_blank(auth_params.get("root_folder_id")):
+        auth_params["root_folder_id"] = "root"
+
+
 def _expand_user_config(
     user_arg: Optional[str],
     config_arg: Optional[str],
@@ -161,6 +186,7 @@ def edit_remote_in_conf(
     # Merge in default client_id/client_secret if user did not provide values
     # (handles dict-with-value and whitespace-only strings correctly)
     _merge_default_client_creds(auth_params, remote_type)
+    _apply_drive_oauth_scope(auth_params, remote_type)
 
     for k, v in auth_params.items():
         v = _normalize_param_value(v)

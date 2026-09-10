@@ -61,23 +61,11 @@
                 </label>
             </div>
 
-            <label class="block text-sm mt-3 text-default">
-                To (Target)
-                <InfoTile class="ml-1" :title="tooltips.target" />
-            </label>
-
-            <PathAutoComplete v-model="destPath" :error="destPathErrorTag"
-                :remote-host="destHost" :remote-user="destUser || 'root'"
-                input-class="mt-1" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
-
-            <p class="text-[11px] text-muted mt-1">
-                Tip: End the path with <code>/</code> to copy the folder's contents, or leave it off to copy the folder itself.
-            </p>
         </SimpleFormCard>
 
-        <!-- Copy to another server (optional) -->
-        <SimpleFormCard title="Copy to another server (optional)"
-            description="Leave “Server address” empty to copy on this machine.">
+        <!-- Destination server first, then the target path on that server -->
+        <SimpleFormCard title="Where do you want to copy it to?"
+            description="Enter the server you are copying to, then choose the folder on that server.">
             <template #header-right>
                 <div class="flex items-center gap-2">
                     <span :title="wireShieldMissing ? wireShieldMissingMessage : 'Set up a secure connection to a backup server at another location, so backups travel safely over the internet.'">
@@ -95,7 +83,9 @@
 
             <div class="grid grid-cols-3 gap-2">
                 <div>
-                    <label class="block text-sm mt-3 text-default">Server address</label>
+                    <label class="block text-sm mt-3 text-default">
+                        Server address <span class="text-danger">*</span>
+                    </label>
                     <input type="text" v-model="destHost" :class="[
                         'mt-1 block w-full input-textlike sm:text-sm bg-default text-default',
                         destHostErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
@@ -103,7 +93,7 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm mt-3 text-default">User</label>
+                    <label class="block text-sm mt-3 text-default">User <span class="text-danger">*</span></label>
                     <input type="text" v-model="destUser"
                         class="mt-1 block w-full input-textlike sm:text-sm bg-default text-default"
                         placeholder="root (default)" :disabled="!destHost" />
@@ -124,6 +114,19 @@
                     </div>
                 </div>
             </div>
+
+            <label class="block text-sm mt-4 text-default">
+                To (Target) <span class="text-danger">*</span>
+                <InfoTile class="ml-1" :title="tooltips.target" />
+            </label>
+
+            <PathAutoComplete v-model="destPath" :error="destPathErrorTag"
+                :remote-host="destHost" :remote-user="destUser || 'root'"
+                input-class="mt-1" placeholder="e.g. /mnt/backup/projects/ or /mnt/backup/archive.tar" />
+
+            <p class="text-[11px] text-muted mt-1">
+                Tip: End the path with <code>/</code> to copy the folder's contents, or leave it off to copy the folder itself.
+            </p>
 
             <!-- SSH Key Setup Prompt (one-time, shown when VPN host set but SSH not configured) -->
             <div v-if="sshSetupNeeded" class="mt-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
@@ -164,7 +167,7 @@
                     SSH login must be configured before remote copies can work.
                 </p>
                 <p v-else class="text-[11px] text-muted">
-                    We'll connect securely for remote copies. Keep the server field empty for local copies.
+                    We'll connect securely to this server to copy your files.
                 </p>
             </template>
         </SimpleFormCard>
@@ -684,6 +687,12 @@ async function handleTestSSH() {
         const user = (destUser.value || 'root').trim();
 
         if (!host) {
+            if (props.simple) {
+                destHostErrorTag.value = true;
+                pushNotification(new Notification('Server Address Required', 'Enter the address of the server you are copying to.', 'error', 6000));
+                sshReady.value = false;
+                return;
+            }
             pushNotification(new Notification('Local Transfer', 'No remote host specified. SSH not required.', 'success', 6000));
             sshReady.value = true;
             return;
@@ -905,6 +914,13 @@ function hasChanges() {
 
 function validateHost() {
     destHostErrorTag.value = false;
+
+    // Simple mode always copies to another server, so the address is mandatory.
+    if (props.simple && destHost.value.trim() === "") {
+        errorList.value.push("Enter the address of the server you are copying to.");
+        destHostErrorTag.value = true;
+        return;
+    }
 
     if (destHost.value !== "") {
         if (destHost.value.length < 1 || destHost.value.length > 253) {
