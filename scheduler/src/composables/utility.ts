@@ -918,16 +918,31 @@ export async function currentUserIsPrivileged(): Promise<boolean> {
 }
 
 
+// Paths are written to a line-based systemd EnvironmentFile and passed to rsync/rclone as
+// argv, so control characters are the only genuinely unsafe input — a newline would let a
+// folder name inject extra env keys. Every other byte is legal in a POSIX filename.
+const CONTROL_CHARS = /[\x00-\x1f\x7f]/;
+
 export function validateLocalPath(path: string): boolean {
-	// Local paths: allow spaces, (), and '
-	const localPathRegex =
-		/^(?:[a-zA-Z]:\\|\/)?(?:[\w\s\-().']+(?:\\|\/)?)*$/;
-	return localPathRegex.test(path);
+	if (CONTROL_CHARS.test(path)) return false;
+	// rsync reads a colon before the first slash as "host:path", so a relative path
+	// containing one would silently become a remote transfer.
+	const firstSlash = path.search(/[\\/]/);
+	const firstColon = path.indexOf(':');
+	if (firstColon !== -1 && (firstSlash === -1 || firstColon < firstSlash)) {
+		return /^[a-zA-Z]:[\\/]/.test(path); // Windows drive letter is the one legal case
+	}
+	return true;
 }
 
 export function validateRemotePath(path: string): boolean {
-	// remoteName:bucket/path – allow spaces, (), and '
-	const rcloneRegex =
-		/^[\w\-.]+:[\\/]*(?:[\w\s\-().']+[\\/]?)*$/;
-	return rcloneRegex.test(path);
+	if (CONTROL_CHARS.test(path)) return false;
+	// rclone form: remoteName:bucket/path
+	return /^[\w\-.]+:/.test(path);
+}
+
+export function validateHostname(host: string): boolean {
+	if (host === '' || host.length > 253 || host.endsWith('.')) return false;
+	const label = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/;
+	return host.split('.').every(part => label.test(part));
 }

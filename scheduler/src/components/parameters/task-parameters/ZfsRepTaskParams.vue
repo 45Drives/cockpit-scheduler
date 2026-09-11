@@ -729,7 +729,8 @@ import {
     filterTaskSnapshots,
     filterDatasetSnapshots,
     ZfsSnap,
-    destAheadOfCommon
+    destAheadOfCommon,
+    validateHostname
 } from '../../../composables/utility';
 import { SSH_CIPHER_OPTIONS } from '../../../models/SshCiphers';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
@@ -1410,8 +1411,7 @@ function validateHost() {
             errorList.value.push("Hostname must be between 1 and 253 characters in length.");
             destHostErrorTag.value = true;
         }
-        const hostRegex = /^(?!-)(?:(?:[a-zA-Z0-9]-*)*[a-zA-Z0-9]\.?)+$/;
-        if (!hostRegex.test(destHost.value)) {
+        if (!validateHostname(destHost.value)) {
             errorList.value.push("Hostname must only contain ASCII letters (a-z, case-insensitive), digits (0-9), and hyphens ('-'), with no trailing dot.");
             destHostErrorTag.value = true;
         }
