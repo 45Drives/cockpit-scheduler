@@ -152,7 +152,7 @@
                                         <input v-else
                                             type="radio"
                                             name="remote-backup-selection"
-                                            class="input-radio pointer-events-none"
+                                            class="input-radio cursor-pointer"
                                             :checked="isSelected(row.raw)"
                                             @change="toggleSelection(row.raw)"
                                             :aria-label="`Select ${row.name}`"

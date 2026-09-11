@@ -68,7 +68,7 @@
 
             <div class="grid grid-cols-3 gap-2">
                 <div>
-                    <label class="block text-sm text-default">Server address</label>
+                    <label class="block text-sm text-default">Server address <span class="text-danger">*</span></label>
                     <input type="text" v-model="destHost" @input="debouncedDestHostChange()"
                         @blur="commitDestHostChange()" @keyup.enter="commitDestHostChange()" :class="[
                         'mt-1 block w-full input-textlike text-sm bg-default text-default',
@@ -76,16 +76,28 @@
                     ]" placeholder="e.g. 10.0.0.5 or backup.local" />
                 </div>
                 <div>
-                    <label class="block text-sm text-default">User</label>
+                    <label class="block text-sm text-default">User <span class="text-danger">*</span></label>
                     <input type="text" v-model="destUser"
                         class="mt-1 block w-full input-textlike text-sm bg-default text-default"
                         placeholder="root (default)" :disabled="!destHost" />
                 </div>
                 <div>
-                    <label class="block text-sm text-default">Port</label>
-                    <input type="number" v-model="destPort" min="1" max="65535"
-                        class="mt-1 block w-full input-textlike text-sm bg-default text-default"
-                        placeholder="22" :disabled="!destHost" />
+                    <label class="block text-sm text-default" for="zfs-dest-pass">Password</label>
+                    <div class="relative mt-1">
+                        <input :type="showSshSetupPassword ? 'text' : 'password'" id="zfs-dest-pass"
+                            v-model="sshSetupPassword"
+                            class="block w-full input-textlike text-sm bg-default text-default pr-10"
+                            :disabled="!destHost" />
+                        <button type="button" @click="showSshSetupPassword = !showSshSetupPassword"
+                            class="absolute inset-y-0 right-0 px-3 flex items-center text-muted"
+                            :aria-label="showSshSetupPassword ? 'Hide password' : 'Show password'">
+                            <EyeIcon v-if="!showSshSetupPassword" class="w-5 h-5" />
+                            <EyeSlashIcon v-else class="w-5 h-5" />
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-muted mt-1">
+                        Only used once to install an SSH key. It is not saved or used to run the backup.
+                    </p>
                 </div>
             </div>
 
@@ -95,30 +107,17 @@
                     First-time setup
                 </p>
                 <p class="text-xs text-amber-600 dark:text-amber-400 mb-3">
-                    Enter the password for <strong>{{ destUser || 'root' }}@{{ destHost }}</strong> to set up automatic login.
-                    This is a one-time step — your servers will use SSH keys for all future connections.
+                    This server needs an SSH key on <strong>{{ destUser || 'root' }}@{{ destHost }}</strong> before it can send snapshots there.
+                    We'll use the password you entered above to install one — this is a one-time step and the password is not saved.
                 </p>
-                <div class="flex items-end gap-2">
-                    <div class="flex-1">
-                        <label class="block text-xs text-amber-700 dark:text-amber-300">{{ destUser || 'root' }} password</label>
-                        <div class="relative mt-1">
-                            <input :type="showSshSetupPassword ? 'text' : 'password'" v-model="sshSetupPassword"
-                                class="block w-full input-textlike text-sm pr-10"
-                                placeholder="Enter password"
-                                @keyup.enter="handleSSHKeySetup"
-                                :disabled="settingUpSSH" />
-                            <button type="button" @click="showSshSetupPassword = !showSshSetupPassword"
-                                class="absolute inset-y-0 right-0 px-3 flex items-center text-muted"
-                                :aria-label="showSshSetupPassword ? 'Hide password' : 'Show password'">
-                                <EyeIcon v-if="!showSshSetupPassword" class="w-4 h-4" />
-                                <EyeSlashIcon v-else class="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
+                <div class="flex items-center gap-2">
                     <button @click="handleSSHKeySetup" :disabled="!sshSetupPassword || settingUpSSH"
                         class="btn btn-primary h-fit text-sm">
-                        {{ settingUpSSH ? 'Setting up…' : 'Connect' }}
+                        {{ settingUpSSH ? 'Setting up…' : 'Create + Use SSH Key' }}
                     </button>
+                    <span v-if="!sshSetupPassword" class="text-xs text-amber-700 dark:text-amber-300">
+                        Enter the {{ destUser || 'root' }} password in the Password field above first.
+                    </span>
                 </div>
                 <div v-if="sshSetupError" class="mt-2 text-xs text-red-600 dark:text-red-400">
                     <p class="font-medium">{{ sshSetupError }}</p>
@@ -1893,7 +1892,7 @@ async function handleSSHKeySetup() {
             host: destHost.value.trim(),
             user: (destUser.value || 'root').trim(),
             port: destPort.value || 22,
-            passwordRef: sshSetupPassword,
+            password: sshSetupPassword.value,
             onEvent: ({ type, title, message }) => {
                 pushNotification(new Notification(title, message, type, 8000));
             }
@@ -1901,6 +1900,7 @@ async function handleSSHKeySetup() {
         if (res.success) {
             sshSetupNeeded.value = false;
             sshSetupError.value = '';
+            sshSetupPassword.value = '';
             await getTargetPools();
         } else {
             sshSetupError.value = res.message || 'SSH setup failed. Check the password and try again.';
@@ -1911,7 +1911,6 @@ async function handleSSHKeySetup() {
         sshSetupError.value = err?.message || 'Unexpected error during SSH setup.';
     } finally {
         settingUpSSH.value = false;
-        sshSetupPassword.value = '';
     }
 }
 

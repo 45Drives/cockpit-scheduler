@@ -112,6 +112,9 @@
                             <EyeSlashIcon v-else class="w-5 h-5" />
                         </button>
                     </div>
+                    <p class="text-[11px] text-muted mt-1">
+                        Only used once to install an SSH key. It is not saved or used to run the backup.
+                    </p>
                 </div>
             </div>
 
