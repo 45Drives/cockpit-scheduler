@@ -1,3 +1,3 @@
-## task scheduler 1.8.1-3
+## task scheduler 1.8.2-1
 
-* Fixes cloudsync s3 blank config objects and remote ssh key creation
+* Adds snapshot tasks + retention handling into simple mode and fixes path issues with invalid characters as well as better task failure notifications
