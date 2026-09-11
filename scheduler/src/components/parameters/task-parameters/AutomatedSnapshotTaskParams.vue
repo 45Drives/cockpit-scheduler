@@ -364,6 +364,8 @@ onMounted(async () => {
 defineExpose({
     validateParams,
     clearErrorTags,
-    hasChanges
+    hasChanges,
+    setParams,
+    initializing: loading
 });
 </script>

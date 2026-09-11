@@ -33,6 +33,7 @@ class ReplicationRun:
         self.sshPort = "22"
         self.dataPort = "22"
         self.allowOverwrite = False
+        self.autoRecover = True
         self.useExistingDest = False
         self.forceFullSend = False
         self.dryRun = False

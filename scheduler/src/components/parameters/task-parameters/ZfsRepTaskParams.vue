@@ -188,6 +188,41 @@
             </template>
         </SimpleFormCard>
 
+        <!-- Self-healing: keep the backup usable after snapshots come and go -->
+        <SimpleFormCard title="Keep the backup fixing itself"
+            description="Backups can drift out of step with the original folder — usually when an old snapshot is cleaned up here but still exists on the backup server.">
+
+            <div class="flex items-start justify-between gap-3">
+                <label class="text-sm text-default" for="zfs-auto-recover">
+                    Repair the backup automatically
+                </label>
+                <input id="zfs-auto-recover" type="checkbox" v-model="autoRecover" class="mt-1 h-4 w-4 rounded shrink-0" />
+            </div>
+
+            <p class="text-xs text-muted mt-2">
+                When this is on, the next run quietly removes the leftover snapshots on the backup server and brings
+                it back in line with this folder, instead of stopping with an error.
+            </p>
+
+            <div class="mt-3 rounded-md bg-well/50 border border-default/40 p-2">
+                <p class="text-xs text-default font-medium">Your data stays protected</p>
+                <p class="text-[11px] text-muted mt-1">
+                    Only snapshots this backup task created are ever removed. If the backup server holds anything
+                    else — files someone saved there, or snapshots from another task — the backup stops and asks you
+                    instead of touching it. The original folder is never changed.
+                </p>
+            </div>
+
+            <template #footer>
+                <p v-if="autoRecover" class="text-[11px] text-muted">
+                    Recommended. Leave this on unless the backup server is also used for something else.
+                </p>
+                <p v-else class="text-[11px] text-amber-600 dark:text-amber-400">
+                    With this off, the backup will stop and stay out of date until someone fixes it by hand.
+                </p>
+            </template>
+        </SimpleFormCard>
+
         <!-- Snapshot retention is now configured per-interval in the Schedule modal -->
     </div>
 
@@ -633,6 +668,22 @@
                 Warning: Recursive send combined with overwrite behavior (<code>zfs receive -F</code>) can remove
                 destination snapshots and child datasets that do not exist on the source.
             </p>
+            <div name="send-opt-auto-recover" class="flex flex-row items-center gap-2 mt-2">
+                <label class="text-sm leading-6 text-default flex items-center">
+                    Auto-Recover Diverged Destination
+                    <InfoTile class="ml-1"
+                        :title="`If the destination holds snapshots newer than the incremental base, and every one of them was created by this task, and nothing has been written to the destination since its latest snapshot, the run rolls them back with 'zfs receive -F' instead of failing. Any snapshot this task does not own, any local write, or any check that cannot be verified blocks the rollback and the task still fails.`" />
+                </label>
+                <input type="checkbox" v-model="autoRecover" :disabled="allowOverwrite" class="h-4 w-4 rounded"
+                    :class="{ 'opacity-50 cursor-not-allowed': allowOverwrite }" />
+            </div>
+            <p class="text-xs text-muted">
+                Recovers from source-side pruning without authorising a blanket overwrite. Does not apply when the
+                two sides share no snapshot at all — that needs Force Full Resync.
+            </p>
+            <p v-if="allowOverwrite" class="mt-0.5 text-xs text-yellow-500">
+                Not used — Allow Overwrite already permits the rollback unconditionally.
+            </p>
             <div name="send-opt-custom-name mt-2">
                 <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
                     <div class="flex flex-row items-center gap-2 mt-2">
@@ -728,7 +779,6 @@ import {
     filterTaskSnapshots,
     filterDatasetSnapshots,
     ZfsSnap,
-    destAheadOfCommon,
     validateHostname
 } from '../../../composables/utility';
 import { SSH_CIPHER_OPTIONS } from '../../../models/SshCiphers';
@@ -801,6 +851,7 @@ const destSelectionBlocked = computed(() => sshSetupNeeded.value || autoTestingS
 
 const directionSwitched = ref(false);
 const allowOverwrite = ref(false);
+const autoRecover = ref(true);
 const resumeFailAllowOverwrite = ref(false);
 const resumeStallTimeout = ref(3600);
 const forceFullSend = ref(false);
@@ -1097,6 +1148,10 @@ async function initializeData() {
 
         const allowOverwriteParam = sendOptionsParams.find(p => p.key === 'allowOverwrite');
         allowOverwrite.value = allowOverwriteParam ? !!allowOverwriteParam.value : false;
+        // Tasks saved before Auto-Recover existed get it on: the checks it runs are strictly
+        // narrower than the manual overwrite they would otherwise have needed.
+        const autoRecoverParam = sendOptionsParams.find(p => p.key === 'autoRecover');
+        autoRecover.value = autoRecoverParam ? !!autoRecoverParam.value : true;
         const resumeFailAllowOverwriteParam = sendOptionsParams.find(p => p.key === 'resumeFailAllowOverwrite');
         resumeFailAllowOverwrite.value = resumeFailAllowOverwriteParam ? !!resumeFailAllowOverwriteParam.value : false;
 
@@ -1207,6 +1262,7 @@ function formSnapshot() {
         customName: customName.value,
         transferMethod: transferMethod.value,
         allowOverwrite: allowOverwrite.value,
+        autoRecover: autoRecover.value,
         resumeFailAllowOverwrite: resumeFailAllowOverwrite.value,
         resumeStallTimeout: resumeStallTimeout.value,
         useExistingDest: useExistingDest.value,
@@ -1652,11 +1708,20 @@ async function checkDestDatasetContents() {
             ? 'applicable-untagged-base'
             : 'applicable';
 
-        const diverged = destAheadOfCommon(srcSnaps, dstSnaps, common);
-        if (diverged && !allowOverwrite.value) {
-            errorList.value.push("Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
-            destDatasetErrorTag.value = true;
-            return;
+        const srcGuids = new Set(srcSnaps.map(s => s.guid));
+        const aheadSnaps = dstSnaps.filter(d => d.creation > common.creation && !srcGuids.has(d.guid));
+        if (aheadSnaps.length && !allowOverwrite.value) {
+            // Mirrors _ahead_is_self_inflicted(): leftovers this task made are ours to roll back.
+            // The run itself re-checks this and also rejects local writes, so this is only a gate
+            // on obviously-unrecoverable destinations.
+            const allOurs = !!taskName && filterTaskSnapshots(aheadSnaps, taskName, customScope).length === aheadSnaps.length;
+            if (!autoRecover.value || !allOurs) {
+                errorList.value.push(props.simple
+                    ? "This destination already holds snapshots that did not come from this backup. Pick an empty destination, or a new dataset name, so nothing there gets overwritten."
+                    : "Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
+                destDatasetErrorTag.value = true;
+                return;
+            }
         }
 
         destDatasetErrorTag.value = false;
@@ -1748,6 +1813,7 @@ function setParams() {
             .addChild(new StringParameter('Transfer Method', 'transferMethod', tm))
             .addChild(new StringParameter('SSH Cipher', 'sshCipher', sshCipher.value))
             .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', allowOverwrite.value))
+            .addChild(new BoolParameter('Auto Recover', 'autoRecover', autoRecover.value))
             .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', resumeFailAllowOverwrite.value))
             .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', resumeStallTimeout.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))

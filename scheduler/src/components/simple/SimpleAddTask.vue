@@ -65,10 +65,64 @@
                     </div>
                 </div>
 
-                <!-- RIGHT: calendar (fills column) -->
-                <div class="col-span-12 xl:col-span-6 min-h-0 flex">
+                <!-- RIGHT: schedule + how long backups are kept -->
+                <div class="col-span-12 xl:col-span-6 min-h-0 flex flex-col gap-2">
                     <SimpleCalendar :title="'Schedule Task'" v-model:taskSchedule="uiSchedule"
-                        class="w-full h-full flex-1" />
+                        class="w-full flex-1 min-h-0" />
+
+                    <div v-if="showRetention"
+                        class="shrink-0 rounded-md border border-default bg-accent text-default p-2">
+                        <h3 class="text-base font-medium leading-6">How far back do you want to be able to restore?</h3>
+                        <p class="text-xs text-muted mt-1">
+                            Each run leaves behind a restore point. Older ones are cleaned up automatically so your
+                            drives don't slowly fill up.
+                        </p>
+
+                        <div class="mt-3" :class="isSnapshotOnly ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-2'">
+                            <div>
+                                <label for="keep-local" class="block text-sm">
+                                    {{ isSnapshotOnly ? 'Keep restore points for' : 'On this server' }}
+                                </label>
+                                <select id="keep-local" v-model="keepLocal" class="input-textlike w-full text-sm mt-1">
+                                    <option v-for="opt in keepLocalOptions" :key="opt.key" :value="opt.key">
+                                        {{ opt.label }}
+                                    </option>
+                                </select>
+                                <p class="text-[11px] text-muted mt-1">
+                                    {{ isSnapshotOnly
+                                        ? 'Snapshots stay on this server, so this is how far back you can undo a change.'
+                                        : 'For undoing a mistake quickly.' }}
+                                </p>
+                            </div>
+
+                            <div v-if="!isSnapshotOnly">
+                                <label for="keep-backup" class="block text-sm">On the backup server</label>
+                                <select id="keep-backup" v-model="keepBackup" class="input-textlike w-full text-sm mt-1">
+                                    <option v-for="opt in keepBackupOptions" :key="opt.key" :value="opt.key">
+                                        {{ opt.label }}
+                                    </option>
+                                </select>
+                                <p class="text-[11px] text-muted mt-1">Your long-term safety net.</p>
+                            </div>
+                        </div>
+
+                        <p v-if="backupKeptShorterThanLocal" class="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                            The backup server is set to forget sooner than this server does, so it will hold less
+                            history than the original. That is usually the wrong way around.
+                        </p>
+                        <p v-else-if="keepsEverything" class="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                            Nothing will ever be cleaned up. Restore points will keep building until one of the drives
+                            runs out of space.
+                        </p>
+                        <p v-else-if="isSnapshotOnly" class="text-[11px] text-muted mt-2">
+                            Snapshots protect against deleting or overwriting a file, but not against losing the
+                            server itself. Add a backup task for that.
+                        </p>
+                        <p v-else class="text-[11px] text-muted mt-2">
+                            Only restore points created by this task are cleaned up, and the newest one is always kept.
+                            Your actual files are never deleted.
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -163,6 +217,104 @@ onUnmounted(() => window.removeEventListener('storage', handleStorageEvent));
 // schedule bridge init
 const uiSchedule = ref<UITaskSchedule>(toUISchedule(originalTask.value?.schedule));
 
+// ---- retention (how long snapshots are kept) ----
+type RetentionPreset = { key: string; label: string; time: number; unit: string };
+
+const RETENTION_PRESETS: RetentionPreset[] = [
+    { key: 'forever', label: 'Keep everything', time: 0, unit: '' },
+    { key: '7-days', label: '1 week', time: 7, unit: 'days' },
+    { key: '14-days', label: '2 weeks', time: 14, unit: 'days' },
+    { key: '1-months', label: '1 month', time: 1, unit: 'months' },
+    { key: '3-months', label: '3 months', time: 3, unit: 'months' },
+    { key: '6-months', label: '6 months', time: 6, unit: 'months' },
+    { key: '1-years', label: '1 year', time: 1, unit: 'years' },
+    { key: '2-years', label: '2 years', time: 2, unit: 'years' },
+];
+
+// Matches the unit table in the pruning script.
+const RETENTION_UNIT_SECONDS: Record<string, number> = {
+    minutes: 60, hours: 3600, days: 86400, weeks: 604800, months: 2592000, years: 31536000,
+};
+
+const DEFAULT_KEEP_LOCAL = '14-days';
+const DEFAULT_KEEP_BACKUP = '1-years';
+
+const keepLocal = ref(DEFAULT_KEEP_LOCAL);
+const keepBackup = ref(DEFAULT_KEEP_BACKUP);
+
+const SNAPSHOT_TEMPLATE = 'Automated Snapshot Task';
+const REPLICATION_TEMPLATE = 'ZFS Replication Task';
+
+// Snapshot tasks keep copies in one place; replication keeps them in two.
+const isSnapshotOnly = computed(() => selectedTemplate.value?.name === SNAPSHOT_TEMPLATE);
+const showRetention = computed(
+    () => isSnapshotOnly.value || selectedTemplate.value?.name === REPLICATION_TEMPLATE
+);
+
+function retentionKey(r?: { retentionTime?: number; retentionUnit?: string } | null): string {
+    if (!r || !r.retentionTime || r.retentionTime <= 0 || !r.retentionUnit) return 'forever';
+    return `${r.retentionTime}-${r.retentionUnit}`;
+}
+
+function retentionFromKey(key: string) {
+    if (key === 'forever') return null;
+    const [time, unit] = key.split('-');
+    const n = Number(time);
+    if (!Number.isFinite(n) || n <= 0 || !RETENTION_UNIT_SECONDS[unit]) return null;
+    return { retentionTime: n, retentionUnit: unit };
+}
+
+function retentionSeconds(key: string): number {
+    const r = retentionFromKey(key);
+    return r ? r.retentionTime * RETENTION_UNIT_SECONDS[r.retentionUnit] : Infinity;
+}
+
+// The advanced editor allows any number/unit pair, so offer whatever a task already
+// has rather than snapping it to the nearest preset behind the user's back.
+function retentionOptions(current: string): RetentionPreset[] {
+    if (RETENTION_PRESETS.some(p => p.key === current)) return RETENTION_PRESETS;
+    const parsed = retentionFromKey(current);
+    if (!parsed) return RETENTION_PRESETS;
+    const extra: RetentionPreset = {
+        key: current,
+        label: `${parsed.retentionTime} ${parsed.retentionUnit}`,
+        time: parsed.retentionTime,
+        unit: parsed.retentionUnit,
+    };
+    return [...RETENTION_PRESETS, extra].sort(
+        (a, b) => a.time * (RETENTION_UNIT_SECONDS[a.unit] ?? 0) - b.time * (RETENTION_UNIT_SECONDS[b.unit] ?? 0)
+    );
+}
+
+const keepLocalOptions = computed(() => retentionOptions(keepLocal.value));
+const keepBackupOptions = computed(() => retentionOptions(keepBackup.value));
+
+const backupKeptShorterThanLocal = computed(
+    () => !isSnapshotOnly.value && retentionSeconds(keepBackup.value) < retentionSeconds(keepLocal.value)
+);
+
+const keepsEverything = computed(
+    () => keepLocal.value === 'forever' && (isSnapshotOnly.value || keepBackup.value === 'forever')
+);
+
+// A brand-new task gets a bounded default; an existing one keeps exactly what it had,
+// so opening a task in the simple view never starts deleting snapshots on its own.
+function loadRetentionFrom(model?: ModelTaskSchedule | null, templateName?: string) {
+    if (!model) {
+        keepLocal.value = DEFAULT_KEEP_LOCAL;
+        keepBackup.value = DEFAULT_KEEP_BACKUP;
+        return;
+    }
+    const retention: any = (model as any)?.intervals?.[0]?.retention ?? null;
+    if (templateName === SNAPSHOT_TEMPLATE) {
+        keepLocal.value = retentionKey(retention?.destination ?? retention?.source);
+        keepBackup.value = DEFAULT_KEEP_BACKUP;
+        return;
+    }
+    keepLocal.value = retentionKey(retention?.source);
+    keepBackup.value = retentionKey(retention?.destination);
+}
+
 // helper used by watcher
 function resetForm() {
     newTaskName.value = '';
@@ -170,6 +322,7 @@ function resetForm() {
     parameters.value = undefined;
     notesTask.value = '';
     uiSchedule.value = toUISchedule(null);
+    loadRetentionFrom(null);
     paramInputKey.value++; // reset ParameterInput
 }
 
@@ -206,6 +359,8 @@ onMounted(async () => {
             if (sched.startDate) sched.startDate = new Date(sched.startDate);
             uiSchedule.value = sched;
         }
+        if (snap.keepLocal) keepLocal.value = snap.keepLocal;
+        if (snap.keepBackup) keepBackup.value = snap.keepBackup;
         const tpl = templateFromSelection();
         if (tpl && parameters.value) {
             draftTask.value = new TaskInstance(
@@ -223,6 +378,7 @@ onMounted(async () => {
     if (isEditMode.value && originalTask.value) {
         // Editing: load the task's existing schedule + other fields
         uiSchedule.value = toUISchedule(originalTask.value.schedule);
+        loadRetentionFrom(originalTask.value.schedule, originalTask.value.template?.name);
         prefillFromTask(originalTask.value);
     } else {
         // Creating: clear to defaults (blank schedule + empty form)
@@ -240,7 +396,7 @@ const taskTemplates = injectWithCheck(taskTemplatesInjectionKey, 'taskTemplates 
 const loading = injectWithCheck(loadingInjectionKey, 'loading not provided!');
 const myScheduler = injectWithCheck(schedulerInjectionKey, 'scheduler not provided!');
 
-const simpleAllowed = ['Rsync Task', 'Cloud Sync Task', 'ZFS Replication Task'];
+const simpleAllowed = ['Automated Snapshot Task', 'Rsync Task', 'Cloud Sync Task', 'ZFS Replication Task'];
 const localZfsAvailable = ref(false);
 
 onMounted(async () => {
@@ -252,17 +408,19 @@ onMounted(async () => {
     }
 });
 
+const ZFS_ONLY_TEMPLATES = ['ZFS Replication Task', 'Automated Snapshot Task'];
+
 const allowedTemplates = computed(() => {
     const orderMap = Object.fromEntries(simpleAllowed.map((n, i) => [n, i]));
     return taskTemplates
         .filter((t: any) => simpleAllowed.includes(t.name))
-        .filter((t: any) => t.name !== 'ZFS Replication Task' || localZfsAvailable.value)
+        .filter((t: any) => !ZFS_ONLY_TEMPLATES.includes(t.name) || localZfsAvailable.value)
         .sort((a: any, b: any) => orderMap[a.name] - orderMap[b.name]);
 });
 
 const nameOverrides: Record<string, string> = {
     'ZFS Replication Task': 'ZFS Backup (Server-to-Server)',
-    'Automated Snapshot Task': 'Automatic Snapshots',
+    'Automated Snapshot Task': 'Snapshots (This Server Only)',
     'Scrub Task': 'Disk Health Check (ZFS Scrub)',
     'Rsync Task': 'File Copy / Sync (Rsync)',
     'Cloud Sync Task': 'Cloud Backup',
@@ -364,12 +522,28 @@ function toModelSchedule(ui: UITaskSchedule): ModelTaskSchedule {
         baseInterval.month = { value: '*' };
     }
 
+    if (showRetention.value) {
+        const retention: any = {};
+        if (isSnapshotOnly.value) {
+            // One location, and both the scheduler and the snapshot script read it from `destination`.
+            const keep = retentionFromKey(keepLocal.value);
+            if (keep) retention.destination = keep;
+        } else {
+            const source = retentionFromKey(keepLocal.value);
+            const destination = retentionFromKey(keepBackup.value);
+            if (source) retention.source = source;
+            if (destination) retention.destination = destination;
+        }
+        if (Object.keys(retention).length > 0) baseInterval.retention = retention;
+    }
+
     return new ModelTaskSchedule(true, [baseInterval]);
 }
 
 // schedule bridge watch
 watch(() => originalTask.value, (t) => {
     uiSchedule.value = toUISchedule(t?.schedule);
+    loadRetentionFrom(t?.schedule, t?.template?.name);
 }, { immediate: true });
 
 
@@ -521,6 +695,8 @@ function snapshotForm() {
         parameters: parameters.value ? JSON.parse(JSON.stringify(parameters.value)) : null,
         notes: notesTask.value,
         schedule: uiSchedule.value ? JSON.parse(JSON.stringify(uiSchedule.value)) : null,
+        keepLocal: keepLocal.value,
+        keepBackup: keepBackup.value,
     };
 }
 

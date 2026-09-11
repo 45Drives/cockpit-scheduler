@@ -105,6 +105,7 @@ def dbg_env():
         "zfsRepConfig_sendOptions_compressed_flag",
         "zfsRepConfig_sendOptions_raw_flag",
         "zfsRepConfig_sendOptions_allowOverwrite",
+        "zfsRepConfig_sendOptions_autoRecover",
         "zfsRepConfig_sendOptions_useExistingDest",
         "zfsRepConfig_sendOptions_includeIntermediateSnapshots",
         "zfsRepConfig_destDataset_user",

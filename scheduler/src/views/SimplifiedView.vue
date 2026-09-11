@@ -170,12 +170,12 @@
                                             <div class="truncate text-gray-500" :title="row.details.source">
                                                 <span class="text-muted mr-2">Source</span>{{ row.details.source }}
                                             </div>
-                                            <div class="truncate text-gray-500" :title="row.details.destination">
+                                            <div v-if="row.details.destination" class="truncate text-gray-500" :title="row.details.destination">
                                                 <span class="text-muted mr-2">Dest</span>{{ row.details.destination }}
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-1.5 truncate capitalize text-gray-500" :title="row.schedule">{{ row.schedule }}</td>
+                                    <td class="px-3 py-1.5 truncate capitalize text-gray-500" :title="`${row.schedule}\n${row.retention}`">{{ row.schedule }}</td>
                                     <td class="px-3 py-1.5">
                                         <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
                                             :class="taskStatusBadgeClass(row.status)">
@@ -438,10 +438,10 @@ onActivated(() => { isActive = true; boot(); checkResumableDraft(); restoreSetti
 onDeactivated(() => { isActive = false; live.stop(); });
 onUnmounted(() => { isActive = false; live.stop(); });
 
-// Only remote backups (Rsync Task + Cloud Sync Task + ZFS Replication Task)
+// Backups the simple view understands: remote copies plus local snapshots
 const remoteTasks = computed(() =>
     (taskInstances.value ?? []).filter(
-        (t: any) => t?.template?.name === 'Rsync Task' || t?.template?.name === 'Cloud Sync Task' || t?.template?.name === 'ZFS Replication Task'
+        (t: any) => t?.template?.name === 'Rsync Task' || t?.template?.name === 'Cloud Sync Task' || t?.template?.name === 'ZFS Replication Task' || t?.template?.name === 'Automated Snapshot Task'
     )
 );
 const live = useLiveTaskStatus(remoteTasks, myScheduler, myTaskLog, {
@@ -471,6 +471,9 @@ function isCloud(t: any) {
 }
 function isZfsRep(t: any) {
     return t?.template?.name === 'ZFS Replication Task';
+}
+function isAutoSnap(t: any) {
+    return t?.template?.name === 'Automated Snapshot Task';
 }
 
 function getSource(t: any) {
@@ -509,6 +512,16 @@ function getSchedule(t: any) {
     return ivals.map((i: any) => myScheduler.describeInterval(i)).join(' + ');
 }
 
+function getRetention(t: any) {
+    const retention = t?.schedule?.intervals?.[0]?.retention;
+    const describe = (r: any) => (r?.retentionTime > 0 ? `${r.retentionTime} ${r.retentionUnit}` : 'forever');
+    if (isAutoSnap(t)) {
+        return `Restore points: kept ${describe(retention?.destination ?? retention?.source)}`;
+    }
+    if (!retention) return 'Restore points: kept forever';
+    return `Restore points: ${describe(retention.source)} here, ${describe(retention.destination)} on the backup server`;
+}
+
 
 /**
  * UI field builders
@@ -517,6 +530,7 @@ function typeLabel(t: any) {
     if (isRsync(t)) return 'Server-to-Server';
     if (isCloud(t)) return 'Cloud Backup';
     if (isZfsRep(t)) return 'ZFS to ZFS Backup';
+    if (isAutoSnap(t)) return 'Local Snapshots';
     return '—';
 }
 
@@ -587,6 +601,13 @@ function detailsFor(t: any) {
             destination: getZfsDataset(t, 'destDataset'),
             extra: undefined,
         };
+    } else if (isAutoSnap(t)) {
+        // Snapshots live beside the data, so there is no destination to show.
+        return {
+            source: getZfsDataset(t, 'filesystem'),
+            destination: null,
+            extra: undefined,
+        };
     }
     return { source, destination: '—', extra: undefined };
 }
@@ -640,6 +661,7 @@ const rows = computed(() => {
             progressLabel: live.progressLabelFor(t),
             isRunning: live.isRunningNow(t),
             schedule: getSchedule(t),
+            retention: getRetention(t),
             lastRun: live.lastRunFor(t) ?? getLastRun(t),
             enabled: t?.schedule?.enabled ?? false,
             hasSchedule: (t?.schedule?.intervals?.length ?? 0) > 0,

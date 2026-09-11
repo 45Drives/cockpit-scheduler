@@ -120,6 +120,7 @@ def _initialize_run(ctx: ReplicationRun):
     ctx.transferMethod = (os.environ.get('zfsRepConfig_sendOptions_transferMethod', '') or '').strip().lower()
     (ctx.sshPort, ctx.dataPort) = get_dest_ports(ctx.transferMethod)
     ctx.allowOverwrite = as_bool(os.environ.get('zfsRepConfig_sendOptions_allowOverwrite'), default=False)
+    ctx.autoRecover = as_bool(os.environ.get('zfsRepConfig_sendOptions_autoRecover'), default=True)
     ctx.useExistingDest = as_bool(os.environ.get('zfsRepConfig_sendOptions_useExistingDest'), default=False)
     ctx.forceFullSend = as_bool(os.environ.get('zfsRepConfig_sendOptions_forceFullSend'), default=False)
     ctx.dryRun = as_bool(os.environ.get('zfsRepConfig_sendOptions_dryRun'), default=False)
@@ -189,7 +190,7 @@ def _initialize_run(ctx: ReplicationRun):
     dstDs = os.environ.get('zfsRepConfig_destDataset_dataset', '')
     ctx.sourceFilesystem = join_zfs_path(srcPool, srcDs)
     ctx.destFilesystem = join_zfs_path(dstPool, dstDs)
-    dbg_kv('config', {'direction': ctx.direction, 'transferMethod': ctx.transferMethod, 'sshPort': ctx.sshPort, 'dataPort': ctx.dataPort, 'remoteUser': ctx.remoteUser, 'remoteHost': ctx.remoteHost, 'sourceFilesystem': ctx.sourceFilesystem, 'destFilesystem': ctx.destFilesystem, 'recursive': ctx.isRecursiveSnap, 'compressed': ctx.isCompressed, 'raw': ctx.isRaw, 'includeIntermediates': ctx.includeIntermediateSnapshots, 'allowOverwrite': ctx.allowOverwrite, 'useExistingDest': ctx.useExistingDest, 'mbuffer': f'{ctx.mBufferSize}{ctx.mBufferUnit}', 'mbuffer_block': f'{ctx.mBufferBlockSize}{ctx.mBufferBlockUnit}', 'mbuffer_callback_host': ctx.mBufferCallbackHost or '(auto)', 'ssh_cipher': _SSH_CIPHER or '(system default)'})
+    dbg_kv('config', {'direction': ctx.direction, 'transferMethod': ctx.transferMethod, 'sshPort': ctx.sshPort, 'dataPort': ctx.dataPort, 'remoteUser': ctx.remoteUser, 'remoteHost': ctx.remoteHost, 'sourceFilesystem': ctx.sourceFilesystem, 'destFilesystem': ctx.destFilesystem, 'recursive': ctx.isRecursiveSnap, 'compressed': ctx.isCompressed, 'raw': ctx.isRaw, 'includeIntermediates': ctx.includeIntermediateSnapshots, 'allowOverwrite': ctx.allowOverwrite, 'autoRecover': ctx.autoRecover, 'useExistingDest': ctx.useExistingDest, 'mbuffer': f'{ctx.mBufferSize}{ctx.mBufferUnit}', 'mbuffer_block': f'{ctx.mBufferBlockSize}{ctx.mBufferBlockUnit}', 'mbuffer_callback_host': ctx.mBufferCallbackHost or '(auto)', 'ssh_cipher': _SSH_CIPHER or '(system default)'})
     if not ctx.sourceFilesystem:
         raise RuntimeError('Source dataset is empty (zfsRepConfig_sourceDataset_pool/dataset).')
     if not ctx.destFilesystem:
@@ -555,6 +556,65 @@ def _datasets_ahead_of_base(src_groups, dst_groups, base_suffix):
     return sorted(ahead)
 
 
+def _snaps_ahead_of_base(src_groups, dst_groups, base_suffix):
+    """Destination snapshots newer than the incremental base, keyed by relative dataset."""
+    ahead = {}
+    for rel, dst_snaps in dst_groups.items():
+        if rel not in src_groups:
+            continue
+        ordered = sorted(dst_snaps, key=lambda s: s.order_key)
+        idx = next((i for (i, s) in enumerate(ordered) if snapshot_suffix(s.name) == base_suffix), -1)
+        if 0 <= idx < len(ordered) - 1:
+            ahead[rel] = ordered[idx + 1:]
+    return ahead
+
+
+def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_suffix):
+    """Decide whether rolling the destination back can only cost this task's own copies.
+
+    The destination getting "ahead" is normally self-inflicted: source retention pruned a
+    snapshot that had already been replicated, so the backup keeps a state the source no
+    longer has. Rolling that back loses nothing the source did not deliberately discard.
+    It stops being safe the moment anything on the destination came from somewhere else,
+    so an unattributable snapshot or any local write blocks recovery, and anything that
+    cannot be verified is treated as unsafe.
+
+    Returns (safe, blocking_reason).
+    """
+    ahead = _snaps_ahead_of_base(src_groups, dst_groups, base_suffix)
+    if not ahead:
+        return (False, 'there is nothing newer than the shared starting point to roll back')
+
+    for rel, snaps in sorted(ahead.items()):
+        owned = {s.guid for s in filter_task_snapshots(snaps, ctx.taskName, custom_name=ctx.customName)}
+        foreign = [s.name for s in snaps if s.guid not in owned]
+        if foreign:
+            return (False, f'{len(foreign)} snapshot(s) there were not created by this task (for example {foreign[0]})')
+
+    dest_root = sorted(dst_groups.get('', []), key=lambda s: s.order_key)
+    if not dest_root:
+        return (False, 'the destination has no snapshot to measure later changes against')
+
+    latest = dest_root[-1]
+    if ctx.direction == 'pull':
+        written = get_written_since_snapshot(ctx.destFilesystem, latest.name, recursive=ctx.isRecursiveSnap)
+    else:
+        written = get_written_since_snapshot(
+            ctx.destFilesystem,
+            latest.name,
+            remote_user=ctx.remoteUser if ctx.remoteHost else None,
+            remote_host=ctx.remoteHost if ctx.remoteHost else None,
+            remote_port=ctx.sshPort,
+            recursive=ctx.isRecursiveSnap,
+        )
+    if written is None:
+        return (False, 'the destination could not be checked for changes made outside this task')
+    if written > 0:
+        return (False, f'the destination holds {format_bytes(written)} of changes written outside this task')
+
+    return (True, '')
+
+
 def _dest_run(ctx: ReplicationRun, args, timeout=30):
     """Run a read-only command wherever the destination lives."""
     if ctx.direction == 'pull' or not (ctx.remoteHost and ctx.remoteUser):
@@ -731,7 +791,10 @@ def _plan_send(ctx: ReplicationRun):
                 ctx.forceOverwrite = True
                 ctx.incrementalSnapName = ''
             else:
+                # Auto-Recover deliberately stops here: with no shared snapshot the only repair is
+                # resending everything, which is a bandwidth and downtime decision the operator owns.
                 print('Refusing to overwrite destination without a common base. Enable allowOverwrite or choose a new destination.')
+                print('The source and the backup no longer share any snapshot, so re-syncing means sending the whole dataset again. Turn on Force Full Resync for one run to do that, or point the task at a new destination.')
                 sys.exit(2)
         else:
             # Order by the destination's own createtxg, not by creation time: two snapshots
@@ -766,17 +829,26 @@ def _plan_send(ctx: ReplicationRun):
             print(f'Most recent common snapshot: {ctx.incrementalSnapName}')
 
             if ctx.isRecursiveSnap:
-                ahead_datasets = _datasets_ahead_of_base(src_groups, dst_groups, snapshot_suffix(ctx.incrementalSnapName))
+                ahead_src_groups, ahead_dst_groups = src_groups, dst_groups
             else:
                 # Any newer snapshot breaks an incremental receive, task-owned or not.
-                root_src = {'': filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)}
-                root_dst = {'': filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)}
-                ahead_datasets = _datasets_ahead_of_base(root_src, root_dst, snapshot_suffix(ctx.incrementalSnapName))
+                ahead_src_groups = {'': filter_dataset_snapshots(ctx.sourceSnapshots, ctx.sourceFilesystem)}
+                ahead_dst_groups = {'': filter_dataset_snapshots(ctx.destinationSnapshots, ctx.destFilesystem)}
+            base_suffix = snapshot_suffix(ctx.incrementalSnapName)
+            ahead_datasets = _datasets_ahead_of_base(ahead_src_groups, ahead_dst_groups, base_suffix)
             destAhead = bool(ahead_datasets)
             if destAhead:
                 print('Destination datasets holding snapshots newer than the base: ' + ', '.join(ahead_datasets))
 
             if destAhead and (not ctx.allowOverwrite):
+                if ctx.autoRecover:
+                    (safe, blocker) = _ahead_is_self_inflicted(ctx, ahead_src_groups, ahead_dst_groups, base_suffix)
+                    if safe:
+                        print('The backup is out of step with the source: it still holds snapshots from this task that the source no longer keeps.')
+                        print('Auto-Recover is on and everything extra on the destination came from this task, so those snapshots will be rolled back (-F) and the backup brought back in sync.')
+                        ctx.forceOverwrite = True
+                        return
+                    print(f'Auto-Recover cannot repair this safely because {blocker}.')
                 print('Destination has newer snapshots than the common base. Enable Allow Overwrite (-F) or choose a different destination.')
                 sys.exit(2)
             if destAhead:

@@ -317,6 +317,60 @@ def test_plan_refuses_destination_ahead_without_overwrite():
     assert exc.value.code == 2
 
 
+def _ahead_ctx(extra_tag="job"):
+    """Destination carries one snapshot past the shared base, as source-side pruning leaves it."""
+    ctx = ReplicationRun()
+    ctx.taskName = "job"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    ctx.sourceSnapshots = [snap("tank/source@s1", "g1", 1)]
+    extra = snap("backup/target@s2", "g2", 2)
+    extra.task_tag = extra_tag
+    ctx.destinationSnapshots = [snap("backup/target@s1", "g1", 1), extra]
+    return ctx
+
+
+def test_auto_recover_rolls_back_this_tasks_own_leftovers(monkeypatch):
+    ctx = _ahead_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+    assert ctx.incrementalSnapName == "tank/source@s1"
+
+
+def test_auto_recover_refuses_snapshots_another_task_owns(monkeypatch):
+    ctx = _ahead_ctx(extra_tag="other-job")
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+
+def test_auto_recover_refuses_when_destination_was_written_to(monkeypatch):
+    ctx = _ahead_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 4096)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+
+def test_auto_recover_refuses_when_destination_cannot_be_checked(monkeypatch):
+    ctx = _ahead_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: None)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+
+def test_auto_recover_disabled_keeps_the_hard_failure(monkeypatch):
+    ctx = _ahead_ctx()
+    ctx.autoRecover = False
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+
 def _recursive_ctx():
     ctx = ReplicationRun()
     ctx.sourceFilesystem = "tank"

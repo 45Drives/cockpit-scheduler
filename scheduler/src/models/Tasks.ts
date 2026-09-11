@@ -82,6 +82,7 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new StringParameter('Transfer Method', 'transferMethod', ''))
                 .addChild(new StringParameter('SSH Cipher', 'sshCipher', ''))
                 .addChild(new BoolParameter('Allow Overwrite', 'allowOverwrite', false))
+                .addChild(new BoolParameter('Auto Recover', 'autoRecover', true))
                 .addChild(new BoolParameter('Resume Fail Allow Overwrite', 'resumeFailAllowOverwrite', false))
                 .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', 3600))
                 .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', false))
