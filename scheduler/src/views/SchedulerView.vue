@@ -181,6 +181,7 @@ import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey } from '../keys/injection-keys';
 import { injectWithCheck } from '../composables/utility'
 import { useLiveTaskStatus } from '../composables/useLiveTaskStatus';
+import { failureNotificationText } from '../composables/taskFailureReason';
 import { runCommand } from '../models/Scheduler';
 
 const taskInstances = injectWithCheck(taskInstancesInjectionKey, "taskInstances not provided!");
@@ -287,10 +288,13 @@ function initHoustonDbusSubscription() {
                         const retryText = retries > 0
                             ? ` after ${retries} ${retries === 1 ? 'retry' : 'retries'}`
                             : '';
+                        const reason = typeof msg?.reason === 'string' ? msg.reason : '';
                         pushNotification(
                             new Notification(
                                 'Task Failed',
-                                `Task "${taskName}" has failed${retryText}.`,
+                                reason
+                                    ? `Task "${taskName}" has failed${retryText}: ${reason}`
+                                    : `Task "${taskName}" has failed${retryText}.`,
                                 'error',
                                 10000
                             )
@@ -456,10 +460,14 @@ const runNowYes: ConfirmationCallback = async () => {
 
         // Prefer the actual exit code if we can fetch it
         let exitCode: number | null = null;
+        let logOutput = '';
         try {
             const latest = await myTaskLog.getLatestEntryFor(task);
             if (latest && typeof latest.exitCode === 'number') {
                 exitCode = latest.exitCode;
+            }
+            if (latest && typeof (latest as any).output === 'string') {
+                logOutput = (latest as any).output;
             }
         } catch {
             // fall back to status string below
@@ -478,9 +486,9 @@ const runNowYes: ConfirmationCallback = async () => {
             pushNotification(
                 new Notification(
                     'Task Failed',
-                    `Task ${task.name} failed to complete.`,
+                    failureNotificationText(task.name, logOutput, exitCode),
                     'error',
-                    6000
+                    10000
                 )
             );
         } else {
@@ -490,9 +498,9 @@ const runNowYes: ConfirmationCallback = async () => {
                 pushNotification(
                     new Notification(
                         'Task Failed',
-                        `Task ${task.name} failed to complete.`,
+                        failureNotificationText(task.name, logOutput, null),
                         'error',
-                        6000
+                        10000
                     )
                 );
             } else if (

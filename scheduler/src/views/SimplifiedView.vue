@@ -292,6 +292,7 @@ import { ArrowPathIcon, PlusIcon, PlayIcon, StopIcon, DocumentTextIcon, PencilSq
 import CustomLoadingSpinner from '../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../composables/utility';
 import { logTaskEvent } from '../composables/useTaskLogBridge';
+import { describeTaskFailure, failureNotificationText } from '../composables/taskFailureReason';
 import { loadingInjectionKey, schedulerInjectionKey, taskInstancesInjectionKey, logInjectionKey } from '../keys/injection-keys';
 import { Notification, pushNotification, confirm } from '@45drives/houston-common-ui';
 import { useRouter } from 'vue-router';
@@ -744,22 +745,31 @@ const runNowYes = async () => {
 
         // Inspect exit code for accurate notification
         let exitCode: number | null = null;
+        let logOutput = '';
         try {
             const latest = await myTaskLog.getLatestEntryFor(t);
             if (latest && typeof latest.exitCode === 'number') exitCode = latest.exitCode;
+            if (latest && typeof (latest as any).output === 'string') logOutput = (latest as any).output;
         } catch { /* fall back to generic */ }
+
+        const failure = exitCode !== 0 ? describeTaskFailure(logOutput) : null;
 
         logTaskEvent(
             'scheduler:task_run.done',
             t,
-            { origin: 'simple-view', exitCode, durationMs: Date.now() - runStartedAt },
+            {
+                origin: 'simple-view',
+                exitCode,
+                durationMs: Date.now() - runStartedAt,
+                ...(failure ? { reason: failure.summary, logLine: failure.detail } : {}),
+            },
             exitCode !== null && exitCode !== 0 ? 'error' : 'info'
         );
 
         if (exitCode === 0) {
             pushNotification(new Notification('Task Successful', `Task ${t.name} completed.`, 'success', 6000));
         } else if (exitCode !== null) {
-            pushNotification(new Notification('Task Failed', `Task ${t.name} failed (exit code ${exitCode}).`, 'error', 6000));
+            pushNotification(new Notification('Task Failed', failureNotificationText(t.name, logOutput, exitCode), 'error', 10000));
         } else {
             pushNotification(new Notification('Task Finished', `Task ${t.name} finished.`, 'success', 6000));
         }

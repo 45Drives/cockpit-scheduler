@@ -12,6 +12,7 @@ gives up retrying.
 
 import subprocess
 import json
+import re
 import sys
 import os
 import signal
@@ -33,6 +34,49 @@ TASK_TYPE_LABELS = {
     "SmartTestTask": "SMART Test",
     "CloudSyncTask": "Cloud Sync",
     "CustomTask": "Custom Task",
+}
+
+# Ordered most-specific-first; the first match wins.
+FAILURE_SIGNATURES = [
+    (r"no space left on device", "The destination ran out of disk space."),
+    (r"disk quota exceeded", "The destination disk quota was exceeded."),
+    (r"read-only file system", "The destination is mounted read-only."),
+    (r"out of space|would exceed (?:the )?quota|storage quota (?:exceeded|reached)", "The destination is out of available space or quota."),
+    (r"host key verification failed", "SSH host key verification failed for the destination server."),
+    (r"permission denied \(publickey", "The destination server rejected the SSH key."),
+    (r"connection refused", "The destination server refused the connection."),
+    (r"connection timed out|operation timed out|timed out waiting for", "The connection to the destination server timed out."),
+    (r"no route to host|network is unreachable|could not resolve hostname|name or service not known", "The destination server could not be reached."),
+    (r"connection (?:closed|reset) by", "The destination server closed the connection unexpectedly."),
+    (r"change_dir .*failed: no such file or directory", "The source folder no longer exists."),
+    (r"(?:mkdir|opendir|link_stat|send_files|write failed on|failed to open).*permission denied", "Permission was denied while reading or writing files."),
+    (r"permission denied", "Permission was denied."),
+    (r"no such file or directory", "A file or folder in the transfer no longer exists."),
+    (r"dataset does not exist", "The ZFS dataset does not exist."),
+    (r"destination .*has been modified", "The destination dataset changed since the last run, so the incremental send was refused."),
+    (r"could not find any snapshots to send|no snapshots? (?:found|to send)", "There were no snapshots available to replicate."),
+    (r"pool i/o failure|cannot receive", "The destination pool rejected the replication stream."),
+    (r"401 unauthorized|403 forbidden|invalid credentials|authentication failed|accessdenied", "The cloud provider rejected the stored credentials."),
+    (r"didn't find section in config file|could not find remote|unknown remote", "The cloud remote is missing from the rclone configuration."),
+    (r"bucket .*does not exist|nosuchbucket", "The destination bucket does not exist."),
+    (r"out of memory|killed process|oom-killer", "The task was killed because the server ran out of memory."),
+    (r"input/output error", "A disk I/O error occurred - the underlying storage may be failing."),
+]
+
+RSYNC_EXIT_CODES = {
+    1: "rsync reported a syntax or usage error.",
+    2: "rsync protocol incompatibility with the destination.",
+    3: "rsync could not select the requested files or directories.",
+    5: "rsync failed to start the client-server protocol.",
+    10: "rsync hit a socket I/O error.",
+    11: "rsync hit a file I/O error.",
+    12: "rsync hit an error in the data stream.",
+    13: "rsync reported an error with program diagnostics.",
+    22: "rsync failed to allocate memory.",
+    23: "Some files could not be transferred.",
+    24: "Some source files vanished before they could be copied.",
+    30: "rsync timed out sending or receiving data.",
+    35: "rsync timed out waiting for a connection.",
 }
 
 # Track units currently in a failure/retry cycle.
@@ -117,6 +161,30 @@ def get_journal_tail(unit, lines=30):
         return ""
 
 
+def summarize_failure(log_tail):
+    """Name the cause of a failure from journal output.
+
+    systemd only reports the wrapper script's exit status, which is almost always 1 and
+    tells the user nothing. The actual reason is a single line in the log.
+    """
+    if not log_tail:
+        return None
+    for pattern, summary in FAILURE_SIGNATURES:
+        match = re.search(pattern, log_tail, re.IGNORECASE)
+        if match:
+            line = log_tail[log_tail.rfind("\n", 0, match.start()) + 1:]
+            newline = line.find("\n")
+            return summary, (line if newline == -1 else line[:newline]).strip()
+
+    match = re.search(r"\b(rsync|rclone)\s+exited\s+with\s+code\s+(\d+)", log_tail, re.IGNORECASE)
+    if match:
+        tool, code = match.group(1).lower(), int(match.group(2))
+        summary = RSYNC_EXIT_CODES.get(code) if tool == "rsync" else None
+        return summary or f"{tool} exited with code {code}.", match.group(0)
+
+    return None
+
+
 def send_notification(payload):
     """Forward notification to houston-notify D-Bus CLI."""
     try:
@@ -157,10 +225,21 @@ def send_final_notification(unit, retry_count=0):
     else:
         event = "scheduler_task_failure"
         log_tail = get_journal_tail(unit)
+        diagnosis = summarize_failure(log_tail)
         retry_info = f" after {retry_count} {'retry' if retry_count == 1 else 'retries'}" if retry_count > 0 else ""
         subject = f"Task Failed: {type_label} - {task_name} ({hostname})"
+        if diagnosis:
+            # Put the cause in the subject so it's readable without opening the mail.
+            subject += f" - {diagnosis[0].rstrip('.')}"
         body = (
             f"Task '{task_name}' ({type_label}) has failed{retry_info}.\n\n"
+        )
+        if diagnosis:
+            body += f"Reason: {diagnosis[0]}\n"
+            if diagnosis[1]:
+                body += f"Log line: {diagnosis[1]}\n"
+            body += "\n"
+        body += (
             f"Server: {hostname} ({ip})\n"
             f"Result: {result}\n"
             f"Exit Code: {exit_code}\n"
@@ -171,18 +250,30 @@ def send_final_notification(unit, retry_count=0):
         if log_tail:
             body += f"\n--- Last log output ---\n{log_tail}\n"
 
+    if result == "success":
+        errors = None
+    else:
+        detail = diagnosis[0] if diagnosis else f"Exit code: {exit_code}"
+        errors = (
+            f"{detail} (after {retry_count} {'retry' if retry_count == 1 else 'retries'})"
+            if retry_count > 0 else detail
+        )
+
     payload = {
         "timestamp": timestamp,
         "event": event,
         "taskName": task_name,
         "taskType": task_type,
         "severity": "error" if result != "success" else "info",
-        "errors": f"Exit code: {exit_code} (after {retry_count} {'retry' if retry_count == 1 else 'retries'})" if result != "success" and retry_count > 0
-                  else (f"Exit code: {exit_code}" if result != "success" else None),
+        "errors": errors,
         "subject": subject,
         "email_message": body,
         "retryCount": retry_count,
     }
+    if result != "success" and diagnosis:
+        payload["reason"] = diagnosis[0]
+        if diagnosis[1]:
+            payload["reasonDetail"] = diagnosis[1]
 
     send_notification(payload)
     print(f"[scheduler-monitor] Notification sent: {event} for {task_name} ({type_label}) retries={retry_count}", flush=True)

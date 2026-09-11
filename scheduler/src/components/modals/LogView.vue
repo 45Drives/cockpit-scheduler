@@ -14,6 +14,12 @@
                             <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate }}</p>
                             <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate }}</p>
                             <p class="text-sm font-medium">Exit Code: {{ thisLogEntry.exitCode }}</p>
+                            <div v-if="failureReason"
+                                class="mt-2 mb-1 rounded-md border border-rose-500/60 bg-rose-500/10 px-3 py-2">
+                                <p class="text-sm font-semibold text-rose-600 dark:text-rose-400">{{ failureReason.summary }}</p>
+                                <p v-if="failureReason.detail"
+                                    class="text-xs text-muted mt-1 whitespace-pre-wrap break-all">{{ failureReason.detail }}</p>
+                            </div>
                             <div v-if="!taskIsActive && !viewMoreLogs" class="flex flex-col w-full text-nowrap">
                                 <p class="text-muted text-sm font-bold">
                                     Log View Idle
@@ -184,6 +190,7 @@ import { Switch } from '@headlessui/vue';
 import Modal from '../../components/common/Modal.vue';
 import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.vue';
 import { injectWithCheck } from '../../composables/utility'
+import { describeTaskFailure } from '../../composables/taskFailureReason';
 import { logInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
@@ -214,6 +221,12 @@ const cleanConfirmationComponent = ref();
 
 const taskIsRunning = ref(false);
 const taskIsActive = computed(() => props.task.schedule.enabled || taskIsRunning.value);
+
+const failureReason = computed(() => {
+    const entry = thisLogEntry.value;
+    if (!entry || entry.exitCode === 0) return null;
+    return describeTaskFailure(entry.output);
+});
 
 async function checkRunningStatus() {
     try {
