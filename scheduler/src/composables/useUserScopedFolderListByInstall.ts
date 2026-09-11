@@ -138,8 +138,7 @@ async function readInstallMeta(pathAbs: string, installId: string): Promise<{
 
 
 // ⬇ new: list every {uuid,host,source} for this smb_user
-async function readAllMetasForUser(pathAbs: string, smbUser: string): Promise<Array<{ uuid: string; host: string; source: string }>> {
-  const P = sanitize(pathAbs);
+async function readAllMetasForUser(pathAbs: string, smbUser: string): Promise<Array<{ uuid: string; host: string; source: string }>> {  const P = sanitize(pathAbs);
   const U = sanitize(smbUser);
   const script = `
     set -euo pipefail
@@ -184,6 +183,45 @@ async function readAllMetasForUser(pathAbs: string, smbUser: string): Promise<Ar
     });
 }
 
+
+/**
+ * The client names this directory from bare `hostname` but records `hostname -s` (macOS) or
+ * %COMPUTERNAME% (Windows) in client.json, so the marker can't be trusted to rebuild the
+ * path — on a Mac it is missing the `.local` suffix. Read the real names off disk instead.
+ * Returns uuid -> directory names.
+ */
+async function listHostDirs(root: string, uuids: string[]): Promise<Record<string, string[]>> {
+  if (!uuids.length) return {};
+  const res = await runWithLog('listHostDirs', [
+    'bash', '-c',
+    'R="$1"; shift; for u in "$@"; do for d in "$R/$u"/*/; do [ -d "$d" ] || continue; ' +
+    'b="${d%/}"; printf "%s|%s\\n" "$u" "${b##*/}"; done; done; exit 0',
+    '_', root, ...uuids,
+  ]);
+  const out: Record<string, string[]> = {};
+  for (const line of (res.stdout || '').split('\n').filter(Boolean)) {
+    const sep = line.indexOf('|');
+    if (sep <= 0) continue;
+    const uuid = line.slice(0, sep);
+    (out[uuid] ??= []).push(line.slice(sep + 1));
+  }
+  return out;
+}
+
+/**
+ * These paths are reconstructed from client.json metadata rather than read off disk, so any
+ * drift between the client's sanitizer and ours yields a path that doesn't exist. Offering
+ * one produces an rsync "No such file or directory" failure at run time, so drop them here.
+ * Args go through argv, not the shell, so paths with quotes/backslashes survive intact.
+ */
+async function filterExistingDirs(dirs: string[]): Promise<string[]> {
+  if (!dirs.length) return [];
+  // Trailing `exit 0`: a missing final path would otherwise make the script exit 1.
+  const res = await runWithLog('filterExistingDirs', [
+    'bash', '-c', 'for p in "$@"; do [ -d "$p" ] && printf "%s\\n" "$p"; done; exit 0', '_', ...dirs,
+  ]);
+  return (res.stdout || '').split('\n').filter(Boolean);
+}
 
 /**
  * Auto-detect share root, resolve smb_user from installId,
@@ -245,31 +283,43 @@ export function useUserScopedFolderListByInstall(installIdRef: Ref<string>, dept
       const metas = await readAllMetasForUser(shareRoot.value, smbUser.value);
 
       // construct absolute/relative options directly from meta
-      function normSource(src: string) {
-        // Normalize: strip chars illegal on Linux FS, convert backslashes to forward slashes
-        // (mirrors client-side sanitizeFilePath so paths match actual server directories)
-        const normalized = String(src || '')
+      // Mirrors the client's sanitizeFilePath so paths match the directories it created.
+      function normSegment(s: string) {
+        return String(s || '')
           .replace(/[:*?"<>|]/g, '')
           .replace(/\\/g, '/')
           .replace(/\s+/g, ' ')
           .trim();
-        const noLead = normalized.replace(/^\/+/, '');
+      }
+
+      function normSource(src: string) {
+        const noLead = normSegment(src).replace(/^\/+/, '');
         return noLead.endsWith('/') ? noLead : noLead + '/';
       }
 
+      const rootNoSlash = shareRoot.value.replace(/\/+$/, '');
+      const metaUuids = Array.from(new Set(metas.map(m => m.uuid).filter(Boolean)));
+      const hostDirsByUuid = await listHostDirs(rootNoSlash, metaUuids);
+
       const abs: string[] = [];
-      const rel: string[] = [];
 
       for (const m of metas) {
-        const tail = `${m.uuid}/${m.host}/${normSource(m.source)}`;
-        rel.push(tail);
-        abs.push(ensureSlash(`${shareRoot.value}${tail}`));
+        // Fall back to the recorded host when nothing is on disk yet, so a backup that has
+        // only written its marker still shows up rather than vanishing from the list.
+        const hostDirs = hostDirsByUuid[m.uuid]?.length
+          ? hostDirsByUuid[m.uuid]
+          : [normSegment(m.host)];
+        for (const hostDir of hostDirs) {
+          abs.push(ensureSlash(`${rootNoSlash}/${m.uuid}/${hostDir}/${normSource(m.source)}`));
+        }
       }
 
-      // de-dupe and assign
-      absDirs.value = Array.from(new Set(abs));
-      relDirs.value = Array.from(new Set(rel));
-      uuids.value = Array.from(new Set(metas.map(m => m.uuid)));
+      const existing = await filterExistingDirs(Array.from(new Set(abs)));
+      const rootPrefix = ensureSlash(rootNoSlash);
+
+      absDirs.value = existing;
+      relDirs.value = Array.from(new Set(existing.map(p => p.startsWith(rootPrefix) ? p.slice(rootPrefix.length) : p)));
+      uuids.value = metaUuids;
 
     } catch (e: any) {
       error.value = e?.message ?? String(e);

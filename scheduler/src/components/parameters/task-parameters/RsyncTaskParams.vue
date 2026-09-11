@@ -533,7 +533,7 @@ import {
     SelectionOption,
     LocationParameter
 } from '../../../models/Parameters';
-import { testSSH, testOrSetupSSH, validateLocalPath, validateHostname } from '../../../composables/utility';
+import { testSSH, testOrSetupSSH, validateLocalPath, validateHostname, checkLocalPathExists } from '../../../composables/utility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 import SimpleFormCard from '../../simple/SimpleFormCard.vue';
 import PathAutoComplete from '../../common/PathAutoComplete.vue';
@@ -1004,6 +1004,19 @@ async function validateParams() {
     validateHost();
     validateDestinationPath();
     validateDependantParams();
+
+    // The simple-mode source comes from a reconstructed folder list, so confirm it is
+    // really there rather than letting rsync fail with "No such file or directory".
+    if (props.simple && !sourcePathErrorTag.value && sourcePath.value) {
+        try {
+            if (!(await checkLocalPathExists(sourcePath.value))) {
+                errorList.value.push(`Source folder no longer exists on this server: ${sourcePath.value}`);
+                sourcePathErrorTag.value = true;
+            }
+        } catch {
+            // Can't reach the server to check — let the task save rather than block on it.
+        }
+    }
 
     limitBandwidthKbps.value = sanitizeNumber(limitBandwidthKbps.value);
 

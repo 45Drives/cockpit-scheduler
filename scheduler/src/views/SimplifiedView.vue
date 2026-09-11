@@ -9,6 +9,7 @@
                     <span class="text-xs text-gray-500 mr-1">1 selected</span>
 
                     <button class="btn btn-sm btn-primary h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
+                        v-if="!selectedRowRetrying"
                         :disabled="!selectedTask || selectedRowRunning"
                         @click="selectedTask && confirmRunNow(selectedTask)">
                         <PlayIcon class="w-4 h-4" />
@@ -16,11 +17,11 @@
                         <template v-else>Running…</template>
                     </button>
 
-                    <button v-if="selectedRowRunning"
+                    <button v-if="selectedRowRunning || selectedRowRetrying"
                         class="btn btn-sm btn-danger h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
                         @click="selectedTask && confirmStopNow(selectedTask)">
                         <StopIcon class="w-4 h-4" />
-                        Stop
+                        {{ selectedRowRetrying ? 'Stop Retries' : 'Stop' }}
                     </button>
 
                     <button class="btn btn-sm btn-outline-shadow h-fit shrink-0 inline-flex items-center justify-center gap-1.5"
@@ -259,7 +260,9 @@
     </div>
     <div v-if="showStopNowPrompt">
         <component :is="confirmDialogComponent" @close="(v: boolean) => showStopNowPrompt = v" :showFlag="showStopNowPrompt"
-            title="Stop Task" message="Do you wish to stop this task now?" :confirmYes="stopNowYes"
+            :title="selectedRowRetrying ? 'Stop Retries' : 'Stop Task'"
+            :message="selectedRowRetrying ? 'This task failed and is waiting to retry. Do you wish to stop further retry attempts?' : 'Do you wish to stop this task now?'"
+            :confirmYes="stopNowYes"
             :confirmNo="() => showStopNowPrompt = false" :operating="operatingStop" operation="stopping" />
     </div>
     <div v-if="showRemovePrompt">
@@ -328,6 +331,13 @@ function isSelected(t: any) {
 const selectedRowRunning = computed(() => {
     if (!selectedTask.value) return false;
     return live.isRunningNow(selectedTask.value);
+});
+
+// systemd is between restart attempts — "Run Now" would race the pending retry.
+const selectedRowRetrying = computed(() => {
+    if (!selectedTask.value) return false;
+    const s = (live.statusFor(selectedTask.value) || '').toLowerCase();
+    return s.includes('failed') && s.includes('restarting');
 });
 
 function statusDotClass(status: string) {
