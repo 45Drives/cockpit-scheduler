@@ -1,3 +1,10 @@
+cockpit-scheduler (1.9.0-1bookworm) bookworm; urgency=medium
+
+  * Replication updates: Blocks auto-recovery on destination-only datasets, and simplifies
+    UI options for Replication to make auto-recovery less confusing
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 15 Sep 2026 10:56:02 -0300
+
 cockpit-scheduler (1.8.2-1bookworm) bookworm; urgency=medium
 
   * Adds snapshot tasks + retention handling into simple mode and fixes path issues

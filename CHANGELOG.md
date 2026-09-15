@@ -1,3 +1,3 @@
-## task scheduler 1.8.2-1
+## task scheduler 1.9.0-1
 
-* Adds snapshot tasks + retention handling into simple mode and fixes path issues with invalid characters as well as better task failure notifications
+* Replication updates: Blocks auto-recovery on destination-only datasets, and simplifies UI options for Replication to make auto-recovery less confusing
