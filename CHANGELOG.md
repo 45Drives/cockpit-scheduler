@@ -1,3 +1,3 @@
-## task scheduler 1.9.0-1
+## task scheduler 1.9.1-1
 
-* Replication updates: Blocks auto-recovery on destination-only datasets, and simplifies UI options for Replication to make auto-recovery less confusing
+* Fixes missing lastrun file when tasks run or fail and improves task status tracking further

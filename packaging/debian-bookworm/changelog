@@ -1,3 +1,10 @@
+cockpit-scheduler (1.9.1-1bookworm) bookworm; urgency=medium
+
+  * Fixes missing lastrun file when tasks run or fail and improves task status tracking
+    further
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 15 Sep 2026 13:13:03 -0300
+
 cockpit-scheduler (1.9.0-1bookworm) bookworm; urgency=medium
 
   * Replication updates: Blocks auto-recovery on destination-only datasets, and simplifies
