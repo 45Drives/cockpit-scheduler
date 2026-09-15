@@ -569,6 +569,26 @@ def _snaps_ahead_of_base(src_groups, dst_groups, base_suffix):
     return ahead
 
 
+def _relative_dataset_names(names, root):
+    """Dataset paths below root, relative to it; the root itself is dropped."""
+    prefix = f'{root}/'
+    return {n[len(prefix):] for n in (names or []) if n.startswith(prefix)}
+
+
+def _destination_only_datasets(ctx: ReplicationRun):
+    """Datasets living under the destination root but not the source root, or None if unreadable.
+
+    Listed from zfs rather than derived from the snapshot inventory: a child whose snapshots
+    have all been pruned still exists, and a destination child that never had one is exactly
+    the case a recursive `zfs receive -F` would destroy.
+    """
+    src = _side_list(ctx, 'source', ctx.sourceFilesystem, 'filesystem,volume')
+    dst = _side_list(ctx, 'dest', ctx.destFilesystem, 'filesystem,volume')
+    if src is None or dst is None:
+        return None
+    return sorted(_relative_dataset_names(dst, ctx.destFilesystem) - _relative_dataset_names(src, ctx.sourceFilesystem))
+
+
 def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_suffix):
     """Decide whether rolling the destination back can only cost this task's own copies.
 
@@ -576,8 +596,8 @@ def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_s
     snapshot that had already been replicated, so the backup keeps a state the source no
     longer has. Rolling that back loses nothing the source did not deliberately discard.
     It stops being safe the moment anything on the destination came from somewhere else,
-    so an unattributable snapshot or any local write blocks recovery, and anything that
-    cannot be verified is treated as unsafe.
+    so an unattributable snapshot, a dataset the source does not have, or any local write
+    blocks recovery, and anything that cannot be verified is treated as unsafe.
 
     Returns (safe, blocking_reason).
     """
@@ -590,6 +610,14 @@ def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_s
         foreign = [s.name for s in snaps if s.guid not in owned]
         if foreign:
             return (False, f'{len(foreign)} snapshot(s) there were not created by this task (for example {foreign[0]})')
+
+    if ctx.isRecursiveSnap:
+        # A recursive rollback receives a -R stream, which destroys datasets the source lacks.
+        extra = _destination_only_datasets(ctx)
+        if extra is None:
+            return (False, 'the destination layout could not be compared with the source')
+        if extra:
+            return (False, f'the destination has {len(extra)} dataset(s) that do not exist on the source (for example {extra[0]})')
 
     dest_root = sorted(dst_groups.get('', []), key=lambda s: s.order_key)
     if not dest_root:
@@ -615,9 +643,16 @@ def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_s
     return (True, '')
 
 
-def _dest_run(ctx: ReplicationRun, args, timeout=30):
-    """Run a read-only command wherever the destination lives."""
-    if ctx.direction == 'pull' or not (ctx.remoteHost and ctx.remoteUser):
+def _side_is_remote(ctx: ReplicationRun, side):
+    """On a pull the source is the remote host; on a push it is the destination."""
+    if not (ctx.remoteHost and ctx.remoteUser):
+        return False
+    return (ctx.direction == 'pull') == (side == 'source')
+
+
+def _side_run(ctx: ReplicationRun, side, args, timeout=30):
+    """Run a read-only command wherever the given side lives."""
+    if not _side_is_remote(ctx, side):
         return subprocess.run(
             args,
             stdout=subprocess.PIPE,
@@ -626,6 +661,28 @@ def _dest_run(ctx: ReplicationRun, args, timeout=30):
             timeout=timeout,
         )
     return ssh_run_args(ctx.remoteUser, ctx.remoteHost, ctx.sshPort, args, text=True, timeout=timeout)
+
+
+def _side_list(ctx: ReplicationRun, side, dataset, list_type):
+    """Names of the given zfs type at or below dataset on that side, or None if unreadable."""
+    args = ['zfs', 'list', '-H', '-o', 'name', '-t', list_type, '-r', dataset]
+    try:
+        p = _side_run(ctx, side, args)
+    except Exception as e:
+        dbg(f'could not list {list_type} under {dataset}: {e}')
+        return None
+    if p.returncode != 0:
+        dbg(f'zfs list -t {list_type} {dataset} rc={p.returncode}')
+        return None
+    out = p.stdout
+    if isinstance(out, bytes):
+        out = out.decode(errors='replace')
+    return [line.strip() for line in (out or '').splitlines() if line.strip()]
+
+
+def _dest_run(ctx: ReplicationRun, args, timeout=30):
+    """Run a read-only command wherever the destination lives."""
+    return _side_run(ctx, 'dest', args, timeout)
 
 
 def _dataset_property(ctx: ReplicationRun, dataset, prop, timeout=30):
@@ -647,19 +704,7 @@ def _dataset_property(ctx: ReplicationRun, dataset, prop, timeout=30):
 
 def _dest_list(ctx: ReplicationRun, dataset, list_type):
     """Names of the given zfs type at or below the destination, or None if unreadable."""
-    args = ['zfs', 'list', '-H', '-o', 'name', '-t', list_type, '-r', dataset]
-    try:
-        p = _dest_run(ctx, args)
-    except Exception as e:
-        dbg(f'could not list {list_type} under {dataset}: {e}')
-        return None
-    if p.returncode != 0:
-        dbg(f'zfs list -t {list_type} {dataset} rc={p.returncode}')
-        return None
-    out = p.stdout
-    if isinstance(out, bytes):
-        out = out.decode(errors='replace')
-    return [line.strip() for line in (out or '').splitlines() if line.strip()]
+    return _side_list(ctx, 'dest', dataset, list_type)
 
 
 # A dataset that has only just been created still carries a little metadata, so "empty"
@@ -750,7 +795,7 @@ def _plan_send(ctx: ReplicationRun):
         ctx.forceOverwrite = False
     elif not ctx.destinationSnapshots:
         print(f'Destination {ctx.destFilesystem} exists but has no snapshots.')
-        if ctx.useExistingDest and ctx.allowOverwrite:
+        if ctx.useExistingDest and (ctx.allowOverwrite or ctx.forceFullSend):
             print('Using existing destination with overwrite: full send with -F into existing dataset.')
             ctx.forceOverwrite = True
         elif _destination_is_empty(ctx):
@@ -761,10 +806,10 @@ def _plan_send(ctx: ReplicationRun):
             print(f'{ctx.destFilesystem} exists but is verifiably empty: full send with -F into existing dataset.')
             ctx.forceOverwrite = True
         elif ctx.useExistingDest:
-            print(f'Destination dataset {ctx.destFilesystem} already exists, has no snapshots, and is not empty.\nZFS requires -F for a full send into an existing dataset, which discards its current contents.\nEnable Allow Overwrite to permit that, or point to a new/empty destination.')
+            print(f'Destination dataset {ctx.destFilesystem} already exists, has no snapshots, and is not empty.\nZFS requires -F for a full send into an existing dataset, which discards its current contents.\nAllow the destination to be rolled back, or point to a new/empty destination.')
             sys.exit(2)
         else:
-            print(f'Destination path {ctx.destFilesystem} already exists and holds data.\nA full send into it requires -F, which would discard those contents.\nEnable Allow Overwrite, or choose a destination path that does not exist yet.')
+            print(f'Destination path {ctx.destFilesystem} already exists and holds data.\nA full send into it requires -F, which would discard those contents.\nAllow the destination to be rolled back, or choose a destination path that does not exist yet.')
             sys.exit(2)
     elif ctx.forceFullSend:
         print('FORCE FULL SEND enabled: ignoring common snapshots and performing full send.')
@@ -996,15 +1041,19 @@ def _report_dry_run(ctx: ReplicationRun):
 
 def _warn_destination_only_datasets(ctx: ReplicationRun):
     """A recursive receive with -F destroys destination datasets the source does not have."""
-    if not (ctx.forceOverwrite and ctx.isRecursiveSnap and ctx.destinationSnapshots):
+    if not (ctx.forceOverwrite and ctx.isRecursiveSnap):
         return
-    src_groups = _group_snaps_by_relative_dataset(ctx.sourceSnapshots, ctx.sourceFilesystem)
-    dst_groups = _group_snaps_by_relative_dataset(ctx.destinationSnapshots, ctx.destFilesystem)
-    orphans = sorted(rel for rel in dst_groups if rel and rel not in src_groups)
-    if orphans:
+    # Listed from zfs rather than from the snapshot inventory: a destination child whose
+    # snapshots were pruned, or that never had one, is invisible there but -F still destroys it.
+    orphans = _destination_only_datasets(ctx)
+    if orphans is None:
+        msg = 'WARNING: could not compare the destination layout with the source; a recursive receive with -F may destroy destination datasets the source does not have.'
+    elif orphans:
         msg = 'WARNING: recursive receive with -F will destroy destination datasets absent from the source: ' + ', '.join(orphans)
-        print(msg)
-        notifier.notify(f'STATUS={msg}')
+    else:
+        return
+    print(msg)
+    notifier.notify(f'STATUS={msg}')
 
 
 def _create_and_transfer_snapshot(ctx: ReplicationRun):

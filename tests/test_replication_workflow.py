@@ -128,7 +128,7 @@ def _stub_destination_probe(
         "mountpoint": mountpoint,
     }
 
-    def run(ctx, args, timeout=30):
+    def run(ctx, side, args, timeout=30):
         if not readable:
             return SimpleNamespace(returncode=1, stdout="")
         if args[0] == "ls":
@@ -138,7 +138,7 @@ def _stub_destination_probe(
                 return SimpleNamespace(returncode=0, stdout=out)
         return SimpleNamespace(returncode=1, stdout="")
 
-    monkeypatch.setattr(workflow, "_dest_run", run)
+    monkeypatch.setattr(workflow, "_side_run", run)
 
 
 def _dest_ctx():
@@ -204,6 +204,17 @@ def test_plan_existing_empty_destination_requires_explicit_overwrite(monkeypatch
         workflow._plan_send(ctx)
     assert exc.value.code == 2
     ctx.allowOverwrite = True
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+def test_plan_occupied_destination_accepts_force_full_send(monkeypatch):
+    """A forced resync is already an instruction to discard the destination."""
+    monkeypatch.setattr(workflow, "_destination_is_empty", lambda ctx: False)
+    ctx = ReplicationRun()
+    ctx.destinationSnapshots = []
+    ctx.useExistingDest = True
+    ctx.forceFullSend = True
     workflow._plan_send(ctx)
     assert ctx.forceOverwrite is True
 
@@ -369,6 +380,144 @@ def test_auto_recover_disabled_keeps_the_hard_failure(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         workflow._plan_send(ctx)
     assert exc.value.code == 2
+
+
+def _stub_side_list(monkeypatch, listings):
+    """Serve `zfs list` results per dataset root; a None entry stands for an unreadable side."""
+
+    def fake(ctx, side, dataset, list_type):
+        assert list_type == "filesystem,volume"
+        return listings[dataset]
+
+    monkeypatch.setattr(workflow, "_side_list", fake)
+
+
+def _recursive_ahead_ctx():
+    """Recursive task whose destination kept a task-owned snapshot the source has pruned."""
+    ctx = _ahead_ctx()
+    ctx.isRecursiveSnap = True
+    return ctx
+
+
+def test_auto_recover_refuses_a_dataset_only_the_destination_has(monkeypatch):
+    ctx = _recursive_ahead_ctx()
+    _stub_side_list(monkeypatch, {
+        "tank/source": ["tank/source", "tank/source/samba"],
+        "backup/target": ["backup/target", "backup/target/samba", "backup/target/localonly"],
+    })
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+    assert ctx.forceOverwrite is False
+
+
+def test_auto_recover_proceeds_when_the_layouts_match(monkeypatch):
+    ctx = _recursive_ahead_ctx()
+    _stub_side_list(monkeypatch, {
+        "tank/source": ["tank/source", "tank/source/samba"],
+        "backup/target": ["backup/target", "backup/target/samba"],
+    })
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+def test_auto_recover_refuses_when_the_layout_cannot_be_listed(monkeypatch):
+    ctx = _recursive_ahead_ctx()
+    _stub_side_list(monkeypatch, {"tank/source": None, "backup/target": ["backup/target"]})
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+
+def test_auto_recover_ignores_layout_on_a_non_recursive_task(monkeypatch):
+    ctx = _ahead_ctx()
+    _stub_side_list(monkeypatch, {
+        "tank/source": ["tank/source"],
+        "backup/target": ["backup/target", "backup/target/localonly"],
+    })
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+def test_side_is_remote_follows_the_direction(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.remoteHost = "backup.example"
+    ctx.remoteUser = "root"
+    assert workflow._side_is_remote(ctx, "dest") is True
+    assert workflow._side_is_remote(ctx, "source") is False
+    ctx.direction = "pull"
+    assert workflow._side_is_remote(ctx, "source") is True
+    assert workflow._side_is_remote(ctx, "dest") is False
+    ctx.remoteHost = ""
+    assert workflow._side_is_remote(ctx, "source") is False
+
+
+def test_side_list_reports_unreadable_sides_as_none(monkeypatch):
+    ctx = ReplicationRun()
+
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("zfs")
+
+    monkeypatch.setattr(workflow, "_side_run", boom)
+    assert workflow._side_list(ctx, "source", "tank", "filesystem,volume") is None
+
+    monkeypatch.setattr(workflow, "_side_run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
+    assert workflow._side_list(ctx, "source", "tank", "filesystem,volume") is None
+
+
+def _overwrite_warning_ctx():
+    ctx = ReplicationRun()
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    ctx.isRecursiveSnap = True
+    ctx.forceOverwrite = True
+    return ctx
+
+
+def test_overwrite_warning_names_a_child_with_no_snapshots(monkeypatch, capsys):
+    ctx = _overwrite_warning_ctx()
+    _stub_side_list(monkeypatch, {
+        "tank/source": ["tank/source", "tank/source/samba"],
+        "backup/target": ["backup/target", "backup/target/samba", "backup/target/localonly"],
+    })
+    workflow._warn_destination_only_datasets(ctx)
+    assert "localonly" in capsys.readouterr().out
+
+
+def test_overwrite_warning_stays_quiet_when_the_layouts_match(monkeypatch, capsys):
+    ctx = _overwrite_warning_ctx()
+    _stub_side_list(monkeypatch, {
+        "tank/source": ["tank/source", "tank/source/samba"],
+        "backup/target": ["backup/target", "backup/target/samba"],
+    })
+    workflow._warn_destination_only_datasets(ctx)
+    assert capsys.readouterr().out == ""
+
+
+def test_overwrite_warning_reports_an_unreadable_layout(monkeypatch, capsys):
+    ctx = _overwrite_warning_ctx()
+    _stub_side_list(monkeypatch, {
+        "tank/source": ["tank/source"],
+        "backup/target": None,
+    })
+    workflow._warn_destination_only_datasets(ctx)
+    assert "could not compare" in capsys.readouterr().out
+
+
+def test_overwrite_warning_is_skipped_without_force(monkeypatch, capsys):
+    ctx = _overwrite_warning_ctx()
+    ctx.forceOverwrite = False
+
+    def boom(*args, **kwargs):
+        raise AssertionError("must not list when -F is not in play")
+
+    monkeypatch.setattr(workflow, "_side_list", boom)
+    workflow._warn_destination_only_datasets(ctx)
+    assert capsys.readouterr().out == ""
 
 
 def _recursive_ctx():

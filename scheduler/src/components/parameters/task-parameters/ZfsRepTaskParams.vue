@@ -412,7 +412,7 @@
                     </p>
                     <p v-else-if="emptyDestState === 'occupied'" class="mt-1 text-xs text-yellow-500">
                         This dataset has no snapshots but already contains data. A first send has to overwrite it,
-                        which needs Allow Overwrite below.
+                        which needs "Always roll back" below.
                     </p>
                 </div>
 
@@ -435,55 +435,55 @@
             <!-- Destination retention moved to per-interval in Schedule modal -->
 
             <div v-if="useExistingDest" name="migration-overwrite" class="mt-2 border-t border-default pt-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-sm leading-6 text-default">
-                        Allow overwrite if no common base or destination is ahead
+                <label class="block text-sm leading-6 text-default">If the destination has diverged</label>
+                <p class="text-xs text-default/70">
+                    Diverged means the backup holds snapshots the source no longer has, or the two sides
+                    share no snapshot at all.
+                </p>
+
+                <div class="mt-1 space-y-1.5">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="radio" name="divergence-policy" value="refuse" v-model="divergencePolicy"
+                            class="mt-1 h-4 w-4 shrink-0" />
+                        <span class="text-sm leading-6 text-default">
+                            Stop and report
+                            <span class="block text-xs leading-5 text-default/70">
+                                Nothing on the destination is touched. The task fails until someone resolves it by hand.
+                            </span>
+                        </span>
                     </label>
-                    <input type="checkbox" v-model="allowOverwrite" :disabled="forceFullSend"
-                        class="h-4 w-4 rounded" :class="{ 'opacity-50 cursor-not-allowed': forceFullSend }" />
-                </div>
-                <p class="mt-1 text-xs text-default/70">
-                    If destination has diverged from the source, enabling this permits rollback with
-                    <code>zfs receive -F</code>. Leave off to refuse destructive overwrite.
-                </p>
-                <p v-if="forceFullSend" class="mt-0.5 text-xs text-yellow-500">
-                    Locked on — required by Force Full Resync.
-                </p>
-                <div class="flex items-center justify-between mt-2">
-                    <label class="text-sm leading-6 text-default flex items-center">
-                        On resume failure, clear token and continue
-                        <InfoTile class="ml-1"
-                            :title="`If a resume token exists but the destination changed, this will discard the token and proceed with normal replication. This can trigger a rollback on the destination when overwrite is enabled, which may discard newer snapshots or changes.`" />
+
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="radio" name="divergence-policy" value="task-owned" v-model="divergencePolicy"
+                            class="mt-1 h-4 w-4 shrink-0" />
+                        <span class="text-sm leading-6 text-default">
+                            Roll back only what this task created
+                            <span class="block text-xs leading-5 text-default/70">
+                                Rolls back with <code>zfs receive -F</code>, but only after confirming every extra
+                                snapshot came from this task and nothing has been written to the destination since.
+                                Anything else stops the task.
+                            </span>
+                        </span>
                     </label>
-                    <input type="checkbox" v-model="resumeFailAllowOverwrite"
-                        :disabled="!allowOverwrite || forceFullSend"
-                        class="h-4 w-4 rounded" :class="{ 'opacity-50 cursor-not-allowed': !allowOverwrite || forceFullSend }" />
-                </div>
-                <p class="mt-1 text-xs text-default/70">
-                    If a resume token exists but the destination was modified, clear the token and
-                    continue with normal replication. If overwrite is allowed, the task may roll back with
-                    <code>zfs receive -F</code>.
-                </p>
-                <p v-if="forceFullSend" class="mt-0.5 text-xs text-yellow-500">
-                    Disabled — Force Full Resync destroys all destination snapshots; there is nothing to resume.
-                </p>
-                <p v-else-if="!allowOverwrite" class="mt-0.5 text-xs text-yellow-500">
-                    Requires Allow Overwrite to be enabled.
-                </p>
-                <div class="flex items-center justify-between mt-2">
-                    <label class="text-sm leading-6 text-default flex items-center">
-                        Resume stall timeout (seconds)
-                        <InfoTile class="ml-1"
-                            :title="`If a resumed transfer receives no data for this many seconds, it will be aborted so the next scheduled run can retry. Set to 0 to disable stall detection. Default: 3600 (1 hour).`" />
+
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="radio" name="divergence-policy" value="always" v-model="divergencePolicy"
+                            class="mt-1 h-4 w-4 shrink-0" />
+                        <span class="text-sm leading-6 text-default">
+                            Always roll back
+                            <span class="block text-xs leading-5 text-red-400">
+                                Rolls back with <code>zfs receive -F</code> unconditionally, discarding any snapshot or
+                                change on the destination that the source does not have.
+                            </span>
+                        </span>
                     </label>
-                    <input type="number" v-model.number="resumeStallTimeout" min="0" step="60"
-                        class="w-24 text-default input-textlike sm:text-sm sm:leading-6 bg-default"
-                        placeholder="3600" />
                 </div>
-                <p class="mt-1 text-xs text-default/70">
-                    Abort a stalled resume after this many seconds of no data flow. Prevents
-                    hung tasks after network outages. Set to 0 to disable.
+
+                <p v-if="recursiveDivergenceNote" class="mt-1 text-xs"
+                    :class="divergencePolicy === 'always' ? 'text-red-400' : 'text-yellow-500'">
+                    {{ recursiveDivergenceNote }}
                 </p>
+
                 <div class="flex items-center justify-between mt-2 border-t border-default pt-2">
                     <label class="text-sm leading-6 text-default flex items-center">
                         Force full resync (next run only)
@@ -617,12 +617,16 @@
         </div>
 
         <!-- BOTTOM RIGHT -->
-        <div name="send-options"
-            class="border border-default rounded-md p-2 col-span-1 row-span-1 row-start-2 bg-accent h-full min-h-[34rem]">
+        <div class="col-span-1 row-span-1 row-start-2 flex flex-col gap-2 h-full min-h-[34rem]">
+        <div name="send-options" class="border border-default rounded-md p-2 bg-accent flex-1">
             <label class="mt-1 block text-base leading-6 text-default">Send Options</label>
             <div class="grid grid-cols-2 mt-1">
                 <div name="send-opt-raw" class="flex flex-row items-center gap-2 mt-1 col-span-1">
-                    <label class="block text-sm leading-6 text-default">Send Raw</label>
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        Send Raw
+                        <InfoTile class="ml-1"
+                            :title="`Sends the stream exactly as stored, preserving source encryption. For recursive hierarchies containing encrypted datasets, pick one strategy and stay with it: mixing raw and non-raw sends in the same incremental chain breaks the chain.`" />
+                    </label>
                     <input type="checkbox" v-model="sendRaw" @change="handleCheckboxChange('sendRaw')"
                         class=" h-4 w-4 rounded" />
                 </div>
@@ -658,31 +662,6 @@
             <p v-if="useExistingDest && includeIntermediatesApplicability === 'applicable-untagged-base'" class="text-xs text-yellow-500">
                 This task owns no snapshots on the destination yet. It will replicate incrementally from a snapshot the
                 two datasets already share.
-            </p>
-            <p class="mt-1 text-xs text-muted">
-                Encryption note: for recursive hierarchies with encrypted datasets, choose an explicit encryption
-                strategy (raw stream to preserve source encryption, or non-raw behavior) and avoid mixing raw and
-                non-raw incremental chains.
-            </p>
-            <p v-if="showRecursiveOverwriteWarning" class="mt-1 text-xs text-red-400">
-                Warning: Recursive send combined with overwrite behavior (<code>zfs receive -F</code>) can remove
-                destination snapshots and child datasets that do not exist on the source.
-            </p>
-            <div name="send-opt-auto-recover" class="flex flex-row items-center gap-2 mt-2">
-                <label class="text-sm leading-6 text-default flex items-center">
-                    Auto-Recover Diverged Destination
-                    <InfoTile class="ml-1"
-                        :title="`If the destination holds snapshots newer than the incremental base, and every one of them was created by this task, and nothing has been written to the destination since its latest snapshot, the run rolls them back with 'zfs receive -F' instead of failing. Any snapshot this task does not own, any local write, or any check that cannot be verified blocks the rollback and the task still fails.`" />
-                </label>
-                <input type="checkbox" v-model="autoRecover" :disabled="allowOverwrite" class="h-4 w-4 rounded"
-                    :class="{ 'opacity-50 cursor-not-allowed': allowOverwrite }" />
-            </div>
-            <p class="text-xs text-muted">
-                Recovers from source-side pruning without authorising a blanket overwrite. Does not apply when the
-                two sides share no snapshot at all — that needs Force Full Resync.
-            </p>
-            <p v-if="allowOverwrite" class="mt-0.5 text-xs text-yellow-500">
-                Not used — Allow Overwrite already permits the rollback unconditionally.
             </p>
             <div name="send-opt-custom-name mt-2">
                 <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
@@ -745,6 +724,41 @@
             <p v-if="transferMethod === 'mbuffer'" class="mt-1 text-xs text-muted">
                 Block size maps to <code>mbuffer -s</code>; memory size maps to <code>mbuffer -m</code>.
             </p>
+        </div>
+
+        <div v-if="useExistingDest" name="resume-handling" class="border border-default rounded-md p-2 bg-accent">
+            <label class="mt-1 block text-base leading-6 text-default">Resume Handling</label>
+
+            <div class="flex items-center justify-between mt-1">
+                <label class="text-sm leading-6 text-default flex items-center">
+                    Resume stall timeout (seconds)
+                    <InfoTile class="ml-1"
+                        :title="`If a resumed transfer receives no data for this many seconds, it will be aborted so the next scheduled run can retry. Set to 0 to disable stall detection. Default: 3600 (1 hour).`" />
+                </label>
+                <input type="number" v-model.number="resumeStallTimeout" min="0" step="60"
+                    class="w-24 text-default input-textlike sm:text-sm sm:leading-6 bg-default" placeholder="3600" />
+            </div>
+            <p class="mt-1 text-xs text-muted">
+                Abort a stalled resume after this many seconds of no data flow. Prevents hung tasks after
+                network outages. Set to 0 to disable.
+            </p>
+
+            <div class="flex items-center justify-between mt-2">
+                <label class="text-sm leading-6 text-default flex items-center">
+                    On resume failure, clear token and continue
+                    <InfoTile class="ml-1"
+                        :title="`A partly-received stream leaves a resume token behind. If resuming from it fails, this discards the token so the next run can start cleanly instead of retrying a resume that will keep failing.`" />
+                </label>
+                <input type="checkbox" v-model="resumeFailAllowOverwrite" class="h-4 w-4 rounded" />
+            </div>
+            <p class="mt-1 text-xs text-muted">
+                If a resume token exists but the destination was modified, clear the token and continue with
+                normal replication.
+            </p>
+            <p v-if="divergencePolicy === 'always'" class="mt-0.5 text-xs text-yellow-500">
+                Because this task always rolls back, continuing may discard newer snapshots on the destination.
+            </p>
+        </div>
         </div>
     </div>
 </template>
@@ -856,20 +870,17 @@ const resumeFailAllowOverwrite = ref(false);
 const resumeStallTimeout = ref(3600);
 const forceFullSend = ref(false);
 
-// --- Mutual exclusivity constraints ---
-// Force Full Send requires Allow Overwrite (it uses -F and destroys snapshots)
-watch(forceFullSend, (val) => {
-    if (val) {
-        allowOverwrite.value = true;
-        resumeFailAllowOverwrite.value = false;
-    }
-});
-// Disabling Allow Overwrite disables options that depend on it
-watch(allowOverwrite, (val) => {
-    if (!val) {
-        forceFullSend.value = false;
-        resumeFailAllowOverwrite.value = false;
-    }
+// _plan_send() only consults autoRecover inside `if destAhead and not allowOverwrite`, so the two
+// flags are one escalating choice rather than two independent ones. Presenting them as a single
+// control is what lets every "disabled but still ticked" state disappear.
+type DivergencePolicy = 'refuse' | 'task-owned' | 'always';
+
+const divergencePolicy = computed<DivergencePolicy>({
+    get: () => allowOverwrite.value ? 'always' : (autoRecover.value ? 'task-owned' : 'refuse'),
+    set: (next) => {
+        allowOverwrite.value = next === 'always';
+        autoRecover.value = next !== 'refuse';
+    },
 });
 const remoteHostMissing = computed(() => destHost.value.trim() === '');
 
@@ -970,11 +981,21 @@ const canEvaluateIncludeIntermediates = computed(() => {
 });
 
 const showRecursiveHistoryRecommendation = computed(() => {
-    return sendRecursive.value && !includeIntermediateSnapshots.value;
+    return sendRecursive.value && !includeIntermediateSnapshots.value
+        && useExistingDest.value && includeIntermediatesApplicability.value === 'applicable';
 });
 
-const showRecursiveOverwriteWarning = computed(() => {
-    return useExistingDest.value && sendRecursive.value && (allowOverwrite.value || forceFullSend.value);
+// A recursive stream carries -R, so the caveat depends on which policy is selected. Attaching it
+// to the chosen option keeps at most one warning on screen instead of a standing pair.
+const recursiveDivergenceNote = computed(() => {
+    if (!(useExistingDest.value && sendRecursive.value)) return '';
+    if (divergencePolicy.value === 'always') {
+        return 'Recursive: the rollback also destroys destination datasets the source does not have, not just snapshots.';
+    }
+    if (divergencePolicy.value === 'task-owned') {
+        return 'Recursive: a dataset that exists only on the destination blocks the rollback, so the task fails instead of destroying it.';
+    }
+    return '';
 });
 
 /* ---------------- Direction-aware labels + behavior ---------------- */
@@ -1676,8 +1697,8 @@ async function checkDestDatasetContents() {
             }
             if (used > EMPTY_DEST_MAX_BYTES) {
                 emptyDestState.value = 'occupied';
-                if (!allowOverwrite.value) {
-                    errorList.value.push("Destination has no snapshots but already contains data. A first send must overwrite it: enable 'Allow overwrite', or pick an empty/new destination.");
+                if (!allowOverwrite.value && !forceFullSend.value) {
+                    errorList.value.push('Destination has no snapshots but already contains data. A first send must overwrite it: choose "Always roll back", or pick an empty/new destination.');
                     destDatasetErrorTag.value = true;
                     return;
                 }
@@ -1695,11 +1716,11 @@ async function checkDestDatasetContents() {
 
         if (!common) {
             includeIntermediatesApplicability.value = 'no-common-base';
-            if (allowOverwrite.value) {
+            if (allowOverwrite.value || forceFullSend.value) {
                 destDatasetErrorTag.value = false;
                 return;
             }
-            errorList.value.push("No common snapshot found. Enable 'Allow overwrite' or choose an empty/new destination.");
+            errorList.value.push('No common snapshot found. Choose "Always roll back", turn on Force full resync, or pick an empty/new destination.');
             destDatasetErrorTag.value = true;
             return;
         }
@@ -1710,7 +1731,7 @@ async function checkDestDatasetContents() {
 
         const srcGuids = new Set(srcSnaps.map(s => s.guid));
         const aheadSnaps = dstSnaps.filter(d => d.creation > common.creation && !srcGuids.has(d.guid));
-        if (aheadSnaps.length && !allowOverwrite.value) {
+        if (aheadSnaps.length && !allowOverwrite.value && !forceFullSend.value) {
             // Mirrors _ahead_is_self_inflicted(): leftovers this task made are ours to roll back.
             // The run itself re-checks this and also rejects local writes, so this is only a gate
             // on obviously-unrecoverable destinations.
@@ -1718,7 +1739,7 @@ async function checkDestDatasetContents() {
             if (!autoRecover.value || !allOurs) {
                 errorList.value.push(props.simple
                     ? "This destination already holds snapshots that did not come from this backup. Pick an empty destination, or a new dataset name, so nothing there gets overwritten."
-                    : "Destination has newer snapshots than the common base. Enable 'Allow overwrite' to roll back, or pick a new destination.");
+                    : 'Destination has newer snapshots than the common base. Choose "Always roll back", or pick a new destination.');
                 destDatasetErrorTag.value = true;
                 return;
             }

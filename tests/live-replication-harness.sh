@@ -39,6 +39,8 @@ Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools):
   live-replication-harness.sh scenario-hierarchy-child-orphan [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-child-no-snaps [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-dest-ahead [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-dest-only-dataset [direction] [transport]
+  live-replication-harness.sh scenario-hierarchy-dest-only-dataset-no-auto-recover [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-existing-data [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-tags [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-retention [direction] [transport]
@@ -807,6 +809,7 @@ HIER_SRC_RET_UNIT=""
 HIER_DST_RET_TIME="0"
 HIER_DST_RET_UNIT=""
 HIER_RECURSIVE="true"
+HIER_AUTO_RECOVER="true"
 HIER_RESUME_ONLY="false"
 HIER_SSH_CIPHER=""
 HIER_RESUME_SNAP="resumeseed"
@@ -847,6 +850,7 @@ hier_reset_mode() {
   hier_set_mode push local
   HIER_SCHEDULE_JSON=""
   HIER_RECURSIVE="true"
+  HIER_AUTO_RECOVER="true"
   HIER_RESUME_ONLY="false"
   HIER_SSH_CIPHER=""
 }
@@ -1088,6 +1092,7 @@ zfsRepConfig_sendOptions_sshCipher=$HIER_SSH_CIPHER
 zfsRepConfig_sendOptions_resumeOnly=$HIER_RESUME_ONLY
 zfsRepConfig_sendOptions_mbufferCallbackHost=$HIER_HOST
 zfsRepConfig_sendOptions_allowOverwrite=$allow_overwrite
+zfsRepConfig_sendOptions_autoRecover=$HIER_AUTO_RECOVER
 zfsRepConfig_sendOptions_useExistingDest=$use_existing
 zfsRepConfig_sendOptions_forceFullSend=$force_full
 zfsRepConfig_snapshotRetention_source_retentionTime=$HIER_SRC_RET_TIME
@@ -1225,6 +1230,23 @@ hier_expect_rc() {
   fi
 }
 
+# replication/main.py maps a permanent (exit 2) refusal onto task_retry's
+# NO_RETRY_EXIT_CODE so systemd stops restarting, so 2 is never observable here.
+HIER_REFUSAL_RC=90
+
+hier_expect_refusal() {
+  hier_expect_rc "$HIER_REFUSAL_RC" "$1"
+}
+
+hier_expect_output() {
+  local want="$1" what="$2"
+  if grep -qF -- "$want" "$HIER_OUT" 2>/dev/null; then
+    hier_pass "$what"
+  else
+    hier_fail "$what: '$want' not found in $HIER_OUT"
+  fi
+}
+
 # Exit 0 alone is not proof of work; the duplicate-start guard also exits 0.
 hier_expect_new_snapshot() {
   local what="$1" now
@@ -1267,6 +1289,18 @@ hier_expect_base() {
     hier_pass "incremental base is $want"
   else
     hier_fail "expected base $want in: $line"
+  fi
+}
+
+# A refusal issues no receive stage at all. That is stronger than "received without -F",
+# and hier_expect_force_flag would report the absent line as a failure.
+hier_expect_no_transfer() {
+  local what="$1" line
+  line="$( ( grep -o 'zfs recv -s[^|'"'"']*' "$HIER_OUT" 2>/dev/null || true ) | tail -1 )"
+  if [[ -z "$line" ]]; then
+    hier_pass "$what: no receive stage was issued"
+  else
+    hier_fail "$what: the destination was written to anyway: $line"
   fi
 }
 
@@ -1331,6 +1365,7 @@ cmd_scenario_hierarchy_clean() {
 
 cmd_scenario_hierarchy_child_behind() {
   hier_say "hierarchy child-behind [$(hier_mode_label)]: must fall back to an older base the whole tree shares"
+  local previous_auto_recover="$HIER_AUTO_RECOVER"
   hier_setup
   hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
@@ -1345,7 +1380,13 @@ cmd_scenario_hierarchy_child_behind() {
   hier_write_data third "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
 
   hier_info "run 3 without Allow Overwrite (must refuse and change nothing):"
-  hier_run_task false false false quiet; hier_expect_rc 2 "refuses rollback without Allow Overwrite"
+  # Auto-Recover off: the snapshots ahead of the fallback base are task-owned, so Auto-Recover
+  # would legitimately roll them back and repair this. The "requires Allow Overwrite" contract
+  # under test only applies once that safety net is disabled.
+  HIER_AUTO_RECOVER=false
+  hier_run_task false false false quiet
+  HIER_AUTO_RECOVER="$previous_auto_recover"
+  hier_expect_refusal "refuses rollback without Allow Overwrite"
 
   hier_info "run 3 with Allow Overwrite (must resync from the older shared base):"
   hier_run_task true false; hier_expect_rc 0 "resyncs incrementally"; hier_expect_new_snapshot "run 3"
@@ -1366,7 +1407,7 @@ cmd_scenario_hierarchy_child_orphan() {
   before="$(hier_dest_snap_count)"
 
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
-  hier_run_task true false; hier_expect_rc 2 "refuses even with Allow Overwrite enabled"
+  hier_run_task true false; hier_expect_refusal "refuses even with Allow Overwrite enabled"
 
   after="$(hier_dest_snap_count)"
   if [[ "$before" -eq "$after" ]]; then
@@ -1387,7 +1428,7 @@ cmd_scenario_hierarchy_child_no_snaps() {
   before="$(hier_dest_snap_count)"
 
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
-  hier_run_task true false; hier_expect_rc 2 "refuses instead of sending an unreceivable stream"
+  hier_run_task true false; hier_expect_refusal "refuses instead of sending an unreceivable stream"
 
   after="$(hier_dest_snap_count)"
   if [[ "$before" -eq "$after" ]]; then
@@ -1404,7 +1445,7 @@ cmd_scenario_hierarchy_dest_ahead() {
   zfs snapshot "$HIER_DST_FS/samba@local-extra"
   hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
 
-  hier_run_task false false false quiet; hier_expect_rc 2 "refuses to roll back without Allow Overwrite"
+  hier_run_task false false false quiet; hier_expect_refusal "refuses to roll back without Allow Overwrite"
   if zfs list -t snapshot "$HIER_DST_FS/samba@local-extra" >/dev/null 2>&1; then
     hier_pass "destination-only snapshot survived the refusal"
   else
@@ -1413,6 +1454,78 @@ cmd_scenario_hierarchy_dest_ahead() {
 
   hier_run_task true false; hier_expect_rc 0 "proceeds with Allow Overwrite"; hier_expect_new_snapshot "overwrite run"
   hier_expect_force_flag yes
+}
+
+hier_expect_dataset() {
+  local fs="$1" want="$2" label="$3"
+  if zfs list -H -o name "$fs" >/dev/null 2>&1; then
+    if [[ "$want" == "present" ]]; then
+      hier_pass "$label: $fs still exists"
+    else
+      hier_fail "$label: $fs should have been gone"
+    fi
+  else
+    if [[ "$want" == "present" ]]; then
+      hier_fail "$label: $fs was destroyed"
+    else
+      hier_pass "$label: $fs is gone as expected"
+    fi
+  fi
+}
+
+cmd_scenario_hierarchy_dest_only_dataset() {
+  hier_say "hierarchy dest-only-dataset [$(hier_mode_label)]: Auto-Recover must not destroy a destination-only child"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 2"; hier_expect_new_snapshot "run 2"
+
+  # mountpoint=none: mounting it would create a directory in the parent, and that write
+  # alone trips the written@ probe, masking the topology check this scenario exists for.
+  hier_info "creating $HIER_DST_FS/localonly, a dataset that never existed on the source"
+  zfs create -o mountpoint=none "$HIER_DST_FS/localonly"
+
+  # Source-side retention pruning a replicated snapshot is the condition Auto-Recover exists for.
+  local pruned
+  pruned="$(hier_newest_snap "$HIER_SRC_FS")"
+  hier_info "pruning $pruned from the source so the destination is legitimately ahead"
+  zfs destroy -r "$pruned"
+
+  hier_write_data third "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_info "run 3 with Auto-Recover on: the destination-only dataset must block the rollback"
+  hier_run_task false false
+  hier_expect_refusal "Auto-Recover refuses while a destination-only dataset exists"
+  hier_expect_output "do not exist on the source" "refusal names the destination-only dataset"
+  hier_expect_dataset "$HIER_DST_FS/localonly" present "refusal"
+
+  hier_info "removing the destination-only dataset; the same run must now recover"
+  zfs destroy -r "$HIER_DST_FS/localonly"
+  hier_run_task false false
+  hier_expect_rc 0 "Auto-Recover proceeds once the layouts match"
+  hier_expect_new_snapshot "recovery run"
+  hier_expect_force_flag yes
+  hier_info "destination snapshots:"; hier_dest_tree
+}
+
+cmd_scenario_hierarchy_dest_only_dataset_no_auto_recover() {
+  hier_say "hierarchy dest-only-dataset [$(hier_mode_label)]: Auto-Recover off must still change nothing"
+  local previous_auto_recover="$HIER_AUTO_RECOVER"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 1"; hier_expect_new_snapshot "run 1"
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_task false false false quiet; hier_expect_rc 0 "run 2"; hier_expect_new_snapshot "run 2"
+
+  zfs create -o mountpoint=none "$HIER_DST_FS/localonly"
+  local pruned
+  pruned="$(hier_newest_snap "$HIER_SRC_FS")"
+  zfs destroy -r "$pruned"
+  hier_write_data third "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+
+  HIER_AUTO_RECOVER=false
+  hier_run_task false false
+  HIER_AUTO_RECOVER="$previous_auto_recover"
+  hier_expect_refusal "refuses with Auto-Recover disabled"
+  hier_expect_dataset "$HIER_DST_FS/localonly" present "refusal"
 }
 
 cmd_scenario_hierarchy_existing_data() {
@@ -1435,7 +1548,7 @@ cmd_scenario_hierarchy_existing_data() {
   else
     hier_fail "run succeeded; check whether it overwrote the destination"
   fi
-  hier_expect_force_flag no
+  hier_expect_no_transfer "refusal"
   if [[ -f "$dst_mount/precious.txt" ]]; then
     hier_pass "unsnapshotted destination data survived"
   else
@@ -2002,6 +2115,9 @@ cmd_scenario_hierarchy_matrix() {
     fi
     cmd_scenario_hierarchy_clean
     cmd_scenario_hierarchy_child_behind
+    # The only scenario that reaches the Auto-Recover topology check, which lists
+    # datasets on whichever side is remote for this direction.
+    cmd_scenario_hierarchy_dest_only_dataset
     cmd_scenario_hierarchy_tags
   done
   hier_reset_mode
@@ -2017,6 +2133,8 @@ cmd_scenario_hierarchy_all() {
   cmd_scenario_hierarchy_child_orphan
   cmd_scenario_hierarchy_child_no_snaps
   cmd_scenario_hierarchy_dest_ahead
+  cmd_scenario_hierarchy_dest_only_dataset
+  cmd_scenario_hierarchy_dest_only_dataset_no_auto_recover
   cmd_scenario_hierarchy_existing_data
   cmd_scenario_hierarchy_tags
   hier_teardown
@@ -2197,7 +2315,7 @@ main() {
       hier_require_root
       cmd_scenario_hierarchy_matrix
       ;;
-    scenario-hierarchy-clean|scenario-hierarchy-child-behind|scenario-hierarchy-child-orphan|scenario-hierarchy-child-no-snaps|scenario-hierarchy-dest-ahead|scenario-hierarchy-existing-data|scenario-hierarchy-tags|scenario-hierarchy-retention)
+    scenario-hierarchy-clean|scenario-hierarchy-child-behind|scenario-hierarchy-child-orphan|scenario-hierarchy-child-no-snaps|scenario-hierarchy-dest-ahead|scenario-hierarchy-dest-only-dataset|scenario-hierarchy-dest-only-dataset-no-auto-recover|scenario-hierarchy-existing-data|scenario-hierarchy-tags|scenario-hierarchy-retention)
       [[ $# -le 2 ]] || { usage; exit 1; }
       hier_require_root
       hier_set_mode "${1:-push}" "${2:-local}"
