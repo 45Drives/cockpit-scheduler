@@ -1,3 +1,3 @@
-## task scheduler 1.9.1-1
+## task scheduler 1.9.1-2
 
-* Fixes missing lastrun file when tasks run or fail and improves task status tracking further
+* Pushes test harness changes and page visibility status update fix

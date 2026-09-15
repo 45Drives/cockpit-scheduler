@@ -1,3 +1,9 @@
+cockpit-scheduler (1.9.1-2focal) focal; urgency=medium
+
+  * Pushes test harness changes and page visibility status update fix
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 15 Sep 2026 13:33:54 -0300
+
 cockpit-scheduler (1.9.1-1focal) focal; urgency=medium
 
   * Fixes missing lastrun file when tasks run or fail and improves task status tracking
