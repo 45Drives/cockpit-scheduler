@@ -1109,7 +1109,9 @@ hier_run_task() {
   local allow_overwrite="$1" use_existing="$2" force_full="${3:-false}" quiet="${4:-}"
   local script
   script="$(hier_rep_script)"
-  rm -f "$HIER_LOG" "$HIER_OUT"
+  # Production no longer clears the marker at run start, so the harness does it
+  # instead: every hier_expect_lastrun must prove THIS run wrote the stamp.
+  rm -f "$HIER_LOG" "$HIER_OUT" "$HIER_LASTRUN"
   HIER_SNAP_BEFORE="$(hier_newest_snap "$HIER_SRC_FS")"
   hier_wait_tick
 
@@ -1227,6 +1229,12 @@ hier_expect_rc() {
     hier_pass "$what (exit $HIER_RC)"
   else
     hier_fail "$what: expected exit $expected, got $HIER_RC"
+  fi
+  # Every completed run must stamp .lastrun with an outcome matching its exit code.
+  if [[ "$expected" -eq 0 ]]; then
+    hier_expect_lastrun success "$what: lastrun records the success"
+  else
+    hier_expect_lastrun failed "$what: lastrun records the failure"
   fi
 }
 
@@ -1709,17 +1717,26 @@ hier_expect_dest_snapshot() {
   fi
 }
 
+# hier_expect_lastrun <success|failed> <label>
+# task_lastrun.py writes "<epoch> <outcome>" on every completion path.
 hier_expect_lastrun() {
-  local label="$1" age
+  local want="$1" label="$2" epoch outcome age
   if [[ ! -f "$HIER_LASTRUN" ]]; then
     hier_fail "$label: $HIER_LASTRUN was never written"
     return 0
   fi
-  age=$(( $(date +%s) - $(stat -c %Y "$HIER_LASTRUN") ))
-  if [[ "$age" -le 600 ]]; then
-    hier_pass "$label (stamp is ${age}s old)"
-  else
+  read -r epoch outcome _ <"$HIER_LASTRUN" || true
+  if [[ ! "$epoch" =~ ^[0-9]+$ ]] || [[ "$epoch" -le 0 ]]; then
+    hier_fail "$label: bad epoch in marker ($(cat "$HIER_LASTRUN"))"
+    return 0
+  fi
+  age=$(( $(date +%s) - epoch ))
+  if [[ "$age" -gt 600 ]]; then
     hier_fail "$label: stamp is stale (${age}s old)"
+  elif [[ "$outcome" != "$want" ]]; then
+    hier_fail "$label: expected outcome '$want', got '${outcome:-<none>}'"
+  else
+    hier_pass "$label (${outcome}, ${age}s old)"
   fi
 }
 
@@ -1773,7 +1790,6 @@ cmd_scenario_resume_continues() {
   hier_expect_new_snapshot "post-resume incremental"
   hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "post-resume incremental landed"
   hier_expect_log '=== task completed successfully ===' "run reached the completion marker"
-  hier_expect_lastrun "lastrun stamp written on the resume path"
   hier_expect_no_log 'zfs_replication_resume_token' "no pre-attempt Resume Token Found notification"
   hier_expect_no_log 'Resume Token Found' "no Resume Token Found subject line"
 
@@ -1803,7 +1819,6 @@ cmd_scenario_resume_only_stops() {
   hier_expect_token absent "resume token was consumed"
   hier_expect_dest_snapshot "$HIER_RESUME_SNAP" "resumed stream committed"
   hier_expect_no_new_snapshot "resumeOnly"
-  hier_expect_lastrun "lastrun stamp written on the resumeOnly path"
 
   HIER_RECURSIVE="$previous_recursive"
 }

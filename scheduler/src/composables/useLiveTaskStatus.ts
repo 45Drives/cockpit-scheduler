@@ -1,5 +1,5 @@
 import { ref, onUnmounted, watch } from 'vue';
-import { isPageHidden } from '../utils/pageVisibility';
+import { isPageHidden, onPageVisibilityChange } from '../utils/pageVisibility';
 
 type AnyTask = any;
 
@@ -725,6 +725,32 @@ export function useLiveTaskStatus(
         }
     }
 
+    // Ticks are skipped while the page is hidden, so returning to it would otherwise
+    // show stale status for up to one interval (20s under idle backoff).
+    function restartTicks() {
+        if (!polling.value) return;
+        if (intervalId) {
+            clearTimeout(intervalId);
+            intervalId = undefined;
+        }
+        if (progressIntervalId) {
+            clearTimeout(progressIntervalId);
+            progressIntervalId = undefined;
+        }
+        // Bumping the generation makes any tick already mid-flight discard itself.
+        const gen = ++pollGeneration;
+        refreshAll(true).finally(() => {
+            if (polling.value && gen === pollGeneration) scheduleStatusTick(gen);
+        });
+        refreshProgress().finally(() => {
+            if (polling.value && gen === pollGeneration) scheduleProgressTick(gen);
+        });
+    }
+
+    const unsubscribeVisibility = onPageVisibilityChange((hidden) => {
+        if (!hidden) restartTicks();
+    });
+
     async function toggleSchedule(t: AnyTask) {
         const enabled = !!t?.schedule?.enabled;
         if (enabled) {
@@ -785,7 +811,7 @@ export function useLiveTaskStatus(
             .map(t => t?.name ?? taskId(t));
     }
 
-    onUnmounted(stop);
+    onUnmounted(() => { unsubscribeVisibility(); stop(); });
     watch(tasksRef, () => { if (polling.value) refreshAll(true); }, { deep: true });
 
     return {
