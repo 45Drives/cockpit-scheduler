@@ -7,40 +7,11 @@ import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // import { chooseBackend } from '../utils/bootstrapBackend';
 import { daemon } from '../utils/daemonClient';
 import { execCommand, withCommandSlot } from '../utils/commandGate';
+import { parseSystemdTimestampUSec, parseLastRunMarker } from './systemdParsing';
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';
 
 const errorString = (e: any) => e?.message ?? String(e);
-
-// Date.parse rejects the abbreviations systemd emits outside the US zones.
-const TZ_OFFSET_HOURS: Record<string, number> = {
-    UTC: 0, GMT: 0, EST: -5, EDT: -4, CST: -6, CDT: -5, MST: -7, MDT: -6,
-    PST: -8, PDT: -7, AST: -4, ADT: -3, NST: -3.5, NDT: -2.5,
-};
-
-/**
- * systemd renders *USec properties as raw microseconds on some versions and as
- * a formatted timestamp ("Tue 2026-09-15 11:00:00 EDT") on others. Returns µs.
- */
-function parseSystemdTimestampUSec(raw: string | undefined): number {
-    if (!raw) return 0;
-    const value = raw.trim();
-    if (!value) return 0;
-
-    // Check numeric first: Date.parse("0") would otherwise yield the year 2000.
-    const asNumber = Number(value);
-    if (Number.isFinite(asNumber)) return asNumber > 0 ? asNumber : 0;
-
-    const native = Date.parse(value);
-    if (Number.isFinite(native)) return native * 1000;
-
-    const m = value.match(/^(?:\w{3}\s+)?(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\s+([A-Z]{2,4})$/);
-    if (!m) return 0;
-    const offsetHours = TZ_OFFSET_HOURS[m[7]];
-    if (typeof offsetHours !== 'number') return 0;
-    const utcMs = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - offsetHours * 3600_000;
-    return Number.isFinite(utcMs) ? utcMs * 1000 : 0;
-}
 
 export async function runCommand(
     argv: string[],
@@ -207,16 +178,25 @@ export class Scheduler implements SchedulerType {
         // (written by task scripts; survives disable/enable cycles)
         // Uses failIfNonZero=false so a missing file (cat exit 1) doesn't
         // trigger console.error logging from houston-common.
-        const readPersistedLastRunMs = async (): Promise<number> => {
+        const readPersistedLastRun = async (): Promise<{ ms: number; outcome: string }> => {
             try {
                 const lastrunPath = `/etc/systemd/system/${unit}.lastrun`;
                 const ep = await execCommand(["cat", lastrunPath], { superuser: "try" }, false);
-                if (ep.exitStatus !== 0) return 0;
-                const epoch = parseInt(ep.stdout.trim(), 10);
-                return Number.isFinite(epoch) && epoch > 0 ? epoch * 1000 : 0;
+                if (ep.exitStatus !== 0) return { ms: 0, outcome: '' };
+                return parseLastRunMarker(ep.stdout);
             } catch {
-                return 0;
+                return { ms: 0, outcome: '' };
             }
+        };
+
+        // systemd reports Result=success for a unit that has never run, so the
+        // marker's own outcome is the only way to tell a wiped failure apart
+        // from a wiped success.
+        const applyPersistedOutcome = (statusText: string, lastRunMs: number, outcome: string, result: string) => {
+            if (statusText !== 'Inactive (Disabled)' || !lastRunMs) return statusText;
+            if (outcome === 'failed') return 'Failed';
+            if (outcome === 'success' || result === 'success') return 'Completed';
+            return statusText;
         };
 
         let timerOut = '', serviceOut = '';
@@ -252,15 +232,16 @@ export class Scheduler implements SchedulerType {
                 const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
                 const nextRunUs = t.nextElapseUSec || 0;
                 let lastRunMs = this.usToMs(Number(lastRunUs));
+                let persistedOutcome = '';
 
                 // Fallback: read persisted .lastrun file if systemd cleared its timestamps
                 if (!lastRunMs) {
-                    lastRunMs = await readPersistedLastRunMs();
+                    const persisted = await readPersistedLastRun();
+                    lastRunMs = persisted.ms;
+                    persistedOutcome = persisted.outcome;
                 }
 
-                if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
-                    statusText = 'Completed';
-                }
+                statusText = applyPersistedOutcome(String(statusText || ''), lastRunMs, persistedOutcome, s.result);
 
                 return {
                     unit: u,
@@ -319,19 +300,19 @@ export class Scheduler implements SchedulerType {
             const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
             const nextRunUs = t.nextElapseUSec || 0;
             let lastRunMs = this.usToMs(Number(lastRunUs));
+            let persistedOutcome = '';
 
             // Fallback: read persisted .lastrun file if systemd cleared its timestamps
             if (!lastRunMs) {
-                lastRunMs = await readPersistedLastRunMs();
+                const persisted = await readPersistedLastRun();
+                lastRunMs = persisted.ms;
+                persistedOutcome = persisted.outcome;
             }
 
-            // If systemd reports "Inactive (Disabled)" but the task has actually
-            // run before (lastrun file proves it and Result=success), treat as Completed.
-            // This handles the case where systemd clears ExecMain timestamps after
-            // reset-failed or on Type=notify services after process exit.
-            if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
-                statusText = 'Completed';
-            }
+            // If systemd reports "Inactive (Disabled)" but the marker proves the task
+            // ran, show the marker's outcome. This handles systemd clearing ExecMain
+            // timestamps after reset-failed, on Type=notify exit, and across reboots.
+            statusText = applyPersistedOutcome(String(statusText || ''), lastRunMs, persistedOutcome, s.result);
 
             return {
                 unit,
@@ -342,8 +323,8 @@ export class Scheduler implements SchedulerType {
         } catch (e) {
             console.warn(`getDisplayMeta(service ${unit}) failed:`, errorString(e));
             // Even on error, try persisted lastrun
-            const fallbackMs = await readPersistedLastRunMs();
-            return { unit, statusText: '—', lastRunMs: fallbackMs };
+            const fallback = await readPersistedLastRun();
+            return { unit, statusText: '—', lastRunMs: fallback.ms };
         }
     }
 
@@ -427,7 +408,7 @@ export class Scheduler implements SchedulerType {
             // --- Persisted .lastrun files (one call for the whole chunk) ---
             // `tail -v` prints a `==> <path> <==` header per file, so a single
             // spawn replaces one `cat` per task.
-            const lastRunByUnit = new Map<string, number>();
+            const lastRunByUnit = new Map<string, { ms: number; outcome: string }>();
             try {
                 const paths = chunk.map(u => `/etc/systemd/system/${u}.lastrun`);
                 const { stdout } = await execCommand(
@@ -442,10 +423,9 @@ export class Scheduler implements SchedulerType {
                         currentUnit = header[1].replace(/^\/etc\/systemd\/system\//, '').replace(/\.lastrun$/, '');
                         continue;
                     }
-                    const epoch = parseInt(line.trim(), 10);
-                    if (currentUnit && Number.isFinite(epoch) && epoch > 0) {
-                        lastRunByUnit.set(currentUnit, epoch * 1000);
-                    }
+                    if (!currentUnit) continue;
+                    const marker = parseLastRunMarker(line);
+                    if (marker.ms) lastRunByUnit.set(currentUnit, marker);
                 }
             } catch { /* missing .lastrun files are expected */ }
 
@@ -482,14 +462,18 @@ export class Scheduler implements SchedulerType {
                 const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
                 const nextRunUs = t.nextElapseUSec || 0;
                 let lastRunMs = this.usToMs(Number(lastRunUs));
+                let persistedOutcome = '';
 
                 // Fallback: read persisted .lastrun file (only if no timestamp from systemd)
                 if (!lastRunMs) {
-                    lastRunMs = lastRunByUnit.get(unit) ?? 0;
+                    const persisted = lastRunByUnit.get(unit);
+                    lastRunMs = persisted?.ms ?? 0;
+                    persistedOutcome = persisted?.outcome ?? '';
                 }
 
-                if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
-                    statusText = 'Completed';
+                if (statusText === 'Inactive (Disabled)' && lastRunMs) {
+                    if (persistedOutcome === 'failed') statusText = 'Failed';
+                    else if (persistedOutcome === 'success' || s.result === 'success') statusText = 'Completed';
                 }
 
                 const id = (ti as any).id ?? (ti as any).uuid ?? ti.name;

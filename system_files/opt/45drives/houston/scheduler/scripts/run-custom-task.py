@@ -103,19 +103,6 @@ def parse_script_entry(entry):
     raise ValueError(f"Invalid script entry: {entry!r}")
 
 
-def persist_lastrun():
-    """Write the last-run timestamp file so the UI can show it."""
-    try:
-        import time as _time
-        _task_name = os.environ.get("taskName", "").strip()
-        if _task_name:
-            _lr = f"/etc/systemd/system/houston_scheduler_CustomTask_{_task_name}.lastrun"
-            with open(_lr, "w") as f:
-                f.write(str(int(_time.time())))
-    except Exception:
-        pass
-
-
 def main():
     notifier = get_notifier()
     try:
@@ -174,7 +161,6 @@ def main():
                 else:
                     notifier.notify("STATUS=All scripts completed successfully")
                     dbg("=== multi-script parallel completed ===")
-                    persist_lastrun()
                     sys.exit(0)
             else:
                 # Sequential: run one by one, stop on first failure
@@ -188,7 +174,6 @@ def main():
 
                 notifier.notify("STATUS=All scripts completed successfully")
                 dbg("=== multi-script sequential completed ===")
-                persist_lastrun()
                 sys.exit(0)
 
         # Legacy single-command mode (argv)
@@ -207,7 +192,6 @@ def main():
         if result.returncode == 0:
             notifier.notify("STATUS=Completed successfully")
             dbg("=== custom task completed ===")
-            persist_lastrun()
         else:
             notifier.notify(f"STATUS=Exited with code {result.returncode}")
             dbg(f"custom task exited with code {result.returncode}")
@@ -226,4 +210,4 @@ def main():
 
 if __name__ == "__main__":
     # A user script's own exit codes carry no permanent-failure convention.
-    run_with_retry_policy(main)
+    run_with_retry_policy(main, unit_prefix="houston_scheduler_CustomTask_")

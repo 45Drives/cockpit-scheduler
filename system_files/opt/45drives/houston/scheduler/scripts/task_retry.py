@@ -13,6 +13,8 @@ import os
 import subprocess
 import sys
 
+import task_lastrun
+
 NO_RETRY_EXIT_CODE = 90
 DEFAULT_MAX_ATTEMPTS = 3
 SCHEDULER_CONF_PATH = "/opt/45drives/houston/scheduler/scheduler.conf"
@@ -113,11 +115,22 @@ def resolve_exit_code(code, permanent_exit_codes=(), unit=None, log=None):
     return failure_exit_code(permanent=code in permanent_exit_codes, unit=unit, log=log)
 
 
-def run_with_retry_policy(main_func, permanent_exit_codes=(), unit=None, log=None):
-    """Run a task entry point and translate its exit code into the retry policy."""
+def run_with_retry_policy(main_func, permanent_exit_codes=(), unit=None, log=None, unit_prefix=""):
+    """Run a task entry point and translate its exit code into the retry policy.
+
+    The last-run marker is stamped in a finally so that every exit path records
+    one, including failures. Anything that only stamps on the success path
+    leaves a failed run looking like it never ran once systemd drops its
+    in-memory timestamps.
+    """
+    resolved_unit = unit or unit_name(unit_prefix)
+    outcome = task_lastrun.FAILED
     try:
         main_func()
+        outcome = task_lastrun.SUCCESS
     except SystemExit as exit_request:
-        raise SystemExit(
-            resolve_exit_code(exit_request.code, permanent_exit_codes, unit=unit, log=log)
-        )
+        code = resolve_exit_code(exit_request.code, permanent_exit_codes, unit=resolved_unit, log=log)
+        outcome = task_lastrun.SUCCESS if code == 0 else task_lastrun.FAILED
+        raise SystemExit(code)
+    finally:
+        task_lastrun.persist(resolved_unit, outcome)

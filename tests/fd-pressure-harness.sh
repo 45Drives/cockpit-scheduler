@@ -43,6 +43,15 @@ Environment:
   SEED_PREFIX       task name prefix (default fdtest)
   BUSY_SECONDS      how long a started task stays running (default 300)
   SEED_ENABLED      1 to also enable the generated timers (default 0, off)
+  SEED_TIMERS       all | none | mixed — which tasks get a .timer (default all).
+                    'mixed' gives every other task no timer, matching a real host
+                    where some tasks are manual-only. getBulkDisplayMeta pairs
+                    `systemctl show` output blocks to tasks by position, so this
+                    is what proves a timerless unit does not shift the mapping.
+  SEED_LASTRUN      none | all | mixed — seed .lastrun markers (default none).
+                    'mixed' writes a marker for every other task, alternating
+                    success and failed, so one batched `tail -v` call sees
+                    present and missing files and both outcomes at once.
 
 Examples:
   ./fd-pressure-harness.sh run-all
@@ -71,6 +80,8 @@ FD_FAIL="${FD_FAIL:-400}"
 SEED_PREFIX="${SEED_PREFIX:-fdtest}"
 BUSY_SECONDS="${BUSY_SECONDS:-300}"
 SEED_ENABLED="${SEED_ENABLED:-0}"
+SEED_TIMERS="${SEED_TIMERS:-all}"
+SEED_LASTRUN="${SEED_LASTRUN:-none}"
 WORK="${FDTEST_DIR:-${TMPDIR:-/tmp}/fd-pressure-harness}"
 
 RED=$'\033[0;31m'; GRN=$'\033[0;32m'; YEL=$'\033[0;33m'; CYA=$'\033[0;36m'; BLD=$'\033[1m'; RST=$'\033[0m'
@@ -225,16 +236,26 @@ WantedBy=timers.target
 EOF
 }
 
+write_lastrun() {
+  local base="$1" outcome="$2"
+  # Same format the task scripts write: "<epoch> <outcome>" on one line, so
+  # `tail -n 1` in the bulk reader sees the whole record.
+  printf '%s %s\n' "$(( $(date +%s) - 3600 ))" "$outcome" >"$SYSTEMD_DIR/${base}.lastrun"
+}
+
 cmd_seed() {
   require_root
   local count="${1:?count required}"
   [[ "$count" =~ ^[0-9]+$ ]] || die "count must be a number"
 
+  case "$SEED_TIMERS" in all|none|mixed) ;; *) die "SEED_TIMERS must be all, none or mixed" ;; esac
+  case "$SEED_LASTRUN" in all|none|mixed) ;; *) die "SEED_LASTRUN must be all, none or mixed" ;; esac
+
   [[ -f "$WRAPPER" ]] || warn "missing $WRAPPER — tasks will fail if you run them (seeding anyway)"
   mkdir -p "$SCRIPT_DIR"
 
-  info "seeding $count disposable ${TEMPLATE}s (prefix ${SEED_PREFIX})"
-  local i name base
+  info "seeding $count disposable ${TEMPLATE}s (prefix ${SEED_PREFIX}, timers=${SEED_TIMERS}, lastrun=${SEED_LASTRUN})"
+  local i name base timers=0 markers=0
   for (( i = 1; i <= count; i++ )); do
     name=$(printf '%s_%03d' "$SEED_PREFIX" "$i")
     base=$(unit_base "$name")
@@ -242,7 +263,21 @@ cmd_seed() {
     write_env "$name" "$base"
     write_schedule_json "$base"
     write_service "$name" "$base"
-    write_timer "$base"
+    if [[ "$SEED_TIMERS" == 'all' ]] || { [[ "$SEED_TIMERS" == 'mixed' ]] && (( i % 2 == 1 )); }; then
+      write_timer "$base"
+      timers=$(( timers + 1 ))
+    else
+      rm -f "$SYSTEMD_DIR/${base}.timer"
+    fi
+    if [[ "$SEED_LASTRUN" == 'all' ]]; then
+      write_lastrun "$base" success
+      markers=$(( markers + 1 ))
+    elif [[ "$SEED_LASTRUN" == 'mixed' ]] && (( i % 2 == 1 )); then
+      if (( i % 4 == 1 )); then write_lastrun "$base" success; else write_lastrun "$base" failed; fi
+      markers=$(( markers + 1 ))
+    else
+      rm -f "$SYSTEMD_DIR/${base}.lastrun"
+    fi
     printf 'Seeded by fd-pressure-harness.sh — safe to delete\n' >"$SYSTEMD_DIR/${base}.txt"
   done
 
@@ -252,11 +287,12 @@ cmd_seed() {
     info "enabling timers (SEED_ENABLED=1)"
     for (( i = 1; i <= count; i++ )); do
       base=$(unit_base "$(printf '%s_%03d' "$SEED_PREFIX" "$i")")
+      [[ -f "$SYSTEMD_DIR/${base}.timer" ]] || continue
       systemctl enable "${base}.timer" >/dev/null 2>&1 || true
     done
   fi
 
-  info "done — reload the scheduler page and confirm $count tasks appear"
+  info "done — $timers timer(s), $markers marker(s); reload the scheduler page and confirm $count tasks appear"
 }
 
 seeded_names() {

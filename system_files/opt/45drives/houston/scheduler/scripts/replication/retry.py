@@ -14,7 +14,7 @@ PERMANENT_FAILURE_EXIT_CODE = 2
 UNIT_NAME_PREFIX = "houston_scheduler_ZfsReplicationTask_"
 
 
-def _unit_name():
+def unit_name():
     return task_retry.unit_name(UNIT_NAME_PREFIX)
 
 
@@ -23,17 +23,17 @@ def max_attempts():
 
 
 def current_attempt():
-    return task_retry.current_attempt(unit=_unit_name(), log=dbg)
+    return task_retry.current_attempt(unit=unit_name(), log=dbg)
 
 
 def failure_exit_code(permanent=False):
-    return task_retry.failure_exit_code(permanent=permanent, unit=_unit_name(), log=dbg)
+    return task_retry.failure_exit_code(permanent=permanent, unit=unit_name(), log=dbg)
 
 
 def resolve_exit_code(code):
     return task_retry.resolve_exit_code(
         code,
         permanent_exit_codes=(PERMANENT_FAILURE_EXIT_CODE,),
-        unit=_unit_name(),
+        unit=unit_name(),
         log=dbg,
     )

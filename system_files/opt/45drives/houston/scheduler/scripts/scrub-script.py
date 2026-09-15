@@ -176,16 +176,6 @@ def main():
 
         dbg("=== scrub task completed ===")
 
-        # Persist last-run timestamp for UI display across disable/enable cycles
-        try:
-            _task_name = os.environ.get("taskName", "").strip()
-            if _task_name:
-                _lr = f"/etc/systemd/system/houston_scheduler_ScrubTask_{_task_name}.lastrun"
-                with open(_lr, "w") as f:
-                    f.write(str(int(time.time())))
-        except Exception:
-            pass
-
         sys.exit(0)
 
     except SystemExit:
@@ -200,4 +190,4 @@ def main():
 
 
 if __name__ == "__main__":
-    run_with_retry_policy(main)
+    run_with_retry_policy(main, unit_prefix="houston_scheduler_ScrubTask_")

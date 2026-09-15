@@ -587,15 +587,6 @@ def main():
         notifier.notify("STATUS=Snapshot task completed. 100% complete")
         dbg("=== autosnap task completed ===")
 
-        # Persist last-run timestamp so the UI can show it even after
-        # the schedule is disabled/re-enabled (systemd clears its timestamps).
-        try:
-            lastrun_path = f"/etc/systemd/system/houston_scheduler_AutomatedSnapshotTask_{task_name}.lastrun"
-            with open(lastrun_path, "w") as f:
-                f.write(str(int(time.time())))
-        except Exception as e:
-            dbg(f"WARNING: failed to write lastrun file: {e}")
-
     except Exception as e:
         tb = traceback.format_exc()
         dbg(f"FATAL: {tb}")
@@ -605,5 +596,5 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    run_with_retry_policy(main)
+    run_with_retry_policy(main, unit_prefix="houston_scheduler_AutomatedSnapshotTask_")
 

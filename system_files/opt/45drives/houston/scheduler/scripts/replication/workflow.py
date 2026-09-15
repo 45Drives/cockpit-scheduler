@@ -10,6 +10,8 @@ import sys
 import time
 import traceback
 
+import task_lastrun
+
 from .config import as_bool, clamp_mbuffer, clamp_mbuffer_block, get_dest_ports, join_zfs_path
 from .context import notifier
 from .logging_utils import dbg, dbg_env, dbg_kv, safe_print
@@ -18,6 +20,7 @@ from .notifications import send_houston_notification
 from .planner import build_zfs_send_args
 from .process import _apply_tcp_tuning, format_bytes
 from .retention import destroy_snapshots_with_progress, prune_snapshots_by_retention
+from .retry import UNIT_NAME_PREFIX
 from .schedules import load_schedule_json, match_current_tier
 from .ssh import preflight_ssh
 from .snapshots import (
@@ -54,12 +57,7 @@ def _persist_lastrun(task_name):
     """Persist a last-run marker used by UI fallback status rendering."""
     if not task_name:
         return
-    try:
-        lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{task_name}.lastrun'
-        with open(lastrun_path, 'w') as f:
-            f.write(str(int(time.time())))
-    except Exception as e:
-        dbg(f'WARNING: failed to write lastrun file: {e}')
+    task_lastrun.persist(f'{UNIT_NAME_PREFIX}{task_name}')
 
 
 def _require_ssh_access(user, host, port):
@@ -94,14 +92,6 @@ def _initialize_run(ctx: ReplicationRun):
     _apply_tcp_tuning()
     notifier.notify('STATUS=Planning replication…')
     ctx.taskName = os.environ.get('taskName', '')
-    if ctx.taskName:
-        _lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{ctx.taskName}.lastrun'
-        try:
-            os.remove(_lastrun_path)
-        except FileNotFoundError:
-            pass
-        except Exception as _e:
-            dbg(f'WARNING: could not remove old lastrun file: {_e}')
     ctx.direction = (os.environ.get('zfsRepConfig_direction', 'push') or 'push').strip().lower()
     if ctx.direction not in ('push', 'pull'):
         ctx.direction = 'push'
@@ -395,12 +385,7 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                         send_snapshot_push(pending_snap, ctx.destFilesystem, '', ctx.isCompressed, ctx.isRaw, ctx.remoteHost, ctx.sshPort, ctx.remoteUser, str(ctx.mBufferSize), ctx.mBufferUnit, True, ctx.transferMethod, recursive=ctx.isRecursiveSnap, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots)
                     _clear_pending_full_send(ctx.taskName)
                     notifier.notify('STATUS=ZFS replication task completed (full resend). 100% complete')
-                    try:
-                        lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{ctx.taskName}.lastrun'
-                        with open(lastrun_path, 'w') as f:
-                            f.write(str(int(time.time())))
-                    except Exception as e:
-                        dbg(f'WARNING: failed to write lastrun file: {e}')
+                    _persist_lastrun(ctx.taskName)
                     return True
                 else:
                     print(f'Original source snapshot {pending_snap} no longer exists.')
@@ -1135,12 +1120,7 @@ def _apply_retention(ctx: ReplicationRun):
             dbg('Retention disabled for active tier run; skipping legacy untagged retention sweep as well.')
         notifier.notify('STATUS=ZFS replication task completed. 100% complete')
         _clear_pending_full_send(ctx.taskName)
-        try:
-            lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{ctx.taskName}.lastrun'
-            with open(lastrun_path, 'w') as f:
-                f.write(str(int(time.time())))
-        except Exception as e:
-            dbg(f'WARNING: failed to write lastrun file: {e}')
+        _persist_lastrun(ctx.taskName)
         safe_print(f'ZFS replication task completed successfully: {ctx.sourceFilesystem} -> {ctx.destFilesystem}')
         dbg('=== task completed successfully ===')
         return
@@ -1191,12 +1171,7 @@ def _apply_retention(ctx: ReplicationRun):
                 prune_snapshots_by_retention(ctx.destFilesystem, ctx.taskName, max_dst_time, max_dst_unit, ctx.newSnap, ctx.remoteUser if ctx.remoteHost else None, ctx.remoteHost if ctx.remoteHost else None, ctx.sshPort, ctx.transferMethod, progress_base=0, progress_span=0, tier_idx=None, custom_name=ctx.customName)
     notifier.notify('STATUS=ZFS replication task completed. 100% complete')
     _clear_pending_full_send(ctx.taskName)
-    try:
-        lastrun_path = f'/etc/systemd/system/houston_scheduler_ZfsReplicationTask_{ctx.taskName}.lastrun'
-        with open(lastrun_path, 'w') as f:
-            f.write(str(int(time.time())))
-    except Exception as e:
-        dbg(f'WARNING: failed to write lastrun file: {e}')
+    _persist_lastrun(ctx.taskName)
     safe_print(f'ZFS replication task completed successfully: {ctx.sourceFilesystem} -> {ctx.destFilesystem}')
     dbg('=== task completed successfully ===')
 

@@ -24,7 +24,7 @@ def _fake_nrestarts(monkeypatch, value, returncode=0):
 
 def test_unit_name_falls_back_to_task_name(monkeypatch):
     monkeypatch.setenv("taskName", "rep_demo")
-    assert retry._unit_name() == "houston_scheduler_ZfsReplicationTask_rep_demo.service"
+    assert retry.unit_name() == "houston_scheduler_ZfsReplicationTask_rep_demo.service"
 
 
 def test_max_attempts_uses_env_then_default(monkeypatch):

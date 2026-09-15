@@ -772,17 +772,6 @@ def main():
         import time as _time
         _time.sleep(0.1)
         dbg("=== cloudsync task completed ===")
-
-        # Persist last-run timestamp for UI display across disable/enable cycles
-        try:
-            import time as _time
-            _task_name = os.environ.get("taskName", "").strip()
-            if _task_name:
-                _lr = f"/etc/systemd/system/houston_scheduler_CloudSyncTask_{_task_name}.lastrun"
-                with open(_lr, "w") as f:
-                    f.write(str(int(_time.time())))
-        except Exception:
-            pass
     except SystemExit:
         raise
     except Exception as e:
@@ -795,4 +784,4 @@ def main():
 
 if __name__ == '__main__':
     notifier.notify("STATUS=Starting task…")
-    run_with_retry_policy(main)
+    run_with_retry_policy(main, unit_prefix="houston_scheduler_CloudSyncTask_")
