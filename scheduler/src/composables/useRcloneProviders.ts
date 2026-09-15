@@ -1,31 +1,17 @@
 // useRcloneProviders.ts
 import { ref, type Ref } from 'vue';
-import { server, unwrap, Command } from '@45drives/houston-common-lib';
+import { execCommand } from '../utils/commandGate';
 //@ts-ignore
 import getRcloneProviderOptionsScript from '../scripts/get-rclone-provider-options.py?raw';
 
 import { cloudSyncProviders } from '../models/CloudSync';
 
-const textDecoder = new TextDecoder('utf-8');
-
 async function runCommand(
   argv: string[],
   opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
 ): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
-  const proc = await unwrap(
-    server.execute(new Command(argv, opts))
-  );
-  const rawStdout: any = proc.stdout;
-  const rawStderr: any = proc.stderr;
-  const stdout =
-    rawStdout instanceof Uint8Array
-      ? textDecoder.decode(rawStdout)
-      : String(rawStdout ?? '');
-  const stderr =
-    rawStderr instanceof Uint8Array
-      ? textDecoder.decode(rawStderr)
-      : String(rawStderr ?? '');
-  return { stdout, stderr, exitStatus: proc.exitStatus };
+  const { stdout, stderr, exitStatus } = await execCommand(argv, opts);
+  return { stdout, stderr, exitStatus };
 }
 
 export interface RcloneOptionExample {

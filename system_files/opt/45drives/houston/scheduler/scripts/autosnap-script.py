@@ -55,7 +55,14 @@ notifier = get_notifier()
 # Debug logging — always writes to a file so we have a trace even when
 # systemd journal is empty (e.g. pipe closed, SafeStream swallows errors).
 # ---------------------------------------------------------------------------
-DEBUG_LOG = os.environ.get("AUTOSNAP_DEBUG_LOG", "/tmp/autosnap_debug.log")
+# Strip anything that could escape /tmp or alias another path; this script runs as root.
+_DEBUG_TASK_NAME = "".join(
+    c for c in os.environ.get("taskName", "").strip() if c.isalnum() or c in "-_"
+)[:64]
+# An empty AUTOSNAP_DEBUG_LOG in the unit's env file would otherwise win over the default.
+DEBUG_LOG = os.environ.get("AUTOSNAP_DEBUG_LOG", "").strip() or (
+    f"/tmp/autosnap_debug_{_DEBUG_TASK_NAME}.log" if _DEBUG_TASK_NAME else "/tmp/autosnap_debug.log"
+)
 DEBUG_ENABLED = os.environ.get("AUTOSNAP_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
 
 def dbg(msg: str):
@@ -63,7 +70,9 @@ def dbg(msg: str):
         return
     try:
         line = f"{dt.datetime.now().isoformat()} {msg}\n"
-        with open(DEBUG_LOG, "a") as f:
+        # O_NOFOLLOW: refuse to append through a symlink planted in world-writable /tmp.
+        fd = os.open(DEBUG_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "a") as f:
             f.write(line)
     except Exception:
         pass

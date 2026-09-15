@@ -1,6 +1,6 @@
 // useUserScopedFolderListByInstall.ts
 import { ref, watch, type Ref } from 'vue';
-import { server, unwrap, Command } from '@45drives/houston-common-lib'
+import { execCommand } from '../utils/commandGate';
 
 const DEBUG_TAG = '[useUserScopedFolderListByInstall]';
 const log = (...a: any[]) => console.log(DEBUG_TAG, ...a);
@@ -9,30 +9,12 @@ const err = (...a: any[]) => console.error(DEBUG_TAG, ...a);
 
 const sanitize = (s: string) => s.replace(/["'`\\]/g, '');
 
-const textDecoder = new TextDecoder('utf-8');
-
 async function runCommand(
   argv: string[],
   opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
 ): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
-  const proc = await unwrap(
-    server.execute(new Command(argv, opts))
-  );
-
-  const rawStdout: any = proc.stdout;
-  const rawStderr: any = proc.stderr;
-
-  const stdout =
-    rawStdout instanceof Uint8Array
-      ? textDecoder.decode(rawStdout)
-      : String(rawStdout ?? '');
-
-  const stderr =
-    rawStderr instanceof Uint8Array
-      ? textDecoder.decode(rawStderr)
-      : String(rawStderr ?? '');
-
-  return { stdout, stderr, exitStatus: proc.exitStatus };
+  const { stdout, stderr, exitStatus } = await execCommand(argv, opts);
+  return { stdout, stderr, exitStatus };
 }
 
 async function runWithLog(label: string, argv: string[]) {

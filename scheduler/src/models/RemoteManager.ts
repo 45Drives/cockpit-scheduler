@@ -1,4 +1,3 @@
-import { server, unwrap, Command } from '@45drives/houston-common-lib';
 import { CloudSyncProvider, CloudSyncRemote, cloudSyncProviders, CloudAuthParameter} from "./CloudSync";
 //@ts-ignore
 import get_cloud_sync_remotes_script from '../scripts/get-rclone-remotes.py?raw';
@@ -8,8 +7,6 @@ import create_cloud_sync_remote_script from '../scripts/create-rclone-remote.py?
 import delete_cloud_sync_remote_script from '../scripts/delete-rclone-remote.py?raw';
 //@ts-ignore
 import update_cloud_sync_remote_script from '../scripts/update-rclone-remote.py?raw';
-
-const textDecoder = new TextDecoder('utf-8');
 
 /**
  * Callers hand us one of two shapes: the flat map the advanced create modal builds
@@ -36,28 +33,14 @@ function remotePayload(remote: CloudSyncRemote, paramMap: Record<string, any>): 
     return JSON.stringify({ ...remote, authParams: paramMap });
 }
 
+import { execCommand } from '../utils/commandGate';
+
 async function runCommand(
     argv: string[],
     opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
 ): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
-    const proc = await unwrap(
-        server.execute(new Command(argv, opts))
-    );
-
-    const rawStdout: any = proc.stdout;
-    const rawStderr: any = proc.stderr;
-
-    const stdout =
-        rawStdout instanceof Uint8Array
-            ? textDecoder.decode(rawStdout)
-            : String(rawStdout ?? '');
-
-    const stderr =
-        rawStderr instanceof Uint8Array
-            ? textDecoder.decode(rawStderr)
-            : String(rawStderr ?? '');
-
-    return { stdout, stderr, exitStatus: proc.exitStatus };
+    const { stdout, stderr, exitStatus } = await execCommand(argv, opts);
+    return { stdout, stderr, exitStatus };
 }
 
 export class RemoteManager implements RemoteManagerType {

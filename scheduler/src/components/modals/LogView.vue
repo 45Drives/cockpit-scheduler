@@ -192,6 +192,7 @@ import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.v
 import { injectWithCheck } from '../../composables/utility'
 import { describeTaskFailure } from '../../composables/taskFailureReason';
 import { logInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
+import { isPageHidden } from '../../utils/pageVisibility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface LogViewProps {
@@ -415,17 +416,27 @@ const preserveScrollPosition = async (fetchFunction: () => Promise<void>) => {
 const startPolling = () => {
     stopPolling(); // Ensure no duplicate intervals
 
+    // journalctl can easily outlast the 2s tick; without this guard each slow
+    // poll would stack another set of spawned processes on the bridge.
+    let pollInFlight = false;
+
     pollInterval.value = setInterval(async () => {
-        await checkRunningStatus();
+        if (pollInFlight || isPageHidden()) return;
+        pollInFlight = true;
+        try {
+            await checkRunningStatus();
 
-        if (!viewMoreLogs.value) {
-            await fetchLatestLog(); // Keep polling latest logs
-        }
+            if (!viewMoreLogs.value) {
+                await fetchLatestLog(); // Keep polling latest logs
+            }
 
-        // If task is no longer active (not running and not scheduled), stop and do a final refresh
-        if (!taskIsActive.value) {
-            stopPolling();
-            await refreshLogs();
+            // If task is no longer active (not running and not scheduled), stop and do a final refresh
+            if (!taskIsActive.value) {
+                stopPolling();
+                await refreshLogs();
+            }
+        } finally {
+            pollInFlight = false;
         }
     }, 2000);
 };
@@ -439,13 +450,16 @@ const stopPolling = () => {
 
 const startDebugPolling = () => {
     stopDebugPolling();
+    let debugInFlight = false;
     debugPollInterval.value = setInterval(async () => {
-        if (showDebugLog.value) {
-            try {
-                debugLogContent.value = await myTaskLog.getDebugLog(taskInstance.value);
-            } catch (e) {
-                console.warn('Debug log poll failed:', e);
-            }
+        if (!showDebugLog.value || debugInFlight || isPageHidden()) return;
+        debugInFlight = true;
+        try {
+            debugLogContent.value = await myTaskLog.getDebugLog(taskInstance.value);
+        } catch (e) {
+            console.warn('Debug log poll failed:', e);
+        } finally {
+            debugInFlight = false;
         }
     }, 5000);
 };

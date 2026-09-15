@@ -1,29 +1,15 @@
 // usePathAutoComplete.ts
 import { ref, watch, type Ref } from 'vue';
-import { server, unwrap, Command } from '@45drives/houston-common-lib';
+import { execCommand } from '../utils/commandGate';
 //@ts-ignore
 import listDirectoryScript from '../scripts/list-directory.py?raw';
-
-const textDecoder = new TextDecoder('utf-8');
 
 async function runCommand(
   argv: string[],
   opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
 ): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
-  const proc = await unwrap(
-    server.execute(new Command(argv, opts))
-  );
-  const rawStdout: any = proc.stdout;
-  const rawStderr: any = proc.stderr;
-  const stdout =
-    rawStdout instanceof Uint8Array
-      ? textDecoder.decode(rawStdout)
-      : String(rawStdout ?? '');
-  const stderr =
-    rawStderr instanceof Uint8Array
-      ? textDecoder.decode(rawStderr)
-      : String(rawStderr ?? '');
-  return { stdout, stderr, exitStatus: proc.exitStatus };
+  const { stdout, stderr, exitStatus } = await execCommand(argv, opts);
+  return { stdout, stderr, exitStatus };
 }
 
 export interface PathEntry {

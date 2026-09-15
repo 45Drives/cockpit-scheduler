@@ -1,10 +1,15 @@
 import { ref, onUnmounted, watch } from 'vue';
+import { isPageHidden } from '../utils/pageVisibility';
 
 type AnyTask = any;
 
 const STATUS_REFRESH_CONCURRENCY = 4;
 // When task count exceeds this, use batched systemctl queries instead of per-task calls
 const BULK_THRESHOLD = 10;
+// Idle backoff: with no task running, status is near-static, so poll this much
+// slower. Costs up to one interval of delay before "Running" first appears.
+const IDLE_BACKOFF_FACTOR = 4;
+const IDLE_STATUS_INTERVAL_CAP_MS = 20_000;
 
 function taskId(t: AnyTask) {
     return t?.id ?? t?.uuid ?? t?.name;
@@ -41,11 +46,14 @@ export function useLiveTaskStatus(
     const statusMap = ref<Record<string, string>>({});
     const lastRunMap = ref<Record<string, string>>({});
     const lastCompletedAtMap = ref<Record<string, number>>({});
+    // Epoch ms of each task's next scheduled trigger, used to leave idle backoff early.
+    const nextRunMap = ref<Record<string, number>>({});
     const progressMap = ref<Record<string, number | null>>({});
     const progressLabelMap = ref<Record<string, string | null>>({});
     const polling = ref(false);
     let intervalId: number | undefined;
     let progressIntervalId: number | undefined;
+    let pollGeneration = 0;
     // Track tasks already reported as failed to avoid duplicate notifications.
     // Maps task id → the "Failed at <timestamp>" label so we re-fire when a
     // NEW failure occurs (different timestamp) even if we never saw "running".
@@ -129,6 +137,7 @@ export function useLiveTaskStatus(
         try {
             // ---- Primary path: one call that gives us status + timestamps
             const meta = await scheduler.getDisplayMeta(t);
+            nextRunMap.value[id] = Number(meta?.nextRunMs) || 0;
 
             // derive a better default status based on schedule.enabled
             let schedulerStatusText: string | undefined = meta?.statusText;
@@ -165,9 +174,10 @@ export function useLiveTaskStatus(
 
             // Prefer log so we can inspect exitCode
             let logDerivedStatus: string | undefined;
-            if (log?.getLatestEntryFor) {
+            const latestStatusFor = log?.getLatestStatusFor ?? log?.getLatestEntryFor;
+            if (latestStatusFor) {
                 try {
-                    const latest = await log.getLatestEntryFor(t);
+                    const latest = await latestStatusFor.call(log, t);
                     const raw = latest?.finishDate ?? latest?.startDate;
                     if (raw) {
                         const ms = parseTs(raw);
@@ -301,7 +311,8 @@ export function useLiveTaskStatus(
 
             const lower = schedulerStatusText.toLowerCase();
 
-            const latest = await (log?.getLatestEntryFor?.(t));
+            const latestStatusFor = log?.getLatestStatusFor ?? log?.getLatestEntryFor;
+            const latest = await latestStatusFor?.call(log, t);
             const raw = latest?.finishDate ?? latest?.startDate;
             let lastCompletedMs = 0;
 
@@ -464,6 +475,7 @@ export function useLiveTaskStatus(
                 }
                 continue;
             }
+            nextRunMap.value[id] = Number(meta?.nextRunMs) || 0;
 
             let schedulerStatusText: string = meta.statusText;
             const isFallbackStatus = !schedulerStatusText || schedulerStatusText === '—' || schedulerStatusText === '-';
@@ -598,51 +610,117 @@ export function useLiveTaskStatus(
         return refreshProgressInFlight;
     }
 
+    function anyTaskActive(): boolean {
+        return Object.values(statusMap.value).some((s) => {
+            const lower = (s || '').toLowerCase();
+            if (lower.includes('failed')) return false;
+            return lower.includes('running') || lower.includes('starting');
+        });
+    }
+
+    /**
+     * True when a timer fires within `withinMs` either side of now. The trailing
+     * half keeps the poll fast just after a trigger, which is when the run appears;
+     * bounding it also stops a stale past timestamp from pinning us at full rate.
+     */
+    function triggerImminent(withinMs: number): boolean {
+        const now = Date.now();
+        return Object.values(nextRunMap.value).some((ms) => ms > 0 && Math.abs(ms - now) <= withinMs);
+    }
+
+    function baseIntervals() {
+        const rawStatus = typeof opts?.intervalMs === 'function' ? opts.intervalMs() : opts?.intervalMs;
+        const status = Number.isFinite(rawStatus as number) ? Math.max(1000, rawStatus as number) : 1500;
+        const rawProgress = typeof opts?.progressIntervalMs === 'function'
+            ? opts.progressIntervalMs()
+            : opts?.progressIntervalMs;
+        const progress = Number.isFinite(rawProgress as number) ? Math.max(1000, rawProgress as number) : status;
+        return { status, progress };
+    }
+
+    // Scale polling interval based on task count to avoid overwhelming cockpit.
+    // Use much slower polling at larger scales to keep systemctl/dbus load low.
+    function statusIntervalNow(): number {
+        const taskCount = (tasksRef.value ?? []).length;
+        const base = baseIntervals().status;
+        const scaled = taskCount > 250
+            ? Math.max(base, 60000)   // 250+ tasks: poll every 60s minimum
+            : taskCount > 100
+                ? Math.max(base, 45000)   // 101-250 tasks: poll every 45s
+                : taskCount > 50
+                    ? Math.max(base, 30000)   // 51-100 tasks: poll every 30s
+                    : taskCount > 20
+                        ? Math.max(base, 15000)   // 21-50 tasks: poll every 15s
+                        : base;
+        // Nothing is running, so there is no fast-moving state to watch. Back off,
+        // but stay at full rate around a due trigger so short runs are still seen.
+        // The cap is below some scaled tiers, so never back off to faster than `scaled`.
+        const idle = Math.max(scaled, Math.min(IDLE_STATUS_INTERVAL_CAP_MS, scaled * IDLE_BACKOFF_FACTOR));
+        if (anyTaskActive() || triggerImminent(idle)) return scaled;
+        return idle;
+    }
+
+    // Progress text changes more slowly than run-state transitions; poll it less.
+    function progressIntervalNow(): number {
+        const taskCount = (tasksRef.value ?? []).length;
+        const base = baseIntervals().progress;
+        const status = statusIntervalNow();
+        return taskCount > 100
+            ? Math.max(base, status, 60000)
+            : taskCount > 50
+                ? Math.max(base, status, 45000)
+                : taskCount > 20
+                    ? Math.max(base, status, 30000)
+                    : Math.max(base, status, 10000);
+    }
+
+    // Self-rescheduling timeouts rather than setInterval: the delay is recomputed
+    // every tick, so task-count growth, a settings change and the idle/active
+    // transition all take effect without restarting the poller. The generation
+    // guard drops chains left over from a stop()/start() during an in-flight tick.
+    function scheduleStatusTick(gen: number) {
+        intervalId = window.setTimeout(async () => {
+            if (!polling.value || gen !== pollGeneration) return;
+            if (!isPageHidden()) {
+                try { await refreshAll(true); } catch { /* next tick retries */ }
+            }
+            if (polling.value && gen === pollGeneration) scheduleStatusTick(gen);
+        }, statusIntervalNow());
+    }
+
+    function scheduleProgressTick(gen: number) {
+        progressIntervalId = window.setTimeout(async () => {
+            if (!polling.value || gen !== pollGeneration) return;
+            if (!isPageHidden()) {
+                try { await refreshProgress(); } catch { /* next tick retries */ }
+            }
+            if (polling.value && gen === pollGeneration) scheduleProgressTick(gen);
+        }, progressIntervalNow());
+    }
+
     function start() {
         if (polling.value) return;
         polling.value = true;
-        refreshAll();
-        refreshProgress();
-        // Scale polling interval based on task count to avoid overwhelming cockpit.
-        // Use much slower polling at larger scales to keep systemctl/dbus load low.
-        const taskCount = (tasksRef.value ?? []).length;
-        const baseStatusInterval = typeof opts?.intervalMs === 'function'
-            ? opts.intervalMs()
-            : (opts?.intervalMs ?? 1500);
-        const baseProgressInterval = typeof opts?.progressIntervalMs === 'function'
-            ? opts.progressIntervalMs()
-            : (opts?.progressIntervalMs ?? baseStatusInterval);
-        const safeStatusBase = Number.isFinite(baseStatusInterval) ? Math.max(1000, baseStatusInterval) : 1500;
-        const safeProgressBase = Number.isFinite(baseProgressInterval) ? Math.max(1000, baseProgressInterval) : safeStatusBase;
-        const effectiveInterval = taskCount > 250
-            ? Math.max(safeStatusBase, 60000)   // 250+ tasks: poll every 60s minimum
-            : taskCount > 100
-                ? Math.max(safeStatusBase, 45000)   // 101-250 tasks: poll every 45s
-                : taskCount > 50
-                    ? Math.max(safeStatusBase, 30000)   // 51-100 tasks: poll every 30s
-                    : taskCount > 20
-                        ? Math.max(safeStatusBase, 15000)   // 21-50 tasks: poll every 15s
-                        : safeStatusBase;
-        intervalId = window.setInterval(() => refreshAll(true), effectiveInterval);
-        // Progress text changes more slowly than run-state transitions; poll it less.
-        const progressInterval = taskCount > 100
-            ? Math.max(safeProgressBase, effectiveInterval, 60000)
-            : taskCount > 50
-                ? Math.max(safeProgressBase, effectiveInterval, 45000)
-                : taskCount > 20
-                    ? Math.max(safeProgressBase, effectiveInterval, 30000)
-                    : Math.max(safeProgressBase, effectiveInterval, 10000);
-        progressIntervalId = window.setInterval(refreshProgress, progressInterval);
+        const gen = ++pollGeneration;
+        // Schedule the first tick only once the opening refresh has landed, so its
+        // delay is computed from real status rather than the still-empty maps.
+        refreshAll().finally(() => {
+            if (polling.value && gen === pollGeneration) scheduleStatusTick(gen);
+        });
+        refreshProgress().finally(() => {
+            if (polling.value && gen === pollGeneration) scheduleProgressTick(gen);
+        });
     }
 
     function stop() {
         polling.value = false;
+        pollGeneration++;
         if (intervalId) {
-            clearInterval(intervalId);
+            clearTimeout(intervalId);
             intervalId = undefined;
         }
         if (progressIntervalId) {
-            clearInterval(progressIntervalId);
+            clearTimeout(progressIntervalId);
             progressIntervalId = undefined;
         }
     }

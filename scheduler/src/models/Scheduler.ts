@@ -6,39 +6,48 @@ import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // commenting out chooseBackend until daemon mode is airtight
 // import { chooseBackend } from '../utils/bootstrapBackend';
 import { daemon } from '../utils/daemonClient';
+import { execCommand, withCommandSlot } from '../utils/commandGate';
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';
 
-const textDecoder = new TextDecoder("utf-8");
-
 const errorString = (e: any) => e?.message ?? String(e);
+
+// Date.parse rejects the abbreviations systemd emits outside the US zones.
+const TZ_OFFSET_HOURS: Record<string, number> = {
+    UTC: 0, GMT: 0, EST: -5, EDT: -4, CST: -6, CDT: -5, MST: -7, MDT: -6,
+    PST: -8, PDT: -7, AST: -4, ADT: -3, NST: -3.5, NDT: -2.5,
+};
+
+/**
+ * systemd renders *USec properties as raw microseconds on some versions and as
+ * a formatted timestamp ("Tue 2026-09-15 11:00:00 EDT") on others. Returns µs.
+ */
+function parseSystemdTimestampUSec(raw: string | undefined): number {
+    if (!raw) return 0;
+    const value = raw.trim();
+    if (!value) return 0;
+
+    // Check numeric first: Date.parse("0") would otherwise yield the year 2000.
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return asNumber > 0 ? asNumber : 0;
+
+    const native = Date.parse(value);
+    if (Number.isFinite(native)) return native * 1000;
+
+    const m = value.match(/^(?:\w{3}\s+)?(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\s+([A-Z]{2,4})$/);
+    if (!m) return 0;
+    const offsetHours = TZ_OFFSET_HOURS[m[7]];
+    if (typeof offsetHours !== 'number') return 0;
+    const utcMs = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - offsetHours * 3600_000;
+    return Number.isFinite(utcMs) ? utcMs * 1000 : 0;
+}
 
 export async function runCommand(
     argv: string[],
     opts: { superuser?: "try" | "require" } = { superuser: "try" }
 ): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
-    const proc = await unwrap(
-        server.execute(new Command(argv, opts))
-    );
-
-    const rawStdout: any = proc.stdout;
-    const rawStderr: any = proc.stderr;
-
-    const stdout =
-        rawStdout instanceof Uint8Array
-            ? textDecoder.decode(rawStdout)
-            : String(rawStdout ?? "");
-
-    let stderr: string;
-    if (typeof rawStderr === "string") {
-        stderr = rawStderr;
-    } else if (rawStderr instanceof Uint8Array) {
-        stderr = textDecoder.decode(rawStderr);
-    } else {
-        stderr = "";
-    }
-
-    return { stdout, stderr, exitStatus: proc.exitStatus };
+    const { stdout, stderr, exitStatus } = await execCommand(argv, opts);
+    return { stdout, stderr, exitStatus };
 }
 
 export class Scheduler implements SchedulerType {
@@ -78,23 +87,18 @@ export class Scheduler implements SchedulerType {
     private async resetFailedQuiet(serviceUnit?: string): Promise<void> {
         try {
             if (!serviceUnit) {
-                await unwrap(
-                    server.execute(new Command(['systemctl', 'reset-failed'], { superuser: 'try' }), false)
-                );
+                await execCommand(['systemctl', 'reset-failed'], { superuser: 'try' }, false);
                 return;
             }
 
-            const probe = await unwrap(
-                server.execute(
-                    new Command(['systemctl', 'show', serviceUnit, '--property=LoadState', '--value'], { superuser: 'try' }),
-                    false
-                )
+            const probe = await execCommand(
+                ['systemctl', 'show', serviceUnit, '--property=LoadState', '--value'],
+                { superuser: 'try' },
+                false
             );
-            const loadState = String(probe.getStdout(false) ?? '').trim().toLowerCase();
+            const loadState = probe.stdout.trim().toLowerCase();
             if (probe.exitStatus === 0 && loadState && loadState !== 'not-found') {
-                await unwrap(
-                    server.execute(new Command(['systemctl', 'reset-failed', serviceUnit], { superuser: 'try' }), false)
-                );
+                await execCommand(['systemctl', 'reset-failed', serviceUnit], { superuser: 'try' }, false);
             }
         } catch {
             // best-effort cleanup path
@@ -206,11 +210,9 @@ export class Scheduler implements SchedulerType {
         const readPersistedLastRunMs = async (): Promise<number> => {
             try {
                 const lastrunPath = `/etc/systemd/system/${unit}.lastrun`;
-                const ep = await unwrap(
-                    server.execute(new Command(["cat", lastrunPath], { superuser: "try" }), false)
-                );
+                const ep = await execCommand(["cat", lastrunPath], { superuser: "try" }, false);
                 if (ep.exitStatus !== 0) return 0;
-                const epoch = parseInt(String(ep.getStdout(false)).trim(), 10);
+                const epoch = parseInt(ep.stdout.trim(), 10);
                 return Number.isFinite(epoch) && epoch > 0 ? epoch * 1000 : 0;
             } catch {
                 return 0;
@@ -296,7 +298,7 @@ export class Scheduler implements SchedulerType {
             const { stdout, stderr, exitStatus } = await runCommand(
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit',
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit,ExecMainStatus,InvocationID',
                 ],
                 { superuser: 'try' }
             );
@@ -306,6 +308,7 @@ export class Scheduler implements SchedulerType {
             }
 
             serviceOut = stdout;
+            log?.primeServiceShow?.(unit, serviceOut);
 
             const t = this.parseShow(timerOut);
             const s = this.parseShow(serviceOut);
@@ -378,7 +381,7 @@ export class Scheduler implements SchedulerType {
         // But for safety with very large sets, chunk at 200 units.
         const CHUNK_SIZE = 200;
         const timerProps = 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit';
-        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit';
+        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit,ExecMainStatus,InvocationID';
 
         // Parse multi-unit `systemctl show` output — units separated by blank lines
         const parseMultiShow = (raw: string): string[] => {
@@ -421,6 +424,31 @@ export class Scheduler implements SchedulerType {
                 console.warn('getBulkDisplayMeta: bulk service query failed:', errorString(e));
             }
 
+            // --- Persisted .lastrun files (one call for the whole chunk) ---
+            // `tail -v` prints a `==> <path> <==` header per file, so a single
+            // spawn replaces one `cat` per task.
+            const lastRunByUnit = new Map<string, number>();
+            try {
+                const paths = chunk.map(u => `/etc/systemd/system/${u}.lastrun`);
+                const { stdout } = await execCommand(
+                    ['tail', '-v', '-n', '1', ...paths],
+                    { superuser: 'try' },
+                    false
+                );
+                let currentUnit = '';
+                for (const line of (stdout || '').split('\n')) {
+                    const header = line.match(/^==>\s+(.*?)\s+<==$/);
+                    if (header) {
+                        currentUnit = header[1].replace(/^\/etc\/systemd\/system\//, '').replace(/\.lastrun$/, '');
+                        continue;
+                    }
+                    const epoch = parseInt(line.trim(), 10);
+                    if (currentUnit && Number.isFinite(epoch) && epoch > 0) {
+                        lastRunByUnit.set(currentUnit, epoch * 1000);
+                    }
+                }
+            } catch { /* missing .lastrun files are expected */ }
+
             // --- Assemble results for each unit in this chunk ---
             const log = new TaskExecutionLog([]);
             for (let j = 0; j < chunk.length; j++) {
@@ -428,6 +456,7 @@ export class Scheduler implements SchedulerType {
                 const ti = taskByUnit.get(unit)!;
                 const timerOut = timerBlocks[j] || '';
                 const serviceOut = serviceBlocks[j] || '';
+                log?.primeServiceShow?.(unit, serviceOut);
 
                 const t = this.parseShow(timerOut);
                 const s = this.parseShow(serviceOut);
@@ -456,16 +485,7 @@ export class Scheduler implements SchedulerType {
 
                 // Fallback: read persisted .lastrun file (only if no timestamp from systemd)
                 if (!lastRunMs) {
-                    try {
-                        const lastrunPath = `/etc/systemd/system/${unit}.lastrun`;
-                        const ep = await unwrap(
-                            server.execute(new Command(["cat", lastrunPath], { superuser: "try" }), false)
-                        );
-                        if (ep.exitStatus === 0) {
-                            const epoch = parseInt(String(ep.getStdout(false)).trim(), 10);
-                            if (Number.isFinite(epoch) && epoch > 0) lastRunMs = epoch * 1000;
-                        }
-                    } catch { /* ignore missing .lastrun */ }
+                    lastRunMs = lastRunByUnit.get(unit) ?? 0;
                 }
 
                 if (statusText === 'Inactive (Disabled)' && lastRunMs && s.result === 'success') {
@@ -1754,24 +1774,8 @@ export class Scheduler implements SchedulerType {
             return Number.isFinite(n) ? n : undefined;
         };
 
-        const num = (k: string) => {
-            const v = m.get(k);
-            const n = v ? Number(v) : NaN;
-            return Number.isFinite(n) && n > 0 ? n : 0;
-        };
-
-        // If USec (microseconds) is missing, fall back to the wallclock string and parse it.
-        // Date.parse → ms since epoch; multiply by 1000 to get µs so callers stay consistent.
-        const ts = (numKey: string, strKey: string) => {
-            const u = num(numKey);
-            if (u) return u;
-            const s = m.get(strKey);
-            if (s) {
-                const ms = Date.parse(s);
-                if (Number.isFinite(ms)) return ms * 1000;
-            }
-            return 0;
-        };
+        const ts = (numKey: string, strKey: string) =>
+            parseSystemdTimestampUSec(m.get(numKey)) || parseSystemdTimestampUSec(m.get(strKey));
 
         return {
             load: m.get('LoadState') || '',
@@ -1782,7 +1786,7 @@ export class Scheduler implements SchedulerType {
             nRestarts: intOrUndefined('NRestarts'),
             // timers
             lastTriggerUSec: ts('LastTriggerUSec', 'LastTrigger'),
-            nextElapseUSec: num('NextElapseUSecRealtime'),
+            nextElapseUSec: parseSystemdTimestampUSec(m.get('NextElapseUSecRealtime')),
             // services (prefer ExecMainStart, fall back to ActiveEnter)
             serviceStartUSec:
                 ts('ExecMainStartTimestampUSec', 'ExecMainStartTimestamp') ||

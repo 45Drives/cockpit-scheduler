@@ -1,6 +1,6 @@
 // useWireShieldInstalled.ts
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
-import { server, unwrap, BashCommand } from '@45drives/houston-common-lib';
+import { execCommand } from '../utils/commandGate';
 
 export const WIRESHIELD_MISSING_MESSAGE =
     'WireShield is not installed on this server. Install the WireShield package to set up an off-site connection.';
@@ -18,10 +18,12 @@ const PROBE_SCRIPT = [
 ].join(' || ');
 
 async function probeWireShield(): Promise<boolean> {
-    const proc = await unwrap(
-        server.execute(new BashCommand(PROBE_SCRIPT, [], { superuser: 'try' }), false)
+    const { exitStatus } = await execCommand(
+        ['/usr/bin/env', 'bash', '-c', PROBE_SCRIPT],
+        { superuser: 'try' },
+        false
     );
-    return proc.exitStatus === 0;
+    return exitStatus === 0;
 }
 
 export function useWireShieldInstalled(): {

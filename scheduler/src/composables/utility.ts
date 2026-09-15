@@ -1,4 +1,3 @@
-import { server, unwrap, Command } from "@45drives/houston-common-lib"
 // @ts-ignore
 import get_zfs_data_script from "../scripts/get-zfs-data.py?raw";
 // @ts-ignore
@@ -23,20 +22,19 @@ import stop_task_script from "../scripts/legacy-stop-task-now.py?raw";
 import set_env_flag_script from "../scripts/legacy-set-env-flag.py?raw";
 
 import { inject, InjectionKey, type Ref } from "vue";
+import { execCommand, execCommandWithStdin } from "../utils/commandGate";
 
 const errorString = (e: any) => e?.message ?? String(e);
-const textDecoder = new TextDecoder("utf-8");
 
 /**
- * Small helper to run a command via Server.execute + unwrap
+ * Small helper to run a command via the shared command gate
  * and return decoded stdout plus the raw ExitedProcess.
  */
 async function runCommand(
 	argv: string[],
 	opts: { superuser?: "try" | "require"; directory?: string } = { superuser: "try" }
 ): Promise<{ stdout: string; proc: any }> {
-	const proc = await unwrap(server.execute(new Command(argv, opts), /* failIfNonZero */ false));
-	const stdout = textDecoder.decode(proc.stdout ?? new Uint8Array());
+	const { stdout, proc } = await execCommand(argv, opts, /* failIfNonZero */ false);
 	return { stdout, proc };
 }
 
@@ -749,18 +747,16 @@ export async function ensurePasswordlessSSH(
 
 	try {
 		// Password goes over stdin so it never lands in the process table.
-		const child = server.spawnProcess(new Command(argv, { superuser: "try" }));
-		child.write(new TextEncoder().encode((password ?? "") + "\n"), false);
-		const proc: any = await unwrap(child.wait(/* failIfNonZero */ false));
-		const stdout = textDecoder.decode(proc.stdout ?? new Uint8Array());
+		const proc: any = await execCommandWithStdin(
+			argv,
+			(password ?? "") + "\n",
+			{ superuser: "try" },
+			/* failIfNonZero */ false
+		);
+		const stdout = proc.stdout;
 
 		const parsed = safeParseJsonLoose(stdout);
-		const stderr =
-			typeof proc?.stderr === "string"
-				? proc.stderr
-				: proc?.stderr instanceof Uint8Array
-					? textDecoder.decode(proc.stderr)
-					: "";
+		const stderr = proc.stderr;
 
 		if (parsed?.success === true || proc?.exitStatus === 0) {
 			return {

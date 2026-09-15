@@ -1,31 +1,14 @@
-import { server, unwrap, Command } from '@45drives/houston-common-lib';
 import { formatTemplateName } from '../composables/utility';
 import { daemon } from '../utils/daemonClient';
-
-const textDecoder = new TextDecoder('utf-8');
+import { execCommand } from '../utils/commandGate';
 
 async function runCommand(
     argv: string[],
-    opts: { superuser?: 'try' | 'require' } = { superuser: 'try' }
+    opts: { superuser?: 'try' | 'require' } = { superuser: 'try' },
+    failIfNonZero = true
 ): Promise<{ stdout: string; stderr: string; exitStatus: number }> {
-    const proc = await unwrap(
-        server.execute(new Command(argv, opts))
-    );
-
-    const rawStdout: any = proc.stdout;
-    const rawStderr: any = proc.stderr;
-
-    const stdout =
-        rawStdout instanceof Uint8Array
-            ? textDecoder.decode(rawStdout)
-            : String(rawStdout ?? '');
-
-    const stderr =
-        rawStderr instanceof Uint8Array
-            ? textDecoder.decode(rawStderr)
-            : String(rawStderr ?? '');
-
-    return { stdout, stderr, exitStatus: proc.exitStatus };
+    const { stdout, stderr, exitStatus } = await execCommand(argv, opts, failIfNonZero);
+    return { stdout, stderr, exitStatus };
 }
 
 const errorString = (e: any) => e?.message ?? String(e);
@@ -137,64 +120,128 @@ export class TaskExecutionLog {
         }
     }
 
-    async getLatestEntryFor(taskInstance: TaskInstanceType) {
-        try {
-            const unit = await this.fullUnitNameForLogs(taskInstance);
-            const isUserScope = (taskInstance as any).scope === 'user';
+    /**
+     * `systemctl show` output the status poller already fetched this tick.
+     * Static because the poller, the view and getDisplayMeta each hold their own
+     * TaskExecutionLog, so a per-instance cache would never be read back.
+     */
+    private static primedServiceShow = new Map<string, { at: number; kv: Record<string, string> }>();
+    private static readonly PRIME_TTL_MS = 2000;
 
-            // --- DAEMON path (user units): avoid journalctl; parse show()
-            if (isUserScope) {
-                const templateName = formatTemplateName(taskInstance.template.name);
-                const st: any = await daemon.getStatus(templateName, taskInstance.name);
-                const show = String(st?.service || '');
+    /** Which debug-log candidate actually exists, so polling stops re-probing the other. */
+    private static debugLogPath = new Map<string, string>();
 
-                const props = new Map(
-                    (show || '').split(/\r?\n/).map((line) => {
-                        const i = line.indexOf('=');
-                        return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : [line, ''];
-                    })
-                );
-                const rawResult = (props.get('Result') || '').toString().toLowerCase();
-                const exitCode = (rawResult === 'success') ? 0 : 1;
+    private static parseShowKv(stdout: string): Record<string, string> {
+        return Object.fromEntries(
+            (stdout || '')
+                .split('\n')
+                .filter((l: string) => l.includes('='))
+                .map((l: string) => l.split('=', 2))
+        );
+    }
 
-                const startTime = props.get('ActiveEnterTimestamp') || '';
-                const finishTime =
+    primeServiceShow(unit: string, stdout: string): void {
+        const now = Date.now();
+        const cache = TaskExecutionLog.primedServiceShow;
+        for (const [key, val] of cache) {
+            if (now - val.at >= TaskExecutionLog.PRIME_TTL_MS) cache.delete(key);
+        }
+        cache.set(unit, { at: now, kv: TaskExecutionLog.parseShowKv(stdout) });
+    }
+
+    /**
+     * Run-state metadata only (exit code + timestamps). Costs one `systemctl
+     * show` and never touches journalctl, so it is safe to call on a poll
+     * interval for every visible task.
+     */
+    private async fetchRunMeta(taskInstance: TaskInstanceType): Promise<{
+        unit: string;
+        exitCode: number;
+        startTime: string;
+        finishTime: string;
+        invocationId: string;
+        journalAvailable: boolean;
+    }> {
+        const unit = await this.fullUnitNameForLogs(taskInstance);
+        const isUserScope = (taskInstance as any).scope === 'user';
+
+        // --- DAEMON path (user units): avoid journalctl; parse show()
+        if (isUserScope) {
+            const templateName = formatTemplateName(taskInstance.template.name);
+            const st: any = await daemon.getStatus(templateName, taskInstance.name);
+            const show = String(st?.service || '');
+
+            const props = new Map(
+                (show || '').split(/\r?\n/).map((line) => {
+                    const i = line.indexOf('=');
+                    return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : [line, ''];
+                })
+            );
+            const rawResult = (props.get('Result') || '').toString().toLowerCase();
+
+            return {
+                unit,
+                exitCode: rawResult === 'success' ? 0 : 1,
+                startTime: props.get('ActiveEnterTimestamp') || '',
+                finishTime:
                     props.get('InactiveEnterTimestamp') ||
                     props.get('ExecMainExitTimestamp') ||
-                    '';
+                    '',
+                invocationId: '',
+                journalAvailable: false,
+            };
+        }
 
-                const output = '';
-                return new TaskExecutionResult(exitCode, output, startTime, finishTime);
-            }
+        // --- LEGACY path (system units)
+        const primed = TaskExecutionLog.primedServiceShow.get(unit);
+        let kv: Record<string, string>;
 
-            // --- LEGACY path (system units)
+        if (primed && Date.now() - primed.at < TaskExecutionLog.PRIME_TTL_MS && primed.kv['ExecMainStatus'] !== undefined) {
+            kv = primed.kv;
+        } else {
             const showCmd = [
                 'systemctl', 'show', `${unit}.service`,
                 '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp,InvocationID',
                 '--no-pager',
             ];
             const showRes = await runCommand(showCmd, { superuser: 'try' });
-            const kv = Object.fromEntries(
-                (showRes.stdout || '')
-                    .split('\n')
-                    .filter((l: string) => l.includes('='))
-                    .map((l: string) => l.split('=', 2))
-            );
+            kv = TaskExecutionLog.parseShowKv(showRes.stdout);
+        }
 
-            const rawStatus = kv['ExecMainStatus'];
-            const exitCode = Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0;
+        const rawStatus = kv['ExecMainStatus'];
 
-            const startTime =
-                kv['ExecMainStartTimestamp'] ||
-                kv['ActiveEnterTimestamp'] ||
-                '';
+        return {
+            unit,
+            exitCode: Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0,
+            startTime: kv['ExecMainStartTimestamp'] || kv['ActiveEnterTimestamp'] || '',
+            finishTime: kv['ExecMainExitTimestamp'] || kv['InactiveEnterTimestamp'] || '',
+            invocationId: (kv['InvocationID'] || '').trim(),
+            journalAvailable: true,
+        };
+    }
 
-            const finishTime =
-                kv['ExecMainExitTimestamp'] ||
-                kv['InactiveEnterTimestamp'] ||
-                '';
+    /**
+     * Cheap variant of {@link getLatestEntryFor} for status polling: exit code
+     * and timestamps without the journal body.
+     */
+    async getLatestStatusFor(taskInstance: TaskInstanceType): Promise<TaskExecutionResult | false> {
+        try {
+            const meta = await this.fetchRunMeta(taskInstance);
+            return new TaskExecutionResult(meta.exitCode, '', meta.startTime, meta.finishTime);
+        } catch (e) {
+            console.warn('getLatestStatusFor failed:', errorString(e));
+            return false;
+        }
+    }
 
-            const invocationId = (kv['InvocationID'] || '').trim();
+    async getLatestEntryFor(taskInstance: TaskInstanceType) {
+        try {
+            const { unit, exitCode, startTime, finishTime, invocationId, journalAvailable } =
+                await this.fetchRunMeta(taskInstance);
+
+            if (!journalAvailable) {
+                return new TaskExecutionResult(exitCode, '', startTime, finishTime);
+            }
 
             let output = '';
             const baseLogCmd = [
@@ -203,19 +250,9 @@ export class TaskExecutionLog {
                 '--no-pager', '--all',
             ];
 
-            if (invocationId) {
-                try {
-                    const byInvocationCmd = ['journalctl', '-q', '--output=cat', '--no-pager', '--all', `_SYSTEMD_INVOCATION_ID=${invocationId}`];
-                    const logRes = await runCommand(byInvocationCmd, { superuser: 'try' });
-                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
-                } catch (e) {
-                    const msg = errorString(e);
-                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
-                        console.warn('journalctl (invocation) failed:', msg);
-                    }
-                }
-            }
-
+            // Ordered cheapest-correct first: the --since query is what the log
+            // viewer has always displayed, so it stays the primary source and
+            // the invocation query only runs when it produces nothing.
             if (startTime) {
                 const logCmd = [...baseLogCmd, '--since', startTime];
                 try {
@@ -225,6 +262,19 @@ export class TaskExecutionLog {
                     const msg = errorString(e);
                     if (!/No journal files were opened|not seeing messages/i.test(msg)) {
                         console.warn('journalctl (since) failed:', msg);
+                    }
+                }
+            }
+
+            if (invocationId && !output) {
+                try {
+                    const byInvocationCmd = ['journalctl', '-q', '--output=cat', '--no-pager', '--all', `_SYSTEMD_INVOCATION_ID=${invocationId}`];
+                    const logRes = await runCommand(byInvocationCmd, { superuser: 'try' });
+                    output = (logRes.stdout || '').replace(/^-- Logs begin at.*\n?/m, '');
+                } catch (e) {
+                    const msg = errorString(e);
+                    if (!/No journal files were opened|not seeing messages/i.test(msg)) {
+                        console.warn('journalctl (invocation) failed:', msg);
                     }
                 }
             }
@@ -261,23 +311,30 @@ export class TaskExecutionLog {
             return `No debug log path configured for template "${templateName}".`;
         }
         const candidates = debugLogCandidates(logPath, taskInstance.name);
-        for (const path of candidates) {
-            try {
-                const { stdout } = await runCommand(
-                    ['tail', '-n', String(lines), path],
-                    { superuser: 'try' },
-                );
-                const content = (stdout || '').trim();
-                if (content) return content;
-            } catch {
-                // try next candidate
+        const cacheKey = `${logPath}|${taskInstance.name}`;
+        const known = TaskExecutionLog.debugLogPath.get(cacheKey);
+        for (const path of known ? [known] : candidates) {
+            // A missing candidate is normal, so don't let it surface as an error.
+            const { stdout, exitStatus } = await runCommand(
+                ['tail', '-n', String(lines), path],
+                { superuser: 'try' },
+                false,
+            );
+            if (exitStatus !== 0) continue;
+            const content = (stdout || '').trim();
+            if (content) {
+                TaskExecutionLog.debugLogPath.set(cacheKey, path);
+                return content;
             }
         }
+        TaskExecutionLog.debugLogPath.delete(cacheKey);
         return `(no debug log content found at ${candidates.join(' or ')})`;
     }
 
     async wasTaskRecentlyCompleted(taskInstance: TaskInstanceType): Promise<boolean> {
-        const latestEntry = await this.getLatestEntryFor(taskInstance);
+        // Status-only probe: this runs on every poll tick, so it must not pull
+        // the journal body.
+        const latestEntry = await this.getLatestStatusFor(taskInstance);
 
         if (!latestEntry) return false;
 

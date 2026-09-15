@@ -149,6 +149,7 @@ import { injectWithCheck } from '../../composables/utility';
 import { schedulerInjectionKey, logInjectionKey } from '../../keys/injection-keys';
 import TaskInstanceDetails from './TaskInstanceDetails.vue';
 import { useLiveTaskStatus, taskStatusBadgeClass } from '../../composables/useLiveTaskStatus';
+import { isPageHidden } from '../../utils/pageVisibility';
 
 interface TaskInstanceTableRowProps {
 	task: TaskInstanceType;
@@ -346,6 +347,8 @@ const progressText = computed(() => {
 	return progressLabel.value ? `${progressLabel.value} — ${pct}` : pct;
 });
 
+let progressInFlight = false;
+
 async function updateProgress(task: TaskInstanceType) {
 	// Only poll progress when the task is actually running to avoid
 	// reading stale StatusText values from a previous completed run.
@@ -354,6 +357,9 @@ async function updateProgress(task: TaskInstanceType) {
 		progressLabel.value = null;
 		return;
 	}
+	// A slow systemctl call must not let the next tick stack another spawn.
+	if (progressInFlight || isPageHidden()) return;
+	progressInFlight = true;
 	try {
 		const result = await myScheduler.getTaskProgress(task);
 		// Keep the last known percent when a poll lands on a status without
@@ -370,6 +376,8 @@ async function updateProgress(task: TaskInstanceType) {
 		progressLabel.value = result?.label ?? null;
 	} catch (e) {
 		console.error('Failed to get progress:', e);
+	} finally {
+		progressInFlight = false;
 	}
 }
 

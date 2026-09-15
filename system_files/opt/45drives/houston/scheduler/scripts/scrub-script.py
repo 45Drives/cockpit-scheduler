@@ -43,14 +43,23 @@ sys.stderr = SafeStream(sys.stderr)
 
 notifier = get_notifier()
 
-DEBUG_LOG = os.environ.get("SCRUB_DEBUG_LOG", "/tmp/scrub_debug.log")
+# Strip anything that could escape /tmp or alias another path; this script runs as root.
+_DEBUG_TASK_NAME = "".join(
+    c for c in os.environ.get("taskName", "").strip() if c.isalnum() or c in "-_"
+)[:64]
+# An empty SCRUB_DEBUG_LOG in the unit's env file would otherwise win over the default.
+DEBUG_LOG = os.environ.get("SCRUB_DEBUG_LOG", "").strip() or (
+    f"/tmp/scrub_debug_{_DEBUG_TASK_NAME}.log" if _DEBUG_TASK_NAME else "/tmp/scrub_debug.log"
+)
 DEBUG_ENABLED = os.environ.get("SCRUB_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
 
 def dbg(msg: str):
     if not DEBUG_ENABLED:
         return
     try:
-        with open(DEBUG_LOG, "a") as f:
+        # O_NOFOLLOW: refuse to append through a symlink planted in world-writable /tmp.
+        fd = os.open(DEBUG_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "a") as f:
             f.write(f"{dt.datetime.now().isoformat()} {msg}\n")
     except Exception:
         pass
