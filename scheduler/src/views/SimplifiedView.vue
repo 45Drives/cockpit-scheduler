@@ -87,6 +87,14 @@
 
         <!-- Content area fills remaining height -->
         <div class="flex-1 min-h-0 relative">
+            <!-- busy overlay; no backdrop-filter, it blurs the teleported toast layer -->
+            <div v-if="showOverlaySpinner"
+                class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-well/60">
+                <CustomLoadingSpinner :width="'w-16'" :height="'h-16'" :baseColor="'text-gray-200'"
+                    :fillColor="'fill-gray-500'" />
+                <span v-if="busyMessage" class="text-sm font-medium text-default">{{ busyMessage }}</span>
+            </div>
+
             <!-- initial load -->
             <div v-if="showInitialSpinner" class="absolute inset-0 flex items-center justify-center">
                 <CustomLoadingSpinner :width="'w-24'" :height="'h-24'" :baseColor="'text-gray-200'"
@@ -102,16 +110,9 @@
 
             <!-- table -->
             <div v-else class="h-full overflow-hidden flex flex-col">
-                <!-- busy overlay while keeping table visible; no backdrop-filter, it blurs the teleported toast layer -->
-                <div v-if="showOverlaySpinner"
-                    class="absolute inset-0 z-20 flex items-center justify-center bg-well/60">
-                    <CustomLoadingSpinner :width="'w-16'" :height="'h-16'" :baseColor="'text-gray-200'"
-                        :fillColor="'fill-gray-500'" />
-                </div>
-
-                <div class="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-700 flex-1 flex flex-col min-h-0">
-                    <div class="flex-1 overflow-y-auto">
-                    <table class="min-w-full text-sm text-left table-fixed" style="table-layout: fixed;">
+                <div class="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700 flex-1 flex flex-col min-h-0">
+                    <div class="flex-1 overflow-y-auto overflow-x-auto">
+                    <table class="w-full text-sm text-left table-fixed" style="table-layout: fixed;">
                         <thead class="sticky top-0 bg-neutral-50 dark:bg-neutral-850 z-10">
                             <tr class="border-b border-neutral-200 dark:border-neutral-700">
                                 <th class="px-3 py-2 table-header-cell" style="width: 42px;">
@@ -122,7 +123,8 @@
                                 </th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 180px;">Name</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 120px;">Type</th>
-                                <th class="px-3 py-2 table-header-cell" style="width: 360px;">Details</th>
+                                <!-- no fixed width: Details absorbs whatever space is left -->
+                                <th class="px-3 py-2 table-header-cell">Details</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 150px;">Schedule</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 140px;">Status</th>
                                 <th class="px-3 py-2 table-header-cell" style="width: 190px;">Last Run</th>
@@ -165,13 +167,15 @@
                                             {{ row.type }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-1.5">
+                                    <td class="px-3 py-1.5 overflow-hidden">
                                         <div class="space-y-1 min-w-0">
-                                            <div class="truncate text-gray-500" :title="row.details.source">
-                                                <span class="text-muted mr-2">Source</span>{{ row.details.source }}
+                                            <div class="flex items-baseline gap-2 min-w-0 text-gray-500">
+                                                <span class="text-muted shrink-0">Source</span>
+                                                <span class="truncate min-w-0" :title="row.details.source">{{ row.details.source }}</span>
                                             </div>
-                                            <div v-if="row.details.destination" class="truncate text-gray-500" :title="row.details.destination">
-                                                <span class="text-muted mr-2">Dest</span>{{ row.details.destination }}
+                                            <div v-if="row.details.destination" class="flex items-baseline gap-2 min-w-0 text-gray-500">
+                                                <span class="text-muted shrink-0">Dest</span>
+                                                <span class="truncate min-w-0" :title="row.details.destination">{{ row.details.destination }}</span>
                                             </div>
                                         </div>
                                     </td>
@@ -370,6 +374,7 @@ function closeLogView() {
 const fetching = ref(false);
 const everLoaded = ref(false);
 const cachedRows = ref<any[]>([]);
+const busyMessage = ref('');
 let isActive = true;
 
 const MIGRATE_SCRIPT = '/opt/45drives/houston/scheduler/scripts/migrate-retry-settings.py';
@@ -853,10 +858,12 @@ const removeYes = async () => {
     showRemovePrompt.value = false;
 
     fetching.value = true;
+    busyMessage.value = `Deleting ${t?.name ?? 'task'}…`;
     try {
         await myScheduler.unregisterTaskInstance(t);
         logTaskEvent('scheduler:task_delete', t, { origin: 'simple-view' });
         pushNotification(new Notification('Task Removed', 'Backup task deleted.', 'success', 6000));
+        busyMessage.value = 'Refreshing tasks…';
         await myScheduler.loadTaskInstances();
     } catch (e: any) {
         logTaskEvent('scheduler:task_delete.error', t, {
@@ -867,6 +874,7 @@ const removeYes = async () => {
     } finally {
         operatingRemove.value = false;
         fetching.value = false;
+        busyMessage.value = '';
     }
 };
 
@@ -925,35 +933,41 @@ const batchDeleteYes = async () => {
     let deleted = 0;
     let errors = 0;
 
-    for (const task of tasksToDelete) {
-        try {
-            await myScheduler.unregisterTaskInstance(task);
-            logTaskEvent('scheduler:task_delete', task, { origin: 'simple-view', batch: true });
-            deleted++;
-        } catch (e: any) {
-            errors++;
-            logTaskEvent('scheduler:task_delete.error', task, {
-                origin: 'simple-view',
-                batch: true,
-                error: String(e?.message ?? e),
-            }, 'error');
-            console.error(`Failed to delete task ${task?.name}:`, e);
-        }
-        batchDeleteProgress.value++;
-    }
-
-    if (errors === 0) {
-        pushNotification(new Notification('Tasks Deleted', `Successfully removed ${deleted} task${deleted > 1 ? 's' : ''}.`, 'success', 6000));
-    } else {
-        pushNotification(new Notification('Batch Delete Complete', `Deleted ${deleted}, failed ${errors}.`, 'warning', 8000));
-    }
-
-    batchDeleting.value = false;
-    exitBatchDeleteMode();
-
     fetching.value = true;
-    await myScheduler.loadTaskInstances();
-    fetching.value = false;
+
+    try {
+        for (const task of tasksToDelete) {
+            busyMessage.value = `Deleting ${batchDeleteProgress.value + 1} of ${tasksToDelete.length} \u2014 ${task?.name ?? ''}`;
+            try {
+                await myScheduler.unregisterTaskInstance(task);
+                logTaskEvent('scheduler:task_delete', task, { origin: 'simple-view', batch: true });
+                deleted++;
+            } catch (e: any) {
+                errors++;
+                logTaskEvent('scheduler:task_delete.error', task, {
+                    origin: 'simple-view',
+                    batch: true,
+                    error: String(e?.message ?? e),
+                }, 'error');
+                console.error(`Failed to delete task ${task?.name}:`, e);
+            }
+            batchDeleteProgress.value++;
+        }
+
+        if (errors === 0) {
+            pushNotification(new Notification('Tasks Deleted', `Successfully removed ${deleted} task${deleted > 1 ? 's' : ''}.`, 'success', 6000));
+        } else {
+            pushNotification(new Notification('Batch Delete Complete', `Deleted ${deleted}, failed ${errors}.`, 'warning', 8000));
+        }
+
+        busyMessage.value = 'Refreshing tasks\u2026';
+        await myScheduler.loadTaskInstances();
+    } finally {
+        batchDeleting.value = false;
+        exitBatchDeleteMode();
+        fetching.value = false;
+        busyMessage.value = '';
+    }
 };
 
 async function edit(t: any) {
