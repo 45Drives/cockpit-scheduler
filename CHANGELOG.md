@@ -1,3 +1,3 @@
-## task scheduler 1.9.1-2
+## task scheduler 1.9.1-3
 
-* Pushes test harness changes and page visibility status update fix
+* Updates simplified table view in Storage Wizard with deletion spinner and better Details cell width
