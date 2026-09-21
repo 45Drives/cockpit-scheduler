@@ -1,3 +1,3 @@
-## task scheduler 1.9.1-3
+## task scheduler 1.9.2-1
 
-* Updates simplified table view in Storage Wizard with deletion spinner and better Details cell width
+* Fixes issues with task finished timestamp and snapshot checking when task resumed then going to incremental
