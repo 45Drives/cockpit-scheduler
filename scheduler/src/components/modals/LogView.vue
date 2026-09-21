@@ -11,9 +11,21 @@
                 <div class="max-w-5xl mx-auto p-4 bg-accent text-default shadow-md rounded-lg">
                     <div class="grid grid-cols-3 gap-2 items-center">
                         <div v-if="thisLogEntry !== undefined" class="col-span-2 mb-4">
-                            <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate }}</p>
-                            <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate }}</p>
-                            <p class="text-sm font-medium">Exit Code: {{ thisLogEntry.exitCode }}</p>
+                            <p v-if="showCycleStart" class="text-sm font-medium">Run Started at {{ thisLogEntry.cycleStartDate }}</p>
+                            <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate || 'Unknown' }}</p>
+                            <template v-if="thisLogEntry.running">
+                                <p class="text-sm font-medium text-success">
+                                    Running now<span v-if="elapsedDuration"> — {{ elapsedDuration }} elapsed</span>
+                                </p>
+                            </template>
+                            <template v-else>
+                                <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate || 'Unknown' }}</p>
+                                <p v-if="runDuration" class="text-sm font-medium">Duration: {{ runDuration }}</p>
+                                <p v-if="showCycleStart && totalDuration" class="text-sm font-medium">
+                                    Total ({{ retryLabel }}): {{ totalDuration }}
+                                </p>
+                                <p class="text-sm font-medium">Exit Code: {{ thisLogEntry.exitCode }}</p>
+                            </template>
                             <div v-if="failureReason"
                                 class="mt-2 mb-1 rounded-md border border-rose-500/60 bg-rose-500/10 px-3 py-2">
                                 <p class="text-sm font-semibold text-rose-600 dark:text-rose-400">{{ failureReason.summary }}</p>
@@ -192,6 +204,7 @@ import CustomLoadingSpinner from '../../components/common/CustomLoadingSpinner.v
 import { injectWithCheck } from '../../composables/utility'
 import { describeTaskFailure } from '../../composables/taskFailureReason';
 import { logInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
+import { parseSystemdTimestampUSec } from '../../models/systemdParsing';
 import { isPageHidden } from '../../utils/pageVisibility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
@@ -228,6 +241,59 @@ const failureReason = computed(() => {
     if (!entry || entry.exitCode === 0) return null;
     return describeTaskFailure(entry.output);
 });
+
+const nowTick = ref(Date.now());
+let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+
+const elapsedDuration = computed(() => {
+    const entry = thisLogEntry.value;
+    if (!entry?.running) return '';
+    const startUs = parseSystemdTimestampUSec(String(entry.cycleStartDate || entry.startDate || ''));
+    if (!startUs) return '';
+    return formatMillis(nowTick.value - startUs / 1000);
+});
+
+const runDuration = computed(() => {
+    const entry = thisLogEntry.value;
+    return formatSpan(entry?.startDate, entry?.finishDate);
+});
+
+// ExecMainStartTimestamp resets on every Restart=on-failure attempt, so it only
+// measures the last try; InactiveExitTimestamp spans the whole run.
+const showCycleStart = computed(() => {
+    const entry = thisLogEntry.value;
+    return !!(entry?.restarts && entry.cycleStartDate && entry.cycleStartDate !== entry.startDate);
+});
+
+const totalDuration = computed(() => {
+    const entry = thisLogEntry.value;
+    return formatSpan(entry?.cycleStartDate, entry?.finishDate);
+});
+
+const retryLabel = computed(() => {
+    const n = thisLogEntry.value?.restarts ?? 0;
+    return `incl. ${n} ${n === 1 ? 'retry' : 'retries'}`;
+});
+
+function formatSpan(from?: string | number, to?: string | number): string {
+    if (!from || !to) return '';
+    const fromUs = parseSystemdTimestampUSec(String(from));
+    const toUs = parseSystemdTimestampUSec(String(to));
+    if (!fromUs || !toUs || toUs < fromUs) return '';
+    return formatMillis((toUs - fromUs) / 1000);
+}
+
+function formatMillis(millis: number): string {
+    if (!Number.isFinite(millis) || millis < 0) return '';
+    let seconds = Math.round(millis / 1000);
+    const hours = Math.floor(seconds / 3600);
+    seconds -= hours * 3600;
+    const minutes = Math.floor(seconds / 60);
+    seconds -= minutes * 60;
+    return [hours && `${hours}h`, (hours || minutes) && `${minutes}m`, `${seconds}s`]
+        .filter(Boolean)
+        .join(' ');
+}
 
 async function checkRunningStatus() {
     try {
@@ -512,11 +578,13 @@ onMounted(async () => {
     if (taskIsActive.value) {
         startPolling();
     }
+    elapsedTimer = setInterval(() => { nowTick.value = Date.now(); }, 1000);
 });
 
 onUnmounted(() => {
     stopPolling();
     stopDebugPolling();
+    clearInterval(elapsedTimer);
 });
 
 </script>

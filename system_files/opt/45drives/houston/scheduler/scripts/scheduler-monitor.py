@@ -52,6 +52,7 @@ FAILURE_SIGNATURES = [
     (r"(?:mkdir|opendir|link_stat|send_files|write failed on|failed to open).*permission denied", "Permission was denied while reading or writing files."),
     (r"permission denied", "Permission was denied."),
     (r"no such file or directory", "A file or folder in the transfer no longer exists."),
+    (r"dataset is busy", "The ZFS dataset was in use by another send or receive, so a snapshot could not be taken."),
     (r"dataset does not exist", "The ZFS dataset does not exist."),
     (r"destination .*has been modified", "The destination dataset changed since the last run, so the incremental send was refused."),
     (r"could not find any snapshots to send|no snapshots? (?:found|to send)", "There were no snapshots available to replicate."),

@@ -172,6 +172,53 @@ def test_pending_snapshot_recovery_calls_snapshot_suffix_function(monkeypatch):
     assert ctx.pending_state is None
 
 
+def test_successful_pending_full_resume_refreshes_inventory_for_incremental_plan(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.taskName = "test-task"
+    ctx.direction = "push"
+    ctx.sourceFilesystem = "source/data"
+    ctx.destFilesystem = "dest/data"
+    ctx.destinationSnapshots = []
+
+    source_snap = parse_snapshot_line("source/data@snap-1\tguid-1\t1700000000\t12345")
+    destination_snap = parse_snapshot_line("dest/data@snap-1\tguid-1\t1700000000\t12345")
+    existence_checks = iter(((False, ""), (True, "dest/data@snap-1")))
+    inventory_loads = []
+
+    monkeypatch.setattr(
+        replication_workflow,
+        "_read_pending_full_send",
+        lambda task: {
+            "snapshot": "source/data@snap-1",
+            "destFilesystem": "dest/data",
+            "sourceFilesystem": "source/data",
+            "direction": "push",
+        },
+    )
+    monkeypatch.setattr(
+        replication_workflow,
+        "snapshot_exists_on_destination",
+        lambda *args, **kwargs: next(existence_checks),
+    )
+    monkeypatch.setattr(replication_workflow, "get_receive_resume_token", lambda *args, **kwargs: "resume-token")
+    monkeypatch.setattr(replication_workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
+    monkeypatch.setattr(replication_workflow, "_clear_pending_full_send", lambda task: None)
+
+    def reload_inventory(run):
+        inventory_loads.append(True)
+        run.sourceSnapshots = [source_snap]
+        run.destinationSnapshots = [destination_snap]
+
+    monkeypatch.setattr(replication_workflow, "_load_snapshot_inventory", reload_inventory)
+
+    assert replication_workflow._recover_pending_full_send(ctx) is False
+    assert inventory_loads == [True]
+
+    replication_workflow._plan_send(ctx)
+    assert ctx.incrementalSnapName == "source/data@snap-1"
+    assert ctx.forceOverwrite is False
+
+
 def test_successful_retention_phase_prints_explicit_completion(monkeypatch, capsys):
     ctx = ReplicationRun()
     ctx.taskName = "test-task"

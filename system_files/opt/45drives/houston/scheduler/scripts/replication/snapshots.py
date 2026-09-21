@@ -6,6 +6,15 @@ import subprocess
 import sys
 import time
 
+from zfs_busy import (
+    busy_giveup_notice,
+    busy_wait_notice,
+    busy_wait_schedule,
+    busy_wait_status,
+    is_dataset_busy,
+    merge_streams,
+)
+
 from .constants import TASK_PROP, TIER_PROP, ZFS_LIST_TIMEOUT
 from .context import notifier
 from .models import Snapshot
@@ -399,24 +408,32 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
         print(msg)
         notifier.notify(f"STATUS={msg}")
         sys.exit(1)
-    try:
-        # subprocess.run(command, check=True, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        run_logged(command, check=True, text=True)
-    except subprocess.CalledProcessError as e:
-        raw = (e.stderr or "") + (
-            "\n" + (e.stdout or "")
-            if (e.stderr or "") and (e.stdout or "")
-            else (e.stdout or "")
-        )
-        msg = raw.lower()
-        if "snapshot already exists" in msg or "dataset already exists" in msg:
-            print(f"Snapshot already exists ({new_snap}) — likely a queued duplicate start; exiting successfully.")
-            notifier.notify(f"STATUS=Snapshot {new_snap} already exists; treating as completed.")
-            sys.exit(0)
-        detail = (raw or msg).strip()
-        print(f"Snapshot creation failed (rc={e.returncode}): {detail}")
-        notifier.notify(f"STATUS=Snapshot creation failed: {detail}")
-        raise
+    busy_waits = busy_wait_schedule()
+    waited = 0
+    for index in range(len(busy_waits) + 1):
+        try:
+            run_logged(command, check=True, text=True)
+            break
+        except subprocess.CalledProcessError as e:
+            raw = merge_streams(e.stdout, e.stderr)
+            msg = raw.lower()
+            if "snapshot already exists" in msg or "dataset already exists" in msg:
+                print(f"Snapshot already exists ({new_snap}) — likely a queued duplicate start; exiting successfully.")
+                notifier.notify(f"STATUS=Snapshot {new_snap} already exists; treating as completed.")
+                sys.exit(0)
+            if is_dataset_busy(msg):
+                if index < len(busy_waits):
+                    delay = busy_waits[index]
+                    waited += delay
+                    print(busy_wait_notice(filesystem, delay, waited))
+                    notifier.notify(busy_wait_status(filesystem, delay, waited))
+                    time.sleep(delay)
+                    continue
+                print(busy_giveup_notice(filesystem))
+            detail = (raw or msg).strip()
+            print(f"Snapshot creation failed (rc={e.returncode}): {detail}")
+            notifier.notify(f"STATUS=Snapshot creation failed: {detail}")
+            raise
 
     print(f"new snapshot created: {new_snap}")
     notifier.notify(f"STATUS=Snapshot created: {new_snap}")
@@ -456,25 +473,26 @@ def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, rem
 
     p = ssh_run_args(remote_user, remote_host, ssh_port, cmd, capture_output=True, check=False, text=True)
 
-    # Retry on transient "dataset is busy" errors (e.g. another send/recv just finished)
     if p.returncode != 0:
-        raw0 = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
-        if "dataset is busy" in raw0.lower():
-            max_retries = 5
-            for attempt in range(1, max_retries + 1):
-                delay = 3 * attempt
-                print(f"Remote snapshot creation got 'dataset is busy' — retrying in {delay}s (attempt {attempt}/{max_retries})")
-                notifier.notify(f"STATUS=Dataset busy, retrying snapshot in {delay}s ({attempt}/{max_retries})…")
+        raw0 = merge_streams(p.stdout, p.stderr)
+        if is_dataset_busy(raw0):
+            waited = 0
+            for delay in busy_wait_schedule():
+                waited += delay
+                print(busy_wait_notice(filesystem, delay, waited))
+                notifier.notify(busy_wait_status(filesystem, delay, waited))
                 time.sleep(delay)
                 p = ssh_run_args(remote_user, remote_host, ssh_port, cmd, capture_output=True, check=False, text=True)
                 if p.returncode == 0:
                     break
-                raw0 = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
-                if "dataset is busy" not in raw0.lower():
+                raw0 = merge_streams(p.stdout, p.stderr)
+                if not is_dataset_busy(raw0):
                     break  # Different error, fall through to normal handling
+            else:
+                print(busy_giveup_notice(filesystem))
 
     if p.returncode != 0:
-        raw = (p.stderr or "") + ("\n" + (p.stdout or "") if (p.stderr or "") and (p.stdout or "") else (p.stdout or ""))
+        raw = merge_streams(p.stdout, p.stderr)
         msg = raw.lower()
         if "snapshot already exists" in msg or "dataset already exists" in msg:
             print(f"Remote snapshot already exists ({new_snap}) — likely a queued duplicate start; exiting successfully.")

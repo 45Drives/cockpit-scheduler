@@ -7,7 +7,7 @@ import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // import { chooseBackend } from '../utils/bootstrapBackend';
 import { daemon } from '../utils/daemonClient';
 import { execCommand, withCommandSlot } from '../utils/commandGate';
-import { parseSystemdTimestampUSec, parseLastRunMarker } from './systemdParsing';
+import { parseSystemdTimestampUSec, parseLastRunMarker, isUnitRunning } from './systemdParsing';
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';
 
@@ -279,7 +279,7 @@ export class Scheduler implements SchedulerType {
             const { stdout, stderr, exitStatus } = await runCommand(
                 [
                     'systemctl', 'show', `${unit}.service`, '--no-pager',
-                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit,ExecMainStatus,InvocationID',
+                    '--property', 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,InactiveExitTimestamp,StartLimitBurst,NRestarts,MergedUnit,ExecMainStatus,InvocationID',
                 ],
                 { superuser: 'try' }
             );
@@ -362,7 +362,7 @@ export class Scheduler implements SchedulerType {
         // But for safety with very large sets, chunk at 200 units.
         const CHUNK_SIZE = 200;
         const timerProps = 'LoadState,ActiveState,SubState,Result,LastTriggerUSec,NextElapseUSecRealtime,MergedUnit';
-        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,StartLimitBurst,NRestarts,MergedUnit,ExecMainStatus,InvocationID';
+        const serviceProps = 'LoadState,ActiveState,SubState,Result,ActiveEnterTimestampUSec,ActiveEnterTimestamp,ExecMainStartTimestampUSec,ExecMainStartTimestamp,ExecMainExitTimestampUSec,ExecMainExitTimestamp,InactiveEnterTimestampUSec,InactiveEnterTimestamp,InactiveExitTimestamp,StartLimitBurst,NRestarts,MergedUnit,ExecMainStatus,InvocationID';
 
         // Parse multi-unit `systemctl show` output — units separated by blank lines
         const parseMultiShow = (raw: string): string[] => {
@@ -1761,9 +1761,28 @@ export class Scheduler implements SchedulerType {
         const ts = (numKey: string, strKey: string) =>
             parseSystemdTimestampUSec(m.get(numKey)) || parseSystemdTimestampUSec(m.get(strKey));
 
+        const activeState = m.get('ActiveState') || '';
+        const running = isUnitRunning(activeState);
+
+        // Prefer the ExecMain pair; fall back to the ActiveEnter pair as a unit.
+        let serviceStartUSec =
+            ts('ExecMainStartTimestampUSec', 'ExecMainStartTimestamp');
+        let serviceExitUSec =
+            ts('ExecMainExitTimestampUSec', 'ExecMainExitTimestamp');
+        if (!serviceStartUSec && !serviceExitUSec) {
+            serviceStartUSec = ts('ActiveEnterTimestampUSec', 'ActiveEnterTimestamp');
+            serviceExitUSec = ts('InactiveEnterTimestampUSec', 'InactiveEnterTimestamp');
+        } else if (!serviceStartUSec) {
+            serviceStartUSec = ts('ActiveEnterTimestampUSec', 'ActiveEnterTimestamp');
+        }
+        // A live run's stop time always belongs to an older cycle.
+        if (running || (serviceStartUSec && serviceExitUSec && serviceExitUSec < serviceStartUSec)) {
+            serviceExitUSec = 0;
+        }
+
         return {
             load: m.get('LoadState') || '',
-            active: m.get('ActiveState') || '',
+            active: activeState,
             sub: m.get('SubState') || '',
             result: m.get('Result') || '',
             startLimitBurst: intOrUndefined('StartLimitBurst'),
@@ -1771,14 +1790,8 @@ export class Scheduler implements SchedulerType {
             // timers
             lastTriggerUSec: ts('LastTriggerUSec', 'LastTrigger'),
             nextElapseUSec: parseSystemdTimestampUSec(m.get('NextElapseUSecRealtime')),
-            // services (prefer ExecMainStart, fall back to ActiveEnter)
-            serviceStartUSec:
-                ts('ExecMainStartTimestampUSec', 'ExecMainStartTimestamp') ||
-                ts('ActiveEnterTimestampUSec', 'ActiveEnterTimestamp'),
-            // services (exit time if available)
-            serviceExitUSec:
-                ts('ExecMainExitTimestampUSec', 'ExecMainExitTimestamp') ||
-                ts('InactiveEnterTimestampUSec', 'InactiveEnterTimestamp'),
+            serviceStartUSec,
+            serviceExitUSec,
         };
     }
 

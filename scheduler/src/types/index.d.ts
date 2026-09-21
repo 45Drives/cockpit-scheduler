@@ -119,6 +119,9 @@ interface TaskExecutionResultType {
 	output: string;
 	startDate: string | number;
 	finishDate: string | number;
+	running?: boolean;
+	cycleStartDate?: string | number;
+	restarts?: number;
 }
 
 type ConfirmationCallback = (param?: any) => void;

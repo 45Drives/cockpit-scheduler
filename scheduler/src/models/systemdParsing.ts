@@ -31,6 +31,67 @@ export function parseSystemdTimestampUSec(raw: string | undefined): number {
 }
 
 /**
+ * Pick a start/stop pair that belongs to the same run.
+ *
+ * ExecMain* and Active/InactiveEnter* advance on different edges: systemd clears
+ * ExecMainExitTimestamp the moment a new main process is forked, while
+ * InactiveEnterTimestamp keeps the *previous* cycle's value until the unit goes
+ * inactive again. Reading the start from one family and the stop from the other
+ * therefore pairs the current run's start with the previous run's stop, which
+ * renders as a negative duration.
+ *
+ * `cycleStartTime` comes from InactiveExitTimestamp, which marks when the unit
+ * left inactive. Restart=on-failure retries go active → deactivating →
+ * activating/auto-restart without passing through inactive, so it survives them
+ * while ExecMainStartTimestamp resets on each attempt. It is therefore the true
+ * beginning of the whole run, and unlike the timer's LastTrigger it is also
+ * correct for manual starts.
+ */
+export function pairRunTimestamps(
+    kv: Record<string, string | undefined>,
+    isRunning: boolean
+): { startTime: string; cycleStartTime: string; finishTime: string } {
+    const get = (key: string) => (kv[key] || '').trim();
+    const execStart = get('ExecMainStartTimestamp');
+    const execExit = get('ExecMainExitTimestamp');
+
+    let startTime = execStart;
+    let finishTime = execExit;
+
+    if (!startTime && !finishTime) {
+        startTime = get('ActiveEnterTimestamp');
+        finishTime = get('InactiveEnterTimestamp');
+    } else if (!startTime) {
+        startTime = get('ActiveEnterTimestamp');
+    }
+
+    // A live run has no stop time yet; anything on file belongs to an older cycle.
+    if (isRunning) finishTime = '';
+
+    const startUs = parseSystemdTimestampUSec(startTime);
+    const finishUs = parseSystemdTimestampUSec(finishTime);
+    if (startUs && finishUs && finishUs < startUs) finishTime = '';
+
+    let cycleStartTime = get('InactiveExitTimestamp');
+    const cycleStartUs = parseSystemdTimestampUSec(cycleStartTime);
+    if (cycleStartUs && startUs && cycleStartUs > startUs) cycleStartTime = '';
+
+    return { startTime, cycleStartTime, finishTime };
+}
+
+/** systemd states in which the unit's main process may still be alive. */
+export function isUnitRunning(activeState: string | undefined): boolean {
+    const state = (activeState || '').trim().toLowerCase();
+    return state === 'active' || state === 'activating' || state === 'reloading';
+}
+
+/** NRestarts counts auto-restarts within the current start cycle; systemd clears it on every explicit start. */
+export function parseRestartCount(raw: string | undefined): number {
+    const n = Number((raw || '').trim());
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
  * The `.lastrun` marker holds "<epoch> <outcome>", written by task_lastrun.py.
  * Markers predating the outcome field hold a bare epoch, so a missing outcome
  * means "unknown" rather than failure.

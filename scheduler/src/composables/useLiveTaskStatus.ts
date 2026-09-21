@@ -178,7 +178,12 @@ export function useLiveTaskStatus(
             if (latestStatusFor) {
                 try {
                     const latest = await latestStatusFor.call(log, t);
-                    const raw = latest?.finishDate ?? latest?.startDate;
+                    const raw = latest?.finishDate || latest?.startDate;
+                    if (latest?.running) {
+                        statusMap.value[id] = 'Active (Running)';
+                        lastRunMap.value[id] = 'Running now...';
+                        return;
+                    }
                     if (raw) {
                         const ms = parseTs(raw);
 

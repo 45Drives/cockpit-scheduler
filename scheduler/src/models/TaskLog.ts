@@ -1,6 +1,7 @@
 import { formatTemplateName } from '../composables/utility';
 import { daemon } from '../utils/daemonClient';
 import { execCommand } from '../utils/commandGate';
+import { isUnitRunning, pairRunTimestamps, parseRestartCount } from './systemdParsing';
 
 async function runCommand(
     argv: string[],
@@ -158,8 +159,11 @@ export class TaskExecutionLog {
         unit: string;
         exitCode: number;
         startTime: string;
+        cycleStartTime: string;
         finishTime: string;
+        restarts: number;
         invocationId: string;
+        running: boolean;
         journalAvailable: boolean;
     }> {
         const unit = await this.fullUnitNameForLogs(taskInstance);
@@ -171,23 +175,20 @@ export class TaskExecutionLog {
             const st: any = await daemon.getStatus(templateName, taskInstance.name);
             const show = String(st?.service || '');
 
-            const props = new Map(
-                (show || '').split(/\r?\n/).map((line) => {
-                    const i = line.indexOf('=');
-                    return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : [line, ''];
-                })
-            );
-            const rawResult = (props.get('Result') || '').toString().toLowerCase();
+            const props = TaskExecutionLog.parseShowKv(show);
+            const rawResult = (props['Result'] || '').toString().toLowerCase();
+            const running = isUnitRunning(props['ActiveState']);
+            const { startTime, cycleStartTime, finishTime } = pairRunTimestamps(props, running);
 
             return {
                 unit,
                 exitCode: rawResult === 'success' ? 0 : 1,
-                startTime: props.get('ActiveEnterTimestamp') || '',
-                finishTime:
-                    props.get('InactiveEnterTimestamp') ||
-                    props.get('ExecMainExitTimestamp') ||
-                    '',
+                startTime,
+                cycleStartTime,
+                finishTime,
+                restarts: parseRestartCount(props['NRestarts']),
                 invocationId: '',
+                running,
                 journalAvailable: false,
             };
         }
@@ -201,7 +202,7 @@ export class TaskExecutionLog {
         } else {
             const showCmd = [
                 'systemctl', 'show', `${unit}.service`,
-                '-p', 'ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp,InvocationID',
+                '-p', 'ActiveState,SubState,ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,ActiveEnterTimestamp,InactiveEnterTimestamp,InactiveExitTimestamp,NRestarts,InvocationID',
                 '--no-pager',
             ];
             const showRes = await runCommand(showCmd, { superuser: 'try' });
@@ -209,13 +210,18 @@ export class TaskExecutionLog {
         }
 
         const rawStatus = kv['ExecMainStatus'];
+        const running = isUnitRunning(kv['ActiveState']);
+        const { startTime, cycleStartTime, finishTime } = pairRunTimestamps(kv, running);
 
         return {
             unit,
             exitCode: Number.isFinite(Number(rawStatus)) ? Number(rawStatus) : 0,
-            startTime: kv['ExecMainStartTimestamp'] || kv['ActiveEnterTimestamp'] || '',
-            finishTime: kv['ExecMainExitTimestamp'] || kv['InactiveEnterTimestamp'] || '',
+            startTime,
+            cycleStartTime,
+            finishTime,
+            restarts: parseRestartCount(kv['NRestarts']),
             invocationId: (kv['InvocationID'] || '').trim(),
+            running,
             journalAvailable: true,
         };
     }
@@ -227,7 +233,7 @@ export class TaskExecutionLog {
     async getLatestStatusFor(taskInstance: TaskInstanceType): Promise<TaskExecutionResult | false> {
         try {
             const meta = await this.fetchRunMeta(taskInstance);
-            return new TaskExecutionResult(meta.exitCode, '', meta.startTime, meta.finishTime);
+            return new TaskExecutionResult(meta.exitCode, '', meta.startTime, meta.finishTime, meta.running, meta.cycleStartTime, meta.restarts);
         } catch (e) {
             console.warn('getLatestStatusFor failed:', errorString(e));
             return false;
@@ -236,11 +242,11 @@ export class TaskExecutionLog {
 
     async getLatestEntryFor(taskInstance: TaskInstanceType) {
         try {
-            const { unit, exitCode, startTime, finishTime, invocationId, journalAvailable } =
+            const { unit, exitCode, startTime, cycleStartTime, finishTime, restarts, invocationId, running, journalAvailable } =
                 await this.fetchRunMeta(taskInstance);
 
             if (!journalAvailable) {
-                return new TaskExecutionResult(exitCode, '', startTime, finishTime);
+                return new TaskExecutionResult(exitCode, '', startTime, finishTime, running, cycleStartTime, restarts);
             }
 
             let output = '';
@@ -293,7 +299,7 @@ export class TaskExecutionLog {
                 }
             }
 
-            return new TaskExecutionResult(exitCode, output, startTime, finishTime);
+            return new TaskExecutionResult(exitCode, output, startTime, finishTime, running, cycleStartTime, restarts);
         } catch (e) {
             console.warn('getLatestEntryFor failed:', errorString(e));
             return false;
@@ -337,6 +343,8 @@ export class TaskExecutionLog {
         const latestEntry = await this.getLatestStatusFor(taskInstance);
 
         if (!latestEntry) return false;
+
+        if (latestEntry.running) return false;
 
         if (typeof latestEntry.exitCode === 'number' && latestEntry.exitCode !== 0) {
             return false;
@@ -420,11 +428,27 @@ export class TaskExecutionResult {
     output: string;
     startDate: string | number;
     finishDate: string | number;
+    /** Main process still alive, so finishDate is intentionally empty. */
+    running: boolean;
+    /** Start of the whole run; unlike startDate it is not reset by Restart=on-failure retries. */
+    cycleStartDate: string | number;
+    restarts: number;
 
-    constructor(exitCode: number, output: string, startDate: string | number, finishDate: string | number) {
+    constructor(
+        exitCode: number,
+        output: string,
+        startDate: string | number,
+        finishDate: string | number,
+        running = false,
+        cycleStartDate: string | number = '',
+        restarts = 0,
+    ) {
         this.exitCode = exitCode;
         this.output = output;
         this.startDate = startDate;
         this.finishDate = finishDate;
+        this.running = running;
+        this.cycleStartDate = cycleStartDate;
+        this.restarts = restarts;
     }
 }

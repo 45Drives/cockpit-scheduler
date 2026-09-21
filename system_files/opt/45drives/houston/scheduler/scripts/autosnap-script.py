@@ -11,6 +11,14 @@ from typing import List, Optional, Tuple
 
 from notify import get_notifier
 from task_retry import run_with_retry_policy
+from zfs_busy import (
+    busy_giveup_notice,
+    busy_wait_notice,
+    busy_wait_schedule,
+    busy_wait_status,
+    is_dataset_busy,
+    merge_streams,
+)
 
 
 class SafeStream:
@@ -178,17 +186,32 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
 
     dbg(f"Creating snapshot: {' '.join(cmd)}")
     notifier.notify(f"STATUS=Creating snapshot {snapname}…")
-    try:
-        res = run(cmd)
-        print(f"Created snapshot: {snapname}")
-        dbg(f"Snapshot created: {snapname}")
-        notifier.notify(f"STATUS=Snapshot created: {snapname} 20% complete")
-    except subprocess.CalledProcessError as e:
-        msg = e.stderr.strip() if e.stderr else "zfs snapshot failed"
-        notifier.notify(f"STATUS=Snapshot creation failed: {msg}")
-        print(f"ERROR: zfs snapshot failed: {msg}", file=sys.stderr)
-        dbg(f"ERROR: zfs snapshot failed: {msg}")
-        sys.exit(1)
+    busy_waits = busy_wait_schedule()
+    waited = 0
+    for index in range(len(busy_waits) + 1):
+        try:
+            run(cmd)
+            print(f"Created snapshot: {snapname}")
+            dbg(f"Snapshot created: {snapname}")
+            notifier.notify(f"STATUS=Snapshot created: {snapname} 20% complete")
+            break
+        except subprocess.CalledProcessError as e:
+            msg = merge_streams(e.stdout, e.stderr) or "zfs snapshot failed"
+            if is_dataset_busy(msg):
+                if index < len(busy_waits):
+                    delay = busy_waits[index]
+                    waited += delay
+                    notice = busy_wait_notice(filesystem, delay, waited)
+                    print(notice)
+                    dbg(notice)
+                    notifier.notify(busy_wait_status(filesystem, delay, waited))
+                    time.sleep(delay)
+                    continue
+                msg = f"{msg} — {busy_giveup_notice(filesystem)}"
+            notifier.notify(f"STATUS=Snapshot creation failed: {msg}")
+            print(f"ERROR: zfs snapshot failed: {msg}", file=sys.stderr)
+            dbg(f"ERROR: zfs snapshot failed: {msg}")
+            sys.exit(1)
 
     # Tag snapshot with task ownership and tier index via ZFS properties
     try:

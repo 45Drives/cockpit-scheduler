@@ -31,6 +31,7 @@ const SIGNATURES: { pattern: RegExp; summary: string }[] = [
 	{ pattern: /no such file or directory/i, summary: 'A file or folder in the transfer no longer exists.' },
 
 	// ZFS replication
+	{ pattern: /dataset is busy/i, summary: 'The ZFS dataset was in use by another send or receive, so a snapshot could not be taken.' },
 	{ pattern: /dataset does not exist/i, summary: 'The ZFS dataset does not exist.' },
 	{ pattern: /destination .*has been modified/i, summary: 'The destination dataset changed since the last run, so the incremental send was refused.' },
 	{ pattern: /could not find any snapshots to send|no snapshots? (?:found|to send)/i, summary: 'There were no snapshots available to replicate.' },

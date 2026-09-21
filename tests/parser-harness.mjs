@@ -9,7 +9,7 @@
  * Usage: node tests/parser-harness.mjs
  */
 
-import { parseSystemdTimestampUSec, parseLastRunMarker } from '../scheduler/src/models/systemdParsing.ts';
+import { parseSystemdTimestampUSec, parseLastRunMarker, pairRunTimestamps, isUnitRunning, parseRestartCount } from '../scheduler/src/models/systemdParsing.ts';
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -54,6 +54,52 @@ check('trailing newline tolerated', parseLastRunMarker('1789488167 success\n'), 
 check('empty marker', parseLastRunMarker(''), { ms: 0, outcome: '' });
 check('garbage marker', parseLastRunMarker('not-a-number success'), { ms: 0, outcome: '' });
 check('zero epoch', parseLastRunMarker('0 success'), { ms: 0, outcome: '' });
+
+console.log('\nrun timestamp pairing');
+check('ExecMain pair is preferred', pairRunTimestamps({
+    ExecMainStartTimestamp: 'Fri 2026-09-18 17:50:30 UTC',
+    ExecMainExitTimestamp: 'Fri 2026-09-18 18:50:19 UTC',
+    ActiveEnterTimestamp: 'Fri 2026-09-18 17:50:31 UTC',
+    InactiveEnterTimestamp: 'Fri 2026-09-18 18:50:20 UTC',
+}, false), { startTime: 'Fri 2026-09-18 17:50:30 UTC', cycleStartTime: '', finishTime: 'Fri 2026-09-18 18:50:19 UTC' });
+check('stale InactiveEnter is never paired with a newer ExecMainStart', pairRunTimestamps({
+    ExecMainStartTimestamp: 'Fri 2026-09-18 18:50:30 UTC',
+    ExecMainExitTimestamp: '',
+    InactiveEnterTimestamp: 'Fri 2026-09-18 18:50:19 UTC',
+}, false), { startTime: 'Fri 2026-09-18 18:50:30 UTC', cycleStartTime: '', finishTime: '' });
+check('running unit reports no finish', pairRunTimestamps({
+    ExecMainStartTimestamp: 'Fri 2026-09-18 18:50:30 UTC',
+    ExecMainExitTimestamp: 'Fri 2026-09-18 18:50:19 UTC',
+}, true), { startTime: 'Fri 2026-09-18 18:50:30 UTC', cycleStartTime: '', finishTime: '' });
+check('falls back to the ActiveEnter pair as a unit', pairRunTimestamps({
+    ActiveEnterTimestamp: 'Fri 2026-09-18 18:12:00 UTC',
+    InactiveEnterTimestamp: 'Fri 2026-09-18 19:11:39 UTC',
+}, false), { startTime: 'Fri 2026-09-18 18:12:00 UTC', cycleStartTime: '', finishTime: 'Fri 2026-09-18 19:11:39 UTC' });
+check('never run', pairRunTimestamps({}, false), { startTime: '', cycleStartTime: '', finishTime: '' });
+check('active is running', isUnitRunning('active'), true);
+check('activating is running', isUnitRunning('activating'), true);
+check('failed is not running', isUnitRunning('failed'), false);
+check('missing state is not running', isUnitRunning(undefined), false);
+
+console.log('\nrun cycle start (survives Restart=on-failure)');
+check('cycle start spans retries', pairRunTimestamps({
+    InactiveExitTimestamp: 'Fri 2026-09-18 12:00:00 UTC',
+    ExecMainStartTimestamp: 'Fri 2026-09-18 18:50:30 UTC',
+    ExecMainExitTimestamp: 'Fri 2026-09-18 19:11:39 UTC',
+}, false), {
+    startTime: 'Fri 2026-09-18 18:50:30 UTC',
+    cycleStartTime: 'Fri 2026-09-18 12:00:00 UTC',
+    finishTime: 'Fri 2026-09-18 19:11:39 UTC',
+});
+check('cycle start after attempt start is discarded', pairRunTimestamps({
+    InactiveExitTimestamp: 'Fri 2026-09-18 19:00:00 UTC',
+    ExecMainStartTimestamp: 'Fri 2026-09-18 18:50:30 UTC',
+    ExecMainExitTimestamp: 'Fri 2026-09-18 19:11:39 UTC',
+}, false).cycleStartTime, '');
+check('no restarts', parseRestartCount('0'), 0);
+check('two restarts', parseRestartCount('2'), 2);
+check('missing NRestarts', parseRestartCount(undefined), 0);
+check('garbage NRestarts', parseRestartCount('n/a'), 0);
 
 console.log(failures ? `\n${failures} failure(s)\n` : '\nall checks passed\n');
 process.exit(failures ? 1 : 0);

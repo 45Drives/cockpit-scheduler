@@ -11,6 +11,7 @@ import time
 import traceback
 
 import task_lastrun
+from zfs_busy import BUSY_HINT, is_dataset_busy
 
 from .config import as_bool, clamp_mbuffer, clamp_mbuffer_block, get_dest_ports, join_zfs_path
 from .context import notifier
@@ -340,6 +341,11 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                         print(f'Resume completed and snapshot {pending_snap} verified on destination.')
                         _clear_pending_full_send(ctx.taskName)
                         ctx.pending_state = None
+                        # The inventory was captured before the resumed receive committed its
+                        # snapshot. Refresh both sides so the normal planner can select that
+                        # snapshot as its incremental base instead of mistaking the populated
+                        # destination for an existing dataset with no snapshots.
+                        _load_snapshot_inventory(ctx)
                     else:
                         print(f'Resume completed but snapshot still missing — resume token was stale/partial.')
                         print('Will redo full send with the original snapshot.')
@@ -1205,8 +1211,15 @@ def handle_failure(ctx: ReplicationRun, error):
         print(f'receive_resume_token for {receivingFilesystem}: <error fetching token>')
     tb = traceback.format_exc()
     safe_print(tb)
-    notifier.notify('STATUS=ZFS replication task failed.')
+    busy = is_dataset_busy(f'{error}\n{tb}')
+    if busy:
+        safe_print(f'Dataset busy: {BUSY_HINT}')
+        notifier.notify(f'STATUS=ZFS replication task failed: dataset busy. {BUSY_HINT}')
+    else:
+        notifier.notify('STATUS=ZFS replication task failed.')
     email_error_message = f'ZFS replication failed while sending snapshot {ctx.newSnap} from {ctx.sourceFilesystem} to {receivingFilesystem}Error: {str(error)}'
+    if busy:
+        email_error_message = f'{email_error_message}\n\n{BUSY_HINT}'
     send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_failed', 'subject': 'ZFS Replication Failed', 'email_message': email_error_message, 'fileSystem': ctx.sourceFilesystem, 'snapShot': ctx.newSnap, 'replicationDestination': receivingFilesystem, 'severity': 'warning', 'errors': str(error)})
     print(f'Exception: {error}')
     sys.exit(1)
