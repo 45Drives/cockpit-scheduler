@@ -1,3 +1,11 @@
+cockpit-scheduler (1.9.3-1trixie) trixie; urgency=medium
+
+  * Adds ssh concurrency configuration + status and replication divergence policy
+    improvements, fixes sshCipher edit in replication and adds task summary into
+    logs
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 22 Sep 2026 11:31:53 -0300
+
 cockpit-scheduler (1.9.2-1trixie) trixie; urgency=medium
 
   * Fixes issues with task finished timestamp and snapshot checking when task resumed

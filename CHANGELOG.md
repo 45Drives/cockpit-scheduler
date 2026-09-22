@@ -1,3 +1,3 @@
-## task scheduler 1.9.2-1
+## task scheduler 1.9.3-1
 
-* Fixes issues with task finished timestamp and snapshot checking when task resumed then going to incremental
+* Adds ssh concurrency configuration + status and replication divergence policy improvements, fixes sshCipher edit in replication and adds task summary into logs
