@@ -236,6 +236,11 @@ watch(currentLastRun, (value) => {
 function markManualRun(windowMs = 60_000, action: ManualAction = null) {
 	manualRunUntil.value = Date.now() + windowMs;
 	manualAction.value = action;
+	if (windowMs > 0) {
+		// A fresh manual action is starting, so the previous run's "Completed at ..." text
+		// must not be mistaken by isRunning below for this new run already being finished.
+		stickyLastRunText.value = '';
+	}
 }
 
 function clearManualAction(keepWindowMs = 60_000) {
@@ -307,6 +312,13 @@ const isRunning = computed(() => {
 		if (gl.includes('failed')) return false;
 		if (gl.includes('active (running)') || gl.includes('starting') || gl.includes('running')) return true;
 	}
+
+	// Same sticky "completed" memory the Status column uses. Closing details tears down
+	// this row's own live poller (statusMap cleared), which makes liveIsCompleted/
+	// liveIsFailed/liveIsInactive all read as "unknown" rather than "completed" — without
+	// this check the manual window below wrongly kept showing the progress bar as running
+	// indefinitely after a manual task actually finished.
+	if (stickyLastRunText.value.toLowerCase().includes('completed at')) return false;
 
 	if (manualWindowActive && !liveIsCompleted(taskInstance.value) && !liveIsFailed(taskInstance.value) && !liveIsInactive(taskInstance.value)) {
 		return true;

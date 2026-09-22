@@ -11,6 +11,7 @@ import traceback
 import time
 from notify import get_notifier
 from task_retry import run_with_retry_policy
+from transfer_summary import print_transfer_summary, parse_size_to_bytes
 
 
 class SafeStream:
@@ -507,6 +508,8 @@ def execute_command(
 
     # Let systemd know we’ve started the real work
     notifier.notify("STATUS=Starting transfer…")
+    run_started_at = datetime.now()
+    last_bytes_done = None
 
     process = subprocess.Popen(
         command,
@@ -603,6 +606,10 @@ def execute_command(
                     (byte_match.group("total"), byte_match.group("total_unit").lower())
                     if byte_match else None
                 )
+                if byte_match:
+                    parsed_done = parse_size_to_bytes(byte_match.group("done"), byte_match.group("done_unit"))
+                    if parsed_done is not None:
+                        last_bytes_done = parsed_done
 
                 # rclone re-scopes its stats as it discovers more work, so the
                 # percentage can legitimately fall back. Only let it go
@@ -658,6 +665,12 @@ def execute_command(
             notifier.notify("STATUS=Finishing up… 100.0% complete")
         else:
             notifier.notify("STATUS=Transfer failed")
+
+    print_transfer_summary(
+        'STALLED' if stalled_reason is not None else ('SUCCESS' if process.returncode == 0 else 'FAILED'),
+        run_started_at,
+        bytes_transferred=last_bytes_done,
+    )
 
     if stalled_reason is not None:
         print(f"Error: {stalled_reason}")

@@ -62,3 +62,9 @@ class ReplicationRun:
         self.pending_state: Optional[Dict[str, Any]] = None
         self.newSnap = "unknown"
         self.current_pct = 0
+        self.run_start_time: Optional[Any] = None
+        # An interrupted transfer was resumed mid-run (auto-recover), then this run continued
+        # on to send more data of its own — surfaced in the end-of-run summary's Send Type line.
+        self.resumed_mid_run = False
+        # Time spent waiting for a free per-host concurrency slot before this run started.
+        self.waited_seconds = 0.0

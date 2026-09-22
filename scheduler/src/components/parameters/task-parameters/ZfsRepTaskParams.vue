@@ -434,7 +434,7 @@
 
             <!-- Destination retention moved to per-interval in Schedule modal -->
 
-            <div v-if="useExistingDest" name="migration-overwrite" class="mt-2 border-t border-default pt-2">
+            <div name="migration-overwrite" class="mt-2 border-t border-default pt-2">
                 <label class="block text-sm leading-6 text-default">If the destination has diverged</label>
                 <p class="text-xs text-default/70">
                     Diverged means the backup holds snapshots the source no longer has, or the two sides
@@ -726,7 +726,7 @@
             </p>
         </div>
 
-        <div v-if="useExistingDest" name="resume-handling" class="border border-default rounded-md p-2 bg-accent">
+        <div name="resume-handling" class="border border-default rounded-md p-2 bg-accent">
             <label class="mt-1 block text-base leading-6 text-default">Resume Handling</label>
 
             <div class="flex items-center justify-between mt-1">
@@ -986,9 +986,10 @@ const showRecursiveHistoryRecommendation = computed(() => {
 });
 
 // A recursive stream carries -R, so the caveat depends on which policy is selected. Attaching it
-// to the chosen option keeps at most one warning on screen instead of a standing pair.
+// to the chosen option keeps at most one warning on screen instead of a standing pair. The
+// divergence policy is always shown now, so this only needs to depend on recursion.
 const recursiveDivergenceNote = computed(() => {
-    if (!(useExistingDest.value && sendRecursive.value)) return '';
+    if (!sendRecursive.value) return '';
     if (divergencePolicy.value === 'always') {
         return 'Recursive: the rollback also destroys destination datasets the source does not have, not just snapshots.';
     }
@@ -1052,11 +1053,9 @@ async function refreshDestPoolData() {
 watch(useExistingDest, async (on) => {
     makeNewDestDataset.value = !on;
     if (!on) {
+        // Divergence handling, force-full-resync, and resume handling are shown regardless of
+        // this toggle now, so switching to "specify new dataset path" no longer wipes them.
         includeIntermediatesApplicability.value = 'unknown';
-        allowOverwrite.value = false;
-        resumeFailAllowOverwrite.value = false;
-        resumeStallTimeout.value = 3600;
-        forceFullSend.value = false;
         destDatasetErrorTag.value = false;
     }
 });
@@ -1182,9 +1181,6 @@ async function initializeData() {
         const forceFullSendParam = sendOptionsParams.find(p => p.key === 'forceFullSend');
         forceFullSend.value = forceFullSendParam ? !!forceFullSendParam.value : false;
 
-        const useExistingDestParam = sendOptionsParams.find(p => p.key === 'useExistingDest');
-        useExistingDest.value = useExistingDestParam ? !!useExistingDestParam.value : false;
-
         const sshCipherParam = sendOptionsParams.find(p => p.key === 'sshCipher');
         sshCipher.value = sshCipherParam ? String(sshCipherParam.value || '') : '';
 
@@ -1238,6 +1234,12 @@ async function initializeData() {
         await getTargetDatasets();
         destDataset.value = destDatasetParams.find(p => p.key === 'dataset')!.value;
 
+        // Only treat the destination as "existing" once it's actually there (i.e. this task has
+        // run before and created it). A task edited before its first run still points at a
+        // dataset that doesn't exist yet, so it should keep showing the "new dataset" text field.
+        useExistingDest.value =
+            doesItExist(destPool.value, destPools.value) && doesItExist(destDataset.value, destDatasets.value);
+
         if (!doesItExist(sourcePool.value, sourcePools.value) || !doesItExist(sourceDataset.value, sourceDatasets.value)) {
             useCustomSource.value = true;
         }
@@ -1288,6 +1290,7 @@ function formSnapshot() {
         resumeStallTimeout: resumeStallTimeout.value,
         useExistingDest: useExistingDest.value,
         forceFullSend: forceFullSend.value,
+        sshCipher: sshCipher.value,
     };
 }
 

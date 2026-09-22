@@ -13,6 +13,32 @@ from .config import as_bool
 from .constants import MAX_PLAUSIBLE_SEND_SIZE, MBUFFER_BLOCK_SIZE, PIPELINE_FINALIZE_TIMEOUT
 from .context import notifier
 from .logging_utils import _fmt_cmd, _truncate, dbg, safe_print
+from transfer_summary import parse_size_to_bytes
+
+# Process-global running total of bytes actually moved this task invocation. Each
+# scheduled run is a fresh python process, so a module-level counter is safe and
+# lets `stream_with_progress_stall` and the direct-pipe (pv) path both contribute
+# to a single final "Data Transferred" figure for the end-of-run summary.
+_transfer_bytes_total = 0
+
+
+def reset_transfer_byte_count():
+    global _transfer_bytes_total
+    _transfer_bytes_total = 0
+
+
+def add_transferred_bytes(n):
+    global _transfer_bytes_total
+    if n:
+        _transfer_bytes_total += int(n)
+
+
+def get_transferred_bytes():
+    return _transfer_bytes_total
+
+
+# pv's leading "-b" field, e.g. "3.14GiB" or "512KiB" or "845B".
+_PV_SIZE_RE = re.compile(r'^\s*([\d.]+)\s*([KMGTPE]?i?B)\b')
 
 
 def _close_pipe(pipe):
@@ -287,14 +313,16 @@ def _has_pv():
         return False
 
 
-def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activity=None):
+def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activity=None, size_holder=None):
     """Read pv stderr output and emit progress notifications.
 
     pv redraws a single status line terminated by carriage returns rather than
     newlines, so readline() would block until the process exits. Read bytes and
     split on both \\r and \\n instead.
     If last_activity is provided (a single-element list), update it with time.time()
-    on each output line so the caller can detect stalls."""
+    on each output line so the caller can detect stalls.
+    If size_holder is provided (a single-element list), update it with the latest
+    bytes transferred (parsed from pv's leading `-b` field) for the run summary."""
     last_pct = -1.0
     last_emit = 0.0
     last_dbg = 0.0
@@ -320,6 +348,12 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activit
             now = time.time()
             if last_activity is not None:
                 last_activity[0] = now
+            if size_holder is not None:
+                size_m = _PV_SIZE_RE.match(line)
+                if size_m:
+                    parsed = parse_size_to_bytes(size_m.group(1), size_m.group(2))
+                    if parsed is not None:
+                        size_holder[0] = parsed
             # pv outputs percentage in the form " 12%" or "100%"
             m = re.search(r'(\d+)%', line)
             if m:
@@ -353,6 +387,8 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
 
         # Shared mutable timestamp for stall detection (single-element list for thread safety)
         last_activity = [time.time()]
+        # Shared mutable holder for the latest bytes transferred, read by pv's own counter
+        size_holder = [0]
 
         # Pipeline: src_stdout -> pv -> mbuffer -> recv
         # bufsize=0 disables buffering on stderr so progress lines appear immediately
@@ -389,7 +425,7 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         # Monitor pv stderr in a thread for progress + stall tracking
         pv_thread = threading.Thread(
             target=_pv_monitor_thread,
-            args=(process_pv.stderr, total_bytes, label, notifier, last_activity),
+            args=(process_pv.stderr, total_bytes, label, notifier, last_activity, size_holder),
             daemon=True,
         )
         pv_thread.start()
@@ -423,6 +459,7 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
                         src_process.kill()
                     except Exception:
                         pass
+                    add_transferred_bytes(size_holder[0])
                     return False, (
                         f"Pipeline stalled: no data transferred for {int(idle)}s "
                         f"(stall timeout: {stall_timeout}s). The transfer may be resumable — "
@@ -438,6 +475,8 @@ def _direct_pipe_transfer(src_process, mbuffer_cmd, recv_cmd, total_bytes, label
         _wait_with_finalize_heartbeat(process_mbuffer, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
         _wait_with_finalize_heartbeat(process_pv, "pv monitor", PIPELINE_FINALIZE_TIMEOUT)
         _wait_with_finalize_heartbeat(src_process, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        pv_thread.join(timeout=5)
+        add_transferred_bytes(size_holder[0])
 
         # Check return codes in pipeline order
         src_rc = src_process.returncode
@@ -684,6 +723,7 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
         f"{label} finished: bytes_sent={bytes_sent} ({format_bytes(bytes_sent)}) "
         f"elapsed={elapsed:.1f}s avg_rate={avg_rate/(1024*1024):.1f} MiB/s pipe_broken={pipe_broken}{est_note}"
     )
+    add_transferred_bytes(bytes_sent)
     return bytes_sent, pipe_broken
 
 

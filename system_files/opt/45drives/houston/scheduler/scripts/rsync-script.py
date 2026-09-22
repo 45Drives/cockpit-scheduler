@@ -6,7 +6,9 @@ import shlex
 import traceback
 import datetime as dt
 from notify import get_notifier
+from task_concurrency import acquire_host_slot
 from task_retry import run_with_retry_policy
+from transfer_summary import format_duration, print_transfer_summary
 
 
 class SafeStream:
@@ -192,12 +194,19 @@ def construct_paths(localPath, direction, targetPath, targetHost, targetUser):
     return src, dest
 
 
-def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log_file_path=None):
+STATS_TRANSFERRED_RE = re.compile(r'^Total transferred file size:\s*([\d,]+)\s*bytes')
+STATS_FILES_RE = re.compile(r'^Number of (?:regular files|files) transferred:\s*(\d+)')
+
+
+def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log_file_path=None, waited_seconds=0.0):
     """
     Run rsync, stream its output, send progress updates to systemd
     and optionally tee all output into a user-specified log file.
     """
     notifier.notify("STATUS=Starting transfer…")
+    run_started_at = dt.datetime.now()
+    bytes_transferred = None
+    files_transferred = None
 
     log_fh = None
     if log_file_path:
@@ -293,6 +302,14 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
                     last_percent = pct
                     notifier.notify(f"STATUS=Transferring… {pct:.1f}% complete")
 
+            stripped = line.strip()
+            stats_m = STATS_TRANSFERRED_RE.match(stripped)
+            if stats_m:
+                bytes_transferred = int(stats_m.group(1).replace(',', ''))
+            files_m = STATS_FILES_RE.match(stripped)
+            if files_m:
+                files_transferred = int(files_m.group(1))
+
         process.wait()
     finally:
         if log_fh:
@@ -305,6 +322,18 @@ def execute_command(command, src, dest, isParallel=False, parallelThreads=0, log
             notifier.notify("STATUS=Finishing up…")
         else:
             notifier.notify("STATUS=Transfer failed")
+
+    extra_lines = []
+    if waited_seconds and waited_seconds >= 1:
+        extra_lines.append(f"Waited: {format_duration(waited_seconds)}")
+    if files_transferred is not None:
+        extra_lines.append(f"Files Transferred: {files_transferred}")
+    print_transfer_summary(
+        'SUCCESS' if process.returncode == 0 else 'FAILED',
+        run_started_at,
+        bytes_transferred=bytes_transferred,
+        extra_lines=extra_lines,
+    )
 
     if process.returncode != 0:
         print(f"Error: rsync exited with code {process.returncode}")
@@ -325,24 +354,30 @@ def execute_rsync(options):
         )
         log_path = options.get('logFilePath') or None
 
-        if options['isParallel']:
-            execute_command(
-                command,
-                src,
-                dest,
-                isParallel=True,
-                parallelThreads=options['parallelThreads'],
-                log_file_path=log_path,
-            )
-        else:
-            execute_command(
-                command,
-                src,
-                dest,
-                isParallel=False,
-                parallelThreads=0,
-                log_file_path=log_path,
-            )
+        # Gate on the same per-host slot pool replication uses so a burst of
+        # same-time tasks to one destination doesn't overrun its SSH connections.
+        with acquire_host_slot(options['targetHost'], notify=notifier.notify) as slot_info:
+            waited_seconds = (slot_info or {}).get('waited_seconds', 0.0)
+            if options['isParallel']:
+                execute_command(
+                    command,
+                    src,
+                    dest,
+                    isParallel=True,
+                    parallelThreads=options['parallelThreads'],
+                    log_file_path=log_path,
+                    waited_seconds=waited_seconds,
+                )
+            else:
+                execute_command(
+                    command,
+                    src,
+                    dest,
+                    isParallel=False,
+                    parallelThreads=0,
+                    log_file_path=log_path,
+                    waited_seconds=waited_seconds,
+                )
     except Exception as e:
         print(f"send error: {e}")
         sys.exit(1)

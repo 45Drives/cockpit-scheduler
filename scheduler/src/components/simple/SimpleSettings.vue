@@ -44,6 +44,28 @@
                     </div>
                 </div>
 
+                <!-- Simultaneous Connections -->
+                <div class="border border-default rounded-md p-4 bg-accent">
+                    <h4 class="text-sm font-semibold text-default mb-1">Simultaneous Connections</h4>
+                    <p class="text-xs text-muted mb-3">
+                        If several backups to the same destination start at once, this limits how many
+                        connect at the same time so they don't overwhelm it. The rest wait their turn.
+                    </p>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm whitespace-nowrap w-40">Max at once, per destination</label>
+                            <input type="number" v-model.number="concurrencySettings.max_concurrent_per_host" min="0" max="50"
+                                class="w-24 input-textlike text-sm bg-default text-default" />
+                        </div>
+                        <p class="text-xs text-muted">Set to 0 to allow unlimited simultaneous connections.</p>
+                        <div class="flex items-center gap-3">
+                            <button class="btn btn-primary h-fit" @click="saveConcurrencySettings" :disabled="savingConcurrency">
+                                {{ savingConcurrency ? 'Saving…' : 'Save' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!--
                     Email Notifications — hidden until cockpit-alerts has a simple view.
                     Navigating to Alerts from here is a dead end: there is no way back.
@@ -130,6 +152,10 @@ const retrySettings = ref({ restart_sec: 5, start_limit_burst: 3 });
 const savingRetry = ref(false);
 const migratingRetry = ref(false);
 const retryMigrateResult = ref('');
+
+/* ── Concurrency ── */
+const concurrencySettings = ref({ max_concurrent_per_host: 3 });
+const savingConcurrency = ref(false);
 
 /* ── Polling ── */
 type PollPresetId = 'responsive' | 'balanced' | 'lowLoad';
@@ -225,6 +251,9 @@ async function loadSettings() {
             restart_sec: Number(parsed?.restart_sec ?? retrySettings.value.restart_sec),
             start_limit_burst: Number(parsed?.start_limit_burst ?? retrySettings.value.start_limit_burst),
         };
+        concurrencySettings.value = {
+            max_concurrent_per_host: Math.max(0, Number(parsed?.max_concurrent_per_host ?? concurrencySettings.value.max_concurrent_per_host)),
+        };
         pollSettings.value = {
             status_poll_ms: Math.max(1000, Number(parsed?.ui_status_poll_ms ?? pollSettings.value.status_poll_ms)),
             progress_poll_ms: Math.max(1000, Number(parsed?.ui_progress_poll_ms ?? pollSettings.value.progress_poll_ms)),
@@ -268,6 +297,25 @@ async function migrateRetrySettings() {
         pushNotification(new Notification('Apply Failed', e?.message || String(e), 'error', 5000));
     } finally {
         migratingRetry.value = false;
+    }
+}
+
+async function saveConcurrencySettings() {
+    savingConcurrency.value = true;
+    try {
+        const payload = JSON.stringify({
+            max_concurrent_per_host: Math.max(0, Number(concurrencySettings.value.max_concurrent_per_host || 0)),
+        });
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--set', payload], { superuser: 'require' });
+        const result = JSON.parse(stdout.trim());
+        if (result.success) {
+            concurrencySettings.value.max_concurrent_per_host = Number(result?.settings?.max_concurrent_per_host ?? concurrencySettings.value.max_concurrent_per_host);
+            pushNotification(new Notification('Settings Saved', 'New and running backups will pick this up on their next connection attempt.', 'success', 4000));
+        }
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', e?.message || String(e), 'error', 5000));
+    } finally {
+        savingConcurrency.value = false;
     }
 }
 

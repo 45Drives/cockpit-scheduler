@@ -12,19 +12,39 @@
                     <div class="grid grid-cols-3 gap-2 items-center">
                         <div v-if="thisLogEntry !== undefined" class="col-span-2 mb-4">
                             <p v-if="showCycleStart" class="text-sm font-medium">Run Started at {{ thisLogEntry.cycleStartDate }}</p>
-                            <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate || 'Unknown' }}</p>
+                            <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate || transferSummary?.started || 'Unknown' }}</p>
                             <template v-if="thisLogEntry.running">
                                 <p class="text-sm font-medium text-success">
                                     Running now<span v-if="elapsedDuration"> — {{ elapsedDuration }} elapsed</span>
                                 </p>
                             </template>
                             <template v-else>
-                                <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate || 'Unknown' }}</p>
-                                <p v-if="runDuration" class="text-sm font-medium">Duration: {{ runDuration }}</p>
+                                <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate || transferSummary?.finished || 'Unknown' }}</p>
+                                <p v-if="runDuration || transferSummary?.duration" class="text-sm font-medium">
+                                    Duration: {{ runDuration || transferSummary?.duration }}
+                                </p>
                                 <p v-if="showCycleStart && totalDuration" class="text-sm font-medium">
                                     Total ({{ retryLabel }}): {{ totalDuration }}
                                 </p>
                                 <p class="text-sm font-medium">Exit Code: {{ thisLogEntry.exitCode }}</p>
+                                <p v-if="transferSummary?.waited" class="text-sm font-medium">
+                                    Waited for a free SSH slot: {{ transferSummary.waited }}
+                                </p>
+                                <p v-if="transferSummary?.sendType" class="text-sm font-medium">
+                                    Send Type: {{ transferSummary.sendType }}
+                                </p>
+                                <p v-if="transferSummary?.direction" class="text-sm font-medium">
+                                    Direction: {{ transferSummary.direction }}
+                                </p>
+                                <p v-if="transferSummary?.snapshot" class="text-sm font-medium">
+                                    Snapshot: {{ transferSummary.snapshot }}
+                                </p>
+                                <p v-if="transferSummary?.dataTransferred" class="text-sm font-medium">
+                                    Data Transferred: {{ transferSummary.dataTransferred }}
+                                </p>
+                                <p v-if="transferSummary?.filesTransferred" class="text-sm font-medium">
+                                    Files Transferred: {{ transferSummary.filesTransferred }}
+                                </p>
                             </template>
                             <div v-if="failureReason"
                                 class="mt-2 mb-1 rounded-md border border-rose-500/60 bg-rose-500/10 px-3 py-2">
@@ -205,6 +225,7 @@ import { injectWithCheck } from '../../composables/utility'
 import { describeTaskFailure } from '../../composables/taskFailureReason';
 import { logInjectionKey, schedulerInjectionKey } from '../../keys/injection-keys';
 import { parseSystemdTimestampUSec } from '../../models/systemdParsing';
+import { parseLatestTransferSummary } from '../../models/TransferSummary';
 import { isPageHidden } from '../../utils/pageVisibility';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
@@ -241,6 +262,8 @@ const failureReason = computed(() => {
     if (!entry || entry.exitCode === 0) return null;
     return describeTaskFailure(entry.output);
 });
+
+const transferSummary = computed(() => parseLatestTransferSummary(thisLogEntry.value?.output ?? ''));
 
 const nowTick = ref(Date.now());
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;

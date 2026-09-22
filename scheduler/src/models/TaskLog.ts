@@ -1,7 +1,7 @@
 import { formatTemplateName } from '../composables/utility';
 import { daemon } from '../utils/daemonClient';
 import { execCommand } from '../utils/commandGate';
-import { isUnitRunning, pairRunTimestamps, parseRestartCount } from './systemdParsing';
+import { isUnitRunning, pairRunTimestamps, parseLastRunMarker, parseRestartCount } from './systemdParsing';
 
 async function runCommand(
     argv: string[],
@@ -13,6 +13,31 @@ async function runCommand(
 }
 
 const errorString = (e: any) => e?.message ?? String(e);
+
+// A Type=notify service exiting (or a reboot, or `reset-failed`) can wipe systemd's in-memory
+// ExecMain/ActiveEnter timestamps while still reporting Result=success, indistinguishable from a
+// unit that never ran. task_lastrun.py persists a durable marker for exactly this case; Scheduler.ts
+// already falls back to it for the table's "Last Run" column, so mirror that here for the log modal.
+async function readPersistedLastRun(unit: string): Promise<{ ms: number; outcome: string }> {
+    try {
+        const { stdout, exitStatus } = await execCommand(
+            ['cat', `/etc/systemd/system/${unit}.lastrun`],
+            { superuser: 'try' },
+            false
+        );
+        if (exitStatus !== 0) return { ms: 0, outcome: '' };
+        return parseLastRunMarker(stdout);
+    } catch {
+        return { ms: 0, outcome: '' };
+    }
+}
+
+function formatEpochMs(ms: number): string {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 
 function trimToLatestRunBlock(output: string): string {
     const text = (output || '').replace(/^-- Logs begin at.*\n?/m, '');

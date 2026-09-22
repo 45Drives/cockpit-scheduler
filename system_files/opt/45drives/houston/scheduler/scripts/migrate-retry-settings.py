@@ -33,6 +33,7 @@ DEFAULTS = {
     "start_limit_burst": 3,
     "ui_status_poll_ms": 5000,
     "ui_progress_poll_ms": 10000,
+    "max_concurrent_per_host": 3,
 }
 
 
@@ -65,12 +66,18 @@ def read_config():
     ui_status_poll_ms = max(1000, ui_status_poll_ms)
     ui_progress_poll_ms = max(1000, ui_progress_poll_ms)
 
+    # Read directly (not via task_concurrency.py) since scripts/ isn't guaranteed on sys.path here.
+    max_concurrent_per_host = config.getint(
+        "concurrency", "max_per_host", fallback=DEFAULTS["max_concurrent_per_host"]
+    )
+
     return {
         "restart_sec": restart_sec,
         "start_limit_burst": start_limit_burst,
         "start_limit_interval_sec": start_limit_interval_sec,
         "ui_status_poll_ms": ui_status_poll_ms,
         "ui_progress_poll_ms": ui_progress_poll_ms,
+        "max_concurrent_per_host": max_concurrent_per_host,
     }
 
 
@@ -84,11 +91,14 @@ def write_config(settings):
         config.add_section("retry")
     if not config.has_section("ui"):
         config.add_section("ui")
+    if not config.has_section("concurrency"):
+        config.add_section("concurrency")
 
     config.set("retry", "restart_sec", str(settings["restart_sec"]))
     config.set("retry", "start_limit_burst", str(settings["start_limit_burst"]))
     config.set("ui", "status_poll_ms", str(settings["ui_status_poll_ms"]))
     config.set("ui", "progress_poll_ms", str(settings["ui_progress_poll_ms"]))
+    config.set("concurrency", "max_per_host", str(settings["max_concurrent_per_host"]))
     # Remove stale start_limit_interval_sec if present (now auto-calculated)
     if config.has_option("retry", "start_limit_interval_sec"):
         config.remove_option("retry", "start_limit_interval_sec")
@@ -226,6 +236,11 @@ def main():
         # Validate UI polling values
         settings["ui_status_poll_ms"] = max(1000, int(settings.get("ui_status_poll_ms", DEFAULTS["ui_status_poll_ms"])))
         settings["ui_progress_poll_ms"] = max(1000, int(settings.get("ui_progress_poll_ms", DEFAULTS["ui_progress_poll_ms"])))
+
+        # Validate concurrency limit (0 disables gating, so allow it; clamp negatives to 0).
+        settings["max_concurrent_per_host"] = max(
+            0, int(settings.get("max_concurrent_per_host", DEFAULTS["max_concurrent_per_host"]))
+        )
 
         # Auto-calculate interval
         settings["start_limit_interval_sec"] = (settings["start_limit_burst"] + 1) * settings["restart_sec"]

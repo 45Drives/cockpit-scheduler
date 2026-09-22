@@ -1,10 +1,13 @@
 """Stable entry point for the ZFS replication task."""
 
+import datetime
+
 import task_lastrun
 
 from .context import notifier
 from .logging_utils import safe_print
 from .models import ReplicationRun
+from .process import reset_transfer_byte_count
 from .retry import (
     NO_RETRY_EXIT_CODE,
     PERMANENT_FAILURE_EXIT_CODE,
@@ -17,6 +20,8 @@ from .workflow import handle_failure, run_replication
 
 def main():
     ctx = ReplicationRun()
+    ctx.run_start_time = datetime.datetime.now()
+    reset_transfer_byte_count()
     # Assume failure: anything that escapes without setting this is not a success.
     outcome = task_lastrun.FAILED
     try:

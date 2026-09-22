@@ -11,7 +11,9 @@ import time
 import traceback
 
 import task_lastrun
+from task_concurrency import acquire_host_slot
 from zfs_busy import BUSY_HINT, is_dataset_busy
+from transfer_summary import format_duration, print_transfer_summary
 
 from .config import as_bool, clamp_mbuffer, clamp_mbuffer_block, get_dest_ports, join_zfs_path
 from .context import notifier
@@ -19,7 +21,7 @@ from .logging_utils import dbg, dbg_env, dbg_kv, safe_print
 from .models import ReplicationRun
 from .notifications import send_houston_notification
 from .planner import build_zfs_send_args
-from .process import _apply_tcp_tuning, format_bytes
+from .process import _apply_tcp_tuning, format_bytes, get_transferred_bytes
 from .retention import destroy_snapshots_with_progress, prune_snapshots_by_retention
 from .retry import UNIT_NAME_PREFIX
 from .schedules import load_schedule_json, match_current_tier
@@ -214,11 +216,13 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
                 _persist_lastrun(ctx.taskName)
+                print_transfer_summary('SUCCESS', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
                 sys.exit(0)
             else:
                 print(f'Resume transfer failed: {err}')
                 notifier.notify(f'STATUS=Resume transfer failed: {err}')
                 _persist_lastrun(ctx.taskName)
+                print_transfer_summary('FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
                 sys.exit(1)
         dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
         dbg(f'remoteUser={ctx.remoteUser} remoteHost={ctx.remoteHost} sshPort={ctx.sshPort}')
@@ -264,11 +268,13 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
                 _persist_lastrun(ctx.taskName)
+                print_transfer_summary('SUCCESS', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
                 sys.exit(0)
             else:
                 print(f'Resume transfer failed: {err}')
                 notifier.notify(f'STATUS=Resume transfer failed: {err}')
                 _persist_lastrun(ctx.taskName)
+                print_transfer_summary('FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
                 sys.exit(1)
         if ctx.remoteHost:
             dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
@@ -392,6 +398,15 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                     _clear_pending_full_send(ctx.taskName)
                     notifier.notify('STATUS=ZFS replication task completed (full resend). 100% complete')
                     _persist_lastrun(ctx.taskName)
+                    ctx.newSnap = pending_snap
+                    print_transfer_summary(
+                        'SUCCESS', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+                        extra_lines=_wait_extra_line(ctx) + [
+                            'Send Type: Full (resend after interrupted full send)',
+                            f'Direction: {"Pull" if ctx.direction == "pull" else "Push"}',
+                            f'Snapshot: {snapshot_suffix(pending_snap)}',
+                        ],
+                    )
                     return True
                 else:
                     print(f'Original source snapshot {pending_snap} no longer exists.')
@@ -407,10 +422,12 @@ def _finish_successful_resume(ctx: ReplicationRun):
     if ctx.resumeOnly:
         notifier.notify('STATUS=Resume transfer completed. 100% complete')
         print('Resume transfer completed successfully.')
+        print_transfer_summary('SUCCESS', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
         return True
     msg = 'Resume completed; continuing with the rest of this replication run.'
     notifier.notify(f'STATUS={msg}')
     print(msg)
+    ctx.resumed_mid_run = True
     # The inventory was read before the resume committed its snapshot, so it is now stale.
     _load_snapshot_inventory(ctx)
     return False
@@ -1108,6 +1125,44 @@ def _tag_received_snapshot(ctx: ReplicationRun):
     ctx.current_pct = 0
 
 
+def _send_type_label(ctx: ReplicationRun) -> str:
+    base = 'Incremental' if ctx.incrementalSnapName else 'Full'
+    return f'{base} (Resumed)' if ctx.resumed_mid_run else base
+
+
+def _wait_extra_line(ctx: ReplicationRun) -> list:
+    waited = getattr(ctx, 'waited_seconds', 0) or 0
+    if waited < 1:
+        return []
+    return [f'Waited: {format_duration(waited)}']
+
+
+def _replication_extra_lines(ctx: ReplicationRun) -> list:
+    lines = _wait_extra_line(ctx) + [
+        f'Send Type: {_send_type_label(ctx)}',
+        f'Direction: {"Pull" if ctx.direction == "pull" else "Push"}',
+    ]
+    if ctx.newSnap and ctx.newSnap != 'unknown':
+        lines.append(f'Snapshot: {snapshot_suffix(ctx.newSnap)}')
+    return lines
+
+
+def _resume_only_extra_lines(ctx: ReplicationRun) -> list:
+    # An explicit "Resume Transfer" run exits before a new snapshot is planned, so there is
+    # no full/incremental distinction or snapshot name to report yet.
+    return _wait_extra_line(ctx) + [
+        'Send Type: Resumed Transfer',
+        f'Direction: {"Pull" if ctx.direction == "pull" else "Push"}',
+    ]
+
+
+def _print_success_summary(ctx: ReplicationRun):
+    print_transfer_summary(
+        'SUCCESS', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+        extra_lines=_replication_extra_lines(ctx),
+    )
+
+
 def _apply_retention(ctx: ReplicationRun):
     def _retention_disabled(ret_time, ret_unit):
         try:
@@ -1128,6 +1183,7 @@ def _apply_retention(ctx: ReplicationRun):
         _clear_pending_full_send(ctx.taskName)
         _persist_lastrun(ctx.taskName)
         safe_print(f'ZFS replication task completed successfully: {ctx.sourceFilesystem} -> {ctx.destFilesystem}')
+        _print_success_summary(ctx)
         dbg('=== task completed successfully ===')
         return
 
@@ -1179,22 +1235,26 @@ def _apply_retention(ctx: ReplicationRun):
     _clear_pending_full_send(ctx.taskName)
     _persist_lastrun(ctx.taskName)
     safe_print(f'ZFS replication task completed successfully: {ctx.sourceFilesystem} -> {ctx.destFilesystem}')
+    _print_success_summary(ctx)
     dbg('=== task completed successfully ===')
 
 
 def run_replication(ctx: ReplicationRun):
     _initialize_run(ctx)
-    _load_snapshot_inventory(ctx)
-    if _recover_pending_full_send(ctx):
-        return
-    if _resume_interrupted_receive(ctx):
-        return
-    _announce_dry_run(ctx)
-    _plan_send(ctx)
-    _report_dry_run(ctx)
-    _create_and_transfer_snapshot(ctx)
-    _tag_received_snapshot(ctx)
-    _apply_retention(ctx)
+    # Gate the SSH-connected portion so a burst of same-time tasks doesn't overrun the remote host.
+    with acquire_host_slot(ctx.remoteHost, notify=notifier.notify) as slot_info:
+        ctx.waited_seconds = (slot_info or {}).get('waited_seconds', 0.0)
+        _load_snapshot_inventory(ctx)
+        if _recover_pending_full_send(ctx):
+            return
+        if _resume_interrupted_receive(ctx):
+            return
+        _announce_dry_run(ctx)
+        _plan_send(ctx)
+        _report_dry_run(ctx)
+        _create_and_transfer_snapshot(ctx)
+        _tag_received_snapshot(ctx)
+        _apply_retention(ctx)
 
 
 def handle_failure(ctx: ReplicationRun, error):
@@ -1222,4 +1282,8 @@ def handle_failure(ctx: ReplicationRun, error):
         email_error_message = f'{email_error_message}\n\n{BUSY_HINT}'
     send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_failed', 'subject': 'ZFS Replication Failed', 'email_message': email_error_message, 'fileSystem': ctx.sourceFilesystem, 'snapShot': ctx.newSnap, 'replicationDestination': receivingFilesystem, 'severity': 'warning', 'errors': str(error)})
     print(f'Exception: {error}')
+    print_transfer_summary(
+        'FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+        extra_lines=_replication_extra_lines(ctx),
+    )
     sys.exit(1)

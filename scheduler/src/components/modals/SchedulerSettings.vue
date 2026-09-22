@@ -113,6 +113,30 @@
                     </div>
                 </div>
 
+                <!-- Concurrency Section -->
+                <div class="border border-default rounded-md p-4 bg-accent">
+                    <h4 class="text-sm font-semibold text-default mb-3">SSH Connection Concurrency</h4>
+                    <p class="text-xs text-muted mb-3">
+                        Limits how many tasks (replication, rsync) may be connected to/transferring with
+                        the same destination host at once. Tasks beyond this limit wait for a free slot
+                        instead of racing each other for SSH connections — avoids the "several tasks
+                        starting simultaneously fail to connect" problem on bursty schedules.
+                    </p>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-default whitespace-nowrap w-44">Max Concurrent per Host</label>
+                            <input type="number" v-model.number="concurrencySettings.max_concurrent_per_host" min="0" max="50"
+                                class="w-20 text-default input-textlike bg-default" />
+                            <span class="text-sm text-muted">0 = unlimited</span>
+                        </div>
+                        <div class="flex items-center gap-3 mt-2">
+                            <button class="btn btn-primary h-fit" @click="saveConcurrencySettings" :disabled="savingConcurrency">
+                                {{ savingConcurrency ? 'Saving...' : 'Save' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Polling Settings Section -->
                 <div class="border border-default rounded-md p-4 bg-accent">
                     <h4 class="text-sm font-semibold text-default mb-3">Live Status Polling</h4>
@@ -457,12 +481,16 @@ const retrySettings = ref({
     restart_sec: 5,
     start_limit_burst: 3,
 });
+const concurrencySettings = ref({
+    max_concurrent_per_host: 3,
+});
 const pollSettings = ref({
     status_poll_ms: 5000,
     progress_poll_ms: 10000,
 });
 const savingRetry = ref(false);
 const migratingRetry = ref(false);
+const savingConcurrency = ref(false);
 const savingPollSettings = ref(false);
 const retryMigrateResult = ref('');
 
@@ -473,6 +501,9 @@ async function loadSchedulerSettings() {
         const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--get'], { superuser: 'try' });
         const parsed = JSON.parse(stdout.trim());
         retrySettings.value = { ...retrySettings.value, ...parsed };
+        concurrencySettings.value = {
+            max_concurrent_per_host: Math.max(0, Number(parsed?.max_concurrent_per_host ?? concurrencySettings.value.max_concurrent_per_host)),
+        };
         pollSettings.value = {
             status_poll_ms: Math.max(1000, Number(parsed?.ui_status_poll_ms ?? pollSettings.value.status_poll_ms)),
             progress_poll_ms: Math.max(1000, Number(parsed?.ui_progress_poll_ms ?? pollSettings.value.progress_poll_ms)),
@@ -496,6 +527,25 @@ async function saveRetrySettings() {
         pushNotification(new Notification('Save Failed', e?.message || String(e), 'error', 5000));
     } finally {
         savingRetry.value = false;
+    }
+}
+
+async function saveConcurrencySettings() {
+    savingConcurrency.value = true;
+    try {
+        const payload = JSON.stringify({
+            max_concurrent_per_host: Math.max(0, Number(concurrencySettings.value.max_concurrent_per_host || 0)),
+        });
+        const { stdout } = await runCommand(['python3', MIGRATE_SCRIPT, '--set', payload], { superuser: 'require' });
+        const result = JSON.parse(stdout.trim());
+        if (result.success) {
+            concurrencySettings.value.max_concurrent_per_host = Number(result?.settings?.max_concurrent_per_host ?? concurrencySettings.value.max_concurrent_per_host);
+            pushNotification(new Notification('Concurrency Settings Saved', 'Tasks will use this limit on their next connection attempt.', 'success', 4000));
+        }
+    } catch (e: any) {
+        pushNotification(new Notification('Save Failed', e?.message || String(e), 'error', 5000));
+    } finally {
+        savingConcurrency.value = false;
     }
 }
 
