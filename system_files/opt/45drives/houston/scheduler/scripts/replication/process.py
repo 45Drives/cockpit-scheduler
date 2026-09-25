@@ -243,7 +243,8 @@ def _effective_mbuffer_block():
 
 def _build_mbuffer_cmd(buf_size, buf_unit):
     """Build the mbuffer command list with configurable block size."""
-    return ["mbuffer", "-s", _effective_mbuffer_block(), "-m", f"{buf_size}{buf_unit}"]
+    # -q: the twice-a-second status line fills undrained stderr pipes on long runs.
+    return ["mbuffer", "-s", _effective_mbuffer_block(), "-m", f"{buf_size}{buf_unit}", "-q"]
 
 
 def _wait_for_port(host, port, timeout=30, interval=0.5):

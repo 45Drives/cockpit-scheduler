@@ -34,7 +34,9 @@ from .netcat import _build_nc_connect_cmd, _wait_for_port_remote, build_nc_liste
 
 def mbuffer_shell_stage(buf_size, buf_unit):
     """Render a shell-safe mbuffer stage for remote pipeline command strings."""
-    return "mbuffer -s {block} -m {size}".format(
+    # -q: over ssh the status line lands in ssh's stderr pipe, which is not drained
+    # during the transfer; once full, ssh cannot exit and the stream never reaches EOF.
+    return "mbuffer -s {block} -m {size} -q".format(
         block=shlex.quote(str(_effective_mbuffer_block())),
         size=shlex.quote(f"{buf_size}{buf_unit}"),
     )

@@ -162,9 +162,9 @@ system-files-install-local:
 
 system-files-install-remote:
 # No --delete here: the destination is /, so pruning would target the whole filesystem.
-	-rsync -avh system_files/* $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/
+	-rsync -avh --exclude '__pycache__/' --exclude '.pytest_cache/' system_files/* $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/
 	-ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'mkdir -p $(DESTDIR)/opt/45drives/houston/scheduler/tests'
-	-rsync -avh --delete --exclude '__pycache__/' tests/ $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/opt/45drives/houston/scheduler/tests/
+	-rsync -avh --delete --exclude '__pycache__/' --exclude '.pytest_cache/' tests/ $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST):$(DESTDIR)/opt/45drives/houston/scheduler/tests/
 	-ssh $(REMOTE_TEST_USER)@$(REMOTE_TEST_HOST) 'chmod +x $(DESTDIR)/opt/45drives/houston/scheduler/tests/*.sh || true'
 
 package-generic: default

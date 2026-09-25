@@ -72,7 +72,7 @@ if [[ -z "$rclone_version" ]] || [[ "$(printf '%s\n%s\n' "1.59" "$rclone_version
 fi
 
 echo "Installing scheduler system files..."
-"${SUDO[@]}" cp -af system_files/* /
+"${SUDO[@]}" rsync -a --exclude '__pycache__/' --exclude '.pytest_cache/' system_files/* /
 
 migrate_script="/opt/45drives/houston/scheduler/scripts/migrate-task-services.py"
 if [[ -f "$migrate_script" ]]; then
