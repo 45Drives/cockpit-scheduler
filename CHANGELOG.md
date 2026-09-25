@@ -1,3 +1,3 @@
-## task scheduler 1.9.3-1
+## task scheduler 1.9.4-1
 
-* Adds ssh concurrency configuration + status and replication divergence policy improvements, fixes sshCipher edit in replication and adds task summary into logs
+* fix(replication): quiet mbuffer status output to prevent ssh stderr deadlock at end of stream
