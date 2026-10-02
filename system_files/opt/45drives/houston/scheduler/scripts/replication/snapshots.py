@@ -70,7 +70,7 @@ def _name_prefix_matches(prefix: str, suffix: str) -> bool:
     """Match `<prefix>[-tN]-<timestamp>` so sibling tasks sharing a prefix stay distinct."""
     if not prefix:
         return False
-    return re.match(rf'^{re.escape(prefix)}(?:-t\d+)?-\d{{4}}-\d{{2}}-\d{{2}}', suffix) is not None
+    return re.match(rf'^{re.escape(prefix)}(?:-t\d+)?-\d{{4}}(?P<date_sep>[-.])\d{{2}}(?P=date_sep)\d{{2}}', suffix) is not None
 
 
 def is_task_snapshot(full_snap_name: str, task_name: str, custom_name: str = "") -> bool:
@@ -393,7 +393,7 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
     command = ["zfs", "snapshot"]
     if is_recursive:
         command.append("-r")
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    timestamp = datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
     tier_tag = f"-t{tier_idx}" if tier_idx is not None else ""
     if custom_name:
         new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"
@@ -445,7 +445,7 @@ def create_snapshot_local(filesystem, is_recursive, task_name, custom_name=None,
 
 
 def create_snapshot_remote(filesystem, is_recursive, task_name, custom_name, remote_user, remote_host, ssh_port, tier_idx=None):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    timestamp = datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
     tier_tag = f"-t{tier_idx}" if tier_idx is not None else ""
     if custom_name:
         new_snap = f"{filesystem}@{custom_name}{tier_tag}-{timestamp}"

@@ -1,162 +1,131 @@
-# Migrating Dataset Replication Tasks to One Recursive Task
+# Replacing Separate Dataset Tasks with One Recursive Task
 
-## Purpose
+## The Idea
 
-Use this guide when a customer has separate snapshot/replication tasks for many datasets and wants one recursive task covering the pool's dataset hierarchy.
+Bring every dataset to a new snapshot named `migration-to-recursive`. Once that snapshot has been copied to the backup for every dataset, one recursive task can take over.
 
-The goal is to reuse the data already replicated, rather than send every dataset in full again. This is a manual migration using the Cockpit UI for task management and CLI for establishing the common snapshot baseline. It is not currently an automatic scheduler operation.
+Each dataset can start from its own old replicated snapshot. We are not merging snapshots: we are transferring each dataset's changes to the same new snapshot name. Datasets without an old snapshot shared with the backup may still need a full transfer.
 
-This guide is a procedure and command-template reference, not an unattended script. Service must verify the customer's actual paths, destination layout, OpenZFS versions, encryption settings, and snapshot history before transferring anything. Run commands with the required ZFS privileges on the indicated server.
+Use the UI to manage tasks and the CLI to copy the migration snapshots. Clicking **Run Now** on the old tasks will not do this: it creates different, task-specific snapshots.
 
-## How It Works
+## Before You Start
 
-Existing snapshots cannot be merged into one snapshot. Instead, create a new recursive snapshot on the source and transfer each dataset to that snapshot using its own existing incremental baseline.
+Service must check the customer's dataset paths, available space, ZFS versions, and backup state first. Keep a recoverable backup and a record of the old task settings.
 
-The starting snapshot can differ for every dataset. The finishing snapshot suffix must be the same across the selected root and descendants.
+**The root dataset must be included, not just the children.** If the root or an intermediate parent was never replicated, stop and get a plan for it. It may need a full transfer of its own contents. Do not force that transfer into a populated backup parent or destination pool root.
 
-| Dataset | Starting point | Finishing point |
-| --- | --- | --- |
-| First dataset | Its own latest usable shared snapshot | Its new migration snapshot |
-| Second dataset | Its own latest usable shared snapshot | Its new migration snapshot |
-| Remaining datasets | Their respective usable shared snapshots | Their new migration snapshots |
-| Root and intermediate parents | Shared baseline, or separately approved full seed | Their new migration snapshots |
+The commands below are for **unencrypted datasets over SSH**. Encrypted datasets or clones need a reviewed transfer plan; do not change an existing raw-send strategy. Use the customer's SSH port and identity options where required.
 
-Once the root and all included datasets have the matching migration snapshots on both servers, the new recursive task can use that baseline for subsequent incremental replication.
+Run the commands in Bash with the necessary ZFS permissions. They prompt for the customer's actual values. `$ROOT` and similar names store your answers; the `[[ -n ... ]]` checks prevent running with blank answers. No question-mark variable syntax is needed.
 
-Matching names alone are insufficient. Each source snapshot and its corresponding received destination snapshot must have the same GUID. Independently creating a snapshot with the same name on the destination does not create a shared baseline.
+## Step 1: Pause the Old Tasks (UI)
 
-Datasets without a usable shared baseline may still need full transfers. Recursive dataset replication does not copy the pool's vdev topology or replace destination pool configuration.
+Let active transfers finish. Disable the old replication schedules and any snapshot/pruning automation affecting these datasets. **Keep the tasks and snapshots; do not delete them.**
 
-## Before Starting
+Do not write to the backup or create, rename, or delete datasets during the migration. Source applications can continue writing, but coordinate an application pause when taking the snapshot if application-consistent backups are required.
 
-Confirm the migration includes exactly the intended datasets. Selecting a pool root recursively also includes descendants that may not have been covered by the old tasks.
+## Step 2: Find Each Dataset's Starting Snapshot (CLI)
 
-Record the source-to-destination mapping and the latest usable shared snapshot for every dataset, including intermediate parent datasets and the root. The relative hierarchy beneath the proposed source and destination roots must match. Flattened destinations or independently renamed datasets need a separate layout plan.
-
-Keep a recoverable backup and record existing task settings, snapshot inventories, and destination-only data. Review free space, clones and their origins, pending receives, and encryption compatibility. Clones or mixed raw/non-raw replication histories require specialist review before using these templates.
-
-Do not enable Force full resync or destination overwrite/rollback permission to get past a migration error. A forced recursive receive can destroy destination-only snapshots and datasets.
-
-## Step 1: Finish and Pause the Existing Tasks (UI)
-
-Let active replication transfers finish, then disable the schedules for the old dataset replication tasks. Disable related snapshot/pruning tasks and any external automation that could remove the required snapshots or change the backup during migration.
-
-Keep the task definitions and their snapshots. Disabling tasks is not the same as deleting them. Prevent writes to destination backup datasets throughout the migration.
-
-Source applications can continue writing after the migration snapshot is taken; those later changes will be transferred by subsequent replication. If application-consistent backups are required, coordinate quiescing applications while taking the migration snapshot. Avoid dataset creation, deletion, and renaming until the handover is complete.
-
-## Step 2: Inventory Snapshots and Check the Root (CLI)
-
-On each server, set `ROOT` to that server's actual replication root, then list snapshots:
+Run this on **each server**, entering its source or backup root as appropriate:
 
 ```bash
-zfs list -H -p -t snapshot -o name,guid,creation -s creation -r "${ROOT:?Set ROOT to the actual replication root}"
+read -r -p "Dataset root on this server: " ROOT
+[[ -n "$ROOT" ]] && zfs list -t snapshot -o name,guid -s creation -r "$ROOT"
 ```
 
-Compare corresponding datasets using GUIDs. Normally, the selected shared baseline should be the destination dataset's latest snapshot, and the destination should not have been modified since it. Newer destination snapshots or writes must be investigated rather than automatically rolled back.
+Make a list of each source dataset, its backup dataset, and its usable old snapshot. Include the root and all parent datasets. The folder structure beneath the source and backup roots must match.
 
-The root needs a replicated baseline too. If the old tasks replicated only children, the root may never have been replicated. The same applies to intermediate parent datasets created independently on the backup.
+For hundreds of datasets, have a batch script generate this list from both servers instead of entering it by hand. Service must review the list and resolve all flagged problems before taking the migration snapshot in Step 3.
 
-If a root or parent has no shared baseline, it may need a separate **nonrecursive full send of its own contents**, not of its descendants. However, receiving this into an existing populated parent or a destination pool root is not a generic safe operation. Service must approve a layout-specific method before continuing. Do not destroy the parent, overwrite the pool root, or assume a locally created destination snapshot will substitute for a received snapshot.
+Compare the **GUID** numbers: matching GUIDs prove that two snapshots are the same replicated snapshot. Matching names alone do not. Normally, use the backup's latest snapshot, provided it also exists on the source and the backup has not changed since it.
 
-Protect the chosen source and destination baseline snapshots from pruning. Temporary ZFS holds can protect snapshots, but must be recorded for later release. For a reviewed individual baseline on the server holding it:
+If there are newer conflicting backup snapshots, backup writes, or unfinished receives, stop and investigate. Protect the selected snapshots from deletion; Service can use temporary ZFS holds if needed.
+
+## Step 3: Take One New Recursive Snapshot (CLI, Source)
+
+Check that `migration-to-recursive` does not already exist anywhere in the selected hierarchy. On the **source server**, run:
 
 ```bash
-zfs hold service-replication-migration "${BASE_SNAPSHOT:?Set BASE_SNAPSHOT to the reviewed baseline snapshot}"
+read -r -p "Source dataset root: " ROOT
+[[ -n "$ROOT" ]] &&
+  zfs snapshot -r "$ROOT@migration-to-recursive" &&
+  zfs hold -r service-replication-migration "$ROOT@migration-to-recursive"
 ```
 
-## Step 3: Create the Common Migration Snapshot (CLI, Source)
+This takes the new snapshot on the root and all children, and protects it from deletion. Keep a record of these temporary holds for later cleanup.
 
-Set `SRC_ROOT` to the approved source root and `MIGRATION` to a unique snapshot suffix that does not already exist anywhere in the selected hierarchy. Then create and protect the recursive snapshot:
+## Step 4: Copy the Migration Snapshots (CLI, Source)
+
+### Recommended for Hundreds of Datasets: Batch Transfer
+
+Use the [batch script page](ZFS_Replication_Consolidation_Script.dokuwiki.txt) to process the list from Step 2. It includes the complete copyable script and commands to plan, apply, and verify the migration. You should not need to enter commands manually for all 300 datasets. Service must review the plan and test the script on a small representative hierarchy before the full migration.
+
+The script should:
+
+1. Check every source/backup mapping and shared snapshot GUID. Flag missing starting snapshots, root/parent problems, encryption differences, backup changes, and unfinished receives. Do not automatically force a full transfer for exceptions.
+2. Estimate the planned transfers and produce a report for Service to approve. Before sending, recheck that the approved snapshots and backup state have not changed.
+3. Copy each approved dataset from its own old snapshot to `@migration-to-recursive`. Start with sequential transfers so the servers are not overloaded; no manual entry is needed between datasets.
+4. Log each result and stop on errors. On restart, skip a completed transfer only after confirming the migration snapshot's source/backup GUIDs match and the backup state is still acceptable. Stop for review of partially received transfers.
+5. Verify the migration snapshots for the entire hierarchy, including the root and parents. Report any incomplete or mismatched dataset before proceeding to Step 6.
+
+ZFS still needs a separate stream for each dataset because the old starting snapshots differ. The script automates those streams; it does not merge snapshots or bypass the root checks.
+
+### Manual Transfer: Testing and Exceptions
+
+Use these commands to test a few datasets or handle approved exceptions. Enter the full old source snapshot name from Step 2, and the full new source snapshot name ending in `@migration-to-recursive`. Both must belong to the same source dataset.
+
+First, estimate the transfer; this does not copy anything:
 
 ```bash
-zfs snapshot -r "${SRC_ROOT:?Set SRC_ROOT}@${MIGRATION:?Set a unique migration suffix}"
-zfs hold -r service-replication-migration "${SRC_ROOT}@${MIGRATION}"
+read -r -p "Old source snapshot, including @name: " OLD_SNAPSHOT
+read -r -p "New source snapshot, ending in @migration-to-recursive: " NEW_SNAPSHOT
+[[ -n "$OLD_SNAPSHOT" && -n "$NEW_SNAPSHOT" ]] &&
+  zfs send -nPv -i "$OLD_SNAPSHOT" "$NEW_SNAPSHOT"
 ```
 
-This creates a new snapshot with the same suffix on the root and each descendant. It does not merge or rename the previous snapshots. This is an ordinary recursive snapshot, not a `zpool checkpoint`.
-
-## Step 4: Transfer Each Dataset to the Migration Snapshot (CLI)
-
-Use the reviewed mapping table to process each dataset. Record success or failure per dataset; do not assume all transfers succeeded because the last command succeeded. For hundreds of datasets, any automation should use the verified mapping table, stop on failures, and be reviewed before execution.
-
-For each transfer, the following variables must contain the customer's actual values:
-
-| Variable | Meaning |
-| --- | --- |
-| `SRC_DATASET` | The exact source dataset for this individual transfer |
-| `DST_DATASET` | Its exact mapped destination dataset |
-| `BASE_SNAPSHOT` | The full source snapshot name whose GUID matches the destination baseline |
-| `MIGRATION` | The common migration snapshot suffix from Step 3 |
-| `BACKUP_SSH` | The actual SSH destination accepted by `ssh`, including the user if needed |
-
-First estimate the individual incremental send on the source:
+After reviewing the estimate, use the **same Bash session** to copy it:
 
 ```bash
-zfs send -nPv -i "${BASE_SNAPSHOT:?Set BASE_SNAPSHOT}" "${SRC_DATASET:?Set SRC_DATASET}@${MIGRATION:?Set MIGRATION}"
-```
-
-For **unencrypted datasets**, the basic remote transfer pattern, run on the source, is:
-
-```bash
+read -r -p "Backup SSH destination (user@host): " BACKUP_SSH
+read -r -p "Backup dataset path, without @snapshot: " BACKUP_DATASET
 set -o pipefail
-zfs send -i "${BASE_SNAPSHOT:?Set BASE_SNAPSHOT}" "${SRC_DATASET:?Set SRC_DATASET}@${MIGRATION:?Set MIGRATION}" |
-  ssh "${BACKUP_SSH:?Set BACKUP_SSH}" zfs receive -u "${DST_DATASET:?Set DST_DATASET}"
+[[ -n "$OLD_SNAPSHOT" && -n "$NEW_SNAPSHOT" &&
+   -n "$BACKUP_SSH" && -n "$BACKUP_DATASET" ]] &&
+  zfs send -i "$OLD_SNAPSHOT" "$NEW_SNAPSHOT" |
+  ssh "$BACKUP_SSH" zfs receive -u "$BACKUP_DATASET"
 ```
 
-The `-u` option prevents the received filesystem from being mounted by the receive operation. It does not permit overwriting conflicting destination data. Supply the customer's established SSH options if a nondefault port or identity is required.
+This sends only changes since the old snapshot. It does not force rollback, and `-u` prevents the receive from mounting the backup filesystem.
 
-These commands intentionally send one dataset at a time, without `-R`, and do not force rollback. For encrypted datasets, use the reviewed send flags consistent with the existing replication history; for an established raw chain, that normally includes `-w`. Do not change encryption strategy during this migration.
+Record each successful manual transfer. The batch process or approved exception plan must also cover the root and intermediate parents. If any dataset has no shared old snapshot, it needs a separately approved full transfer instead of this command.
 
-Repeat for the children, intermediate parents, and root using their approved transfer methods. A dataset with no usable baseline requires a separately approved full seed; the incremental template does not apply to it.
+**If a command fails, stop. Do not add `-F` or enable overwrite to bypass the error.** A forced recursive receive can delete backup-only snapshots and datasets.
 
-If a receive fails, stop and investigate that dataset. Do not add `-F`, delete snapshots, or continue to the new recursive task with an incomplete hierarchy.
+## Step 5: Check Every Dataset (CLI)
 
-The existing UI tasks cannot perform this step simply by clicking Run Now: normal runs create and send fresh task-specific snapshots, rather than the exact shared migration snapshots.
+Run the listing command from Step 2 again on both servers. Every included dataset, including the root and parents, must have `@migration-to-recursive` with a matching source/backup GUID. Confirm all transfers finished and the backup has not been modified.
 
-## Step 5: Verify the Entire Baseline (CLI)
+Do not create same-name snapshots manually on the backup: they would have different GUIDs. Keep pruning paused and protect the received migration snapshots until the handover is complete.
 
-Repeat the snapshot inventories on both servers. For the selected root and every included descendant, verify that the migration suffix exists and that the source and corresponding destination GUIDs match.
+## Step 6: Test the New Task (UI)
 
-Verify the dataset mapping, check that all receives completed, and resolve any pending receive state, missing parents, destination modifications, or newer conflicting destination snapshots. Protect the received migration snapshots while verification and handover are in progress.
+Create one ZFS replication task with the checked source and backup roots. Enable **Send Recursive**, keep the approved transfer settings, and set the desired retention. Leave its schedule disabled for now.
 
-Do not proceed merely because the migration snapshot appears on the root. Every included dataset must be checked.
+Keep **Force full resync** and overwrite/rollback permission **off**. Run **Dry Run** and confirm the logs select the migration snapshot as the incremental starting point. Stop if it proposes a full resend or reports a missing starting snapshot.
 
-## Step 6: Create and Test the Recursive Task (UI)
+Then click **Run Now** and verify a successful real transfer and matching new snapshots. Dry Run alone does not prove the backup will accept the transfer.
 
-Create a ZFS replication task using the approved source and destination roots. Enable **Send Recursive**, preserve the approved encryption/transfer settings, and configure the desired source and destination retention. Keep the new schedule disabled initially.
+## Step 7: Switch Schedules and Clean Up
 
-Leave **Force full resync (next run only)** and destination overwrite/rollback permission off. Run **Dry Run** and inspect the logs. The planner should select the shared migration snapshot as an incremental base, not propose a full resend or report a missing baseline.
+Enable the new schedule only after Step 6 succeeds. Leave the old tasks disabled until the customer accepts the handover. Do not run both sets against the same backup hierarchy.
 
-A successful Dry Run does not prove the destination will accept the real stream. Use **Run Now**, check the resulting logs and snapshots, and confirm the first recursive replication finishes successfully. Source changes made after the migration snapshot will be included in this new run.
+Plan snapshot cleanup separately: the new task will not automatically prune all old task-owned or manually created migration snapshots. Once a newer shared recursive snapshot is verified, Service can release the recorded migration holds and review which old snapshots can be deleted. Never remove the last usable shared snapshot or holds belonging to another workflow.
 
-## Step 7: Hand Over Scheduling and Retention (UI and CLI)
-
-After verifying the real recursive run, enable the new schedule. Leave the old tasks disabled until the customer accepts the handover; do not run both sets of tasks against the same hierarchy during this transition.
-
-Plan cleanup separately. The new task's retention does not automatically take ownership of snapshots tagged for the old tasks, and manually created migration snapshots are not automatically guaranteed to fall under its retention policy. Review both source and destination histories against the customer's backup requirements before deleting anything.
-
-Once a newer verified shared recursive baseline is available and the migration snapshots are no longer needed, release only the temporary holds recorded for this migration. For an individual held snapshot, on the server holding it:
-
-```bash
-zfs release service-replication-migration "${HELD_SNAPSHOT:?Set HELD_SNAPSHOT to a recorded held snapshot}"
-```
-
-Release recursively applied holds on the recorded migration hierarchy as appropriate. Releasing a hold does not delete a snapshot. Do not release holds belonging to other workflows or remove the last usable shared baseline.
-
-## When to Stop and Escalate
-
-Stop if the destination layout does not match, the root or parent needs an unsafe overwrite, snapshot GUIDs disagree, encrypted replication modes are incompatible, clones require special handling, or a transfer would discard backup-only data. Unexpected full-send estimates or incomplete receives also require review before proceeding.
-
-Keep the old task definitions and required snapshots while resolving the issue. If abandoning a partially completed migration, reassess the common snapshots and destination state before re-enabling old tasks; their previous baselines may no longer be the latest destination snapshots.
-
-## Customer Explanation
-
-We can usually preserve the data already replicated by bringing each dataset forward to one common migration snapshot. Each dataset uses its own existing snapshot as the starting point, so only its changes need to be transferred where a valid baseline exists. Once the root and all datasets share the new baseline with the backup, one recursive task can take over. Any dataset without a usable baseline may still need a full transfer, and the root layout must be checked before starting.
+If you abandon the migration, check the backup's current snapshot history before re-enabling the old tasks; their old starting snapshots may no longer be the latest ones on the backup.
 
 ## References
 
-These links describe current OpenZFS behavior. Check the installed version's manual before applying version-dependent options.
+Check the installed ZFS version's manual when preparing the customer's commands.
 
 - [OpenZFS zfs send manual](https://openzfs.github.io/openzfs-docs/man/master/8/zfs-send.8.html)
 - [OpenZFS zfs receive manual](https://openzfs.github.io/openzfs-docs/man/master/8/zfs-receive.8.html)

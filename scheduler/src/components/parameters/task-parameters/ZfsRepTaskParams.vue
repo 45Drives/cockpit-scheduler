@@ -24,7 +24,7 @@
                 'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
                 sourcePoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
             ]">
-                <option value="">Select a pool</option>
+                <option value="">{{ sourcePoolPlaceholder }}</option>
                 <option v-for="pool in sourcePools" :key="pool" :value="pool">{{ pool }}</option>
             </select>
 
@@ -146,7 +146,7 @@
                 'mt-1 block w-full input-textlike text-sm bg-default text-default rounded-md',
                 destPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
             ]">
-                <option value="">{{ destHost ? 'Select a pool' : 'Enter server address first' }}</option>
+                <option value="">{{ destHost ? destPoolPlaceholder : 'Enter server address first' }}</option>
                 <option v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
             </select>
 
@@ -260,7 +260,7 @@
                     <input type="text" v-model="sourcePool" :disabled="sourcePoolDisabled" :class="[
                         'mt-1 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
                         customSrcPoolErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
-                    ]" :placeholder="sourcePoolPlaceholder" />
+                    ]" :placeholder="sourcePoolDisabled ? 'Enter a Host first' : 'Select a Pool'" />
                 </div>
 
                 <div v-else>
@@ -889,15 +889,15 @@ const sourcePoolDisabled = computed(() => sourceIsRemote.value && remoteHostMiss
 const destPoolDisabled = computed(() => targetIsRemote.value && remoteHostMissing.value);
 
 const sourcePoolPlaceholder = computed(() =>
-    sourceIsRemote.value
-        ? (remoteHostMissing.value ? 'Enter a Host first' : 'Select a Pool')
-        : 'Select a Pool'
+    sourcePoolDisabled.value ? 'Enter a Host first'
+        : loadingSourcePools.value ? 'Loading...'
+        : sourcePools.value.length === 0 ? 'No pools found' : 'Select a Pool'
 );
 
 const destPoolPlaceholder = computed(() =>
-    targetIsRemote.value
-        ? (remoteHostMissing.value ? 'Enter a Host first' : 'Select a Pool')
-        : 'Select a Pool'
+    destPoolDisabled.value ? 'Enter a Host first'
+        : loadingDestPools.value ? 'Loading...'
+        : destPools.value.length === 0 ? 'No pools found' : 'Select a Pool'
 );
 const hasRemoteEndpoint = computed(() => isPull.value || destHost.value.trim() !== '');
 
@@ -1381,9 +1381,9 @@ const getSourcePools = async () => {
                 return;
             }
             const portToUse = (transferMethod.value === 'netcat' || transferMethod.value === 'mbuffer') ? '22' : String(destPort.value);
-            sourcePools.value = await getPoolData(destHost.value, portToUse, destUser.value);
+            sourcePools.value = (await getPoolData(destHost.value, portToUse, destUser.value) ?? []).filter(pool => pool.trim());
         } else {
-            sourcePools.value = await getPoolData();
+            sourcePools.value = (await getPoolData() ?? []).filter(pool => pool.trim());
         }
     } finally {
         loadingSourcePools.value = false;
@@ -1418,7 +1418,7 @@ const getTargetPools = async () => {
         } else {
             result = await getPoolData();
         }
-        destPools.value = result ?? [];
+        destPools.value = (result ?? []).filter(pool => pool.trim());
         if (!result || (Array.isArray(result) && result.length === 0)) {
             if (targetIsRemote.value && destHost.value) {
                 pushNotification(new Notification(

@@ -584,14 +584,15 @@ def test_plan_recursive_never_escalates_to_full_send_when_child_has_no_base():
     assert ctx.forceOverwrite is False
 
 
-def test_plan_recursive_clean_hierarchy_stays_incremental(monkeypatch):
+@pytest.mark.parametrize("suffix", ["s1", "job-a-2026-01-01_00.00.00", "job-a-2026.01.01-00.00.00"])
+def test_plan_recursive_clean_hierarchy_stays_incremental(monkeypatch, suffix):
     ctx = _recursive_ctx()
     ctx.allowOverwrite = True
-    ctx.sourceSnapshots = [snap("tank@s1", "g1", 1), snap("tank/samba@s1", "c1", 1)]
-    ctx.destinationSnapshots = [snap("backup/target@s1", "g1", 1), snap("backup/target/samba@s1", "c1", 1)]
+    ctx.sourceSnapshots = [snap(f"tank@{suffix}", "g1", 1), snap(f"tank/samba@{suffix}", "c1", 1)]
+    ctx.destinationSnapshots = [snap(f"backup/target@{suffix}", "g1", 1), snap(f"backup/target/samba@{suffix}", "c1", 1)]
     monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
     workflow._plan_send(ctx)
-    assert ctx.incrementalSnapName == "tank@s1"
+    assert ctx.incrementalSnapName == f"tank@{suffix}"
     assert ctx.forceOverwrite is False
 
 
@@ -710,6 +711,38 @@ def test_create_and_transfer_push_reports_post_processing(monkeypatch, capsys):
     workflow._create_and_transfer_snapshot(ctx)
     assert calls[0][0][:3] == ("tank/source@s1", "backup/target", "tank/source@s0")
     assert "Snapshot transfer completed" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("base_suffix", ["job-a-2026-01-01_00.00.00", "job-a-2026.01.01-00.00.00"])
+@pytest.mark.parametrize("direction", ["push", "pull"])
+def test_mixed_format_replication_remains_incremental(monkeypatch, base_suffix, direction):
+    ctx = ReplicationRun()
+    ctx.direction = direction
+    ctx.taskName = "job-a"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    ctx.remoteHost = "host"
+    ctx.remoteUser = "user"
+    ctx.sshPort = "22"
+    base = f"tank/source@{base_suffix}"
+    new_snapshot = "tank/source@job-a-2026.08.04-15.16.17"
+    ctx.sourceSnapshots = [snap(base, "g1", 1)]
+    ctx.destinationSnapshots = [snap(f"backup/target@{base_suffix}", "g1", 1)]
+    calls = []
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(workflow, "create_snapshot_local", lambda *args, **kwargs: new_snapshot)
+    monkeypatch.setattr(workflow, "create_snapshot_remote", lambda *args, **kwargs: new_snapshot)
+    monkeypatch.setattr(workflow, "snapshot_exists_on_destination", lambda *args, **kwargs: (False, ""))
+    monkeypatch.setattr(workflow, "send_snapshot_push", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(
+        workflow, "send_snapshot_pull",
+        lambda **kwargs: calls.append((kwargs["remoteSnapName"], kwargs["localRecvFs"], kwargs["remoteBaseSnapName"])),
+    )
+    workflow._plan_send(ctx)
+    workflow._create_and_transfer_snapshot(ctx)
+    assert ctx.incrementalSnapName == base
+    assert ctx.forceOverwrite is False
+    assert calls[0][:3] == (new_snapshot, "backup/target", base)
 
 
 def test_resume_interrupted_receive_success_continues_normal_workflow(monkeypatch):

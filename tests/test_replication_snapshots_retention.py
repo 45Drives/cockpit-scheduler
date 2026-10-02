@@ -1,10 +1,12 @@
 import datetime
+import importlib.util
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
 
-from conftest import RecordingNotifier
+from conftest import RecordingNotifier, SCRIPTS_DIR
 from replication import retention, snapshots
 from replication.constants import TASK_PROP, TIER_PROP
 from replication.models import Snapshot
@@ -22,6 +24,100 @@ def snap(name, guid="g", age_days=0, task_tag=None, tier_tag=None):
     return value
 
 
+@pytest.fixture
+def autosnap(monkeypatch):
+    spec = importlib.util.spec_from_file_location("autosnap_script", SCRIPTS_DIR / "autosnap-script.py")
+    module = importlib.util.module_from_spec(spec)
+    with monkeypatch.context() as streams:
+        streams.setattr(sys, "stdout", sys.stdout)
+        streams.setattr(sys, "stderr", sys.stderr)
+        spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "DEBUG_ENABLED", False)
+    monkeypatch.setattr(module, "notifier", RecordingNotifier())
+    return module
+
+
+@pytest.fixture
+def fixed_snapshot_time(monkeypatch):
+    class FixedDateTime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 4, 15, 16, 17)
+
+    monkeypatch.setattr(datetime, "datetime", FixedDateTime)
+
+
+@pytest.mark.parametrize("custom_name,tier_idx,prefix", [(None, None, "job-a"), ("daily", 2, "daily-t2")])
+@pytest.mark.parametrize("creator", ["autosnap", "local", "remote"])
+def test_all_snapshot_generators_use_dotted_timestamps(
+    monkeypatch, autosnap, fixed_snapshot_time, creator, custom_name, tier_idx, prefix
+):
+    calls = []
+    monkeypatch.setattr(autosnap, "run", lambda cmd, **kwargs: calls.append(cmd) or result())
+    monkeypatch.setattr(snapshots, "run_logged", lambda cmd, **kwargs: calls.append(cmd) or result())
+    monkeypatch.setattr(snapshots, "ssh_run_args", lambda user, host, port, cmd, **kwargs: calls.append(cmd) or result())
+    monkeypatch.setattr(snapshots, "get_available_bytes", lambda *args, **kwargs: 1024)
+    if creator == "autosnap":
+        name = autosnap.create_snapshot("tank/data", False, "job-a", custom_name, tier_idx=tier_idx)
+    elif creator == "local":
+        name = snapshots.create_snapshot_local("tank/data", False, "job-a", custom_name, tier_idx=tier_idx)
+    else:
+        name = snapshots.create_snapshot_remote(
+            "tank/data", False, "job-a", custom_name, "user", "host", "22", tier_idx=tier_idx
+        )
+    assert name == f"tank/data@{prefix}-2026.08.04-15.16.17"
+    assert calls[0] == ["zfs", "snapshot", name]
+    assert ["zfs", "set", f"{TASK_PROP}=job-a", name] in calls
+    if tier_idx is not None:
+        assert ["zfs", "set", f"{TIER_PROP}=t{tier_idx}", name] in calls
+
+
+@pytest.mark.parametrize("timestamp", ["2026-08-04_01.02.03", "2026.08.04-01.02.03"])
+@pytest.mark.parametrize("prefix", ["job-a", "job-a-t2", "daily", "daily-t2", "daily-job-a"])
+def test_autosnap_recognizes_both_timestamp_formats(autosnap, timestamp, prefix):
+    assert autosnap._is_autosnap_task_snapshot(f"tank/data@{prefix}-{timestamp}", "job-a", "daily")
+
+
+@pytest.mark.parametrize("engine", ["autosnap", "local", "remote"])
+def test_retention_handles_mixed_formats_without_claiming_foreign_snapshots(
+    monkeypatch, autosnap, fixed_snapshot_time, engine
+):
+    names = [
+        "tank/data@job-a-2026-01-01_00.00.00",
+        "tank/data@job-a-2026.01.02-00.00.00",
+        "tank/data@daily-t2-2026-01-03_00.00.00",
+        "tank/data@daily-t2-2026.01.04-00.00.00",
+        "tank/data@job-a-2026.01.05-00.00.00",
+        "tank/data@foreign-2026.01.06-00.00.00",
+        "tank/data@job-a-2026.08.04-15.16.17",
+    ]
+    values = [snap(name, age_days=100) for name in names]
+    values[4].task_tag = "other-task"
+    values[5].task_tag = "job-a"
+    values[6].creation = datetime.datetime.now()
+    values[6].creation_epoch = int(values[6].creation.timestamp())
+    excluded = names[3]
+    deleted = []
+    if engine == "autosnap":
+        inventory = [
+            autosnap.Snapshot(value.name, value.guid, value.creation_epoch, value.task_tag, value.tier_tag)
+            for value in values
+        ]
+        monkeypatch.setattr(autosnap, "get_local_snapshots", lambda fs: inventory)
+        monkeypatch.setattr(autosnap, "safe_destroy", lambda name: deleted.append(name) or True)
+        autosnap.prune_snapshots_by_retention("tank/data", "job-a", 5, "days", excluded, custom_name="daily")
+    else:
+        monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: values)
+        monkeypatch.setattr(retention, "get_remote_snapshots", lambda *args: values)
+        monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
+        monkeypatch.setattr(retention, "safe_destroy_remote", lambda name, *args: deleted.append(name) or True)
+        retention.prune_snapshots_by_retention(
+            "tank/data", "job-a", 5, "days", excluded, custom_name="daily",
+            remote_user="user", remote_host="host" if engine == "remote" else None,
+        )
+    assert set(deleted) == {names[0], names[1], names[2], names[5]}
+
+
 def test_snapshot_line_parsing_and_dataset_helpers():
     parsed = snapshots.parse_snapshot_line("tank/data@s1\tguid 1\t1700000000\t123")
     assert parsed.name == "tank/data@s1"
@@ -33,19 +129,21 @@ def test_snapshot_line_parsing_and_dataset_helpers():
     assert snapshots.dataset_of_snapshot("tank/data@s1") == "tank/data"
 
 
-def test_task_snapshot_matching_does_not_claim_other_tasks():
-    assert snapshots.is_task_snapshot("tank/data@backup-2026-08-04", "backup")
-    assert snapshots.is_task_snapshot("tank/data@pretty-t2-2026-08-04", "backup", "pretty")
-    assert snapshots.is_task_snapshot("tank/data@pretty-backup-2026-08-04", "backup", "pretty")
-    assert not snapshots.is_task_snapshot("tank/data@backup2-2026-08-04", "backup")
+@pytest.mark.parametrize("timestamp", ["2026-08-04", "2026-08-04_01.02.03", "2026.08.04-01.02.03"])
+def test_task_snapshot_matching_does_not_claim_other_tasks(timestamp):
+    assert snapshots.is_task_snapshot(f"tank/data@backup-{timestamp}", "backup")
+    assert snapshots.is_task_snapshot(f"tank/data@pretty-t2-{timestamp}", "backup", "pretty")
+    assert snapshots.is_task_snapshot(f"tank/data@pretty-backup-{timestamp}", "backup", "pretty")
+    assert not snapshots.is_task_snapshot(f"tank/data@backup2-{timestamp}", "backup")
     assert not snapshots.is_task_snapshot("tank/data@anything", "")
 
 
-def test_task_snapshot_matching_does_not_claim_sibling_task_sharing_a_prefix():
-    assert snapshots.is_task_snapshot("tank/data@backup-t1-2026-08-04_01.02.03", "backup")
-    assert snapshots.is_task_snapshot("tank/data@backup-daily-2026-08-04_01.02.03", "backup-daily")
-    assert not snapshots.is_task_snapshot("tank/data@backup-daily-2026-08-04_01.02.03", "backup")
-    assert not snapshots.is_task_snapshot("tank/data@backup-daily-t1-2026-08-04_01.02.03", "backup")
+@pytest.mark.parametrize("timestamp", ["2026-08-04_01.02.03", "2026.08.04-01.02.03"])
+def test_task_snapshot_matching_does_not_claim_sibling_task_sharing_a_prefix(timestamp):
+    assert snapshots.is_task_snapshot(f"tank/data@backup-t1-{timestamp}", "backup")
+    assert snapshots.is_task_snapshot(f"tank/data@backup-daily-{timestamp}", "backup-daily")
+    assert not snapshots.is_task_snapshot(f"tank/data@backup-daily-{timestamp}", "backup")
+    assert not snapshots.is_task_snapshot(f"tank/data@backup-daily-t1-{timestamp}", "backup")
 
 
 def test_local_inventory_parses_properties_and_ignores_bad_rows(monkeypatch):
@@ -81,7 +179,7 @@ def test_property_helpers_accept_numbers_and_reject_dash(monkeypatch):
 
 def test_create_local_snapshot_builds_recursive_name_and_tags_whole_tree(monkeypatch):
     calls = []
-    suffix = "daily-t2-2026-08-04_15.16.17"
+    suffix = "daily-t2-2026.08.04-15.16.17"
     listing = "\n".join([
         f"tank/data@{suffix}",
         f"tank/data/samba@{suffix}",

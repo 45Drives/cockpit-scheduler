@@ -172,7 +172,7 @@ def create_snapshot(filesystem: str, is_recursive: bool, task_name: str, custom_
         dbg("ERROR: filesystem is empty")
         sys.exit(1)
 
-    ts = dt.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    ts = dt.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
     tier_tag = f"-t{tier_idx}" if tier_idx is not None else ""
     if custom_name:
         snapname = f"{filesystem}@{custom_name}{tier_tag}-{ts}"

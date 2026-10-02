@@ -60,6 +60,14 @@ Depending on which task types you actually use, you may also need:
 - SSH connectivity for remote replication or rsync jobs
 - Valid cloud provider credentials or OAuth client information for Cloud Sync remotes
 
+## Snapshot Naming Compatibility
+
+New automated snapshots and ZFS replication snapshots use `taskName-YYYY.MM.DD-HH.MM.SS`, for example `backup-2026.09.22-12.48.46`. A custom name replaces the task-name prefix; tiered schedules retain the optional `-tN` suffix before the timestamp. The timestamp continues to use the scheduler host's local time.
+
+Existing snapshots are not renamed. Ownership matching accepts both the previous `YYYY-MM-DD_HH.MM.SS` format and the new dotted format, including custom prefixes and tiers. Retention uses ZFS creation metadata, and replication selects shared incremental bases by GUID, so changing the naming format does not itself require a full resync.
+
+Deploy the updated scripts to every scheduler installation managing these snapshots. Older scheduler versions and external tools may have their own naming filters; verify those filters and support for tiered names before rollout. No changes to existing task settings are required.
+
 ## Build Prerequisites
 
 To build from source locally, you should have:
