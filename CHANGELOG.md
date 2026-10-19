@@ -1,3 +1,3 @@
-## task scheduler 1.9.5-1
+## task scheduler 1.9.6-1
 
-* Updates snapshot name's timestamp format to match Snapshield/Python default
+* Fix pull resume deadlock and surface zfs recv errors on broken resume pipelines + Remove duplicate resume-failure log line when clearing token
