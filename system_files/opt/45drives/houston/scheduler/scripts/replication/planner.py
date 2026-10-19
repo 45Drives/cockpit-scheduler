@@ -12,7 +12,8 @@ def build_zfs_send_args(sendName, sendName2, *, recursive, compressed, raw, incl
     if recursive:
         args.append("-R")
     if compressed:
-        args.append("-Lce")
+        # No -e: an encrypted destination rejects embedded-data records from a non-raw stream.
+        args.append("-Lc")
     if raw:
         args.append("-w")
     if sendName2:

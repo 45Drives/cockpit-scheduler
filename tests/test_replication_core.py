@@ -65,8 +65,14 @@ def test_incremental_send_flag_matrix(recursive, include, expected_flag):
 
 def test_send_flags_are_composed_without_incremental_base():
     assert build_zfs_send_args("tank/data@snap", "", recursive=True, compressed=True, raw=True) == [
-        "zfs", "send", "-R", "-Lce", "-w", "tank/data@snap"
+        "zfs", "send", "-R", "-Lc", "-w", "tank/data@snap"
     ]
+
+
+def test_compressed_send_omits_embedded_data_flag():
+    args = build_zfs_send_args("tank/data@new", "tank/data@old", recursive=False, compressed=True, raw=False)
+    assert "-Lc" in args
+    assert not any(a.startswith("-") and not a.startswith("--") and "e" in a for a in args)
 
 
 @pytest.mark.parametrize(
