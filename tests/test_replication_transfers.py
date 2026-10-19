@@ -1,5 +1,13 @@
+import subprocess
+import sys
+import threading
+
+import pytest
+
 from conftest import FakeProcess, RecordingNotifier
 from replication.transfers import common, pull, push, resume
+
+_REAL_POPEN = subprocess.Popen
 
 
 def test_local_push_constructs_force_receive_and_completes(monkeypatch):
@@ -96,6 +104,63 @@ def test_ssh_resume_pull_uses_remote_token_stream(monkeypatch):
     assert remote_commands == [["zfs", "send", "-t", "1-token"]]
     assert ["zfs", "recv", "-s", "-F", "backup/target"] in local_commands
     assert recorder.messages[-1] == "STATUS=Pull resume receive completed."
+
+
+# Stream must exceed the 64 KiB pipe buffer, or mbuffer finishes writing before recv is gone.
+_STUB_SENDER = "import sys; sys.stdout.buffer.write(b'x' * (2 * 1024 * 1024))"
+_STUB_MBUFFER_BUFFERED = "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read()); sys.stdout.buffer.flush()"
+# Real mbuffer streams, so it dies on SIGPIPE mid-transfer and the copy loop sees a broken pipe.
+_STUB_MBUFFER_STREAMING = "import sys, shutil; shutil.copyfileobj(sys.stdin.buffer, sys.stdout.buffer, 65536)"
+_STUB_RECV_REJECTS = (
+    "import sys; sys.stderr.write('cannot receive resume stream: injected rejection\\n'); sys.exit(1)"
+)
+
+
+@pytest.mark.parametrize("mbuffer_stub", [_STUB_MBUFFER_BUFFERED, _STUB_MBUFFER_STREAMING], ids=["buffered", "streaming"])
+def test_ssh_resume_pull_returns_recv_error_instead_of_hanging(monkeypatch, mbuffer_stub):
+    """zfs recv rejecting a resumed stream used to leave the run stuck at 100% forever."""
+    spawned = []
+
+    def stub_popen(cmd, **kwargs):
+        if cmd and cmd[0] == "mbuffer":
+            cmd = [sys.executable, "-c", mbuffer_stub]
+        elif cmd[:2] == ["zfs", "recv"]:
+            cmd = [sys.executable, "-c", _STUB_RECV_REJECTS]
+        p = _REAL_POPEN(cmd, **kwargs)
+        spawned.append(p)
+        return p
+
+    def stub_ssh(user, host, port, args, **kwargs):
+        p = _REAL_POPEN([sys.executable, "-c", _STUB_SENDER], **kwargs)
+        spawned.append(p)
+        return p
+
+    monkeypatch.setattr(resume.subprocess, "Popen", stub_popen)
+    monkeypatch.setattr(resume, "ssh_popen_args", stub_ssh)
+    monkeypatch.setattr(resume, "remote_has_command", lambda *args, **kwargs: False)
+    monkeypatch.setattr(resume, "estimate_send_size_remote", lambda *args: None)
+    monkeypatch.setattr(resume, "notifier", RecordingNotifier())
+
+    result = {}
+
+    def run():
+        result["value"] = resume.resume_receive_pull(
+            "1-token", "backup/target", remoteHost="host", remoteUser="root",
+            forceOverwrite=True, stall_timeout=0,
+        )
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout=30)
+    if worker.is_alive():
+        for p in spawned:
+            p.kill()
+        worker.join(timeout=10)
+        pytest.fail("resume_receive_pull deadlocked after zfs recv exited early")
+
+    ok, error = result["value"]
+    assert ok is False
+    assert "injected rejection" in error
 
 
 def test_mbuffer_push_constructs_listener_and_network_sender(monkeypatch):

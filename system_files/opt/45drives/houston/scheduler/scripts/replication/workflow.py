@@ -469,8 +469,9 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
                 print(hard_msg)
                 sys.exit(2)
             warn_msg = f'Resume attempt failed for {ctx.destFilesystem}. Continuing with normal replication.'
-            notifier.notify(f'STATUS={warn_msg}')
-            print(warn_msg)
+            if not (ctx.resumeFailAllowOverwrite or needs_overwrite):
+                notifier.notify(f'STATUS={warn_msg}')
+                print(warn_msg)
             send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': f'{warn_msg} Token: {resume_token}. Error: {err}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{resume_token} | {err}'})
     elif not ctx.pending_state:
         resume_token = get_receive_resume_token(ctx.destFilesystem, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
@@ -507,8 +508,9 @@ def _resume_interrupted_receive(ctx: ReplicationRun):
                 print(hard_msg)
                 sys.exit(2)
             warn_msg = f'Resume attempt failed for {ctx.destFilesystem}. Continuing with normal replication.'
-            notifier.notify(f'STATUS={warn_msg}')
-            print(warn_msg)
+            if not (ctx.resumeFailAllowOverwrite or needs_overwrite):
+                notifier.notify(f'STATUS={warn_msg}')
+                print(warn_msg)
             send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': f'{warn_msg} Token: {resume_token}. Error: {err}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{resume_token} | {err}'})
     if ctx.resumeOnly:
         print('RESUME ONLY mode: resume was attempted but did not complete successfully.')

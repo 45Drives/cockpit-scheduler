@@ -58,6 +58,7 @@ Regression suite for the resume + SSH cipher work (also disposable pools):
   live-replication-harness.sh scenario-resume-all
   live-replication-harness.sh scenario-resume-continues
   live-replication-harness.sh scenario-resume-only-stops
+  live-replication-harness.sh scenario-resume-recv-rejects
   live-replication-harness.sh scenario-cipher-all
   live-replication-harness.sh scenario-cipher-availability [host] [user] [port]
   live-replication-harness.sh scenario-cipher-send <cipher>
@@ -811,6 +812,9 @@ HIER_DST_RET_UNIT=""
 HIER_RECURSIVE="true"
 HIER_AUTO_RECOVER="true"
 HIER_RESUME_ONLY="false"
+HIER_RESUME_FAIL_CLEAR="false"
+HIER_RUN_TIMEOUT=""
+HIER_PATH_PREFIX=""
 HIER_SSH_CIPHER=""
 HIER_RESUME_SNAP="resumeseed"
 HIER_LASTRUN="/etc/systemd/system/houston_scheduler_ZfsReplicationTask_${HIER_TASK}.lastrun"
@@ -852,6 +856,9 @@ hier_reset_mode() {
   HIER_RECURSIVE="true"
   HIER_AUTO_RECOVER="true"
   HIER_RESUME_ONLY="false"
+  HIER_RESUME_FAIL_CLEAR="false"
+  HIER_RUN_TIMEOUT=""
+  HIER_PATH_PREFIX=""
   HIER_SSH_CIPHER=""
 }
 
@@ -1090,6 +1097,7 @@ zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
 zfsRepConfig_sendOptions_transferMethod=$HIER_TRANSPORT
 zfsRepConfig_sendOptions_sshCipher=$HIER_SSH_CIPHER
 zfsRepConfig_sendOptions_resumeOnly=$HIER_RESUME_ONLY
+zfsRepConfig_sendOptions_resumeFailAllowOverwrite=$HIER_RESUME_FAIL_CLEAR
 zfsRepConfig_sendOptions_mbufferCallbackHost=$HIER_HOST
 zfsRepConfig_sendOptions_allowOverwrite=$allow_overwrite
 zfsRepConfig_sendOptions_autoRecover=$HIER_AUTO_RECOVER
@@ -1117,13 +1125,18 @@ hier_run_task() {
 
   local -a env_args=()
   mapfile -t env_args < <(hier_env_kv "$allow_overwrite" "$use_existing" "$force_full")
+  [[ -n "$HIER_PATH_PREFIX" ]] && env_args+=("PATH=$HIER_PATH_PREFIX:$PATH")
+
+  # A hung run exits 124 instead of blocking the whole harness.
+  local -a runner=()
+  [[ -n "$HIER_RUN_TIMEOUT" ]] && runner=(timeout --kill-after=15 "$HIER_RUN_TIMEOUT")
 
   set +e
   if [[ "$quiet" == "quiet" ]]; then
-    env "${env_args[@]}" python3 "$script" >"$HIER_OUT" 2>&1
+    ${runner[@]+"${runner[@]}"} env "${env_args[@]}" python3 "$script" >"$HIER_OUT" 2>&1
     HIER_RC=$?
   else
-    env "${env_args[@]}" python3 "$script" >"$HIER_OUT" 2>&1
+    ${runner[@]+"${runner[@]}"} env "${env_args[@]}" python3 "$script" >"$HIER_OUT" 2>&1
     HIER_RC=$?
     cat "$HIER_OUT"
   fi
@@ -1823,10 +1836,84 @@ cmd_scenario_resume_only_stops() {
   HIER_RECURSIVE="$previous_recursive"
 }
 
+# A `zfs` wrapper that fails the next resumable receive without reading stdin, the
+# way a real recv rejects a resumed stream. `recv -A` (token clear) passes through.
+hier_write_recv_reject_shim() {
+  local real_zfs shim_dir="$HIER_WORK_DIR/shim"
+  real_zfs="$(command -v zfs)"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/zfs" <<EOF
+#!/bin/bash
+if [[ "\$1" == recv || "\$1" == receive ]] && [[ " \$* " != *" -A "* ]] && rm "$shim_dir/trip" 2>/dev/null; then
+  echo "cannot receive resume stream: harness-injected rejection" >&2
+  exit 1
+fi
+exec "$real_zfs" "\$@"
+EOF
+  chmod +x "$shim_dir/zfs"
+  touch "$shim_dir/trip"
+  HIER_PATH_PREFIX="$shim_dir"
+}
+
+# Field case (v1.9.5): pull over SSH, "clear token and continue" on, recv rejects the
+# resumed stream. The run hung at "Resuming (pull) 100%" forever instead of clearing
+# the token and continuing.
+cmd_scenario_resume_recv_rejects() {
+  local previous_recursive="$HIER_RECURSIVE" reason
+
+  hier_set_mode pull ssh
+  hier_say "resume-recv-rejects [$(hier_mode_label)]: a rejected resume must surface the error and continue"
+  if reason="$(hier_mode_unavailable)"; then
+    hier_info "SKIP: $reason"
+    hier_reset_mode
+    return 0
+  fi
+  if ! command -v mbuffer >/dev/null 2>&1; then
+    hier_info "SKIP: mbuffer not installed (the ssh pull pipeline requires it)"
+    hier_reset_mode
+    return 0
+  fi
+
+  HIER_RECURSIVE=false
+  hier_setup
+  rm -f "$HIER_LASTRUN"
+  hier_run_task true false false quiet; hier_expect_rc 0 "initial full send"
+
+  hier_make_resume_token
+  hier_expect_token present "interrupted receive left a resume token"
+  hier_write_data post "$HIER_SRC_FS"
+
+  hier_write_recv_reject_shim
+  HIER_RESUME_FAIL_CLEAR=true
+  HIER_RUN_TIMEOUT="${HIER_RESUME_REJECT_TIMEOUT:-300}"
+  hier_run_task true false
+  HIER_RUN_TIMEOUT=""
+  HIER_PATH_PREFIX=""
+  HIER_RESUME_FAIL_CLEAR=false
+
+  if [[ "$HIER_RC" -eq 124 || "$HIER_RC" -eq 137 ]]; then
+    hier_fail "run hung after the rejected resume and was killed by the timeout (the field bug)"
+    ps -eo pid,stat,wchan:20,args | grep -E '[m]buffer|[z]fs (recv|receive)' | sed 's/^/     /' || true
+  else
+    hier_expect_rc 0 "rejected resume + continue run"
+  fi
+  hier_expect_log 'Attempting to resume receive' "token was detected"
+  hier_expect_log 'harness-injected rejection' "recv error was surfaced, not swallowed"
+  hier_expect_log 'clearing resume token and continuing' "clear-token-and-continue path engaged"
+  hier_expect_token absent "resume token was cleared"
+  hier_expect_new_snapshot "post-clear incremental"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "post-clear incremental landed"
+
+  HIER_RECURSIVE="$previous_recursive"
+  hier_reset_mode
+}
+
 cmd_scenario_resume_all() {
   hier_reset_mode
   cmd_scenario_resume_continues
   cmd_scenario_resume_only_stops
+  cmd_scenario_resume_recv_rejects
+  hier_reset_mode
   hier_teardown
   hier_say "resume scenarios finished with $HIER_FAILURES failure(s)"
   [[ "$HIER_FAILURES" -eq 0 ]]
@@ -2265,7 +2352,7 @@ main() {
       hier_require_root
       cmd_scenario_resume_all
       ;;
-    scenario-resume-continues|scenario-resume-only-stops)
+    scenario-resume-continues|scenario-resume-only-stops|scenario-resume-recv-rejects)
       [[ $# -eq 0 ]] || { usage; exit 1; }
       hier_require_root
       hier_reset_mode

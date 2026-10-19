@@ -8,6 +8,32 @@ import time
 from .common import *
 
 
+def _broken_pipe_failure(recv_proc, *others):
+    """Tear down after a broken pipe, returning recv's own error so the workflow can classify it."""
+    try:
+        recv_proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    _kill_procs(*others, recv_proc)
+    recv_err = ""
+    try:
+        if recv_proc.stderr:
+            recv_err = recv_proc.stderr.read()
+    except (OSError, ValueError):
+        pass
+    if isinstance(recv_err, bytes):
+        recv_err = recv_err.decode(errors="replace")
+    recv_err = (recv_err or "").strip()
+
+    notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
+    if recv_err:
+        err_msg = f"ERROR: recv error: {recv_err}"
+    else:
+        err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
+    safe_print(err_msg)
+    return False, err_msg
+
+
 def _start_remote_recv_over_ssh(
     recv_host_user,
     recv_host,
@@ -182,11 +208,7 @@ def resume_receive_push(
             return False, str(e)
 
         if pipe_broken:
-            _kill_procs(process_send, process_recv)
-            notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
-            err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
-            safe_print(err_msg)
-            return False, err_msg
+            return _broken_pipe_failure(process_recv, process_send)
 
         try:
             _close_pipe(process_recv.stdin)
@@ -475,6 +497,7 @@ def resume_receive_push(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    mbuf_capture = StreamCapture(process_m_buff.stderr)
 
     process_remote_recv = _start_remote_recv_over_ssh(
         recvHostUser,
@@ -505,31 +528,22 @@ def resume_receive_push(
         return False, str(e)
 
     if pipe_broken:
-        _kill_procs(process_send, process_m_buff, process_remote_recv)
-        notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
-        err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
-        safe_print(err_msg)
-        return False, err_msg
+        return _broken_pipe_failure(process_remote_recv, process_send, process_m_buff)
 
     try:
         _close_pipe(process_m_buff.stdin)
     except Exception:
         pass
 
-    send_stderr = process_send.stderr.read().decode(errors="replace") if process_send.stderr else ""
-    mbuf_stderr = ""
-    if process_m_buff.stderr:
-        try:
-            mbuf_stderr = process_m_buff.stderr.read().decode(errors="replace")
-        except (OSError, ValueError):
-            pass
     try:
-        _wait_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _, send_stderr = _communicate_with_finalize_heartbeat(process_send, "zfs send", PIPELINE_FINALIZE_TIMEOUT)
         _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
     except subprocess.TimeoutExpired:
         _kill_procs(process_send, process_m_buff, process_remote_recv)
         notifier.notify("STATUS=Finalization timed out — resume send pipeline killed.")
         return False, f"zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
+    send_stderr = send_stderr.decode(errors="replace") if send_stderr else ""
+    mbuf_stderr = mbuf_capture.text()
 
     try:
         stdout, stderr = _communicate_with_finalize_heartbeat(
@@ -926,11 +940,7 @@ def resume_receive_pull(
             return False, str(e)
 
         if pipe_broken:
-            _kill_procs(process_mbuffer, process_local_recv, ssh_process_sender)
-            notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
-            err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
-            safe_print(err_msg)
-            return False, err_msg
+            return _broken_pipe_failure(process_local_recv, process_mbuffer, ssh_process_sender)
 
         try:
             _close_pipe(process_local_recv.stdin)
@@ -1009,6 +1019,7 @@ def resume_receive_pull(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    mbuf_capture = StreamCapture(process_m_buff.stderr)
 
     recv_cmd = ["zfs", "recv", "-s"]
     if forceOverwrite:
@@ -1023,6 +1034,8 @@ def resume_receive_pull(
         universal_newlines=True,
     )
     dbg(f"PIPE recv pid={process_local_recv.pid}")
+    # Without this, an early recv exit leaves mbuffer blocked writing to a pipe only we hold open.
+    _close_pipe(process_m_buff.stdout)
 
     if process_remote_send.stdout is None or process_m_buff.stdin is None:
         raise RuntimeError("Failed to initialize resume pull pipes.")
@@ -1039,31 +1052,25 @@ def resume_receive_pull(
         return False, str(e)
 
     if pipe_broken:
-        _kill_procs(process_remote_send, process_m_buff, process_local_recv)
-        notifier.notify("STATUS=Resume transfer failed — downstream pipe broken.")
-        err_msg = "ERROR: Resume transfer pipe broken. Downstream process (recv) likely died."
-        safe_print(err_msg)
-        return False, err_msg
+        return _broken_pipe_failure(process_local_recv, process_remote_send, process_m_buff)
 
     try:
         _close_pipe(process_m_buff.stdin)
     except Exception:
         pass
 
-    remote_err = process_remote_send.stderr.read().decode(errors="replace") if process_remote_send.stderr else ""
-    mbuf_stderr = ""
-    if process_m_buff.stderr:
-        try:
-            mbuf_stderr = process_m_buff.stderr.read().decode(errors="replace")
-        except (OSError, ValueError):
-            pass
+    notifier.notify("STATUS=Finalizing receive… waiting for pipeline to complete.")
     try:
-        _wait_with_finalize_heartbeat(process_remote_send, "remote zfs send", PIPELINE_FINALIZE_TIMEOUT)
+        _, remote_err = _communicate_with_finalize_heartbeat(
+            process_remote_send, "remote zfs send", PIPELINE_FINALIZE_TIMEOUT
+        )
         _wait_with_finalize_heartbeat(process_m_buff, "mbuffer flush", PIPELINE_FINALIZE_TIMEOUT)
     except subprocess.TimeoutExpired:
         _kill_procs(process_remote_send, process_m_buff, process_local_recv)
         notifier.notify("STATUS=Finalization timed out — resume pull pipeline killed.")
         return False, f"Remote zfs send/mbuffer did not exit within {PIPELINE_FINALIZE_TIMEOUT}s. Processes killed."
+    remote_err = remote_err.decode(errors="replace") if remote_err else ""
+    mbuf_stderr = mbuf_capture.text()
 
     try:
         stdout, stderr = _communicate_with_finalize_heartbeat(
