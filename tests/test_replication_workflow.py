@@ -286,6 +286,7 @@ def test_plan_falls_back_to_untagged_base_when_task_chain_diverged(monkeypatch):
     dst_task.task_tag = "job-a"
     ctx.sourceSnapshots = [snap("tank/source@manual", "gm", 1), src_task]
     ctx.destinationSnapshots = [dst_task, snap("backup/target@manual", "gm", 1)]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
     workflow._plan_send(ctx)
     assert ctx.incrementalSnapName == "tank/source@manual"
     assert ctx.forceOverwrite is False
@@ -302,6 +303,7 @@ def test_plan_prefers_task_owned_base_on_creation_tie(monkeypatch):
     dst_task.task_tag = "job-a"
     ctx.sourceSnapshots = [snap("tank/source@manual", "gm", 5), src_task]
     ctx.destinationSnapshots = [snap("backup/target@manual", "gm", 5), dst_task]
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
     workflow._plan_send(ctx)
     assert ctx.incrementalSnapName == "tank/source@job-a-2026-01-01_00.00.00"
 
@@ -360,9 +362,129 @@ def test_auto_recover_refuses_snapshots_another_task_owns(monkeypatch):
 def test_auto_recover_refuses_when_destination_was_written_to(monkeypatch):
     ctx = _ahead_ctx()
     monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 4096)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda *args: False)
     with pytest.raises(SystemExit) as exc:
         workflow._plan_send(ctx)
     assert exc.value.code == 2
+
+
+def test_auto_recover_rolls_back_over_metadata_only_writes(monkeypatch):
+    ctx = _ahead_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 759 * 1024)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda *args: True)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+# Found live: mounting a dataset received non-raw into encrypted storage writes ZFS's own
+# user/group accounting, so the next incremental saw "destination has been modified".
+class _ZfsProc:
+    def __init__(self, rc=0, out=""):
+        self.returncode, self.stdout, self.stderr = rc, out, ""
+
+
+def _metadata_ctx(monkeypatch, written_lines, diffs, recursive=False):
+    """written_lines: `zfs get written@` output; diffs: dataset -> (rc, output) of `zfs diff`."""
+    calls = []
+
+    def fake_dest_run(ctx, args, timeout=30):
+        calls.append(args)
+        if args[1] == "get":
+            return _ZfsProc(0, written_lines)
+        rc, out = diffs[args[-1].partition("@")[0]]
+        return _ZfsProc(rc, out)
+
+    monkeypatch.setattr(workflow, "_dest_run", fake_dest_run)
+    ctx = ReplicationRun()
+    ctx.destFilesystem = "backup/target"
+    ctx.isRecursiveSnap = recursive
+    return ctx, calls
+
+
+def test_metadata_only_when_no_file_changed(monkeypatch):
+    ctx, calls = _metadata_ctx(monkeypatch, "backup/target\t777216\n", {"backup/target": (0, "")})
+    assert workflow._dest_changes_are_metadata_only(ctx, "backup/target@s1") is True
+    assert calls[-1] == ["zfs", "diff", "-H", "backup/target@s1"]
+
+
+def test_real_file_change_is_not_metadata(monkeypatch):
+    ctx, _ = _metadata_ctx(monkeypatch, "backup/target\t4096\n", {"backup/target": (0, "M\t/mnt/backup/file\n")})
+    assert workflow._dest_changes_are_metadata_only(ctx, "backup/target@s1") is False
+
+
+def test_unreadable_diff_is_not_metadata(monkeypatch):
+    ctx, _ = _metadata_ctx(monkeypatch, "backup/target\t4096\n", {"backup/target": (1, "")})
+    assert workflow._dest_changes_are_metadata_only(ctx, "backup/target@s1") is False
+
+
+def test_recursive_metadata_check_diffs_every_written_child_and_skips_clean_ones(monkeypatch):
+    written = "backup/target\t0\nbackup/target/a\t65536\nbackup/target/b\t131072\n"
+    diffs = {"backup/target/a": (0, ""), "backup/target/b": (0, "+\t/mnt/b/new\n")}
+    ctx, calls = _metadata_ctx(monkeypatch, written, diffs, recursive=True)
+    assert workflow._dest_changes_are_metadata_only(ctx, "backup/target@s1") is False
+    diffed = [c[-1] for c in calls if c[1] == "diff"]
+    assert "backup/target@s1" not in diffed and "backup/target/a@s1" in diffed
+
+
+def _clean_base_ctx(auto_recover=True, recursive=False):
+    ctx = ReplicationRun()
+    ctx.taskName = "job"
+    ctx.sourceFilesystem = "tank/source"
+    ctx.destFilesystem = "backup/target"
+    ctx.autoRecover = auto_recover
+    ctx.isRecursiveSnap = recursive
+    ctx.sourceSnapshots = [snap("tank/source@s1", "g1", 1)]
+    ctx.destinationSnapshots = [snap("backup/target@s1", "g1", 1)]
+    return ctx
+
+
+def test_metadata_only_writes_are_rolled_back_under_task_owned_policy(monkeypatch):
+    ctx = _clean_base_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 759 * 1024)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda *args: True)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is True
+
+
+def test_metadata_only_writes_stop_under_stop_and_report(monkeypatch, capsys):
+    ctx = _clean_base_ctx(auto_recover=False)
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 759 * 1024)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda *args: True)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+    assert "-u" in capsys.readouterr().out
+
+
+def test_real_destination_changes_stop_with_a_permanent_failure(monkeypatch):
+    ctx = _clean_base_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 4096)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda *args: False)
+    with pytest.raises(SystemExit) as exc:
+        workflow._plan_send(ctx)
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("extra, rolls_back", [([], True), (["orphan"], False), (None, False)])
+def test_recursive_metadata_rollback_needs_matching_layouts(monkeypatch, extra, rolls_back):
+    ctx = _clean_base_ctx(recursive=True)
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 759 * 1024)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda *args: True)
+    monkeypatch.setattr(workflow, "_destination_only_datasets", lambda c: extra)
+    if rolls_back:
+        workflow._plan_send(ctx)
+        assert ctx.forceOverwrite is True
+    else:
+        with pytest.raises(SystemExit) as exc:
+            workflow._plan_send(ctx)
+        assert exc.value.code == 2
+
+
+def test_clean_destination_stays_incremental_without_force(monkeypatch):
+    ctx = _clean_base_ctx()
+    monkeypatch.setattr(workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
+    workflow._plan_send(ctx)
+    assert ctx.forceOverwrite is False
 
 
 def test_auto_recover_refuses_when_destination_cannot_be_checked(monkeypatch):
