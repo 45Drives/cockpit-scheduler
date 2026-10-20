@@ -625,19 +625,27 @@
                     <label class="text-sm leading-6 text-default flex items-center">
                         Send Raw
                         <InfoTile class="ml-1"
-                            :title="`Sends the stream exactly as stored, preserving source encryption. For recursive hierarchies containing encrypted datasets, pick one strategy and stay with it: mixing raw and non-raw sends in the same incremental chain breaks the chain.`" />
+                            :title="`Adds zfs send -w (ZFS treats it as also including -L, -c and -e). Sends the stream exactly as stored, preserving source encryption. For recursive hierarchies containing encrypted datasets, pick one strategy and stay with it: mixing raw and non-raw sends in the same incremental chain breaks the chain.`" />
                     </label>
                     <input type="checkbox" v-model="sendRaw" @change="handleCheckboxChange('sendRaw')"
                         class=" h-4 w-4 rounded" />
                 </div>
                 <div name="send-opt-compressed" class="flex flex-row items-center gap-2 mt-1 col-span-1">
-                    <label class="block text-sm leading-6 text-default">Send Compressed</label>
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        Send Compressed
+                        <InfoTile class="ml-1"
+                            :title="`Adds zfs send -L -c: blocks larger than 128K are sent whole, and data is sent as it is compressed on disk instead of being decompressed and recompressed. -e is not added because encrypted destinations reject it; add it under Extra ZFS Arguments if the destination is not encrypted.`" />
+                    </label>
                     <input type="checkbox" v-model="sendCompressed" @change="handleCheckboxChange('sendCompressed')"
                         class=" h-4 w-4 rounded" />
                 </div>
             </div>
             <div name="send-opt-recursive" class="flex flex-row items-center gap-2 mt-2">
-                <label class="block text-sm leading-6 text-default">Send Recursive</label>
+                <label class="text-sm leading-6 text-default flex items-center">
+                    Send Recursive
+                    <InfoTile class="ml-1"
+                        :title="`Adds zfs send -R: sends every child dataset along with dataset properties (so -p is not needed).`" />
+                </label>
                 <input type="checkbox" v-model="sendRecursive" class="h-4 w-4 rounded" />
             </div>
             <p v-if="showRecursiveHistoryRecommendation" class="mt-1 text-xs text-yellow-500">
@@ -645,7 +653,11 @@
                 Snapshots.
             </p>
             <div name="send-opt-include-intermediates" class="flex flex-row items-center gap-2 mt-2">
-                <label class="block text-sm leading-6 text-default">Include Intermediate Snapshots</label>
+                <label class="text-sm leading-6 text-default flex items-center">
+                    Include Intermediate Snapshots
+                    <InfoTile class="ml-1"
+                        :title="`Incremental sends use zfs send -I (every snapshot in between) instead of -i (only the newest). Has no effect on a full send.`" />
+                </label>
                 <input type="checkbox" v-model="includeIntermediateSnapshots" class="h-4 w-4 rounded" />
             </div>
             <p class="text-xs text-muted">
@@ -666,7 +678,11 @@
             <div name="send-opt-custom-name mt-2">
                 <div name="custom-snapshot-name-toggle" class=" flex flex-row items-center justify-between">
                     <div class="flex flex-row items-center gap-2 mt-2">
-                        <label class="block text-sm leading-6 text-default">Use Custom Snapshot Name?</label>
+                        <label class="text-sm leading-6 text-default flex items-center">
+                            Use Custom Snapshot Name?
+                            <InfoTile class="ml-1"
+                                :title="`Only changes the snapshot name (CustomName + timestamp instead of TaskName + timestamp). Adds no zfs flags.`" />
+                        </label>
                         <input type="checkbox" v-model="useCustomName" class=" h-4 w-4 rounded" />
                     </div>
                     <ExclamationCircleIcon v-if="customNameErrorTag" class="mt-2 w-5 h-5 text-danger" />
@@ -683,7 +699,11 @@
             </div>
             <div class="grid grid-cols-2 mt-2">
                 <div name="send-opt-mbuffer" class="col-span-1">
-                    <label class="block text-sm leading-6 text-default">mBuffer Size (Remote)</label>
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        mBuffer Size (Remote)
+                        <InfoTile class="ml-1"
+                            :title="`Memory buffer between zfs send and zfs receive (mbuffer -m), used on both ends when the remote host has mbuffer. Adds no zfs flags.`" />
+                    </label>
                     <input :disabled="remoteFieldsDisabled" type="number" v-model="mbufferSize" min="1"
                         class="mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default"
                         placeholder="1" />
@@ -760,6 +780,45 @@
             </p>
         </div>
         </div>
+
+        <!-- BOTTOM ROW -->
+        <div name="extra-zfs-args"
+            class="col-span-2 row-start-3 border border-default rounded-md p-2 bg-accent grid grid-cols-2 gap-x-4 gap-y-1">
+            <label class="col-span-2 mt-1 block text-base leading-6 text-default">Extra ZFS Arguments</label>
+            <div class="col-span-1">
+                <div class="flex flex-row items-center justify-between">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        zfs send
+                        <InfoTile class="ml-1"
+                            :title="`Added to every zfs send. Only these are accepted: -p (include properties; already part of Send Recursive), -b (send only properties the source itself received), -h (include holds; with Send Raw also needs -p or Send Recursive), -e (embedded blocks; refused when the run finds the destination encrypted), -L and -c (only while Send Compressed is off). Nothing is accepted that Send Raw already implies.`" />
+                    </label>
+                    <ExclamationCircleIcon v-if="extraSendArgsErrorTag" class="w-5 h-5 text-danger" />
+                </div>
+                <input type="text" v-model="extraSendArgs" :class="[
+                    'mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                    extraSendArgsErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" placeholder="e.g. -e  or  -p -h" />
+            </div>
+            <div class="col-span-1">
+                <div class="flex flex-row items-center justify-between">
+                    <label class="text-sm leading-6 text-default flex items-center">
+                        zfs receive
+                        <InfoTile class="ml-1"
+                            :title="`Added to every zfs receive of a new stream. Only these are accepted: -o property=value (override a property), -x property (keep the destination's own value), -u (don't mount), -h (skip holds). Encryption properties and this task's own com.45drives_scheduler properties can't be changed. A resumed transfer keeps the options it started with.`" />
+                    </label>
+                    <ExclamationCircleIcon v-if="extraRecvArgsErrorTag" class="w-5 h-5 text-danger" />
+                </div>
+                <input type="text" v-model="extraRecvArgs" :class="[
+                    'mt-0.5 block w-full text-default input-textlike sm:text-sm sm:leading-6 bg-default',
+                    extraRecvArgsErrorTag ? 'outline outline-1 outline-rose-500 dark:outline-rose-700' : ''
+                ]" placeholder="e.g. -o compression=zstd -x mountpoint -u" />
+            </div>
+            <p class="col-span-2 text-xs text-muted">
+                These add to what the settings above pass; they can't remove a flag. For example, Send Compressed
+                plus <code>-e</code> gives <code>-Lce</code>, and Send Compressed off plus <code>-c</code> compresses
+                without large blocks.
+            </p>
+        </div>
     </div>
 </template>
 
@@ -796,6 +855,7 @@ import {
     validateHostname
 } from '../../../composables/utility';
 import { SSH_CIPHER_OPTIONS } from '../../../models/SshCiphers';
+import { extraRecvArgsProblem, extraSendArgsProblem } from '../../../models/ZfsExtraArgs';
 import { pushNotification, Notification } from '@45drives/houston-common-ui';
 
 interface ZfsRepTaskParamsProps {
@@ -869,6 +929,10 @@ const autoRecover = ref(true);
 const resumeFailAllowOverwrite = ref(false);
 const resumeStallTimeout = ref(3600);
 const forceFullSend = ref(false);
+const extraSendArgs = ref('');
+const extraRecvArgs = ref('');
+const extraSendArgsErrorTag = ref(false);
+const extraRecvArgsErrorTag = ref(false);
 
 // _plan_send() only consults autoRecover inside `if destAhead and not allowOverwrite`, so the two
 // flags are one escalating choice rather than two independent ones. Presenting them as a single
@@ -1184,6 +1248,11 @@ async function initializeData() {
         const sshCipherParam = sendOptionsParams.find(p => p.key === 'sshCipher');
         sshCipher.value = sshCipherParam ? String(sshCipherParam.value || '') : '';
 
+        const extraSendArgsParam = sendOptionsParams.find(p => p.key === 'extraSendArgs');
+        extraSendArgs.value = extraSendArgsParam ? String(extraSendArgsParam.value || '') : '';
+        const extraRecvArgsParam = sendOptionsParams.find(p => p.key === 'extraRecvArgs');
+        extraRecvArgs.value = extraRecvArgsParam ? String(extraRecvArgsParam.value || '') : '';
+
         sendCompressed.value = sendOptionsParams.find(p => p.key === 'compressed_flag')!.value;
         sendRaw.value = sendOptionsParams.find(p => p.key === 'raw_flag')!.value;
         sendRecursive.value = sendOptionsParams.find(p => p.key === 'recursive_flag')!.value;
@@ -1291,6 +1360,8 @@ function formSnapshot() {
         useExistingDest: useExistingDest.value,
         forceFullSend: forceFullSend.value,
         sshCipher: sshCipher.value,
+        extraSendArgs: extraSendArgs.value,
+        extraRecvArgs: extraRecvArgs.value,
     };
 }
 
@@ -1793,7 +1864,22 @@ function clearErrorTags() {
     customDestPoolErrorTag.value = false;
     customDestDatasetErrorTag.value = false;
     netCatPortError.value = false;
+    extraSendArgsErrorTag.value = false;
+    extraRecvArgsErrorTag.value = false;
     errorList.value = [];
+}
+
+function validateExtraArgs() {
+    const sendProblem = extraSendArgsProblem(extraSendArgs.value, sendRecursive.value, sendRaw.value, sendCompressed.value);
+    if (sendProblem) {
+        errorList.value.push(`Extra zfs send arguments: ${sendProblem}.`);
+        extraSendArgsErrorTag.value = true;
+    }
+    const recvProblem = extraRecvArgsProblem(extraRecvArgs.value);
+    if (recvProblem) {
+        errorList.value.push(`Extra zfs receive arguments: ${recvProblem}.`);
+        extraRecvArgsErrorTag.value = true;
+    }
 }
 
 async function validateParams() {
@@ -1803,6 +1889,7 @@ async function validateParams() {
     validatePort();
     if (useExistingDest.value) await checkDestDatasetContents();
     validateCustomName();
+    validateExtraArgs();
 
     if (errorList.value.length == 0) {
         setParams();
@@ -1842,6 +1929,8 @@ function setParams() {
             .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', resumeStallTimeout.value))
             .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', useExistingDest.value))
             .addChild(new BoolParameter('Force Full Send', 'forceFullSend', forceFullSend.value))
+            .addChild(new StringParameter('Extra Send Arguments', 'extraSendArgs', extraSendArgs.value.trim()))
+            .addChild(new StringParameter('Extra Receive Arguments', 'extraRecvArgs', extraRecvArgs.value.trim()))
         );
 
     parameters.value = newParams;
