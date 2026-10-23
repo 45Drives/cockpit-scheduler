@@ -1,103 +1,95 @@
 """Netcat variant detection and connection helpers."""
 
+import re
 import shlex
 import subprocess
 import time
 
-from ..logging_utils import dbg
+from ..logging_utils import dbg, safe_print
 from ..ssh import ssh_base_args
 
-def _detect_nc_flavour(remote_user=None, remote_host=None, remote_port="22"):
-    """
-    Detect which netcat variant is installed (locally or on a remote host).
-    Returns "ncat" for nmap-ncat (Rocky/RHEL), "openbsd" for netcat-openbsd
-    (Ubuntu/Debian), or "unknown".
+# `which` is absent on minimal installs; `command -v` is a POSIX shell builtin.
+_NC_PROBE_CMD = 'p=$(command -v nc 2>/dev/null) && readlink -f "$p"; nc -h 2>&1; true'
 
-    Detection strategy:
-      1. `readlink -f $(which nc)` — binary path is the most reliable indicator
-      2. `nc -h` output — look for self-identification strings
-    """
+
+def _classify_nc(probe_output):
+    """Return (flavour, sender_eof_args) from the binary path and `nc -h` output."""
+    text = probe_output or ""
+    lowered = text.lower()
+    if "ncat" in lowered or "nmap" in lowered:
+        return "ncat", ["--send-only"]
+    if "openbsd" in lowered:
+        flavour = "openbsd"
+    elif "[v1.10" in lowered or "traditional" in lowered:
+        flavour = "traditional"
+    else:
+        flavour = "unknown"
+    # Without one of these, a sending nc keeps the socket open after its input ends.
+    if re.search(r"^\s*-N\b", text, re.MULTILINE):
+        return flavour, ["-N"]
+    if re.search(r"^\s*-q\b", text, re.MULTILINE):
+        return flavour, ["-q", "0"]
+    return flavour, []
+
+
+def _detect_nc(remote_user=None, remote_host=None, remote_port="22"):
+    """Detect the local or remote netcat variant and its close-on-EOF sender flags."""
     try:
-        # Primary: resolve the actual binary path via readlink
-        readlink_cmd = "readlink -f $(which nc) 2>/dev/null || true"
         if remote_user and remote_host:
-            ssh_cmd = ssh_base_args(remote_user, remote_host, remote_port)
-            ssh_cmd.append(readlink_cmd)
-            p = subprocess.run(
-                ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                universal_newlines=True, timeout=10,
-            )
+            cmd = ssh_base_args(remote_user, remote_host, remote_port)
+            cmd.append(_NC_PROBE_CMD)
         else:
-            p = subprocess.run(
-                ["sh", "-c", readlink_cmd], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, universal_newlines=True, timeout=10,
-            )
-        bin_path = (p.stdout or "").strip().lower()
-        if "ncat" in bin_path:
-            return "ncat"
-        if "openbsd" in bin_path:
-            return "openbsd"
-
-        # Fallback: parse nc -h output for self-identification
-        if remote_user and remote_host:
-            ssh_cmd = ssh_base_args(remote_user, remote_host, remote_port)
-            ssh_cmd.append("nc -h")
-            p = subprocess.run(
-                ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                universal_newlines=True, timeout=10,
-            )
-        else:
-            p = subprocess.run(
-                ["nc", "-h"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                universal_newlines=True, timeout=10,
-            )
-        out = ((p.stdout or "") + " " + (p.stderr or "")).lower()
-        if "ncat" in out or "nmap" in out:
-            return "ncat"
-        if "openbsd" in out:
-            return "openbsd"
+            cmd = ["sh", "-c", _NC_PROBE_CMD]
+        p = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=10,
+        )
+        flavour, eof_args = _classify_nc((p.stdout or "") + "\n" + (p.stderr or ""))
     except Exception:
-        pass
+        flavour, eof_args = "unknown", []
 
-    return "unknown"
+    where = f"remote {remote_host}" if remote_host else "local"
+    dbg(f"nc flavour on {where}: {flavour}; sender EOF args: {eof_args or 'none'}")
+    if not eof_args:
+        safe_print(
+            f"WARNING: netcat on {where} ({flavour}) has no close-on-EOF option; "
+            "a sending transfer may not finish when its data ends."
+        )
+    return flavour, eof_args
 
 
 def build_nc_listen_cmd(port: str, remote_user=None, remote_host=None, remote_port="22", bind_address=None, send_only=False):
     """
     Build a portable `nc -l …` command string for the listener side.
-    Handles ncat (Rocky/RHEL) vs netcat-openbsd (Ubuntu/Debian).
     If bind_address is provided, binds the listener to that IP only.
-    If send_only is True, ncat uses --send-only (for pull: zfs send | nc -l).
-    If send_only is False, ncat uses --recv-only (for push: nc -l | zfs recv).
+    If send_only is True (pull: zfs send | nc -l), the listener closes the
+    connection at end of input. Otherwise ncat uses --recv-only (push).
 
     IMPORTANT: Never combine -p with -l. Port is always passed as a positional
     argument, which works on all netcat variants.
     """
-    flavour = _detect_nc_flavour(remote_user, remote_host, remote_port)
-    dbg(f"nc flavour on {'remote' if remote_host else 'local'}: {flavour}")
-    port_q = shlex.quote(port)
-    bind_q = shlex.quote(bind_address) if bind_address else None
-    if flavour == "ncat":
-        # ncat: nc -l [--send-only|--recv-only] [-s bind] <port>
-        direction_flag = "--send-only" if send_only else "--recv-only"
-        if bind_q:
-            return f"nc -l {direction_flag} -s {bind_q} {port_q}"
-        return f"nc -l {direction_flag} {port_q}"
-    # openbsd / unknown: nc -l [-s bind] <port>  (positional port, no -p)
-    if bind_q:
-        return f"nc -l -s {bind_q} {port_q}"
-    return f"nc -l {port_q}"
+    flavour, eof_args = _detect_nc(remote_user, remote_host, remote_port)
+    if send_only:
+        flags = eof_args
+    else:
+        flags = ["--recv-only"] if flavour == "ncat" else []
+    parts = ["nc", "-l", *flags]
+    if bind_address:
+        parts += ["-s", shlex.quote(bind_address)]
+    parts.append(shlex.quote(port))
+    return " ".join(parts)
 
 
 def _build_nc_connect_cmd(host: str, port: str, recv_only=True):
-    """Build a local nc connect command with --recv-only or --send-only for ncat.
-    recv_only=True for pull (client receives), False for push (client sends)."""
-    flavour = _detect_nc_flavour()
-    if flavour == "ncat":
-        flag = "--recv-only" if recv_only else "--send-only"
-        return ["nc", flag, host, port]
-    # openbsd and unknown: no direction flags available
-    return ["nc", host, port]
+    """Build a local nc connect command.
+    recv_only=True for pull (client receives), False for push (client sends and
+    must close the connection at end of input)."""
+    flavour, eof_args = _detect_nc()
+    if recv_only:
+        flags = ["--recv-only"] if flavour == "ncat" else []
+    else:
+        flags = eof_args
+    return ["nc", *flags, host, port]
 
 
 def _wait_for_port_remote(user, host, port, ssh_port="22", timeout=30, interval=0.5):

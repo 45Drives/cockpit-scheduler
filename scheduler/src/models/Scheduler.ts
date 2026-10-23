@@ -1844,6 +1844,8 @@ export class Scheduler implements SchedulerType {
                 }
 
                 if (s.active === 'failed' || s.sub === 'failed') return 'Failed';
+                // Covers stop-sigterm, final-sigterm and final-sigkill while processes shut down.
+                if (s.active === 'deactivating') return 'Stopping...';
                 const base = s.active || 'unknown';
                 return s.sub ? `${base} (${s.sub})` : base;
             }
@@ -1853,6 +1855,7 @@ export class Scheduler implements SchedulerType {
             if (!m) return 'Unit inactive or not found.';
 
             const stateText = `${m[1]} (${m[2]})`;
+            if (m[1] === 'deactivating') return 'Stopping...';
             switch (stateText) {
                 case 'activating (start)': return 'Starting...';
                 case 'active (waiting)': return 'Active (Pending)';

@@ -409,6 +409,8 @@ const showRunNowPrompt = ref(false);
 const runNowDialog = ref();
 const running = ref(false);
 const manualRunTaskName = ref<string | null>(null);
+// systemd records a stopped service as successful, so a stopped manual run must not report its exit status.
+const stoppedByUser = new Set<string>();
 
 function runTaskBtn(task, rowIndex: number) {
     selectedTask.value = task;
@@ -454,9 +456,13 @@ const runNowYes: ConfirmationCallback = async () => {
     await updateStatusAndTime(task, rowIndex);
 
     updateShowRunNowPrompt(false);
+    stoppedByUser.delete(task.name);
 
     try {
         const finalStatus = await myScheduler.runTaskNow(task);
+        if (stoppedByUser.has(task.name)) {
+            return;
+        }
 
         // Prefer the actual exit code if we can fetch it
         let exitCode: number | null = null;
@@ -541,6 +547,7 @@ const runNowYes: ConfirmationCallback = async () => {
     } finally {
         // Refresh so notifiedFailures gets seeded while the guard is still active,
         // preventing the next regular poll from firing a duplicate toast.
+        stoppedByUser.delete(task.name);
         await globalLive.refreshAll();
         running.value = false;
         manualRunTaskName.value = null;
@@ -664,6 +671,7 @@ const stopNowYes: ConfirmationCallback = async () => {
 
     updateShowStopNowPrompt(false);
 
+    stoppedByUser.add(task.name);
     try {
         await myScheduler.stopTaskNow(task);
         pushNotification(

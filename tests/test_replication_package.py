@@ -3,6 +3,8 @@ import io
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPTS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -217,6 +219,60 @@ def test_successful_pending_full_resume_refreshes_inventory_for_incremental_plan
     replication_workflow._plan_send(ctx)
     assert ctx.incrementalSnapName == "source/data@snap-1"
     assert ctx.forceOverwrite is False
+
+
+def _failed_pending_full_resume(monkeypatch, direction):
+    ctx = ReplicationRun()
+    ctx.taskName = "test-task"
+    ctx.direction = direction
+    ctx.sourceFilesystem = "source/data"
+    ctx.destFilesystem = "dest/data"
+    calls = []
+
+    monkeypatch.setattr(
+        replication_workflow,
+        "_read_pending_full_send",
+        lambda task: {
+            "snapshot": "source/data@snap-1",
+            "destFilesystem": "dest/data",
+            "sourceFilesystem": "source/data",
+            "direction": direction,
+        },
+    )
+    monkeypatch.setattr(replication_workflow, "snapshot_exists_on_destination", lambda *args, **kwargs: (False, ""))
+    monkeypatch.setattr(replication_workflow, "get_receive_resume_token", lambda *args, **kwargs: "resume-token")
+    stalled = (False, "Pipeline stalled: no data transferred for 120s (stall timeout: 120s).")
+    monkeypatch.setattr(replication_workflow, "resume_receive_pull", lambda *args, **kwargs: stalled)
+    monkeypatch.setattr(replication_workflow, "resume_receive_push", lambda *args, **kwargs: stalled)
+    monkeypatch.setattr(replication_workflow, "clear_receive_resume_token", lambda *args, **kwargs: calls.append("clear") or (True, ""))
+    monkeypatch.setattr(replication_workflow, "_clear_pending_full_send", lambda task: calls.append("clear_state"))
+    monkeypatch.setattr(replication_workflow, "send_houston_notification", lambda payload: calls.append("notify"))
+    monkeypatch.setattr(replication_workflow, "get_remote_snapshots", lambda *args, **kwargs: calls.append("resend") or [])
+    monkeypatch.setattr(replication_workflow, "get_local_snapshots", lambda *args, **kwargs: calls.append("resend") or [])
+    return ctx, calls
+
+
+@pytest.mark.parametrize("direction", ["pull", "push"])
+def test_failed_pending_full_resume_keeps_token_by_default(monkeypatch, capsys, direction):
+    ctx, calls = _failed_pending_full_resume(monkeypatch, direction)
+
+    with pytest.raises(SystemExit) as exc:
+        replication_workflow._recover_pending_full_send(ctx)
+
+    assert exc.value.code == 1
+    assert calls == ["notify"]
+    assert "resume token was kept" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("flag", ["resumeFailAllowOverwrite", "forceFullSend"])
+def test_failed_pending_full_resume_restarts_only_when_authorised(monkeypatch, flag):
+    ctx, calls = _failed_pending_full_resume(monkeypatch, "pull")
+    setattr(ctx, flag, True)
+
+    replication_workflow._recover_pending_full_send(ctx)
+
+    assert calls[0] == "clear"
+    assert "resend" in calls
 
 
 def test_successful_retention_phase_prints_explicit_completion(monkeypatch, capsys):

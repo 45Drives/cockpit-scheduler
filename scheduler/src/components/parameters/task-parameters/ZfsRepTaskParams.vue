@@ -752,8 +752,9 @@
                 <input type="checkbox" v-model="resumeFailAllowOverwrite" class="h-4 w-4 rounded" />
             </div>
             <p class="mt-1 text-xs text-muted">
-                If a resume token exists but the destination was modified, clear the token and continue with
-                normal replication.
+                If resuming fails, clear the token and continue with normal replication. An interrupted
+                initial full send then restarts from the beginning. When off, the token is kept and the next
+                run resumes.
             </p>
             <p v-if="divergencePolicy === 'always'" class="mt-0.5 text-xs text-yellow-500">
                 Because this task always rolls back, continuing may discard newer snapshots on the destination.
@@ -1902,10 +1903,13 @@ async function handleTestSSH() {
 
 async function confirmNetcatTest(destHost2: string, destPort2: number) {
     testingNetcat.value = true;
-    netCatTestResult.value = await testNetcat(destUser.value, destHost2, destPort2);
+    const result = await testNetcat(destUser.value, destHost2, destPort2);
+    netCatTestResult.value = result.ok;
 
-    if (netCatTestResult.value) {
+    if (result.ok) {
         pushNotification(new Notification("Connection Successful!", "Netcat connection established. This host can be used for remote transfers.", "success", 6000));
+    } else if (result.sshFailed) {
+        pushNotification(new Notification("Connection Failed", `Passwordless SSH to ${destUser.value}@${destHost2} is not set up. Netcat transfers need it to start the remote side; set up SSH keys, then test again.`, "error", 8000));
     } else {
         pushNotification(new Notification("Connection Failed", `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`, "error", 6000));
     }

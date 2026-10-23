@@ -3,6 +3,7 @@
 import errno
 import os
 import re
+import shutil
 import socket
 import subprocess
 import threading
@@ -308,11 +309,7 @@ def _apply_tcp_tuning():
 
 def _has_pv():
     """Check if pv (pipe viewer) is installed."""
-    try:
-        p = subprocess.run(["which", "pv"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
-        return p.returncode == 0
-    except Exception:
-        return False
+    return shutil.which("pv") is not None
 
 
 def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activity=None, size_holder=None):

@@ -812,6 +812,49 @@ def test_main_routes_unexpected_exception_to_failure_handler(monkeypatch):
     assert isinstance(seen[0][1], RuntimeError)
 
 
+def _failure_stubs(monkeypatch, notifications):
+    monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "")
+    monkeypatch.setattr(workflow, "send_houston_notification", notifications.append)
+    monkeypatch.setattr(workflow, "print_transfer_summary", lambda *args, **kwargs: None)
+
+
+def test_failure_handler_reports_missing_command_without_traceback(monkeypatch, capsys):
+    notifications = []
+    _failure_stubs(monkeypatch, notifications)
+    error = FileNotFoundError(2, "No such file or directory", "mbuffer")
+    try:
+        raise error
+    except FileNotFoundError:
+        with pytest.raises(SystemExit) as exc:
+            workflow.handle_failure(ReplicationRun(), error)
+    out = capsys.readouterr().out
+    assert exc.value.code == 2
+    assert "Required command 'mbuffer' is not installed on this host" in out
+    assert "Traceback" not in out
+    assert "mbuffer" in notifications[0]["errors"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError(2, "No such file or directory", "/etc/missing.json"),
+        FileNotFoundError("no filename"),
+        RuntimeError("boom"),
+    ],
+)
+def test_failure_handler_keeps_traceback_for_other_errors(monkeypatch, capsys, error):
+    _failure_stubs(monkeypatch, [])
+    try:
+        raise error
+    except Exception:
+        with pytest.raises(SystemExit) as exc:
+            workflow.handle_failure(ReplicationRun(), error)
+    out = capsys.readouterr().out
+    assert exc.value.code == 1
+    assert "Traceback" in out
+    assert "is not installed on this host" not in out
+
+
 def test_apply_retention_skips_two_phase_progress_when_both_disabled(monkeypatch):
     ctx = ReplicationRun()
     ctx.taskName = "task-a"

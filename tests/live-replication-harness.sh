@@ -59,6 +59,7 @@ Regression suite for the resume + SSH cipher work (also disposable pools):
   live-replication-harness.sh scenario-resume-continues
   live-replication-harness.sh scenario-resume-only-stops
   live-replication-harness.sh scenario-resume-recv-rejects
+  live-replication-harness.sh scenario-resume-netcat-eof [pull|push|both]
   live-replication-harness.sh scenario-cipher-all
   live-replication-harness.sh scenario-cipher-availability [host] [user] [port]
   live-replication-harness.sh scenario-cipher-send <cipher>
@@ -69,6 +70,10 @@ Regression suite for the resume + SSH cipher work (also disposable pools):
   the resume-continuation scenarios, and the cipher scenarios, skipping the cipher
   group when loopback SSH is unavailable. scenario-cipher-bench times a full send
   per cipher over loopback SSH; set CIPHER_BENCH_MB to change the 256 MiB payload.
+
+  scenario-resume-netcat-eof resumes a small, non-block-aligned remainder over
+  netcat and fails if the run hangs or leaves an nc on the data port. Set
+  HIER_NC_EOF_TIMEOUT (default 180s) to change the hang limit.
 
   direction is push|pull (default push); transport is local|ssh|netcat|mbuffer
   (default local). Every non-local transport talks to loopback SSH, overridable
@@ -1908,11 +1913,110 @@ cmd_scenario_resume_recv_rejects() {
   hier_reset_mode
 }
 
+hier_nc_port_pids() {
+  pgrep -f "^nc( .*)? ${HIER_DATA_PORT}\$" 2>/dev/null || true
+}
+
+# Field case (v1.9.5): a netcat resume whose sender exits leaves `nc -l` holding the
+# socket open, so the receiver's mbuffer never flushes its last partial block and
+# zfs recv waits forever at "Resuming 100%".
+cmd_scenario_resume_netcat_eof() {
+  local direction="${1:-pull}" previous_recursive="$HIER_RECURSIVE" reason token remaining leftover
+
+  hier_set_mode "$direction" netcat
+  hier_say "resume-netcat-eof [$(hier_mode_label)]: a netcat resume must finish once the sender's data ends"
+  if reason="$(hier_mode_unavailable)"; then
+    hier_info "SKIP: $reason"
+    hier_reset_mode
+    return 0
+  fi
+  if ! command -v mbuffer >/dev/null 2>&1; then
+    hier_info "SKIP: mbuffer not installed (the netcat resume pipeline requires it)"
+    hier_reset_mode
+    return 0
+  fi
+  hier_info "local nc: $(readlink -f "$(command -v nc)")"
+  if [[ -n "$(hier_nc_port_pids)" ]]; then
+    hier_fail "an nc process already holds port $HIER_DATA_PORT; stop it before running this scenario"
+    hier_reset_mode
+    return 0
+  fi
+
+  HIER_RECURSIVE=false
+  HIER_RUN_TIMEOUT="${HIER_NC_EOF_TIMEOUT:-180}"
+  hier_setup
+  rm -f "$HIER_LASTRUN"
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send over netcat"
+  if [[ -n "$(hier_nc_port_pids)" ]]; then
+    hier_fail "initial netcat send left an nc process on port $HIER_DATA_PORT"
+    # shellcheck disable=SC2046
+    kill $(hier_nc_port_pids) 2>/dev/null || true
+  fi
+
+  # Small remainder, like the field's 261 KiB tail; stream framing keeps it off a 256 KiB boundary.
+  hier_make_resume_token 2 1048576
+  hier_expect_token present "interrupted receive left a resume token"
+  token="$(hier_dest_token)"
+  remaining="$(zfs send -nP -t "$token" 2>/dev/null | awk '$1 == "size" {print $2}' || true)"
+  hier_info "resume remainder: ${remaining:-unknown} bytes"
+  if [[ -n "$remaining" && "$remaining" =~ ^[0-9]+$ ]] && (( remaining % 262144 == 0 )); then
+    hier_info "WARN: remainder is block-aligned; this run cannot reproduce the held partial block"
+  fi
+  hier_write_data post "$HIER_SRC_FS"
+
+  hier_run_task false false
+  HIER_RUN_TIMEOUT=""
+
+  if [[ "$HIER_RC" -eq 124 || "$HIER_RC" -eq 137 ]]; then
+    hier_fail "run hung after the resumed stream ended and was killed by the timeout (the field bug)"
+    ps -eo pid,etime,stat,wchan:20,args | grep -E '[z]fs (send|recv|receive)|[m]buffer|[n]c |[p]v ' | sed 's/^/     /' || true
+  else
+    hier_expect_rc 0 "netcat resume + continue run"
+  fi
+  hier_expect_log 'nc flavour on' "netcat flavour was detected"
+  hier_expect_no_log 'has no close-on-EOF option' "netcat close-on-EOF flag was available"
+  if grep -E '^CLI command \((sender|source)\)' "$HIER_OUT" 2>/dev/null | grep -qE -- '(--send-only|-N|-q 0) '; then
+    hier_pass "printed sender command shows the close-on-EOF flag actually used"
+  else
+    hier_fail "printed sender command lacks the close-on-EOF flag"
+  fi
+  hier_expect_no_log 'Data Transferred: 0 B' "run summary counted the bytes moved"
+  hier_expect_log 'Attempting to resume receive' "token was detected"
+  hier_expect_token absent "resume token was consumed"
+  hier_expect_dest_snapshot "$HIER_RESUME_SNAP" "resumed stream committed"
+  hier_expect_new_snapshot "post-resume incremental"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "post-resume incremental landed over netcat"
+
+  leftover="$(hier_nc_port_pids)"
+  if [[ -n "$leftover" ]]; then
+    hier_fail "nc still holds port $HIER_DATA_PORT after the run (pids: ${leftover//$'\n'/ })"
+    # shellcheck disable=SC2086
+    kill $leftover 2>/dev/null || true
+  else
+    hier_pass "no nc process left on port $HIER_DATA_PORT"
+  fi
+
+  HIER_RECURSIVE="$previous_recursive"
+  hier_reset_mode
+}
+
+cmd_scenario_resume_netcat_eof_dirs() {
+  case "${1:-both}" in
+    pull|push) cmd_scenario_resume_netcat_eof "$1" ;;
+    both)
+      cmd_scenario_resume_netcat_eof pull
+      cmd_scenario_resume_netcat_eof push
+      ;;
+    *) echo "error: direction must be pull, push, or both" >&2; exit 1 ;;
+  esac
+}
+
 cmd_scenario_resume_all() {
   hier_reset_mode
   cmd_scenario_resume_continues
   cmd_scenario_resume_only_stops
   cmd_scenario_resume_recv_rejects
+  cmd_scenario_resume_netcat_eof_dirs both
   hier_reset_mode
   hier_teardown
   hier_say "resume scenarios finished with $HIER_FAILURES failure(s)"
@@ -2189,6 +2293,7 @@ cmd_verify_fixes() {
   hier_reset_mode
   cmd_scenario_resume_continues
   cmd_scenario_resume_only_stops
+  cmd_scenario_resume_netcat_eof_dirs both
 
   hier_set_mode push ssh
   if reason="$(hier_mode_unavailable)"; then
@@ -2358,6 +2463,15 @@ main() {
       hier_reset_mode
       # Pools are left standing for inspection; use scenario-hierarchy-teardown.
       "cmd_${cmd//-/_}"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-resume-netcat-eof)
+      [[ $# -le 1 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_reset_mode
+      # Pools are left standing for inspection; use scenario-hierarchy-teardown.
+      cmd_scenario_resume_netcat_eof_dirs "${1:-both}"
       hier_say "finished with $HIER_FAILURES failure(s)"
       [[ "$HIER_FAILURES" -eq 0 ]]
       ;;

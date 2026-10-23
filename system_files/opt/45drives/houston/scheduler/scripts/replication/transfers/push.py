@@ -186,25 +186,16 @@ def send_snapshot_push(
 
     # Print the full CLI-reproducible command for troubleshooting
     send_str = " ".join(shlex.quote(str(a)) for a in send_cmd)
+    # Netcat prints its commands once the flavour-specific nc stages are built.
     if transferMethod == "local" or not recvHost:
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
         print(f"CLI command: {send_str} | {recv_flags}")
-    elif transferMethod == "netcat":
-        data_port = str(recvDataPort or recvSshPort or "31337")
-        recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
-        sender_stage = f"{send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)}"
-        if remote_mbuffer_enabled:
-            print(f"CLI command (sender): {sender_stage} | nc {recvHost} {data_port}")
-            print(f"CLI command (receiver): nc -l {data_port} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
-        else:
-            print(f"CLI command (sender): {sender_stage} | nc {recvHost} {data_port}")
-            print(f"CLI command (receiver): nc -l {data_port} | {recv_flags}")
     elif transferMethod == "mbuffer":
         data_port = str(recvDataPort or recvSshPort or "31337")
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
         print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {recvHost}:{data_port}")
         print(f"CLI command (receiver): {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port} | {recv_flags}")
-    else:
+    elif transferMethod != "netcat":
         recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
         ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
         ssh_port_flag = f" -p {recvSshPort}" if str(recvSshPort) != "22" else ""
@@ -396,11 +387,12 @@ def send_snapshot_push(
 
             # Shared mutable timestamp for stall detection
             last_activity = [time.time()]
+            size_holder = [0]
 
             # Monitor pv in a thread (with stall tracking)
             pv_thread = threading.Thread(
                 target=_pv_monitor_thread,
-                args=(process_pv.stderr, total_bytes, "Transferring", notifier, last_activity),
+                args=(process_pv.stderr, total_bytes, "Transferring", notifier, last_activity, size_holder),
                 daemon=True,
             )
             pv_thread.start()
@@ -448,6 +440,8 @@ def send_snapshot_push(
                     notifier.notify("STATUS=Finalization timed out — send pipeline killed.")
                     print(f"ERROR: zfs send/pv/mbuffer did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after the remote receive completed. Processes killed.")
                     sys.exit(1)
+                pv_thread.join(timeout=5)
+                add_transferred_bytes(size_holder[0])
             finally:
                 if replay_stop_event:
                     replay_stop_event.set()
@@ -648,6 +642,8 @@ def send_snapshot_push(
 
         mbuffer_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
         nc_cmd = _build_nc_connect_cmd(recvHost, data_port, recv_only=False)
+        print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {shell_join(nc_cmd)}")
+        print(f"CLI command (receiver): {listen_cmd}")
 
         # Copy loop sits downstream of mbuffer so progress tracks bytes actually
         # pushed into netcat rather than bytes absorbed by mbuffer's RAM buffer.
