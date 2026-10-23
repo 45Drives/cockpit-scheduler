@@ -388,7 +388,11 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                         notifier.notify(f'STATUS={keep_msg}')
                         print(keep_msg)
                         send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': keep_msg, 'fileSystem': ctx.destFilesystem, 'snapShot': pending_snap, 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{_token} | {err}'})
-                        sys.exit(1)
+                        print_transfer_summary(
+                            'FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+                            extra_lines=_resume_only_extra_lines(ctx),
+                        )
+                        sys.exit(2)
                     print(f'Resume failed: {err}. Will redo full send.')
                     if ctx.direction == 'pull':
                         clear_receive_resume_token(ctx.destFilesystem)

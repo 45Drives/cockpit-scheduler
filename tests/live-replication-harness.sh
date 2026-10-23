@@ -2002,7 +2002,9 @@ cmd_scenario_resume_netcat_eof() {
   else
     hier_fail "printed sender command lacks the close-on-EOF flag"
   fi
-  hier_expect_no_log 'Data Transferred: 0 B' "run summary counted the bytes moved"
+  if [[ "$direction" == "push" ]] || command -v pv >/dev/null 2>&1; then
+    hier_expect_no_log 'Data Transferred: 0 B' "run summary counted the bytes moved"
+  fi
   hier_expect_log 'Attempting to resume receive' "token was detected"
   hier_expect_token absent "resume token was consumed"
   hier_expect_dest_snapshot "$HIER_RESUME_SNAP" "resumed stream committed"

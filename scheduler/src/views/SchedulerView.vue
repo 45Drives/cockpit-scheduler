@@ -683,6 +683,7 @@ const stopNowYes: ConfirmationCallback = async () => {
             )
         );
     } catch (error) {
+        stoppedByUser.delete(task.name);
         pushNotification(
             new Notification(
                 'Task Stop Failed',

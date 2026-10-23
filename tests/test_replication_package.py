@@ -256,12 +256,20 @@ def _failed_pending_full_resume(monkeypatch, direction):
 @pytest.mark.parametrize("direction", ["pull", "push"])
 def test_failed_pending_full_resume_keeps_token_by_default(monkeypatch, capsys, direction):
     ctx, calls = _failed_pending_full_resume(monkeypatch, direction)
+    summaries = []
+    monkeypatch.setattr(
+        replication_workflow,
+        "print_transfer_summary",
+        lambda status, *args, **kwargs: summaries.append((status, kwargs)),
+    )
 
     with pytest.raises(SystemExit) as exc:
         replication_workflow._recover_pending_full_send(ctx)
 
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert calls == ["notify"]
+    assert summaries[0][0] == "FAILED"
+    assert "Send Type: Resumed Transfer" in summaries[0][1]["extra_lines"]
     assert "resume token was kept" in capsys.readouterr().out
 
 
