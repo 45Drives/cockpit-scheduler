@@ -206,7 +206,7 @@ def send_snapshot_pull(
 
     # Print the full CLI-reproducible command for troubleshooting
     send_str = " ".join(shlex.quote(str(a)) for a in remote_send_args)
-    recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {localRecvFs}"
+    recv_flags = zfs_recv_shell(localRecvFs, forceOverwrite)
     ssh_port_flag = f" -p {remoteSshPort}" if str(remoteSshPort) != "22" else ""
     # Netcat prints its commands once the flavour-specific nc stages are built.
     if transferMethod == "mbuffer":
@@ -302,10 +302,7 @@ def send_snapshot_pull(
             )
             pv_thread.start()
 
-        recv_cmd = ["zfs", "recv", "-s"]
-        if forceOverwrite:
-            recv_cmd.append("-F")
-        recv_cmd.append(localRecvFs)
+        recv_cmd = build_zfs_recv_args(localRecvFs, forceOverwrite)
         dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         process_local_recv = subprocess.Popen(
@@ -475,10 +472,7 @@ def send_snapshot_pull(
         )
         mbuf_capture = StreamCapture(process_mbuffer.stderr)
 
-        recv_cmd = ["zfs", "recv", "-s"]
-        if forceOverwrite:
-            recv_cmd.append("-F")
-        recv_cmd.append(localRecvFs)
+        recv_cmd = build_zfs_recv_args(localRecvFs, forceOverwrite)
         dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         process_local_recv = subprocess.Popen(
@@ -613,10 +607,7 @@ def send_snapshot_pull(
     if DIRECT_PIPE_ENABLED and _has_pv():
         dbg("pull SSH: using direct-pipe transfer (pv)")
         m_buff_cmd = _build_mbuffer_cmd(mBufferSize, mBufferUnit)
-        recv_cmd = ["zfs", "recv", "-s"]
-        if forceOverwrite:
-            recv_cmd.append("-F")
-        recv_cmd.append(localRecvFs)
+        recv_cmd = build_zfs_recv_args(localRecvFs, forceOverwrite)
         dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
         ok, err_msg = _direct_pipe_transfer(
@@ -643,10 +634,7 @@ def send_snapshot_pull(
     )
     mbuf_capture = StreamCapture(process_m_buff.stderr)
 
-    recv_cmd = ["zfs", "recv", "-s"]
-    if forceOverwrite:
-        recv_cmd.append("-F")
-    recv_cmd.append(localRecvFs)
+    recv_cmd = build_zfs_recv_args(localRecvFs, forceOverwrite)
     dbg(f"PIPE recv cmd={_fmt_cmd(recv_cmd)}")
 
     process_local_recv = subprocess.Popen(

@@ -87,6 +87,8 @@ export class ZFSReplicationTaskTemplate extends TaskTemplate {
                 .addChild(new IntParameter('Resume Stall Timeout', 'resumeStallTimeout', 3600))
                 .addChild(new BoolParameter('Use Existing Destination', 'useExistingDest', false))
                 .addChild(new BoolParameter('Force Full Send', 'forceFullSend', false))
+                .addChild(new StringParameter('Extra Send Arguments', 'extraSendArgs', ''))
+                .addChild(new StringParameter('Extra Receive Arguments', 'extraRecvArgs', ''))
             );
         super(name, parameterSchema);
     }

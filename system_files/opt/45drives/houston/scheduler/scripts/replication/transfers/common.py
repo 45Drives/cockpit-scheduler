@@ -10,7 +10,7 @@ from ..constants import (
 )
 from ..context import notifier
 from ..logging_utils import _fmt_cmd, dbg, safe_print
-from ..planner import build_zfs_send_args
+from ..planner import build_zfs_recv_args, build_zfs_send_args, zfs_recv_shell
 from ..process import (
     StallTimeout,
     StreamCapture,
@@ -155,6 +155,8 @@ __all__ = [
     "dbg",
     "safe_print",
     "build_zfs_send_args",
+    "build_zfs_recv_args",
+    "zfs_recv_shell",
     "StallTimeout",
     "StreamCapture",
     "_build_mbuffer_cmd",

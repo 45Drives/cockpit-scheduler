@@ -216,6 +216,7 @@ def test_successful_pending_full_resume_refreshes_inventory_for_incremental_plan
     assert replication_workflow._recover_pending_full_send(ctx) is False
     assert inventory_loads == [True]
 
+    monkeypatch.setattr(replication_workflow, "get_written_since_snapshot", lambda *args, **kwargs: 0)
     replication_workflow._plan_send(ctx)
     assert ctx.incrementalSnapName == "source/data@snap-1"
     assert ctx.forceOverwrite is False

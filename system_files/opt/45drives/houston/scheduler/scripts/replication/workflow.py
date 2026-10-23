@@ -20,7 +20,14 @@ from .context import notifier
 from .logging_utils import dbg, dbg_env, dbg_kv, safe_print
 from .models import ReplicationRun
 from .notifications import send_houston_notification
-from .planner import build_zfs_send_args
+from .planner import (
+    ExtraArgsError,
+    build_zfs_send_args,
+    canonical_send_flags,
+    check_extra_args_against_task,
+    extra_recv_args,
+    extra_send_args,
+)
 from .process import _apply_tcp_tuning, format_bytes, get_transferred_bytes
 from .retention import destroy_snapshots_with_progress, prune_snapshots_by_retention
 from .retry import UNIT_NAME_PREFIX
@@ -127,6 +134,17 @@ def _initialize_run(ctx: ReplicationRun):
         ctx.resumeStallTimeout = 3600
     if ctx.resumeStallTimeout <= 0:
         ctx.resumeStallTimeout = 0
+    try:
+        _extra_send = extra_send_args()
+        _extra_recv = extra_recv_args()
+        check_extra_args_against_task(_extra_send, recursive=ctx.isRecursiveSnap, raw=ctx.isRaw, compressed=ctx.isCompressed)
+    except ExtraArgsError as e:
+        msg = f'Invalid extra zfs arguments in task settings: {e}'
+        notifier.notify(f'STATUS={msg}')
+        print(msg)
+        sys.exit(2)
+    if _extra_send or _extra_recv:
+        print(f'Extra zfs arguments: send={" ".join(_extra_send) or "(none)"} recv={" ".join(_extra_recv) or "(none)"}')
     ctx.remoteUser = os.environ.get('zfsRepConfig_destDataset_user', 'root')
     ctx.remoteHost = os.environ.get('zfsRepConfig_destDataset_host', '')
     ctx.mBufferSize = os.environ.get('zfsRepConfig_sendOptions_mbufferSize', '1')
@@ -658,10 +676,80 @@ def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_s
         )
     if written is None:
         return (False, 'the destination could not be checked for changes made outside this task')
-    if written > 0:
+    if written > 0 and not _dest_changes_are_metadata_only(ctx, latest.name):
         return (False, f'the destination holds {format_bytes(written)} of changes written outside this task')
 
     return (True, '')
+
+
+def _dest_changes_are_metadata_only(ctx: ReplicationRun, latest_snapshot):
+    """True when no file changed on any destination dataset written since latest_snapshot.
+
+    Mounting a dataset received non-raw into encrypted storage makes ZFS build its user/group
+    space accounting, which counts as written but changes no file; rolling it back loses nothing.
+    Anything that cannot be proven (volumes, unreadable diffs) counts as a real change.
+    """
+    suffix = snapshot_suffix(latest_snapshot)
+    if ctx.isRecursiveSnap:
+        args = ['zfs', 'get', '-H', '-p', '-r', '-t', 'filesystem,volume', '-o', 'name,value', f'written@{suffix}', ctx.destFilesystem]
+    else:
+        args = ['zfs', 'get', '-H', '-p', '-o', 'name,value', f'written@{latest_snapshot}', ctx.destFilesystem]
+    try:
+        p = _dest_run(ctx, args)
+    except Exception as e:
+        dbg(f'could not read written@{suffix} under {ctx.destFilesystem}: {e}')
+        return False
+    if p.returncode != 0:
+        return False
+    out = p.stdout.decode(errors='replace') if isinstance(p.stdout, bytes) else (p.stdout or '')
+
+    for line in out.splitlines():
+        name, _, value = line.partition('\t')
+        try:
+            if int(value.strip()) <= 0:
+                continue
+        except ValueError:
+            continue
+        try:
+            d = _dest_run(ctx, ['zfs', 'diff', '-H', f'{name.strip()}@{suffix}'], timeout=300)
+        except Exception as e:
+            dbg(f'zfs diff {name}@{suffix} failed: {e}')
+            return False
+        diff = d.stdout.decode(errors='replace') if isinstance(d.stdout, bytes) else (d.stdout or '')
+        if d.returncode != 0 or diff.strip():
+            dbg(f'{name} changed since {suffix}: rc={d.returncode} first={diff.strip().splitlines()[:1]}')
+            return False
+    return True
+
+
+def _handle_unsnapshotted_destination_writes(ctx: ReplicationRun, latest_snapshot, written):
+    """Decide how to receive over writes made since the destination's newest snapshot (Allow Overwrite off)."""
+    dest = ctx.destFilesystem
+    since = snapshot_suffix(latest_snapshot)
+    if not _dest_changes_are_metadata_only(ctx, latest_snapshot):
+        print(f'{dest} holds {format_bytes(written)} written since {since} that did not come from this task, '
+              'and it could not be shown to be ZFS metadata only.')
+        print('ZFS refuses an incremental receive into a modified dataset. Undo those changes on the destination, or choose "Always roll back" to discard them.')
+        sys.exit(2)
+
+    explanation = (f'{dest} shows {format_bytes(written)} written since {since}, but no file changed: ZFS recorded its own '
+                   'space-accounting metadata when the dataset was mounted (normal for encrypted destinations).')
+    if not ctx.autoRecover:
+        print(explanation)
+        print('"Stop and report" never touches the destination, and ZFS refuses an incremental receive over this metadata.')
+        print('Choose "Roll back only what this task created", which discards only that metadata, or add -u to the extra receive arguments so the destination is not mounted.')
+        sys.exit(2)
+    if ctx.isRecursiveSnap:
+        # A recursive rollback receives a -R stream, which destroys datasets the source lacks.
+        extra = _destination_only_datasets(ctx)
+        if extra is None or extra:
+            print(explanation)
+            reason = 'could not be compared with the source' if extra is None else f'has {len(extra)} dataset(s) the source lacks (for example {extra[0]})'
+            print(f'Rolling it back would also be unsafe because the destination {reason}. Not receiving.')
+            sys.exit(2)
+    print(explanation)
+    print('Receiving with -F, which discards only that metadata.')
+    ctx.forceOverwrite = True
 
 
 def _side_is_remote(ctx: ReplicationRun, side):
@@ -726,6 +814,45 @@ def _dataset_property(ctx: ReplicationRun, dataset, prop, timeout=30):
 def _dest_list(ctx: ReplicationRun, dataset, list_type):
     """Names of the given zfs type at or below the destination, or None if unreadable."""
     return _side_list(ctx, 'dest', dataset, list_type)
+
+
+def _destination_encrypted(ctx: ReplicationRun):
+    """Whether the destination tree, or the dataset it will be created under, is encrypted; None if unreadable."""
+    candidate = ctx.destFilesystem
+    recursive = True
+    while candidate:
+        args = ['zfs', 'get', '-H', '-o', 'value', 'encryption'] + (['-r'] if recursive else []) + [candidate]
+        try:
+            p = _dest_run(ctx, args)
+        except Exception as e:
+            dbg(f'could not read encryption of {candidate}: {e}')
+            return None
+        if p.returncode == 0:
+            out = p.stdout.decode(errors='replace') if isinstance(p.stdout, bytes) else (p.stdout or '')
+            values = {v.strip() for v in out.splitlines() if v.strip()}
+            return not values <= {'off', '-'}
+        # Missing dataset: a new one inherits encryption from its nearest existing parent.
+        candidate = candidate.rpartition('/')[0]
+        recursive = False
+    return None
+
+
+def _refuse_embed_into_encrypted_destination(ctx: ReplicationRun):
+    if '-e' not in canonical_send_flags(extra_send_args()):
+        return
+    encrypted = _destination_encrypted(ctx)
+    if encrypted is False:
+        return
+    if encrypted is None:
+        msg = f'Could not check whether {ctx.destFilesystem} is encrypted, which -e requires. Not sending.'
+        notifier.notify(f'STATUS={msg}')
+        print(msg)
+        sys.exit(1)
+    msg = (f'Extra send argument -e can\'t be used: {ctx.destFilesystem} is encrypted, and ZFS rejects '
+           'embedded-data blocks from a non-raw stream into an encrypted dataset. Remove -e from the task.')
+    notifier.notify(f'STATUS={msg}')
+    print(msg)
+    sys.exit(2)
 
 
 # A dataset that has only just been created still carries a little metadata, so "empty"
@@ -923,9 +1050,6 @@ def _plan_send(ctx: ReplicationRun):
                 return
 
             ctx.forceOverwrite = False
-            if not ctx.allowOverwrite:
-                return
-
             dest_root_snaps = sorted(dst_root_snaps, key=lambda s: s.order_key)
             written_dest = None
             if dest_root_snaps:
@@ -934,6 +1058,11 @@ def _plan_send(ctx: ReplicationRun):
                     written_dest = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, recursive=ctx.isRecursiveSnap)
                 else:
                     written_dest = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort, recursive=ctx.isRecursiveSnap)
+            if not ctx.allowOverwrite:
+                if written_dest:
+                    _handle_unsnapshotted_destination_writes(ctx, dest_latest.name, written_dest)
+                return
+
             if written_dest is None:
                 print('Note: Could not determine written@SNAP; using -F as a safety measure since Allow Overwrite is enabled.')
                 ctx.forceOverwrite = True
@@ -1258,6 +1387,7 @@ def run_replication(ctx: ReplicationRun):
     with acquire_host_slot(ctx.remoteHost, notify=notifier.notify) as slot_info:
         ctx.waited_seconds = (slot_info or {}).get('waited_seconds', 0.0)
         _load_snapshot_inventory(ctx)
+        _refuse_embed_into_encrypted_destination(ctx)
         if _recover_pending_full_send(ctx):
             return
         if _resume_interrupted_receive(ctx):

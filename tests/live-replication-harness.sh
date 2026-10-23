@@ -60,6 +60,9 @@ Regression suite for the resume + SSH cipher work (also disposable pools):
   live-replication-harness.sh scenario-resume-only-stops
   live-replication-harness.sh scenario-resume-recv-rejects
   live-replication-harness.sh scenario-resume-netcat-eof [pull|push|both]
+  live-replication-harness.sh scenario-extra-args-matrix
+  live-replication-harness.sh scenario-extra-args <preset> [direction] [transport] [plain|compressed|raw] [true|false]
+  live-replication-harness.sh scenario-extra-args-encrypted-dest [direction] [transport]
   live-replication-harness.sh scenario-cipher-all
   live-replication-harness.sh scenario-cipher-availability [host] [user] [port]
   live-replication-harness.sh scenario-cipher-send <cipher>
@@ -74,6 +77,13 @@ Regression suite for the resume + SSH cipher work (also disposable pools):
   scenario-resume-netcat-eof resumes a small, non-block-aligned remainder over
   netcat and fails if the run hangs or leaves an nc on the data port. Set
   HIER_NC_EOF_TIMEOUT (default 180s) to change the hang limit.
+
+  scenario-extra-args-matrix runs every Extra ZFS Arguments preset (valid and
+  invalid) across every reachable transport, both recursion settings, and
+  plain/compressed/raw sends: a full send then an incremental per combination.
+  Narrow it with XARGS_QUICK=1 (push/local + pull/ssh, compressed + raw),
+  XARGS_MODES='push local;pull ssh', XARGS_SEND_MODES='raw',
+  XARGS_RECURSIVE='true', or XARGS_PRESET_FILTER='^recv-' (regex on preset name).
 
   direction is push|pull (default push); transport is local|ssh|netcat|mbuffer
   (default local). Every non-local transport talks to loopback SSH, overridable
@@ -820,6 +830,10 @@ HIER_RESUME_ONLY="false"
 HIER_RESUME_FAIL_CLEAR="false"
 HIER_RUN_TIMEOUT=""
 HIER_PATH_PREFIX=""
+HIER_COMPRESSED="false"
+HIER_RAW="false"
+HIER_EXTRA_SEND=""
+HIER_EXTRA_RECV=""
 HIER_SSH_CIPHER=""
 HIER_RESUME_SNAP="resumeseed"
 HIER_LASTRUN="/etc/systemd/system/houston_scheduler_ZfsReplicationTask_${HIER_TASK}.lastrun"
@@ -864,6 +878,10 @@ hier_reset_mode() {
   HIER_RESUME_FAIL_CLEAR="false"
   HIER_RUN_TIMEOUT=""
   HIER_PATH_PREFIX=""
+  HIER_COMPRESSED="false"
+  HIER_RAW="false"
+  HIER_EXTRA_SEND=""
+  HIER_EXTRA_RECV=""
   HIER_SSH_CIPHER=""
 }
 
@@ -1098,6 +1116,10 @@ zfsRepConfig_destDataset_user=$HIER_USER
 zfsRepConfig_destDataset_sshPort=$HIER_SSH_PORT
 zfsRepConfig_destDataset_port=$data_port
 zfsRepConfig_sendOptions_recursive_flag=$HIER_RECURSIVE
+zfsRepConfig_sendOptions_compressed_flag=$HIER_COMPRESSED
+zfsRepConfig_sendOptions_raw_flag=$HIER_RAW
+zfsRepConfig_sendOptions_extraSendArgs=$HIER_EXTRA_SEND
+zfsRepConfig_sendOptions_extraRecvArgs=$HIER_EXTRA_RECV
 zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
 zfsRepConfig_sendOptions_transferMethod=$HIER_TRANSPORT
 zfsRepConfig_sendOptions_sshCipher=$HIER_SSH_CIPHER
@@ -2024,6 +2046,316 @@ cmd_scenario_resume_all() {
 }
 
 # ---------------------------------------------------------------------------
+# Extra ZFS argument scenarios
+#
+# Every preset runs against every transport this host can reach, both recursion
+# settings, and every send mode, on a fresh dataset tree: a full send, then an
+# incremental. Valid presets must complete twice and show their effect on the
+# destination; invalid ones must be refused before any snapshot is taken.
+# tests/test_extra_args_matrix.py covers the full input space without zfs.
+# ---------------------------------------------------------------------------
+
+# name|send args|recv args|expect: ok, refuse, or refuse:<when>[,<when>] with when in
+# recursive, raw, raw-flat (raw and not recursive), compressed
+XARGS_PRESETS=(
+  "none|||ok"
+  "send-props|-p||refuse:recursive"
+  "send-holds|-h||refuse:raw-flat"
+  "send-backup|-b||ok"
+  "send-embed|-e||refuse:raw"
+  "send-compress-only|-c||refuse:raw,compressed"
+  "send-lce|-Lce||refuse:raw,compressed"
+  "recv-user-prop||-o com.example:recvnote=set|ok"
+  "recv-native-prop||-o atime=off|ok"
+  "recv-exclude||-x com.example:srcprop|ok"
+  "recv-nomount||-u|ok"
+  "recv-skip-holds||-h|ok"
+  "everything|-ph|-o atime=off -o com.example:recvnote=set -x com.example:srcprop -u -h|refuse:recursive"
+  "everything-but-props|-h|-o atime=off -o com.example:recvnote=set -x com.example:srcprop -u -h|refuse:raw-flat"
+  "dup-send-alias|-p --props||refuse"
+  "dup-recv-prop||-o atime=off -o atime=on|refuse"
+  "set-and-exclude||-o atime=off -x atime|refuse"
+  "encryption-prop||-o encryption=on|refuse"
+  "task-prop||-x com.45drives_scheduler:task_name|refuse"
+  "managed-send-flag|-R||refuse"
+  "managed-recv-flag||-F|refuse"
+  "positional||hrepdst/elsewhere|refuse"
+)
+XARGS_ALL_MODES=("push local" "push ssh" "pull ssh" "push netcat" "pull netcat" "push mbuffer" "pull mbuffer")
+XARGS_RESULTS=()
+
+xargs_prop() {
+  ( zfs get -H -o value "$1" "$2" 2>/dev/null || echo '?' ) | tr -d '\r'
+}
+
+# xargs_should_refuse <expect> <sendmode> <recursive>
+xargs_should_refuse() {
+  local expect="$1" sendmode="$2" recursive="$3" when
+  [[ "$expect" == "refuse" ]] && return 0
+  [[ "$expect" == refuse:* ]] || return 1
+  IFS=',' read -r -a when <<<"${expect#refuse:}"
+  local w
+  for w in "${when[@]}"; do
+    case "$w" in
+      recursive)  [[ "$recursive" == "true" ]] && return 0 ;;
+      raw)        [[ "$sendmode" == "raw" ]] && return 0 ;;
+      raw-flat)   [[ "$sendmode" == "raw" && "$recursive" != "true" ]] && return 0 ;;
+      compressed) [[ "$sendmode" == "compressed" ]] && return 0 ;;
+    esac
+  done
+  return 1
+}
+
+xargs_expect_prop() {
+  local fs="$1" prop="$2" want="$3" label="$4" got
+  got="$(xargs_prop "$prop" "$fs")"
+  if [[ "$got" == "$want" ]]; then
+    hier_pass "$label ($prop=$got)"
+  else
+    hier_fail "$label: expected $prop=$want on $fs, got '$got'"
+  fi
+}
+
+# Fresh dataset trees on the existing pools; pools are only rebuilt when missing.
+xargs_reset() {
+  if ! zpool list -H "$HIER_SRC_POOL" >/dev/null 2>&1 || ! zpool list -H "$HIER_DST_POOL" >/dev/null 2>&1; then
+    hier_setup
+  else
+    zfs destroy -r "$HIER_SRC_FS" >/dev/null 2>&1 || true
+    zfs destroy -r "$HIER_DST_FS" >/dev/null 2>&1 || true
+    zfs create "$HIER_SRC_FS"
+    zfs create "$HIER_SRC_FS/samba"
+    zfs create "$HIER_SRC_FS/media"
+    hier_write_data seed "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  fi
+  # Only travels when properties are sent (-p or recursive); -x must stop it.
+  zfs set com.example:srcprop=1 "$HIER_SRC_FS"
+  rm -f "$HIER_LASTRUN"
+}
+
+# xargs_run_combo <preset-line> <direction> <transport> <plain|compressed|raw> <recursive>
+xargs_run_combo() {
+  local name send recv expect
+  IFS='|' read -r name send recv expect <<<"$1"
+  local direction="$2" transport="$3" sendmode="$4" recursive="$5"
+  local before="$HIER_FAILURES" label refused=false props_flow=false
+
+  hier_set_mode "$direction" "$transport"
+  HIER_RECURSIVE="$recursive"
+  HIER_COMPRESSED=false
+  HIER_RAW=false
+  [[ "$sendmode" == "compressed" ]] && HIER_COMPRESSED=true
+  [[ "$sendmode" == "raw" ]] && HIER_RAW=true
+  HIER_EXTRA_SEND="$send"
+  HIER_EXTRA_RECV="$recv"
+  HIER_RUN_TIMEOUT="${XARGS_RUN_TIMEOUT:-300}"
+  label="$(hier_mode_label) $sendmode recursive=$recursive $name"
+
+  if xargs_should_refuse "$expect" "$sendmode" "$recursive"; then
+    refused=true
+  fi
+  if [[ "$recursive" == "true" || " $send " == *" -p"* || " $send " == *"p "* ]]; then
+    props_flow=true
+  fi
+  # -b sends only properties the source itself received; a locally set one never travels.
+  [[ "$send" == *b* ]] && props_flow=false
+
+  hier_say "extra-args [$label]: send='${send}' recv='${recv}'"
+  xargs_reset
+
+  hier_run_task false false false quiet
+  if [[ "$HIER_RC" -eq 124 || "$HIER_RC" -eq 137 ]]; then
+    hier_fail "run hung and was killed by the ${HIER_RUN_TIMEOUT}s timeout"
+  elif [[ "$refused" == "true" ]]; then
+    hier_expect_refusal "invalid extra arguments"
+    hier_expect_log 'Invalid extra zfs arguments' "refusal names the cause"
+    hier_expect_no_new_snapshot "refused run"
+  else
+    hier_expect_rc 0 "full send"
+    hier_expect_new_snapshot "full send"
+    hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "full send landed"
+    if [[ -n "$send$recv" ]]; then
+      hier_expect_log 'Extra zfs arguments:' "extras were logged"
+    fi
+    [[ " $recv " == *" -u "* ]] && xargs_expect_prop "$HIER_DST_FS" mounted no "-u left the destination unmounted"
+    [[ "$recv" == *"com.example:recvnote=set"* ]] && xargs_expect_prop "$HIER_DST_FS" com.example:recvnote set "-o user property applied"
+    [[ "$recv" == *"atime=off"* ]] && xargs_expect_prop "$HIER_DST_FS" atime off "-o native property applied"
+    if [[ "$recv" == *"-x com.example:srcprop"* ]]; then
+      xargs_expect_prop "$HIER_DST_FS" com.example:srcprop - "-x kept the sent property off the destination"
+    elif [[ "$props_flow" == "true" ]]; then
+      xargs_expect_prop "$HIER_DST_FS" com.example:srcprop 1 "sent properties arrived"
+    else
+      xargs_expect_prop "$HIER_DST_FS" com.example:srcprop - "properties were not sent"
+    fi
+
+    hier_write_data incr "$HIER_SRC_FS"
+    hier_run_task false false false quiet
+    if [[ "$HIER_RC" -eq 124 || "$HIER_RC" -eq 137 ]]; then
+      hier_fail "incremental run hung and was killed by the ${HIER_RUN_TIMEOUT}s timeout"
+    else
+      hier_expect_rc 0 "incremental"
+      hier_expect_new_snapshot "incremental"
+      hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "incremental landed"
+    fi
+  fi
+
+  if [[ "$HIER_FAILURES" -gt "$before" ]]; then
+    XARGS_RESULTS+=("FAIL  $label")
+    local keep="${HIER_WORK_DIR%/}-xargs-fail-$(tr ' /=' '___' <<<"$label")"
+    cp -f "$HIER_OUT" "$keep.out" 2>/dev/null || true
+    cp -f "$HIER_LOG" "$keep.log" 2>/dev/null || true
+    hier_info "run output kept at $keep.out / $keep.log"
+  else
+    XARGS_RESULTS+=("PASS  $label")
+  fi
+  HIER_RUN_TIMEOUT=""
+}
+
+xargs_preset_line() {
+  local p
+  for p in "${XARGS_PRESETS[@]}"; do
+    [[ "${p%%|*}" == "$1" ]] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+# Validation is transport-independent, so refusal presets run once per recursion
+# setting on the first reachable mode instead of across the whole grid.
+cmd_scenario_extra_args_matrix() {
+  local -a modes=() send_modes recursions
+  local mode dir transport reason p expect sendmode rec first_mode="" skipped=0
+  local filter="${XARGS_PRESET_FILTER:-}"
+
+  if [[ -n "${XARGS_MODES:-}" ]]; then
+    IFS=';' read -r -a modes <<<"$XARGS_MODES"
+  elif [[ "${XARGS_QUICK:-0}" == "1" ]]; then
+    modes=("push local" "pull ssh")
+  else
+    modes=("${XARGS_ALL_MODES[@]}")
+  fi
+  read -r -a send_modes <<<"${XARGS_SEND_MODES:-$([[ "${XARGS_QUICK:-0}" == "1" ]] && echo 'compressed raw' || echo 'plain compressed raw')}"
+  read -r -a recursions <<<"${XARGS_RECURSIVE:-false true}"
+
+  for mode in "${modes[@]}"; do
+    read -r dir transport <<<"$mode"
+    hier_set_mode "$dir" "$transport"
+    if reason="$(hier_mode_unavailable)"; then
+      hier_say "SKIP $(hier_mode_label): $reason"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    [[ -z "$first_mode" ]] && first_mode="$mode"
+    for p in "${XARGS_PRESETS[@]}"; do
+      [[ -n "$filter" && ! "${p%%|*}" =~ $filter ]] && continue
+      expect="${p##*|}"
+      for rec in "${recursions[@]}"; do
+        if [[ "$expect" == "refuse" ]]; then
+          [[ "$mode" == "$first_mode" ]] || continue
+          xargs_run_combo "$p" "$dir" "$transport" plain "$rec"
+          continue
+        fi
+        for sendmode in "${send_modes[@]}"; do
+          xargs_run_combo "$p" "$dir" "$transport" "$sendmode" "$rec"
+        done
+      done
+    done
+  done
+
+  hier_reset_mode
+  [[ -z "$filter" ]] && cmd_scenario_extra_args_encrypted_dest push local
+  hier_teardown
+  hier_say "extra-args matrix: ${#XARGS_RESULTS[@]} combination(s), $HIER_FAILURES failed check(s), $skipped mode(s) skipped"
+  printf '   %s\n' "${XARGS_RESULTS[@]}" | sort
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
+# The field failure behind dropping -e from Send Compressed: tiny files are stored as
+# embedded blocks, which an encrypted destination rejects from a non-raw -e stream.
+# -e must be refused before anything is sent; plain Send Compressed (-Lc) must work.
+cmd_scenario_extra_args_encrypted_dest() {
+  local saved_dst="$HIER_DST_FS" keyfile mount i reason
+  hier_set_mode "${1:-push}" "${2:-local}"
+  if reason="$(hier_mode_unavailable)"; then
+    hier_say "SKIP encrypted-dest $(hier_mode_label): $reason"
+    hier_reset_mode
+    return 0
+  fi
+  hier_say "extra-args encrypted-dest [$(hier_mode_label)]: -e refused up front, -Lc delivers embedded-size files"
+
+  hier_setup
+  keyfile="$HIER_WORK_DIR/enc.key"
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$keyfile"
+  zfs create -o encryption=on -o keyformat=hex -o "keylocation=file://$keyfile" "$HIER_DST_POOL/enc"
+  HIER_DST_FS="$HIER_DST_POOL/enc/backup"
+  zfs set compression=lz4 "$HIER_SRC_FS"
+  mount="$(zfs get -H -o value mountpoint "$HIER_SRC_FS")"
+  for i in $(seq 1 200); do printf 'tiny file %s\n' "$i" >"$mount/tiny-$i"; done
+  sync
+
+  HIER_RECURSIVE=false
+  HIER_COMPRESSED=true
+  HIER_RUN_TIMEOUT="${XARGS_RUN_TIMEOUT:-300}"
+
+  HIER_EXTRA_SEND="-e"
+  hier_run_task false false false quiet
+  hier_expect_refusal "-e into an encrypted destination"
+  hier_expect_log 'is encrypted' "refusal names the encrypted destination"
+  hier_expect_no_new_snapshot "refused -e run"
+
+  HIER_EXTRA_SEND=""
+  hier_run_task false false false quiet
+  hier_expect_rc 0 "Send Compressed full send into an encrypted destination"
+  hier_expect_new_snapshot "full send"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "full send landed"
+
+  # Mounting the freshly received dataset wrote ZFS's accounting metadata; only the first
+  # incremental after a full send sees it. "Stop and report" must refuse without touching it.
+  for i in $(seq 201 400); do printf 'tiny file %s\n' "$i" >"$mount/tiny-$i"; done
+  sync
+  HIER_AUTO_RECOVER=false
+  hier_run_task false false false quiet
+  HIER_AUTO_RECOVER=true
+  hier_expect_refusal "Stop and report over mount-time metadata"
+  hier_expect_log 'Stop and report' "refusal explains the policy and the way out"
+  hier_expect_no_new_snapshot "refused Stop and report run"
+
+  hier_run_task false false false quiet
+  hier_expect_rc 0 "Send Compressed incremental into an encrypted destination"
+  hier_expect_log 'space-accounting metadata' "mount-time metadata writes were recognised"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "incremental landed"
+
+  for i in $(seq 401 600); do printf 'tiny file %s\n' "$i" >"$mount/tiny-$i"; done
+  sync
+  hier_run_task false false false quiet
+  hier_expect_rc 0 "later incremental into an encrypted destination"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "later incremental landed"
+  if grep -qF 'space-accounting metadata' "$HIER_OUT" 2>/dev/null; then
+    hier_info "note: this ZFS version rewrote accounting metadata again after an incremental"
+  fi
+
+  HIER_DST_FS="$saved_dst"
+  hier_reset_mode
+}
+
+# scenario-extra-args <preset> [direction] [transport] [plain|compressed|raw] [true|false]
+cmd_scenario_extra_args() {
+  local line reason
+  if ! line="$(xargs_preset_line "$1")"; then
+    echo "error: unknown preset '$1'. Presets: $(printf '%s ' "${XARGS_PRESETS[@]%%|*}")" >&2
+    return 1
+  fi
+  hier_set_mode "${2:-push}" "${3:-local}"
+  if reason="$(hier_mode_unavailable)"; then
+    hier_say "SKIP $(hier_mode_label): $reason"
+    return 0
+  fi
+  xargs_run_combo "$line" "${2:-push}" "${3:-local}" "${4:-compressed}" "${5:-false}"
+  hier_reset_mode
+  hier_say "finished with $HIER_FAILURES failure(s); pools left standing (scenario-hierarchy-teardown)"
+  [[ "$HIER_FAILURES" -eq 0 ]]
+}
+
+# ---------------------------------------------------------------------------
 # SSH cipher scenarios
 #
 # Mirrors the option list in scheduler/src/models/SshCiphers.ts. Kept in bash so
@@ -2473,6 +2805,23 @@ main() {
       # Pools are left standing for inspection; use scenario-hierarchy-teardown.
       cmd_scenario_resume_netcat_eof_dirs "${1:-both}"
       hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-extra-args-matrix)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_extra_args_matrix
+      ;;
+    scenario-extra-args)
+      [[ $# -ge 1 && $# -le 5 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_extra_args "$@"
+      ;;
+    scenario-extra-args-encrypted-dest)
+      [[ $# -le 2 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_extra_args_encrypted_dest "$@"
+      hier_say "finished with $HIER_FAILURES failure(s); pools left standing (scenario-hierarchy-teardown)"
       [[ "$HIER_FAILURES" -eq 0 ]]
       ;;
     scenario-cipher-all)
