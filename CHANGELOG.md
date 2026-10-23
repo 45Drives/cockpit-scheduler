@@ -1,3 +1,3 @@
-## task scheduler 1.9.7-1
+## task scheduler 1.9.8-1
 
-* Fixes some ZFS Replication argument issues + adds custom args support
+* Fixes watchdog/resume token issues

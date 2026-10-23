@@ -1,3 +1,9 @@
+cockpit-scheduler (1.9.8-1trixie) trixie; urgency=medium
+
+  * Fixes watchdog/resume token issues
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 23 Oct 2026 10:04:13 -0300
+
 cockpit-scheduler (1.9.7-1trixie) trixie; urgency=medium
 
   * Fixes some ZFS Replication argument issues + adds custom args support
