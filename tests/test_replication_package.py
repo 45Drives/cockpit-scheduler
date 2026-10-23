@@ -222,7 +222,7 @@ def test_successful_pending_full_resume_refreshes_inventory_for_incremental_plan
     assert ctx.forceOverwrite is False
 
 
-def _failed_pending_full_resume(monkeypatch, direction):
+def _failed_pending_full_resume(monkeypatch, direction, error="Pipeline stalled: no data transferred for 120s (stall timeout: 120s)."):
     ctx = ReplicationRun()
     ctx.taskName = "test-task"
     ctx.direction = direction
@@ -242,9 +242,9 @@ def _failed_pending_full_resume(monkeypatch, direction):
     )
     monkeypatch.setattr(replication_workflow, "snapshot_exists_on_destination", lambda *args, **kwargs: (False, ""))
     monkeypatch.setattr(replication_workflow, "get_receive_resume_token", lambda *args, **kwargs: "resume-token")
-    stalled = (False, "Pipeline stalled: no data transferred for 120s (stall timeout: 120s).")
-    monkeypatch.setattr(replication_workflow, "resume_receive_pull", lambda *args, **kwargs: stalled)
-    monkeypatch.setattr(replication_workflow, "resume_receive_push", lambda *args, **kwargs: stalled)
+    failed = (False, error)
+    monkeypatch.setattr(replication_workflow, "resume_receive_pull", lambda *args, **kwargs: failed)
+    monkeypatch.setattr(replication_workflow, "resume_receive_push", lambda *args, **kwargs: failed)
     monkeypatch.setattr(replication_workflow, "clear_receive_resume_token", lambda *args, **kwargs: calls.append("clear") or (True, ""))
     monkeypatch.setattr(replication_workflow, "_clear_pending_full_send", lambda task: calls.append("clear_state"))
     monkeypatch.setattr(replication_workflow, "send_houston_notification", lambda payload: calls.append("notify"))
@@ -266,11 +266,39 @@ def test_failed_pending_full_resume_keeps_token_by_default(monkeypatch, capsys, 
     with pytest.raises(SystemExit) as exc:
         replication_workflow._recover_pending_full_send(ctx)
 
-    assert exc.value.code == 2
+    assert exc.value.code == 1
     assert calls == ["notify"]
     assert summaries[0][0] == "FAILED"
     assert "Send Type: Resumed Transfer" in summaries[0][1]["extra_lines"]
     assert "resume token was kept" in capsys.readouterr().out
+
+
+def test_failed_pending_full_resume_requires_intervention_for_permanent_error(monkeypatch):
+    ctx, _ = _failed_pending_full_resume(monkeypatch, "pull", "Invalid transferMethod 'unsupported'.")
+    monkeypatch.setattr(replication_workflow, "print_transfer_summary", lambda *args, **kwargs: None)
+
+    with pytest.raises(SystemExit) as exc:
+        replication_workflow._recover_pending_full_send(ctx)
+
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "Connection reset by peer",
+        "Remote sender did not finish within 300s after all data was sent.",
+        "Pipeline stalled: no data transferred.",
+    ],
+)
+def test_resume_failures_from_stalls_and_network_timeouts_are_retryable(error):
+    assert replication_workflow._is_transient_resume_failure(error)
+
+
+def test_resume_errors_requiring_intervention_are_not_retryable():
+    assert not replication_workflow._is_transient_resume_failure(
+        "cannot receive incremental stream: destination has been modified"
+    )
 
 
 @pytest.mark.parametrize("flag", ["resumeFailAllowOverwrite", "forceFullSend"])

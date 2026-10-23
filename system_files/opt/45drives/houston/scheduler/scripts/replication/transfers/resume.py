@@ -34,6 +34,12 @@ def _broken_pipe_failure(recv_proc, *others):
     return False, err_msg
 
 
+def _commit_pv_progress(pv_thread, size_holder):
+    if pv_thread:
+        pv_thread.join()
+    add_transferred_bytes(size_holder[0])
+
+
 def _start_remote_recv_over_ssh(
     recv_host_user,
     recv_host,
@@ -770,6 +776,7 @@ def resume_receive_pull(
                             process_pv.kill()
                         except Exception:
                             pass
+                    _commit_pv_progress(pv_thread, size_holder)
                     return False, (f"Pipeline stalled: no data transferred for {int(idle)}s "
                                    f"(stall timeout: {_stall_timeout}s).")
                 else:
@@ -786,10 +793,9 @@ def resume_receive_pull(
         except subprocess.TimeoutExpired:
             _kill_procs(process_mbuffer, process_pv, process_nc, ssh_process_sender)
             notifier.notify("STATUS=Finalization timed out — buffer stage killed.")
+            _commit_pv_progress(pv_thread, size_holder)
             return False, f"mbuffer/pv did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after the receive completed. Processes killed."
-        if pv_thread:
-            pv_thread.join(timeout=5)
-        add_transferred_bytes(size_holder[0])
+        _commit_pv_progress(pv_thread, size_holder)
 
         try:
             _, nc_stderr = _communicate_with_finalize_heartbeat(

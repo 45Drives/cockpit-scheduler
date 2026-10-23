@@ -1997,8 +1997,8 @@ async function confirmNetcatTest(destHost2: string, destPort2: number) {
 
     if (result.ok) {
         pushNotification(new Notification("Connection Successful!", "Netcat connection established. This host can be used for remote transfers.", "success", 6000));
-    } else if (result.sshFailed) {
-        pushNotification(new Notification("Connection Failed", `Passwordless SSH to ${destUser.value}@${destHost2} is not set up. Netcat transfers need it to start the remote side; set up SSH keys, then test again.`, "error", 8000));
+    } else if (result.sshError) {
+        pushNotification(new Notification("Connection Failed", `Could not start the remote Netcat listener over SSH to ${destUser.value}@${destHost2}. Check the hostname, network connection, SSH configuration, and authentication. Netcat transfers require passwordless SSH.`, "error", 8000));
     } else {
         pushNotification(new Notification("Connection Failed", `Netcat test failed. Ensure Netcat is installed and the specified port (${destPort.value}) is open on the receiving host.`, "error", 6000));
     }

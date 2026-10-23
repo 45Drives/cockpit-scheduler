@@ -392,7 +392,7 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                             'FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
                             extra_lines=_resume_only_extra_lines(ctx),
                         )
-                        sys.exit(2)
+                        sys.exit(1 if _is_transient_resume_failure(err) else 2)
                     print(f'Resume failed: {err}. Will redo full send.')
                     if ctx.direction == 'pull':
                         clear_receive_resume_token(ctx.destFilesystem)
@@ -447,6 +447,27 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                     _clear_pending_full_send(ctx.taskName)
                     ctx.pending_state = None
     return False
+
+
+def _is_transient_resume_failure(error):
+    error_text = str(error).lower()
+    transient_markers = (
+        'stalled',
+        'timed out',
+        'timeout',
+        'did not finish within',
+        'did not exit within',
+        'did not drain within',
+        'connection reset',
+        'connection refused',
+        'connection aborted',
+        'connection closed',
+        'broken pipe',
+        'network is unreachable',
+        'no route to host',
+        'temporary failure',
+    )
+    return any(marker in error_text for marker in transient_markers)
 
 
 def _finish_successful_resume(ctx: ReplicationRun):
