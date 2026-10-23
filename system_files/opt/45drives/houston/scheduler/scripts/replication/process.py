@@ -39,6 +39,7 @@ def get_transferred_bytes():
 
 # pv's leading "-b" field, e.g. "3.14GiB" or "512KiB" or "845B".
 _PV_SIZE_RE = re.compile(r'^\s*([\d.]+)\s*([KMGTPE]?i?B)\b')
+_PV_RATE_RE = re.compile(r'\[\s*([\d.]+)\s*([KMGTPE]?i?B)/s\s*\]')
 
 
 def _close_pipe(pipe):
@@ -321,12 +322,14 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activit
     newlines, so readline() would block until the process exits. Read bytes and
     split on both \\r and \\n instead.
     If last_activity is provided (a single-element list), update it with time.time()
-    on each output line so the caller can detect stalls.
+    only when bytes advance or the measured rate is positive. A positive rate
+    accounts for transfers whose displayed byte totals have been rounded.
     If size_holder is provided (a single-element list), update it with the latest
     bytes transferred (parsed from pv's leading `-b` field) for the run summary."""
     last_pct = -1.0
     last_emit = 0.0
     last_dbg = 0.0
+    last_bytes = 0
     buf = bytearray()
     try:
         while True:
@@ -347,14 +350,21 @@ def _pv_monitor_thread(pv_stderr, total_bytes, label, notifier_ref, last_activit
             if not line:
                 continue
             now = time.time()
-            if last_activity is not None:
-                last_activity[0] = now
-            if size_holder is not None:
-                size_m = _PV_SIZE_RE.match(line)
-                if size_m:
-                    parsed = parse_size_to_bytes(size_m.group(1), size_m.group(2))
-                    if parsed is not None:
+            size_m = _PV_SIZE_RE.match(line)
+            if size_m:
+                parsed = parse_size_to_bytes(size_m.group(1), size_m.group(2))
+                if parsed is not None:
+                    if last_activity is not None and parsed > last_bytes:
+                        last_activity[0] = now
+                    last_bytes = max(last_bytes, parsed)
+                    if size_holder is not None:
                         size_holder[0] = parsed
+            if last_activity is not None:
+                rate_m = _PV_RATE_RE.search(line)
+                if rate_m:
+                    rate = parse_size_to_bytes(rate_m.group(1), rate_m.group(2))
+                    if rate is not None and rate > 0:
+                        last_activity[0] = now
             # pv outputs percentage in the form " 12%" or "100%"
             m = re.search(r'(\d+)%', line)
             if m:
