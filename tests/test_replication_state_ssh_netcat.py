@@ -55,22 +55,104 @@ def test_ssh_check_raises_called_process_error(monkeypatch):
     assert exc.value.returncode == 7
 
 
+NCAT_HELP = "/usr/bin/ncat\nNcat 7.92 ( https://nmap.org/ncat )\n      --send-only           Only send data, ignoring received; quit on EOF\n"
+OPENBSD_HELP = (
+    "/usr/bin/nc.openbsd\nOpenBSD netcat (Debian patchlevel 1.218-4ubuntu1)\n"
+    "usage: nc [-46CDdFhklNnrStUuvZz]\n"
+    "\t-N\t\tShutdown the network socket after EOF on stdin\n"
+    "\t-q secs\t\tquit after EOF on stdin and delay of secs\n"
+)
+OPENBSD_NO_N_HELP = "OpenBSD netcat\n\t-q secs\t\tquit after EOF on stdin and delay of secs\n"
+TRADITIONAL_HELP = "/bin/nc.traditional\n[v1.10-47]\n\t-q secs\t\t\tquit after EOF on stdin and delay of secs\n"
+UNSUPPORTED_HELP = "usage: nc [-l] host port\n\t-l\t\tlisten mode\n"
+
+
 @pytest.mark.parametrize(
-    "flavour,bind,send_only,expected",
+    "probe,expected",
     [
-        ("ncat", None, False, "nc -l --recv-only 31337"),
-        ("ncat", "10.0.0.1", True, "nc -l --send-only -s 10.0.0.1 31337"),
-        ("openbsd", None, False, "nc -l 31337"),
-        ("unknown", "10.0.0.1", False, "nc -l -s 10.0.0.1 31337"),
+        (NCAT_HELP, ("ncat", ["--send-only"])),
+        (OPENBSD_HELP, ("openbsd", ["-N"])),
+        (OPENBSD_NO_N_HELP, ("openbsd", ["-q", "0"])),
+        (TRADITIONAL_HELP, ("traditional", ["-q", "0"])),
+        (UNSUPPORTED_HELP, ("unknown", [])),
+        ("", ("unknown", [])),
     ],
 )
-def test_netcat_listener_command_variants(monkeypatch, flavour, bind, send_only, expected):
-    monkeypatch.setattr(netcat, "_detect_nc_flavour", lambda *args, **kwargs: flavour)
+def test_netcat_classifies_flavour_and_sender_eof_args(probe, expected):
+    assert netcat._classify_nc(probe) == expected
+
+
+def test_netcat_probe_does_not_depend_on_which(monkeypatch):
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return result(stdout="/usr/bin/nc.openbsd\n", stderr=OPENBSD_HELP)
+
+    monkeypatch.setattr(netcat.subprocess, "run", fake_run)
+    monkeypatch.setattr(netcat, "ssh_base_args", lambda *args: ["ssh", "root@host"])
+    assert netcat._detect_nc("root", "host") == ("openbsd", ["-N"])
+    assert len(seen) == 1
+    assert "which" not in seen[0][-1]
+    assert "command -v nc" in seen[0][-1]
+
+
+def test_netcat_detection_failure_warns_and_uses_plain_nc(monkeypatch, capsys):
+    def fail(*args, **kwargs):
+        raise subprocess.TimeoutExpired("ssh", 10)
+
+    monkeypatch.setattr(netcat.subprocess, "run", fail)
+    assert netcat._detect_nc() == ("unknown", [])
+    assert "no close-on-EOF option" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "detected,bind,send_only,expected",
+    [
+        (("ncat", ["--send-only"]), None, False, "nc -l --recv-only 31337"),
+        (("ncat", ["--send-only"]), "10.0.0.1", True, "nc -l --send-only -s 10.0.0.1 31337"),
+        (("openbsd", ["-N"]), None, True, "nc -l -N 31337"),
+        (("openbsd", ["-N"]), None, False, "nc -l 31337"),
+        (("traditional", ["-q", "0"]), "10.0.0.1", True, "nc -l -q 0 -s 10.0.0.1 31337"),
+        (("unknown", []), "10.0.0.1", True, "nc -l -s 10.0.0.1 31337"),
+    ],
+)
+def test_netcat_listener_command_variants(monkeypatch, detected, bind, send_only, expected):
+    monkeypatch.setattr(netcat, "_detect_nc", lambda *args, **kwargs: detected)
     assert netcat.build_nc_listen_cmd("31337", bind_address=bind, send_only=send_only) == expected
 
 
-def test_netcat_connect_direction_flags(monkeypatch):
-    monkeypatch.setattr(netcat, "_detect_nc_flavour", lambda *args, **kwargs: "ncat")
-    assert netcat._build_nc_connect_cmd("host", "31337", recv_only=True) == ["nc", "--recv-only", "host", "31337"]
-    assert netcat._build_nc_connect_cmd("host", "31337", recv_only=False) == ["nc", "--send-only", "host", "31337"]
+@pytest.mark.parametrize(
+    "detected,receive,send",
+    [
+        (("ncat", ["--send-only"]), ["nc", "--recv-only", "host", "31337"], ["nc", "--send-only", "host", "31337"]),
+        (("openbsd", ["-N"]), ["nc", "host", "31337"], ["nc", "-N", "host", "31337"]),
+        (("traditional", ["-q", "0"]), ["nc", "host", "31337"], ["nc", "-q", "0", "host", "31337"]),
+        (("unknown", []), ["nc", "host", "31337"], ["nc", "host", "31337"]),
+    ],
+)
+def test_netcat_connect_direction_flags(monkeypatch, detected, receive, send):
+    monkeypatch.setattr(netcat, "_detect_nc", lambda *args, **kwargs: detected)
+    assert netcat._build_nc_connect_cmd("host", "31337", recv_only=True) == receive
+    assert netcat._build_nc_connect_cmd("host", "31337", recv_only=False) == send
+
+
+@pytest.mark.parametrize(
+    "recv_err,sender_rc,sender_err,expected",
+    [
+        (b"cannot receive: out of space\n", 0, "", "ERROR: local recv error: cannot receive: out of space"),
+        (
+            "cannot receive: incomplete stream",
+            1,
+            b"zfs send failed: I/O error\n",
+            "ERROR: local recv error: cannot receive: incomplete stream\n"
+            "[Remote Side] Error during send: zfs send failed: I/O error",
+        ),
+        (None, 255, None, "ERROR: local recv error: "),
+    ],
+)
+def test_recv_failure_message_reports_recv_first(recv_err, sender_rc, sender_err, expected):
+    from replication.transfers.common import _recv_failure_message
+
+    assert _recv_failure_message(recv_err, sender_rc, sender_err) == expected
 

@@ -34,6 +34,12 @@ def _broken_pipe_failure(recv_proc, *others):
     return False, err_msg
 
 
+def _commit_pv_progress(pv_thread, size_holder):
+    if pv_thread:
+        pv_thread.join()
+    add_transferred_bytes(size_holder[0])
+
+
 def _start_remote_recv_over_ssh(
     recv_host_user,
     recv_host,
@@ -155,21 +161,14 @@ def resume_receive_push(
     # Print CLI-reproducible resume command
     send_str = f"zfs send -t {shlex.quote(resume_token)}"
     recv_flags = "zfs recv -s" + (" -F" if forceOverwrite else "") + f" {recvName}"
+    # Netcat prints its commands once the flavour-specific nc stages are built.
     if transferMethod == "local" or not recvHost:
         print(f"CLI command: {send_str} | {recv_flags}")
-    elif transferMethod == "netcat":
-        data_port_cli = str(recvDataPort or recvSshPort or "31337")
-        if remote_mbuffer_enabled:
-            print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | nc {recvHost} {data_port_cli}")
-            print(f"CLI command (receiver): nc -l {data_port_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
-        else:
-            print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | nc {recvHost} {data_port_cli}")
-            print(f"CLI command (receiver): nc -l {data_port_cli} | {recv_flags}")
     elif transferMethod == "mbuffer":
         data_port_cli = str(recvDataPort or recvSshPort or "31337")
         print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {recvHost}:{data_port_cli}")
         print(f"CLI command (receiver): {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port_cli} | {recv_flags}")
-    else:
+    elif transferMethod != "netcat":
         ssh_target = f"{recvHostUser}@{recvHost}" if recvHostUser else recvHost
         ssh_port_flag = f" -p {recvSshPort}" if str(recvSshPort) != "22" else ""
         if remote_mbuffer_enabled:
@@ -282,6 +281,8 @@ def resume_receive_push(
             stderr=subprocess.PIPE,
         )
         nc_cmd = _build_nc_connect_cmd(recvHost, data_port, recv_only=False)
+        print(f"CLI command (sender): {send_str} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {shell_join(nc_cmd)}")
+        print(f"CLI command (receiver): {listen_cmd}")
         process_nc = subprocess.Popen(
             nc_cmd,
             stdin=process_mbuffer.stdout,
@@ -641,19 +642,12 @@ def resume_receive_pull(
             mbufferCallbackHost,
             _callback_port,
         )
-    if transferMethod == "netcat":
-        data_port_cli = str(recvDataPort or remoteSshPort or "31337")
-        local_recv_stage = f"nc {remoteHost} {data_port_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}"
-        if remote_mbuffer_enabled:
-            print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | nc -l {data_port_cli}'")
-        else:
-            print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | nc -l {data_port_cli}'")
-        print(f"CLI command (dest, local receiver):   {local_recv_stage}")
-    elif transferMethod == "mbuffer":
+    # Netcat prints its commands once the flavour-specific nc stages are built.
+    if transferMethod == "mbuffer":
         data_port_cli = str(recvDataPort or remoteSshPort or "31337")
         print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -O {mbuffer_callback_cli}'")
         print(f"CLI command (dest, local receiver):   {mbuffer_shell_stage(mBufferSize, mBufferUnit)} -I {data_port_cli} | {recv_flags}")
-    else:
+    elif transferMethod != "netcat":
         if remote_mbuffer_enabled:
             print(f"CLI command: ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{send_str_cli} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)}' | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
         else:
@@ -687,6 +681,8 @@ def resume_receive_pull(
 
         # Local: nc <remote> <port> | pv | mbuffer | zfs recv
         nc_cmd = _build_nc_connect_cmd(remoteHost, data_port, recv_only=True)
+        print(f"CLI command (source): ssh{ssh_port_flag} {remoteUser}@{remoteHost} '{remote_cmd}'")
+        print(f"CLI command (dest, local receiver):   {shell_join(nc_cmd)} | {mbuffer_shell_stage(mBufferSize, mBufferUnit)} | {recv_flags}")
         process_nc = subprocess.Popen(
             nc_cmd,
             stdout=subprocess.PIPE,
@@ -727,10 +723,12 @@ def resume_receive_pull(
 
         # Start pv progress monitor thread (with stall tracking)
         last_activity = [time.time()]
+        size_holder = [0]
+        pv_thread = None
         if process_pv:
             pv_thread = threading.Thread(
                 target=_pv_monitor_thread,
-                args=(process_pv.stderr, total_bytes, "Resuming", notifier, last_activity),
+                args=(process_pv.stderr, total_bytes, "Resuming", notifier, last_activity, size_holder),
                 daemon=True,
             )
             pv_thread.start()
@@ -778,6 +776,7 @@ def resume_receive_pull(
                             process_pv.kill()
                         except Exception:
                             pass
+                    _commit_pv_progress(pv_thread, size_holder)
                     return False, (f"Pipeline stalled: no data transferred for {int(idle)}s "
                                    f"(stall timeout: {_stall_timeout}s).")
                 else:
@@ -794,7 +793,9 @@ def resume_receive_pull(
         except subprocess.TimeoutExpired:
             _kill_procs(process_mbuffer, process_pv, process_nc, ssh_process_sender)
             notifier.notify("STATUS=Finalization timed out — buffer stage killed.")
+            _commit_pv_progress(pv_thread, size_holder)
             return False, f"mbuffer/pv did not drain within {PIPELINE_FINALIZE_TIMEOUT}s after the receive completed. Processes killed."
+        _commit_pv_progress(pv_thread, size_holder)
 
         try:
             _, nc_stderr = _communicate_with_finalize_heartbeat(
@@ -820,6 +821,13 @@ def resume_receive_pull(
 
         mbuf_err = mbuf_capture.text()
 
+        # A failed recv breaks every upstream pipe, so its own error is the cause to report.
+        if process_local_recv.returncode != 0:
+            notifier.notify("STATUS=Local resume receive (pull via netcat) failed.")
+            err_msg = _recv_failure_message(recv_stderr, ssh_process_sender.returncode, ssh_stderr)
+            print(err_msg)
+            return False, err_msg
+
         if ssh_process_sender.returncode != 0:
             notifier.notify("STATUS=Remote resume send via netcat failed.")
             err_msg = f"[Remote Side] Error during send: {(ssh_stderr or '').strip()}"
@@ -835,12 +843,6 @@ def resume_receive_pull(
         if process_mbuffer.returncode != 0:
             notifier.notify("STATUS=Netcat resume pull failed.")
             err_msg = f"[Receiver Side] mbuffer error: {mbuf_err}"
-            print(err_msg)
-            return False, err_msg
-
-        if process_local_recv.returncode != 0:
-            notifier.notify("STATUS=Local resume receive (pull via netcat) failed.")
-            err_msg = f"ERROR: local recv error: {recv_stderr}"
             print(err_msg)
             return False, err_msg
 
@@ -978,6 +980,12 @@ def resume_receive_pull(
         recv_stderr = recv_stderr.decode(errors="replace") if isinstance(recv_stderr, bytes) else (recv_stderr or "")
         mbuf_err = mbuf_capture.text()
 
+        if process_local_recv.returncode != 0:
+            notifier.notify("STATUS=Local resume receive (pull via mbuffer) failed.")
+            err_msg = _recv_failure_message(recv_stderr, ssh_process_sender.returncode, ssh_stderr)
+            print(err_msg)
+            return False, err_msg
+
         if ssh_process_sender.returncode != 0:
             notifier.notify("STATUS=Remote resume send via mbuffer failed.")
             err_msg = f"[Remote Side] Error during send: {(ssh_stderr or '').strip()}"
@@ -987,12 +995,6 @@ def resume_receive_pull(
         if process_mbuffer.returncode != 0:
             notifier.notify("STATUS=mBuffer resume pull failed.")
             err_msg = f"[Receiver Side] mbuffer error: {mbuf_err}"
-            print(err_msg)
-            return False, err_msg
-
-        if process_local_recv.returncode != 0:
-            notifier.notify("STATUS=Local resume receive (pull via mbuffer) failed.")
-            err_msg = f"ERROR: local recv error: {recv_stderr}"
             print(err_msg)
             return False, err_msg
 

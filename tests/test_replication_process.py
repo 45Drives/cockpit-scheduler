@@ -10,6 +10,60 @@ from replication import process
 
 
 @pytest.mark.parametrize(
+    "lines,expected_activity,expected_size",
+    [
+        ([b"0 B 0:00:01 [0 B/s] 0%"] * 4, 0.0, 0),
+        ([b"140 TiB 0:00:01 [0 B/s] 100%"] * 4, 10.0, 140 * 1024**4),
+        ([b"140 TiB [1.25 MiB/s] 100%"] * 4, 40.0, 140 * 1024**4),
+        ([b"140 TiB [0.00 B/s] 100%"] * 4, 10.0, 140 * 1024**4),
+        ([b"1 KiB [1 KiB/s] 10%", b"2 KiB [1 KiB/s] 20%"], 20.0, 2048),
+        ([b"1 KiB [0 B/s] 10%", b"0 B [0 B/s] 0%"], 10.0, 0),
+        ([b"unparseable status [0 B/s] 100%"] * 4, 0.0, -1),
+    ],
+)
+@pytest.mark.parametrize("track_size", [False, True])
+def test_pv_monitor_activity_requires_data_flow(
+    monkeypatch, lines, expected_activity, expected_size, track_size
+):
+    clock = iter(10.0 * step for step in range(1, len(lines) + 1))
+    monkeypatch.setattr(process.time, "time", lambda: next(clock))
+    monkeypatch.setattr(process, "dbg", lambda message: None)
+    last_activity = [0.0]
+    size_holder = [-1] if track_size else None
+
+    process._pv_monitor_thread(
+        io.BytesIO(b"\r".join(lines) + b"\n"),
+        1024,
+        "Resuming",
+        RecordingNotifier(),
+        last_activity,
+        size_holder,
+    )
+
+    assert last_activity[0] == expected_activity
+    if track_size:
+        assert size_holder[0] == expected_size
+
+
+def test_pv_monitor_zero_rate_output_does_not_prevent_stall_timeout(monkeypatch):
+    clock = iter([10.0, 1810.0, 3610.0])
+    monkeypatch.setattr(process.time, "time", lambda: next(clock))
+    monkeypatch.setattr(process, "dbg", lambda message: None)
+    last_activity = [0.0]
+
+    process._pv_monitor_thread(
+        io.BytesIO(b"140 TiB [0.00 B/s] 100%\r" * 3),
+        1024,
+        "Resuming",
+        RecordingNotifier(),
+        last_activity,
+    )
+
+    assert last_activity[0] == 10.0
+    assert 3610.0 - last_activity[0] >= 3600
+
+
+@pytest.mark.parametrize(
     "raw,expected",
     [
         (b"size\t1048576\n", 1048576),

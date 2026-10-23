@@ -205,6 +205,7 @@ export class Scheduler implements SchedulerType {
         // Helper: choose which blob to feed into parseTaskStatus
         const pickStatusSource = (t: ReturnType<Scheduler['parseShow']>, s: ReturnType<Scheduler['parseShow']>) => {
             // If the service is clearly running or failed, always show that
+            if (s.active === 'deactivating') return serviceOut;
             if (s.active === 'active' && s.sub === 'running') return serviceOut;
             if (s.active === 'failed' || s.sub === 'failed') return serviceOut;
             // During auto-restart after failure, or any non-success result, prefer the service
@@ -445,7 +446,8 @@ export class Scheduler implements SchedulerType {
 
                 // Same logic as getDisplayMeta's pickStatusSource
                 let source: string;
-                if (s.active === 'active' && s.sub === 'running') source = serviceOut;
+                if (s.active === 'deactivating') source = serviceOut;
+                else if (s.active === 'active' && s.sub === 'running') source = serviceOut;
                 else if (s.active === 'failed' || s.sub === 'failed') source = serviceOut;
                 else if (s.active === 'activating' && s.sub === 'auto-restart') source = serviceOut;
                 else if (s.result && s.result !== 'success' && s.result !== '') source = serviceOut;
@@ -1844,6 +1846,8 @@ export class Scheduler implements SchedulerType {
                 }
 
                 if (s.active === 'failed' || s.sub === 'failed') return 'Failed';
+                // Covers stop-sigterm, final-sigterm and final-sigkill while processes shut down.
+                if (s.active === 'deactivating') return 'Stopping...';
                 const base = s.active || 'unknown';
                 return s.sub ? `${base} (${s.sub})` : base;
             }
@@ -1853,6 +1857,7 @@ export class Scheduler implements SchedulerType {
             if (!m) return 'Unit inactive or not found.';
 
             const stateText = `${m[1]} (${m[2]})`;
+            if (m[1] === 'deactivating') return 'Stopping...';
             switch (stateText) {
                 case 'activating (start)': return 'Starting...';
                 case 'active (waiting)': return 'Active (Pending)';

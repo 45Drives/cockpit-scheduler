@@ -24,12 +24,29 @@ from ..process import (
     _pv_monitor_thread,
     _wait_with_finalize_heartbeat,
     _effective_mbuffer_block,
+    add_transferred_bytes,
     estimate_send_size,
     safe_communicate,
     stream_with_progress_stall,
 )
 from ..ssh import estimate_send_size_remote, remote_has_command, ssh_base_args, ssh_popen_args, ssh_run_args
 from .netcat import _build_nc_connect_cmd, _wait_for_port_remote, build_nc_listen_cmd
+
+
+def shell_join(argv):
+    return " ".join(shlex.quote(str(a)) for a in argv)
+
+
+def _recv_failure_message(recv_stderr, sender_rc, sender_stderr):
+    """Describe a failed local receive, keeping a sender error that may have caused it."""
+    recv_stderr, sender_stderr = (
+        s.decode(errors="replace") if isinstance(s, bytes) else (s or "") for s in (recv_stderr, sender_stderr)
+    )
+    msg = f"ERROR: local recv error: {recv_stderr.strip()}"
+    sender_err = sender_stderr.strip()
+    if sender_rc and sender_err:
+        msg += f"\n[Remote Side] Error during send: {sender_err}"
+    return msg
 
 
 def mbuffer_shell_stage(buf_size, buf_unit):
@@ -151,6 +168,7 @@ __all__ = [
     "_kill_procs",
     "_pv_monitor_thread",
     "_wait_with_finalize_heartbeat",
+    "add_transferred_bytes",
     "estimate_send_size",
     "safe_communicate",
     "stream_with_progress_stall",
@@ -160,6 +178,8 @@ __all__ = [
     "ssh_popen_args",
     "ssh_run_args",
     "mbuffer_shell_stage",
+    "shell_join",
+    "_recv_failure_message",
     "resolve_mbuffer_callback_target",
     "resolve_mbuffer_callback_target_for_remote",
     "preflight_remote_callback_connectivity",

@@ -378,6 +378,21 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                         else:
                             clear_receive_resume_token(ctx.destFilesystem, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
                 else:
+                    if not (ctx.resumeFailAllowOverwrite or ctx.forceFullSend):
+                        # Clearing a full send's token discards everything received so far.
+                        keep_msg = (
+                            f'Resume of the interrupted full send to {ctx.destFilesystem} failed: {err}. '
+                            'The resume token was kept, so the next run will resume from where it stopped. '
+                            "Enable 'On resume failure, clear token and continue' to restart the full send instead."
+                        )
+                        notifier.notify(f'STATUS={keep_msg}')
+                        print(keep_msg)
+                        send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': keep_msg, 'fileSystem': ctx.destFilesystem, 'snapShot': pending_snap, 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{_token} | {err}'})
+                        print_transfer_summary(
+                            'FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+                            extra_lines=_resume_only_extra_lines(ctx),
+                        )
+                        sys.exit(1 if _is_transient_resume_failure(err) else 2)
                     print(f'Resume failed: {err}. Will redo full send.')
                     if ctx.direction == 'pull':
                         clear_receive_resume_token(ctx.destFilesystem)
@@ -432,6 +447,27 @@ def _recover_pending_full_send(ctx: ReplicationRun):
                     _clear_pending_full_send(ctx.taskName)
                     ctx.pending_state = None
     return False
+
+
+def _is_transient_resume_failure(error):
+    error_text = str(error).lower()
+    transient_markers = (
+        'stalled',
+        'timed out',
+        'timeout',
+        'did not finish within',
+        'did not exit within',
+        'did not drain within',
+        'connection reset',
+        'connection refused',
+        'connection aborted',
+        'connection closed',
+        'broken pipe',
+        'network is unreachable',
+        'no route to host',
+        'temporary failure',
+    )
+    return any(marker in error_text for marker in transient_markers)
 
 
 def _finish_successful_resume(ctx: ReplicationRun):
@@ -1389,6 +1425,14 @@ def run_replication(ctx: ReplicationRun):
         _apply_retention(ctx)
 
 
+def _missing_command(error):
+    """Name of the executable a subprocess launch could not find, else None."""
+    name = getattr(error, 'filename', None)
+    if isinstance(error, FileNotFoundError) and isinstance(name, str) and name and '/' not in name:
+        return name
+    return None
+
+
 def handle_failure(ctx: ReplicationRun, error):
     srcPool = os.environ.get('zfsRepConfig_sourceDataset_pool', '')
     srcDs = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
@@ -1401,6 +1445,21 @@ def handle_failure(ctx: ReplicationRun, error):
         print(f"receive_resume_token for {receivingFilesystem}: {resume_token or '-'}")
     except Exception:
         print(f'receive_resume_token for {receivingFilesystem}: <error fetching token>')
+    missing = _missing_command(error)
+    if missing:
+        msg = (
+            f"Required command '{missing}' is not installed on this host. "
+            f"Install the '{missing}' package and run the task again."
+        )
+        safe_print(f'ERROR: {msg}')
+        notifier.notify(f'STATUS=ZFS replication task failed: {msg}')
+        send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_failed', 'subject': 'ZFS Replication Failed', 'email_message': f'ZFS replication from {ctx.sourceFilesystem} to {receivingFilesystem} failed: {msg}', 'fileSystem': ctx.sourceFilesystem, 'snapShot': ctx.newSnap, 'replicationDestination': receivingFilesystem, 'severity': 'warning', 'errors': msg})
+        print_transfer_summary(
+            'FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+            extra_lines=_replication_extra_lines(ctx),
+        )
+        # Retrying cannot help until the package is installed.
+        sys.exit(2)
     tb = traceback.format_exc()
     safe_print(tb)
     busy = is_dataset_busy(f'{error}\n{tb}')

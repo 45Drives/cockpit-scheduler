@@ -116,6 +116,20 @@ _STUB_RECV_REJECTS = (
 )
 
 
+def test_commit_pv_progress_joins_monitor_before_adding_bytes(monkeypatch):
+    calls = []
+
+    class Monitor:
+        def join(self):
+            calls.append("joined")
+
+    monkeypatch.setattr(resume, "add_transferred_bytes", lambda count: calls.append(count))
+
+    resume._commit_pv_progress(Monitor(), [1234])
+
+    assert calls == ["joined", 1234]
+
+
 @pytest.mark.parametrize("mbuffer_stub", [_STUB_MBUFFER_BUFFERED, _STUB_MBUFFER_STREAMING], ids=["buffered", "streaming"])
 def test_ssh_resume_pull_returns_recv_error_instead_of_hanging(monkeypatch, mbuffer_stub):
     """zfs recv rejecting a resumed stream used to leave the run stuck at 100% forever."""

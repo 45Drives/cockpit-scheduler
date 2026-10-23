@@ -224,7 +224,7 @@ export async function getSshCiphers(
 	}
 }
 
-export async function testNetcat(user, netcatHost, port) {
+export async function testNetcat(user, netcatHost, port): Promise<{ ok: boolean; sshError: boolean }> {
 	try {
 		console.log(`target: ${netcatHost}, port: ${port}`);
 
@@ -241,10 +241,10 @@ export async function testNetcat(user, netcatHost, port) {
 		const { stdout } = await runCommand(argv, { superuser: "try" });
 
 		console.log("testNetcat output:", stdout);
-		return stdout.includes("True");
+		return { ok: stdout.includes("True"), sshError: stdout.includes("SSH_FAILED") };
 	} catch (err) {
 		console.error(err);
-		return false;
+		return { ok: false, sshError: false };
 	}
 }
 
