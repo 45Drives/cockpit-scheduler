@@ -60,7 +60,7 @@ def test_send_planner_preserves_incremental_flags():
         "zfs",
         "send",
         "-R",
-        "-Lce",
+        "-Lc",
         "-w",
         "-I",
         "tank/data@old",

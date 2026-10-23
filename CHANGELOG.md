@@ -1,3 +1,3 @@
-## task scheduler 1.9.5-1
+## task scheduler 1.9.7-1
 
-* Updates snapshot name's timestamp format to match Snapshield/Python default
+* Fixes some ZFS Replication argument issues + adds custom args support
