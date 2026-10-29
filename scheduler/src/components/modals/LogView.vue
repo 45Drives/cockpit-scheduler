@@ -11,15 +11,17 @@
                 <div class="max-w-5xl mx-auto p-4 bg-accent text-default shadow-md rounded-lg">
                     <div class="grid grid-cols-3 gap-2 items-center">
                         <div v-if="thisLogEntry !== undefined" class="col-span-2 mb-4">
-                            <p v-if="showCycleStart" class="text-sm font-medium">Run Started at {{ thisLogEntry.cycleStartDate }}</p>
-                            <p class="text-sm font-medium">Last Executed at {{ thisLogEntry.startDate || transferSummary?.started || 'Unknown' }}</p>
+                            <p v-if="showCycleStart" class="text-sm font-medium">Run Started at {{ formatTimestamp(thisLogEntry.cycleStartDate) }}</p>
+                            <p class="text-sm font-medium">Last Executed at {{ formatTimestamp(thisLogEntry.startDate) || transferSummary?.started || 'Unknown' }}</p>
                             <template v-if="thisLogEntry.running">
                                 <p class="text-sm font-medium text-success">
                                     Running now<span v-if="elapsedDuration"> — {{ elapsedDuration }} elapsed</span>
                                 </p>
+                                <p v-if="serverTimeNote" class="text-xs text-muted">{{ serverTimeNote }}</p>
                             </template>
                             <template v-else>
-                                <p class="text-sm font-medium">Finished at {{ thisLogEntry.finishDate || transferSummary?.finished || 'Unknown' }}</p>
+                                <p class="text-sm font-medium">Finished at {{ formatTimestamp(thisLogEntry.finishDate) || transferSummary?.finished || 'Unknown' }}</p>
+                                <p v-if="serverTimeNote" class="text-xs text-muted">{{ serverTimeNote }}</p>
                                 <p v-if="runDuration || transferSummary?.duration" class="text-sm font-medium">
                                     Duration: {{ runDuration || transferSummary?.duration }}
                                 </p>
@@ -296,6 +298,31 @@ const totalDuration = computed(() => {
 const retryLabel = computed(() => {
     const n = thisLogEntry.value?.restarts ?? 0;
     return `incl. ${n} ${n === 1 ? 'retry' : 'retries'}`;
+});
+
+// systemd reports timestamps in the server's timezone; render them in the
+// browser's timezone so they match the dashboard's "Completed at" label.
+function formatTimestamp(raw?: string | number): string {
+    if (!raw) return '';
+    const us = parseSystemdTimestampUSec(String(raw));
+    return us ? myScheduler.formatLocal(us / 1000) : String(raw);
+}
+
+// formatLocal mirrors systemd's layout, so the raw value only differs from the
+// formatted one when the server's timezone isn't the browser's.
+const serverTimeNote = computed(() => {
+    const entry = thisLogEntry.value;
+    if (!entry) return '';
+    const clean = (v?: string | number) => {
+        const s = v ? String(v).trim() : '';
+        return /^\d+$/.test(s) ? '' : s;
+    };
+    const start = clean(entry.startDate);
+    const finish = entry.running ? '' : clean(entry.finishDate);
+    const raws = [start, finish].filter(Boolean);
+    if (!raws.length || raws.every(raw => formatTimestamp(raw) === raw)) return '';
+    const parts = [start && `started ${start}`, finish && `finished ${finish}`].filter(Boolean);
+    return `Server time: ${parts.join(', ')} (log output below uses server time)`;
 });
 
 function formatSpan(from?: string | number, to?: string | number): string {
