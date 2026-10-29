@@ -78,6 +78,18 @@ def test_autosnap_recognizes_both_timestamp_formats(autosnap, timestamp, prefix)
     assert autosnap._is_autosnap_task_snapshot(f"tank/data@{prefix}-{timestamp}", "job-a", "daily")
 
 
+@pytest.mark.parametrize("name", [
+    "tank/data@daily-offsite-2026.08.04-01.02.03",
+    "tank/data@daily-offsite-t2-2026-08-04_01.02.03",
+    "tank/data@daily-2-2026.08.04-01.02.03",
+    "tank/data@dailyx-2026.08.04-01.02.03",
+    "tank/data@daily-manual",
+])
+def test_name_fallback_does_not_claim_sibling_prefix_tasks(autosnap, name):
+    assert not autosnap._is_autosnap_task_snapshot(name, "daily")
+    assert not snapshots.is_task_snapshot(name, "daily")
+
+
 @pytest.mark.parametrize("engine", ["autosnap", "local", "remote"])
 def test_retention_handles_mixed_formats_without_claiming_foreign_snapshots(
     monkeypatch, autosnap, fixed_snapshot_time, engine

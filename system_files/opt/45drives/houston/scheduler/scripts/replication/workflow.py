@@ -229,7 +229,7 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
                 sys.exit(0)
             print(f'Resume token found on {local_target_fs}. Resuming transfer…')
             notifier.notify(f'STATUS=Resume token found. Resuming transfer to {local_target_fs}…')
-            (ok, err) = resume_receive_pull(_resume_token, local_target_fs, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=ctx.mBufferSize, mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
+            (ok, err, blocked) = _resume_unless_blocked(ctx, local_target_fs, lambda: resume_receive_pull(_resume_token, local_target_fs, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=ctx.mBufferSize, mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost))
             if ok:
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
@@ -239,9 +239,12 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
             else:
                 print(f'Resume transfer failed: {err}')
                 notifier.notify(f'STATUS=Resume transfer failed: {err}')
+                hint = '' if blocked else _explain_generic_recv_error(ctx, local_target_fs, err)
+                if hint:
+                    print(hint)
                 _persist_lastrun(ctx.taskName)
                 print_transfer_summary('FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
-                sys.exit(1)
+                sys.exit(2 if blocked else 1)
         dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
         dbg(f'remoteUser={ctx.remoteUser} remoteHost={ctx.remoteHost} sshPort={ctx.sshPort}')
         _require_ssh_access(ctx.remoteUser, ctx.remoteHost, ctx.sshPort)
@@ -281,7 +284,7 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
                 sys.exit(0)
             print(f'Resume token found on {target_fs}. Resuming transfer…')
             notifier.notify(f'STATUS=Resume token found. Resuming transfer to {target_fs}…')
-            (ok, err) = resume_receive_push(_resume_token, target_fs, recvHost=ctx.remoteHost or '', recvSshPort=ctx.sshPort, recvHostUser=ctx.remoteUser, mBufferSize=ctx.mBufferSize, mBufferUnit=ctx.mBufferUnit, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout)
+            (ok, err, blocked) = _resume_unless_blocked(ctx, target_fs, lambda: resume_receive_push(_resume_token, target_fs, recvHost=ctx.remoteHost or '', recvSshPort=ctx.sshPort, recvHostUser=ctx.remoteUser, mBufferSize=ctx.mBufferSize, mBufferUnit=ctx.mBufferUnit, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout))
             if ok:
                 print('Resume transfer completed successfully.')
                 notifier.notify('STATUS=Resume transfer completed. 100% complete')
@@ -291,9 +294,12 @@ def _load_snapshot_inventory(ctx: ReplicationRun):
             else:
                 print(f'Resume transfer failed: {err}')
                 notifier.notify(f'STATUS=Resume transfer failed: {err}')
+                hint = '' if blocked else _explain_generic_recv_error(ctx, target_fs, err)
+                if hint:
+                    print(hint)
                 _persist_lastrun(ctx.taskName)
                 print_transfer_summary('FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(), extra_lines=_resume_only_extra_lines(ctx))
-                sys.exit(1)
+                sys.exit(2 if blocked else 1)
         if ctx.remoteHost:
             dbg(f"EUID={os.geteuid()} USER={getpass.getuser()} HOME={os.environ.get('HOME')}")
             dbg(f'remoteUser={ctx.remoteUser} remoteHost={ctx.remoteHost} sshPort={ctx.sshPort}')
@@ -487,85 +493,82 @@ def _finish_successful_resume(ctx: ReplicationRun):
     return False
 
 
+def _dest_remote_kwargs(ctx: ReplicationRun):
+    """Remote connection kwargs for resume-token helpers; empty when the destination is local (pull)."""
+    if ctx.direction == 'pull':
+        return {}
+    return {'remote_user': ctx.remoteUser if ctx.remoteHost else None, 'remote_host': ctx.remoteHost if ctx.remoteHost else None, 'remote_port': ctx.sshPort}
+
+
+def _handle_failed_interrupted_resume(ctx: ReplicationRun, resume_token, err, explained=False):
+    """Clear the token and let the run continue, or stop it; a kept token makes a normal send fail anyway."""
+    dest_remote = _dest_remote_kwargs(ctx)
+    err_lower = (err or '').lower()
+    needs_overwrite = 'destination exists' in err_lower or 'must specify -f' in err_lower
+    if needs_overwrite and (not ctx.allowOverwrite):
+        hard_msg = f'Resume failed for {ctx.destFilesystem}: destination requires rollback (-F) but Allow Overwrite is not enabled. Enable Allow Overwrite or manually clear the destination state.'
+        notifier.notify(f'STATUS={hard_msg}')
+        print(hard_msg)
+        sys.exit(2)
+    if ctx.resumeFailAllowOverwrite or needs_overwrite:
+        msg = f'Resume attempt failed for {ctx.destFilesystem}; clearing resume token and continuing with normal replication.'
+        notifier.notify(f'STATUS={msg}')
+        print(msg)
+        (cleared, clear_err) = clear_receive_resume_token(ctx.destFilesystem, **dest_remote)
+        if not cleared:
+            fail_msg = f'Failed to clear resume token for {ctx.destFilesystem}: {clear_err}'
+            notifier.notify(f'STATUS={fail_msg}')
+            print(fail_msg)
+            # Transient (busy dataset / network); exit 1 keeps the bounded retry budget.
+            sys.exit(1)
+        if needs_overwrite:
+            ctx.forceOverwrite = True
+        warn_msg = f'Resume attempt failed for {ctx.destFilesystem}. Continuing with normal replication.'
+        send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': f'{warn_msg} Token: {resume_token}. Error: {err}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{resume_token} | {err}'})
+        return
+    if 'modified since' in err_lower or 'has been modified' in err_lower:
+        hard_msg = 'Resume failed because destination was modified since the most recent snapshot. Refusing to continue with normal replication.'
+        notifier.notify(f'STATUS={hard_msg}')
+        print(hard_msg)
+        sys.exit(2)
+    # While the token exists ZFS refuses any other receive into the dataset, so a normal send would only fail
+    # with "contains partially-complete state" and spend a retry.
+    detail = (err or 'unknown error').strip().rstrip('.')
+    hint = '' if explained else _explain_generic_recv_error(ctx, ctx.destFilesystem, err)
+    keep_msg = (
+        f'Could not resume the interrupted transfer to {ctx.destFilesystem}: {detail}. '
+        + (f'{hint} ' if hint else '')
+        + 'The resume token was kept, so the next run will try to resume again.'
+    )
+    # Clearing the token cannot help while foreign destination snapshots remain: the planner refuses them next.
+    if not explained:
+        keep_msg += " Enable 'On resume failure, clear token and continue' to discard the partial transfer and send again instead."
+    notifier.notify(f'STATUS={keep_msg}')
+    print(keep_msg)
+    send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': f'{keep_msg} Token: {resume_token}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{resume_token} | {err}'})
+    print_transfer_summary(
+        'FAILED', ctx.run_start_time, bytes_transferred=get_transferred_bytes(),
+        extra_lines=_resume_only_extra_lines(ctx),
+    )
+    retryable = (not explained) and (_is_transient_resume_failure(err) or is_dataset_busy(err))
+    sys.exit(1 if retryable else 2)
+
+
 def _resume_interrupted_receive(ctx: ReplicationRun):
-    if not ctx.pending_state and ctx.direction == 'pull':
-        resume_token = get_receive_resume_token(ctx.destFilesystem)
+    if not ctx.pending_state:
+        resume_token = get_receive_resume_token(ctx.destFilesystem, **_dest_remote_kwargs(ctx))
         if resume_token:
             msg = f'Found resume token on destination {ctx.destFilesystem}. Attempting to resume receive.'
             notifier.notify(f'STATUS={msg}')
             print(msg)
-            (ok, err) = resume_receive_pull(resume_token=resume_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
+            if ctx.direction == 'pull':
+                resume = lambda: resume_receive_pull(resume_token=resume_token, localRecvFs=ctx.destFilesystem, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, mbufferCallbackHost=ctx.mBufferCallbackHost)
+            else:
+                resume = lambda: resume_receive_push(resume_token=resume_token, recvName=ctx.destFilesystem, recvHost=ctx.remoteHost, recvSshPort=ctx.sshPort, recvHostUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, transferMethod=ctx.transferMethod if ctx.transferMethod else 'ssh', recvDataPort=ctx.dataPort, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout)
+            (ok, err, blocked) = _resume_unless_blocked(ctx, ctx.destFilesystem, resume)
             if ok:
                 return _finish_successful_resume(ctx)
-            err_lower = (err or '').lower()
-            needs_overwrite = 'destination exists' in err_lower or 'must specify -f' in err_lower
-            if needs_overwrite and (not ctx.allowOverwrite):
-                hard_msg = f'Resume failed for {ctx.destFilesystem}: destination requires rollback (-F) but Allow Overwrite is not enabled. Enable Allow Overwrite or manually clear the destination state.'
-                notifier.notify(f'STATUS={hard_msg}')
-                print(hard_msg)
-                sys.exit(2)
-            if ctx.resumeFailAllowOverwrite or needs_overwrite:
-                msg = f'Resume attempt failed for {ctx.destFilesystem}; clearing resume token and continuing with normal replication.'
-                notifier.notify(f'STATUS={msg}')
-                print(msg)
-                (cleared, clear_err) = clear_receive_resume_token(ctx.destFilesystem)
-                if not cleared:
-                    fail_msg = f'Failed to clear resume token for {ctx.destFilesystem}: {clear_err}'
-                    notifier.notify(f'STATUS={fail_msg}')
-                    print(fail_msg)
-                    # Transient (busy dataset / network); exit 1 keeps the bounded retry budget.
-                    sys.exit(1)
-                if needs_overwrite:
-                    ctx.forceOverwrite = True
-            elif 'modified since' in err_lower or 'has been modified' in err_lower:
-                hard_msg = 'Resume failed because destination was modified since the most recent snapshot. Refusing to continue with normal replication.'
-                notifier.notify(f'STATUS={hard_msg}')
-                print(hard_msg)
-                sys.exit(2)
-            warn_msg = f'Resume attempt failed for {ctx.destFilesystem}. Continuing with normal replication.'
-            if not (ctx.resumeFailAllowOverwrite or needs_overwrite):
-                notifier.notify(f'STATUS={warn_msg}')
-                print(warn_msg)
-            send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': f'{warn_msg} Token: {resume_token}. Error: {err}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{resume_token} | {err}'})
-    elif not ctx.pending_state:
-        resume_token = get_receive_resume_token(ctx.destFilesystem, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
-        if resume_token:
-            msg = f'Found resume token on destination {ctx.destFilesystem}. Attempting to resume receive.'
-            notifier.notify(f'STATUS={msg}')
-            print(msg)
-            (ok, err) = resume_receive_push(resume_token=resume_token, recvName=ctx.destFilesystem, recvHost=ctx.remoteHost, recvSshPort=ctx.sshPort, recvHostUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, transferMethod=ctx.transferMethod if ctx.transferMethod else 'ssh', recvDataPort=ctx.dataPort, forceOverwrite=ctx.allowOverwrite, stall_timeout=ctx.resumeStallTimeout)
-            if ok:
-                return _finish_successful_resume(ctx)
-            err_lower = (err or '').lower()
-            needs_overwrite = 'destination exists' in err_lower or 'must specify -f' in err_lower
-            if needs_overwrite and (not ctx.allowOverwrite):
-                hard_msg = f'Resume failed for {ctx.destFilesystem}: destination requires rollback (-F) but Allow Overwrite is not enabled. Enable Allow Overwrite or manually clear the destination state.'
-                notifier.notify(f'STATUS={hard_msg}')
-                print(hard_msg)
-                sys.exit(2)
-            if ctx.resumeFailAllowOverwrite or needs_overwrite:
-                msg = f'Resume attempt failed for {ctx.destFilesystem}; clearing resume token and continuing with normal replication.'
-                notifier.notify(f'STATUS={msg}')
-                print(msg)
-                (cleared, clear_err) = clear_receive_resume_token(ctx.destFilesystem, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
-                if not cleared:
-                    fail_msg = f'Failed to clear resume token for {ctx.destFilesystem}: {clear_err}'
-                    notifier.notify(f'STATUS={fail_msg}')
-                    print(fail_msg)
-                    # Transient (busy dataset / network); exit 1 keeps the bounded retry budget.
-                    sys.exit(1)
-                if needs_overwrite:
-                    ctx.forceOverwrite = True
-            elif 'modified since' in err_lower or 'has been modified' in err_lower:
-                hard_msg = 'Resume failed because destination was modified since the most recent snapshot. Refusing to continue with normal replication.'
-                notifier.notify(f'STATUS={hard_msg}')
-                print(hard_msg)
-                sys.exit(2)
-            warn_msg = f'Resume attempt failed for {ctx.destFilesystem}. Continuing with normal replication.'
-            if not (ctx.resumeFailAllowOverwrite or needs_overwrite):
-                notifier.notify(f'STATUS={warn_msg}')
-                print(warn_msg)
-            send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_resume_failed', 'subject': 'ZFS Replication Resume Failed', 'email_message': f'{warn_msg} Token: {resume_token}. Error: {err}', 'fileSystem': ctx.destFilesystem, 'snapShot': '', 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': f'{resume_token} | {err}'})
+            _handle_failed_interrupted_resume(ctx, resume_token, err, explained=blocked)
     if ctx.resumeOnly:
         print('RESUME ONLY mode: resume was attempted but did not complete successfully.')
         print('Run a normal replication (Run Now) to continue, or try Resume Transfer again.')
@@ -839,6 +842,82 @@ def _dataset_property(ctx: ReplicationRun, dataset, prop, timeout=30):
 def _dest_list(ctx: ReplicationRun, dataset, list_type):
     """Names of the given zfs type at or below the destination, or None if unreadable."""
     return _side_list(ctx, 'dest', dataset, list_type)
+
+
+# libzfs prints this for any EINVAL from a resumable (-s) receive, not only for real version mismatches.
+GENERIC_RECV_EINVAL_MARKER = 'kernel modules must be upgraded'
+GENERIC_RECV_EINVAL_HINT = (
+    'Despite its wording, this ZFS error does not mean the ZFS versions are incompatible: ZFS reports it '
+    'whenever it rejects a resumable receive. A common cause is a snapshot taken on the destination while '
+    'a transfer into it was in progress.'
+)
+
+
+def _snapshots_blocking_receive(ctx: ReplicationRun, dest_fs):
+    """Destination snapshots taken after a partial receive began, or None if there are none or it cannot be told.
+
+    An incremental receive builds a hidden <dest>/%recv clone of the destination's newest snapshot,
+    and ZFS refuses to commit it once the destination has a newer one unless it may roll back (-F).
+    The refusal is an EINVAL, which libzfs reports as "kernel modules must be upgraded".
+    """
+    origin = _dataset_property(ctx, f'{dest_fs}/%recv', 'origin')
+    if not origin or '@' not in origin:
+        return None
+    args = ['zfs', 'list', '-H', '-p', '-o', 'name,createtxg', '-t', 'snapshot', '-d', '1', dest_fs]
+    try:
+        p = _dest_run(ctx, args)
+    except Exception as e:
+        dbg(f'could not list snapshots of {dest_fs}: {e}')
+        return None
+    if p.returncode != 0:
+        dbg(f'zfs list snapshots of {dest_fs} rc={p.returncode}')
+        return None
+    out = p.stdout
+    if isinstance(out, bytes):
+        out = out.decode(errors='replace')
+    snaps = []
+    for line in (out or '').splitlines():
+        parts = line.strip().split('\t')
+        if len(parts) == 2 and parts[1].isdigit():
+            snaps.append((int(parts[1]), parts[0]))
+    origin_txg = next((txg for (txg, name) in snaps if name == origin), None)
+    if origin_txg is None:
+        return None
+    return [name for (txg, name) in sorted(snaps) if txg > origin_txg] or None
+
+
+def _blocked_receive_message(dest_fs, blocking):
+    shown = ', '.join(blocking[:3])
+    if len(blocking) > 3:
+        shown += f' (+{len(blocking) - 3} more)'
+    return (
+        f'{dest_fs} gained {len(blocking)} snapshot(s) while a transfer into it was in progress: {shown}. '
+        'ZFS cannot finish a receive once the destination is snapshotted mid-transfer, and reports this as '
+        '"kernel modules must be upgraded" even though no upgrade is needed. Stop whatever creates snapshots '
+        'on the destination (for example an auto-snapshot tool), then destroy the listed snapshot(s) so the '
+        f'next run can resume, or discard the partial transfer with "zfs receive -A {dest_fs}". '
+        'With Allow Overwrite enabled, the resume destroys those snapshots itself.'
+    )
+
+
+def _explain_generic_recv_error(ctx: ReplicationRun, dest_fs, err):
+    """Actionable explanation for the misleading "kernel modules must be upgraded" receive error, else ''."""
+    if GENERIC_RECV_EINVAL_MARKER not in str(err or '').lower():
+        return ''
+    blocking = _snapshots_blocking_receive(ctx, dest_fs)
+    return _blocked_receive_message(dest_fs, blocking) if blocking else GENERIC_RECV_EINVAL_HINT
+
+
+def _resume_unless_blocked(ctx: ReplicationRun, dest_fs, resume):
+    """Run resume() unless destination snapshots guarantee ZFS will reject it after resending everything.
+
+    Returns (ok, err, blocked).
+    """
+    blocking = None if ctx.allowOverwrite else _snapshots_blocking_receive(ctx, dest_fs)
+    if blocking:
+        return (False, _blocked_receive_message(dest_fs, blocking), True)
+    (ok, err) = resume()
+    return (ok, err, False)
 
 
 def _destination_encrypted(ctx: ReplicationRun):
@@ -1231,6 +1310,23 @@ def _warn_destination_only_datasets(ctx: ReplicationRun):
     notifier.notify(f'STATUS={msg}')
 
 
+def _run_transfer(ctx: ReplicationRun, send):
+    """Run send(); if it fails because the destination was snapshotted mid-receive, say so and stop retrying."""
+    try:
+        send()
+    except SystemExit as exit_request:
+        if exit_request.code not in (0, None) and ctx.incrementalSnapName and not ctx.forceOverwrite:
+            blocking = _snapshots_blocking_receive(ctx, ctx.destFilesystem)
+            if blocking:
+                msg = _blocked_receive_message(ctx.destFilesystem, blocking)
+                notifier.notify(f'STATUS=ZFS replication task failed: {msg}')
+                safe_print(f'ERROR: {msg}')
+                send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_failed', 'subject': 'ZFS Replication Failed', 'email_message': f'ZFS replication from {ctx.sourceFilesystem} to {ctx.destFilesystem} failed: {msg}', 'fileSystem': ctx.sourceFilesystem, 'snapShot': ctx.newSnap, 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': msg})
+                # A retry would resend the remaining data only for ZFS to reject it again.
+                sys.exit(2)
+        raise
+
+
 def _create_and_transfer_snapshot(ctx: ReplicationRun):
     notifier.notify('STATUS=Creating source snapshot…')
     _warn_destination_only_datasets(ctx)
@@ -1248,7 +1344,7 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
             destroy_snapshots_with_progress(ctx.destinationSnapshots, ctx.destFilesystem)
         if not ctx.incrementalSnapName:
             _write_pending_full_send(ctx.taskName, ctx.newSnap, ctx.destFilesystem, ctx.direction, ctx.sourceFilesystem)
-        send_snapshot_pull(remoteSnapName=ctx.newSnap, localRecvFs=ctx.destFilesystem, remoteBaseSnapName=ctx.incrementalSnapName, compressed=ctx.isCompressed, raw=ctx.isRaw, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.forceOverwrite, recursive=ctx.isRecursiveSnap, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots, mbufferCallbackHost=ctx.mBufferCallbackHost)
+        _run_transfer(ctx, lambda: send_snapshot_pull(remoteSnapName=ctx.newSnap, localRecvFs=ctx.destFilesystem, remoteBaseSnapName=ctx.incrementalSnapName, compressed=ctx.isCompressed, raw=ctx.isRaw, remoteHost=ctx.remoteHost, remoteSshPort=ctx.sshPort, remoteUser=ctx.remoteUser, mBufferSize=str(ctx.mBufferSize), mBufferUnit=ctx.mBufferUnit, forceOverwrite=ctx.forceOverwrite, recursive=ctx.isRecursiveSnap, transferMethod=ctx.transferMethod, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots, mbufferCallbackHost=ctx.mBufferCallbackHost))
     else:
         ctx.newSnap = create_snapshot_local(ctx.sourceFilesystem, ctx.isRecursiveSnap, ctx.taskName, ctx.customName, tier_idx=ctx.tier_idx)
         (exists, dest_snap_name) = snapshot_exists_on_destination(ctx.destFilesystem, snapshot_suffix(ctx.newSnap), remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort)
@@ -1277,7 +1373,7 @@ def _create_and_transfer_snapshot(ctx: ReplicationRun):
                 destroy_snapshots_with_progress(ctx.destinationSnapshots, ctx.destFilesystem)
         if not ctx.incrementalSnapName:
             _write_pending_full_send(ctx.taskName, ctx.newSnap, ctx.destFilesystem, ctx.direction, ctx.sourceFilesystem)
-        send_snapshot_push(ctx.newSnap, ctx.destFilesystem, ctx.incrementalSnapName, ctx.isCompressed, ctx.isRaw, ctx.remoteHost, ctx.sshPort, ctx.remoteUser, str(ctx.mBufferSize), ctx.mBufferUnit, ctx.forceOverwrite, ctx.transferMethod, recursive=ctx.isRecursiveSnap, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots)
+        _run_transfer(ctx, lambda: send_snapshot_push(ctx.newSnap, ctx.destFilesystem, ctx.incrementalSnapName, ctx.isCompressed, ctx.isRaw, ctx.remoteHost, ctx.sshPort, ctx.remoteUser, str(ctx.mBufferSize), ctx.mBufferUnit, ctx.forceOverwrite, ctx.transferMethod, recursive=ctx.isRecursiveSnap, recvDataPort=ctx.dataPort, include_intermediates=ctx.includeIntermediateSnapshots))
     safe_print('Snapshot transfer completed; applying snapshot tags and retention policy.')
     dbg('snapshot transfer completed; starting post-transfer processing')
 
