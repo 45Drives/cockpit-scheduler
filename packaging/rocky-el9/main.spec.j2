@@ -84,6 +84,11 @@ fi
 
 
 %changelog
+* Fri Oct 30 2026 Jordan Keough <jkeough@45drives.com> 1.9.9-1
+- Includes fixes for replication resume failures (including detection of blocking
+  destination snapshots) and batched snapshot cleanup for large snapshot counts,
+  also fixes the dashboard's 'Completed at' time and adds local-timezone timestamps
+  with server-time context to the log view.
 * Fri Oct 23 2026 Jordan Keough <jkeough@45drives.com> 1.9.8-1
 - Fixes watchdog/resume token issues
 * Tue Oct 20 2026 Jordan Keough <jkeough@45drives.com> 1.9.7-1

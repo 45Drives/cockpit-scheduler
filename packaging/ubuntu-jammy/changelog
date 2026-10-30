@@ -1,3 +1,12 @@
+cockpit-scheduler (1.9.9-1jammy) jammy; urgency=medium
+
+  * Includes fixes for replication resume failures (including detection of blocking
+    destination snapshots) and batched snapshot cleanup for large snapshot counts,
+    also fixes the dashboard's 'Completed at' time and adds local-timezone timestamps
+    with server-time context to the log view.
+
+ -- Jordan Keough <jkeough@45drives.com>  Fri, 30 Oct 2026 13:00:00 -0300
+
 cockpit-scheduler (1.9.8-1jammy) jammy; urgency=medium
 
   * Fixes watchdog/resume token issues
