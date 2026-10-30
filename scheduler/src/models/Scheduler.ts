@@ -7,7 +7,7 @@ import { TaskExecutionLog, TaskExecutionResult } from './TaskLog';
 // import { chooseBackend } from '../utils/bootstrapBackend';
 import { daemon } from '../utils/daemonClient';
 import { execCommand, withCommandSlot } from '../utils/commandGate';
-import { parseSystemdTimestampUSec, parseLastRunMarker, isUnitRunning } from './systemdParsing';
+import { parseSystemdTimestampUSec, parseLastRunMarker, isUnitRunning, pickLastRunUSec } from './systemdParsing';
 // @ts-ignore
 import get_tasks_script from '../scripts/get-task-instances.py?raw';
 
@@ -230,7 +230,7 @@ export class Scheduler implements SchedulerType {
                 const source = pickStatusSource(t, s);
                 let statusText = await this.parseTaskStatus(source, u, log, ti);
 
-                const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
+                const lastRunUs = pickLastRunUSec(t.lastTriggerUSec, s.serviceExitUSec, s.serviceStartUSec);
                 const nextRunUs = t.nextElapseUSec || 0;
                 let lastRunMs = this.usToMs(Number(lastRunUs));
                 let persistedOutcome = '';
@@ -298,7 +298,7 @@ export class Scheduler implements SchedulerType {
             const source = pickStatusSource(t, s);
             let statusText = await this.parseTaskStatus(source, unit, log, ti);
 
-            const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
+            const lastRunUs = pickLastRunUSec(t.lastTriggerUSec, s.serviceExitUSec, s.serviceStartUSec);
             const nextRunUs = t.nextElapseUSec || 0;
             let lastRunMs = this.usToMs(Number(lastRunUs));
             let persistedOutcome = '';
@@ -461,7 +461,7 @@ export class Scheduler implements SchedulerType {
                     statusText = '—';
                 }
 
-                const lastRunUs = t.lastTriggerUSec || s.serviceExitUSec || s.serviceStartUSec || 0;
+                const lastRunUs = pickLastRunUSec(t.lastTriggerUSec, s.serviceExitUSec, s.serviceStartUSec);
                 const nextRunUs = t.nextElapseUSec || 0;
                 let lastRunMs = this.usToMs(Number(lastRunUs));
                 let persistedOutcome = '';

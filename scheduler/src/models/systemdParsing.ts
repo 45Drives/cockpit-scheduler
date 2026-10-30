@@ -79,6 +79,22 @@ export function pairRunTimestamps(
     return { startTime, cycleStartTime, finishTime };
 }
 
+/**
+ * The dashboard's "Last run" time, in µs.
+ *
+ * The timer's LastTrigger is when a scheduled run *started*, so preferring it
+ * labelled a finished run "Completed at <start time>". The service's exit time
+ * is used whenever it belongs to the latest trigger; the trigger only wins when
+ * no exit has been recorded since (still running, or systemd cleared it).
+ * Manual starts never fire the timer, so their exit time is newer anyway.
+ */
+export function pickLastRunUSec(triggerUs: number, exitUs: number, startUs: number): number {
+    const trigger = Number(triggerUs) || 0;
+    const exit = Number(exitUs) || 0;
+    if (exit && exit >= trigger) return exit;
+    return trigger || Number(startUs) || 0;
+}
+
 /** systemd states in which the unit's main process may still be alive. */
 export function isUnitRunning(activeState: string | undefined): boolean {
     const state = (activeState || '').trim().toLowerCase();
