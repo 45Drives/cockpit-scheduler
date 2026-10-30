@@ -361,6 +361,34 @@ Pass criteria:
 Fail criteria:
 - Run fails or flag remains set.
 
+### 4.5 Destination snapshotted during a receive (`scenario-dest-snapshot-all`)
+
+Root only; builds and destroys the disposable `hrepsrc`/`hrepdst` pools (not a real task).
+
+```bash
+./live-replication-harness.sh scenario-dest-snapshot-all
+./live-replication-harness.sh scenario-resume-dest-snapshot pull ssh
+./live-replication-harness.sh scenario-recv-dest-snapshot-midstream push local
+```
+
+What it does:
+- Leaves a partial receive on the destination, then snapshots the destination the way an auto-snapshot tool would. `-midstream` instead takes that snapshot during a live incremental through a `zfs` shim.
+
+What it tests:
+- Ground truth on this host's ZFS: a raw `zfs send -t | zfs recv -s` is rejected with `kernel modules must be upgraded to receive this stream`, the token survives, and `zfs get origin <dest>/%recv` is readable.
+- The task names the blocking snapshot and offers `zfs receive -A`. It does not resend the remainder or fall through to a `partially-complete state` failure, and it exits as a no-retry refusal (90).
+- After the snapshot is destroyed, the next run resumes and continues.
+- `-clear`: "On resume failure, clear token and continue" clears the token without the doomed resume, then the planner refuses the foreign snapshot.
+- `-overwrite`: with Allow Overwrite the resume rolls the snapshot back and completes.
+- `scenario-resume-after-break [dir] [transport] [none|snapshot]` matches the field report "mbuffer broken pipe, then every run fails". It cuts off a `-Lc` large-block transfer mid-stream. With `none` (the control) the next run must resume cleanly and never print the misleading error. With `snapshot` the destination is snapshotted while the token waits, and the blocked-resume diagnosis is expected.
+
+Pass criteria:
+- Every line prints `PASS`; the run ends with `0 failure(s)`.
+
+Fail criteria:
+- A ground-truth line fails: this ZFS behaves differently and the scheduler's diagnosis needs revisiting.
+- Any scheduler expectation fails.
+
 ## 5) Known resume-token pitfalls
 
 No token is most often caused by one of these:

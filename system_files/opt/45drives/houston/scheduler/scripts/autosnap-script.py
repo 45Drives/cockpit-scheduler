@@ -307,11 +307,18 @@ def get_local_snapshots(filesystem: str) -> List[Snapshot]:
 
     return snaps
 
+def _name_prefix_matches(prefix: str, suffix: str) -> bool:
+    """Match `<prefix>[-tN]-<timestamp>` so sibling tasks sharing a prefix stay distinct."""
+    if not prefix:
+        return False
+    return re.match(rf'^{re.escape(prefix)}(?:-t\d+)?-\d{{4}}(?P<date_sep>[-.])\d{{2}}(?P=date_sep)\d{{2}}', suffix) is not None
+
+
 def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str = "") -> bool:
     """Check if a snapshot belongs to this task by name pattern (fallback).
     Tier filtering is handled separately via ZFS properties; this function
-    only checks task ownership. Matches new format (customName-timestamp),
-    default format (taskName-timestamp), and legacy formats."""
+    only checks task ownership. Matches the current format (name[-tN]-timestamp)
+    and the legacy customName-taskName-timestamp format."""
     if "@" not in snap_name:
         return False
     suf = snap_name.split("@", 1)[1]
@@ -320,18 +327,12 @@ def _is_autosnap_task_snapshot(snap_name: str, task_name: str, custom_name: str 
     if not tn:
         return False
 
-    # New format with tier tag: name-tN-timestamp
-    if cn and re.match(rf'^{re.escape(cn)}-t\d+-\d{{4}}', suf):
+    if _name_prefix_matches(cn, suf):
         return True
-    if re.match(rf'^{re.escape(tn)}-t\d+-\d{{4}}', suf):
-        return True
-    # Format without tier tag: name-timestamp
-    if cn and suf.startswith(f"{cn}-"):
-        return True
-    if suf.startswith(f"{tn}-"):
+    if _name_prefix_matches(tn, suf):
         return True
     # Legacy format: customName-taskName-timestamp
-    if cn and suf.startswith(f"{cn}-{tn}-"):
+    if cn and _name_prefix_matches(f"{cn}-{tn}", suf):
         return True
     return False
 

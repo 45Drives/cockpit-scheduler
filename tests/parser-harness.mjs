@@ -9,7 +9,7 @@
  * Usage: node tests/parser-harness.mjs
  */
 
-import { parseSystemdTimestampUSec, parseLastRunMarker, pairRunTimestamps, isUnitRunning, parseRestartCount } from '../scheduler/src/models/systemdParsing.ts';
+import { parseSystemdTimestampUSec, parseLastRunMarker, pairRunTimestamps, isUnitRunning, parseRestartCount, pickLastRunUSec } from '../scheduler/src/models/systemdParsing.ts';
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -100,6 +100,16 @@ check('no restarts', parseRestartCount('0'), 0);
 check('two restarts', parseRestartCount('2'), 2);
 check('missing NRestarts', parseRestartCount(undefined), 0);
 check('garbage NRestarts', parseRestartCount('n/a'), 0);
+
+console.log('\nlast run time');
+const trig = us(Date.UTC(2026, 9, 29, 2, 0, 8));
+const exit = us(Date.UTC(2026, 9, 29, 3, 25, 0));
+check('scheduled run shows finish, not trigger', pickLastRunUSec(trig, exit, trig), exit);
+check('manual run after older trigger shows its finish', pickLastRunUSec(trig, exit + 3600_000_000, exit), exit + 3600_000_000);
+check('no exit recorded falls back to trigger', pickLastRunUSec(trig, 0, trig), trig);
+check('exit older than trigger is ignored', pickLastRunUSec(exit, trig, 0), exit);
+check('no timer falls back to service start', pickLastRunUSec(0, 0, trig), trig);
+check('never run', pickLastRunUSec(0, 0, 0), 0);
 
 console.log(failures ? `\n${failures} failure(s)\n` : '\nall checks passed\n');
 process.exit(failures ? 1 : 0);

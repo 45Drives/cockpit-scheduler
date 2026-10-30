@@ -78,6 +78,18 @@ def test_autosnap_recognizes_both_timestamp_formats(autosnap, timestamp, prefix)
     assert autosnap._is_autosnap_task_snapshot(f"tank/data@{prefix}-{timestamp}", "job-a", "daily")
 
 
+@pytest.mark.parametrize("name", [
+    "tank/data@daily-offsite-2026.08.04-01.02.03",
+    "tank/data@daily-offsite-t2-2026-08-04_01.02.03",
+    "tank/data@daily-2-2026.08.04-01.02.03",
+    "tank/data@dailyx-2026.08.04-01.02.03",
+    "tank/data@daily-manual",
+])
+def test_name_fallback_does_not_claim_sibling_prefix_tasks(autosnap, name):
+    assert not autosnap._is_autosnap_task_snapshot(name, "daily")
+    assert not snapshots.is_task_snapshot(name, "daily")
+
+
 @pytest.mark.parametrize("engine", ["autosnap", "local", "remote"])
 def test_retention_handles_mixed_formats_without_claiming_foreign_snapshots(
     monkeypatch, autosnap, fixed_snapshot_time, engine
@@ -109,8 +121,7 @@ def test_retention_handles_mixed_formats_without_claiming_foreign_snapshots(
     else:
         monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: values)
         monkeypatch.setattr(retention, "get_remote_snapshots", lambda *args: values)
-        monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
-        monkeypatch.setattr(retention, "safe_destroy_remote", lambda name, *args: deleted.append(name) or True)
+        monkeypatch.setattr(retention, "safe_destroy_batch", lambda names, *args: deleted.extend(names) or set(names))
         retention.prune_snapshots_by_retention(
             "tank/data", "job-a", 5, "days", excluded, custom_name="daily",
             remote_user="user", remote_host="host" if engine == "remote" else None,
@@ -312,7 +323,7 @@ def test_retention_deletes_only_old_owned_matching_tier_and_preserves_excluded(m
     recorder = RecordingNotifier()
     monkeypatch.setattr(retention.datetime, "datetime", FixedDateTime)
     monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: values)
-    monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
+    monkeypatch.setattr(retention, "safe_destroy_batch", lambda names, *args: deleted.extend(names) or set(names))
     monkeypatch.setattr(retention, "notifier", recorder)
     final = retention.prune_snapshots_by_retention(
         "tank/data", "job-a", 5, "days", "tank/data@job-a-current", progress_base=10, progress_span=40, tier_idx=1
@@ -331,7 +342,7 @@ def test_retention_child_snapshots_inherit_root_task_and_tier_tags(monkeypatch):
     ]
     deleted = []
     monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: values)
-    monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
+    monkeypatch.setattr(retention, "safe_destroy_batch", lambda names, *args: deleted.extend(names) or set(names))
     retention.prune_snapshots_by_retention("tank/data", "job-a", 5, "days", "", tier_idx=1)
     assert deleted == ["tank/data@job-a-t1-old", "tank/data/samba@job-a-t1-old"]
 
@@ -340,22 +351,157 @@ def test_retention_does_not_name_match_snapshot_tagged_to_another_task(monkeypat
     old = snap("tank/data@job-a-2026-01-01", age_days=100, task_tag="job-b")
     deleted = []
     monkeypatch.setattr(retention, "get_local_snapshots", lambda fs: [old])
-    monkeypatch.setattr(retention, "safe_destroy_local", lambda name: deleted.append(name) or True)
+    monkeypatch.setattr(retention, "safe_destroy_batch", lambda names, *args: deleted.extend(names) or set(names))
     assert retention.prune_snapshots_by_retention("tank/data", "job-a", 1, "days", "") == 100
     assert deleted == []
 
 
-def test_safe_destroy_skips_held_snapshot(monkeypatch):
-    called = []
-    monkeypatch.setattr(retention, "_snapshot_has_holds_local", lambda name: True)
-    monkeypatch.setattr(retention.subprocess, "run", lambda *args, **kwargs: called.append(args))
-    assert retention.safe_destroy_local("tank/data@s1") is False
-    assert called == []
+class FakeZfs:
+    """Stands in for local `zfs` and remote ssh calls, recording each argv."""
+
+    def __init__(self, replies=None):
+        self.calls = []
+        self.replies = list(replies or [])
+
+    def reply(self, cmd):
+        self.calls.append(cmd)
+        return self.replies.pop(0) if self.replies else result()
+
+    def install(self, monkeypatch):
+        monkeypatch.setattr(retention.subprocess, "run", lambda cmd, **kwargs: self.reply(cmd))
+        monkeypatch.setattr(retention, "ssh_run_args", lambda user, host, port, cmd, **kwargs: self.reply(cmd))
+        return self
 
 
-def test_bulk_destroy_counts_missing_as_already_cleared(monkeypatch):
-    replies = iter([result(), result(1, stderr="snapshot does not exist"), result(1, stderr="permission denied")])
-    monkeypatch.setattr(retention.subprocess, "run", lambda *args, **kwargs: next(replies))
-    destroyed, failed = retention.destroy_snapshots_with_progress([snap("d@s1"), snap("d@s2"), snap("d@s3")], "d")
-    assert (destroyed, failed) == (2, 1)
+def test_destroy_batches_group_by_dataset_and_cap_size():
+    names = [f"tank/a@s{i}" for i in range(250)] + ["tank/a/child@s1", "tank/a@late"]
+    batches = list(retention.destroy_batches(names))
+    assert [len(b) for b in batches] == [100, 100, 51, 1]
+    assert batches[2][-1] == "tank/a@late"
+    assert batches[3] == ["tank/a/child@s1"]
 
+
+@pytest.mark.parametrize("remote", [False, True])
+def test_full_send_wipe_destroys_in_batches(monkeypatch, remote):
+    fake = FakeZfs().install(monkeypatch)
+    snaps = [snap(f"tank/backup@s{i}") for i in range(150)] + [snap("tank/backup/child@c1")]
+    kwargs = {"remote_user": "root", "remote_host": "10.0.0.1"} if remote else {}
+    assert retention.destroy_snapshots_with_progress(snaps, "tank/backup", **kwargs) == 151
+    assert len(fake.calls) == 3
+    assert fake.calls[0][:3] == ["zfs", "destroy", "-R"]
+    assert fake.calls[0][3] == "tank/backup@" + ",".join(f"s{i}" for i in range(100))
+    assert fake.calls[2] == ["zfs", "destroy", "-R", "tank/backup/child@c1"]
+
+
+def test_full_send_wipe_stops_and_raises_when_snapshots_remain(monkeypatch):
+    fake = FakeZfs([
+        result(),
+        result(255, stderr="ssh: connect to host 10.0.0.1 port 22: Connection reset by peer"),
+        result(0, stdout="tank/backup@s150\n"),
+    ]).install(monkeypatch)
+    snaps = [snap(f"tank/backup@s{i}") for i in range(300)]
+    with pytest.raises(retention.SnapshotDestroyError) as excinfo:
+        retention.destroy_snapshots_with_progress(snaps, "tank/backup", remote_user="root", remote_host="10.0.0.1")
+    assert "Connection reset by peer" in str(excinfo.value)
+    assert "100/300" in str(excinfo.value)
+    assert excinfo.value.held is False
+    # The third batch is never attempted once the second one fails.
+    assert [call[:2] for call in fake.calls[2:]] == [["zfs", "list"], ["zfs", "holds"]]
+
+
+def test_full_send_wipe_skips_child_snapshots_removed_with_parent(monkeypatch):
+    fake = FakeZfs().install(monkeypatch)
+    snaps = [snap("tank/backup@s1"), snap("tank/backup@s2"),
+             snap("tank/backup/child@s1"), snap("tank/backup/child@s2"), snap("tank/backup/child@only")]
+    assert retention.destroy_snapshots_with_progress(snaps, "tank/backup") == 5
+    assert fake.calls == [
+        ["zfs", "destroy", "-R", "tank/backup@s1,s2"],
+        ["zfs", "destroy", "-R", "tank/backup/child@only"],
+    ]
+
+
+def test_full_send_wipe_failure_counts_children_removed_with_parent(monkeypatch):
+    FakeZfs([
+        result(),
+        result(255, stderr="Connection reset by peer"),
+        result(0, stdout="tank/backup@s150\n"),
+    ]).install(monkeypatch)
+    snaps = [snap(f"{ds}@s{i}") for ds in ("tank/backup", "tank/backup/child") for i in range(200)]
+    with pytest.raises(retention.SnapshotDestroyError) as excinfo:
+        retention.destroy_snapshots_with_progress(snaps, "tank/backup", remote_user="u", remote_host="h")
+    # The first root batch also took s0..s99 off the child dataset.
+    assert "Stopped after destroying 200/400" in str(excinfo.value)
+
+
+def test_full_send_wipe_names_user_holds_instead_of_busy(monkeypatch):
+    FakeZfs([
+        result(1, stderr="cannot destroy snapshot tank/backup@s2: dataset is busy"),
+        result(0, stdout="tank/backup@s1\ntank/backup@s2\n"),
+        result(0, stdout="tank/backup@s2\tkeep-me\tThu Oct 29 2026\n"),
+    ]).install(monkeypatch)
+    with pytest.raises(retention.SnapshotDestroyError) as excinfo:
+        retention.destroy_snapshots_with_progress([snap("tank/backup@s1"), snap("tank/backup@s2")], "tank/backup")
+    message = str(excinfo.value)
+    assert excinfo.value.held is True
+    assert "user holds (e.g. tank/backup@s2, hold tag: keep-me)" in message
+    assert "zfs release" in message
+    assert "dataset is busy" not in message
+
+
+def test_full_send_wipe_raises_when_remaining_cannot_be_listed(monkeypatch):
+    FakeZfs([result(255, stderr="Connection reset by peer"), result(255, stderr="Connection reset by peer")]).install(monkeypatch)
+    with pytest.raises(retention.SnapshotDestroyError):
+        retention.destroy_snapshots_with_progress([snap("d@s1")], "d", remote_user="u", remote_host="h")
+
+
+def test_full_send_wipe_treats_already_missing_snapshots_as_cleared(monkeypatch):
+    FakeZfs([result(1, stderr="could not find any snapshots to destroy"), result(0, stdout="d@other\n")]).install(monkeypatch)
+    assert retention.destroy_snapshots_with_progress([snap("d@s1"), snap("d@s2")], "d") == 2
+
+
+def test_safe_destroy_batch_skips_held_snapshots(monkeypatch):
+    fake = FakeZfs([result(0, stdout="tank/data@s2\tkeep\tThu Jan 1 2026\n")]).install(monkeypatch)
+    gone = retention.safe_destroy_batch(["tank/data@s1", "tank/data@s2", "tank/data@s3"])
+    assert gone == {"tank/data@s1", "tank/data@s3"}
+    assert fake.calls == [
+        ["zfs", "holds", "-H", "tank/data@s1", "tank/data@s2", "tank/data@s3"],
+        ["zfs", "destroy", "tank/data@s1,s3"],
+    ]
+
+
+def test_safe_destroy_batch_falls_back_to_single_destroys_on_batch_failure(monkeypatch):
+    fake = FakeZfs([
+        result(),
+        result(1, stderr="cannot destroy snapshot tank/data@s2: snapshot has dependent clones"),
+        result(0, stdout="tank/data@s1\ntank/data@s2\ntank/data@s3\n"),
+        result(),
+        result(1, stderr="snapshot has dependent clones"),
+        result(),
+    ]).install(monkeypatch)
+    gone = retention.safe_destroy_batch(["tank/data@s1", "tank/data@s2", "tank/data@s3"],
+                                        "root", "10.0.0.1", "22")
+    assert gone == {"tank/data@s1", "tank/data@s3"}
+    assert fake.calls[3:] == [
+        ["zfs", "destroy", "tank/data@s1"],
+        ["zfs", "destroy", "tank/data@s2"],
+        ["zfs", "destroy", "tank/data@s3"],
+    ]
+
+
+def test_prune_destroys_in_batches_and_counts_skipped(monkeypatch):
+    values = [snap(f"tank/data@job-a-{i}", age_days=10, task_tag="job-a") for i in range(120)]
+    batches = []
+
+    def fake_batch(names, *args):
+        batches.append(list(names))
+        return set(names[1:])
+
+    monkeypatch.setattr(retention, "get_remote_snapshots", lambda *args: values)
+    monkeypatch.setattr(retention, "safe_destroy_batch", fake_batch)
+    recorder = RecordingNotifier()
+    monkeypatch.setattr(retention, "notifier", recorder)
+    retention.prune_snapshots_by_retention("tank/data", "job-a", 1, "days", "",
+                                           remote_user="root", remote_host="10.0.0.1")
+    assert [len(b) for b in batches] == [100, 20]
+    assert "Pruned 118 snapshots" in recorder.messages[-1]
+    assert "Skipped 2" in recorder.messages[-1]

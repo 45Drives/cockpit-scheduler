@@ -1148,6 +1148,16 @@ If the task reports that no common snapshot exists, or that the destination is a
 - choose a fresh empty destination dataset
 - or explicitly enable overwrite behavior only if rollback is acceptable
 
+### ZFS replication fails with "kernel modules must be upgraded to receive this stream"
+
+Despite the wording, this rarely means the ZFS versions are incompatible. ZFS prints it whenever it rejects a resumable receive. The most common cause is a snapshot taken on the **destination** dataset (for example by an auto-snapshot tool, or another task) while a transfer into it was in progress. ZFS cannot finish that transfer afterward, and every resume attempt fails the same way.
+
+When the task detects this, it names the snapshots involved and stops instead of retrying. To recover:
+
+- stop whatever creates snapshots on the destination dataset
+- destroy the listed snapshots so the next run can resume, or discard the partial transfer with `zfs receive -A <destination>`
+- alternatively, with **Allow overwrite** enabled the resume destroys those snapshots itself
+
 ### Netcat replication test fails
 
 Check:

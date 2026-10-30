@@ -873,6 +873,7 @@ def test_resume_interrupted_receive_success_continues_normal_workflow(monkeypatc
     ctx.destFilesystem = "backup/target"
     ctx.remoteHost = "host"
     reloaded = []
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
     monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
     monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
     monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: None)
@@ -889,6 +890,7 @@ def test_resume_interrupted_receive_success_stops_in_resume_only_mode(monkeypatc
     ctx.remoteHost = "host"
     ctx.resumeOnly = True
     reloaded = []
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
     monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
     monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
     monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: None)
@@ -904,6 +906,7 @@ def test_resume_token_found_does_not_notify_before_attempt(monkeypatch):
     ctx.destFilesystem = "backup/target"
     ctx.remoteHost = "host"
     notifications = []
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
     monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
     monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (True, ""))
     monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: notifications.append(payload))
@@ -917,12 +920,170 @@ def test_resume_overwrite_requirement_is_refused_without_permission(monkeypatch)
     ctx = ReplicationRun()
     ctx.direction = "push"
     ctx.destFilesystem = "backup/target"
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
     monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: "token")
     monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: (False, "destination exists; must specify -F"))
     monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: None)
     with pytest.raises(SystemExit) as exc:
         workflow._resume_interrupted_receive(ctx)
     assert exc.value.code == 2
+
+
+def _fake_dest_zfs(origin, snapshots):
+    """_dest_run stub answering `zfs get origin <fs>/%recv` and `zfs list ... createtxg`."""
+    calls = []
+
+    def fake(ctx, args, timeout=30):
+        calls.append(args)
+        if args[:2] == ["zfs", "get"]:
+            if origin is None:
+                return SimpleNamespace(returncode=1, stdout="")
+            return SimpleNamespace(returncode=0, stdout=f"{origin}\n")
+        return SimpleNamespace(returncode=0, stdout="".join(f"{name}\t{txg}\n" for (name, txg) in snapshots))
+
+    return fake, calls
+
+
+def test_snapshots_blocking_receive_lists_snapshots_newer_than_partial_receive_origin(monkeypatch):
+    ctx = ReplicationRun()
+    ctx.direction = "pull"
+    fake, calls = _fake_dest_zfs(
+        "tank/dst@rep-1",
+        [("tank/dst@old", 5), ("tank/dst@rep-1", 10), ("tank/dst@2026-10-26-110000", 12), ("tank/dst@other", 11)],
+    )
+    monkeypatch.setattr(workflow, "_dest_run", fake)
+    assert workflow._snapshots_blocking_receive(ctx, "tank/dst") == ["tank/dst@other", "tank/dst@2026-10-26-110000"]
+    assert calls[0][-1] == "tank/dst/%recv"
+    assert calls[1][-2:] == ["1", "tank/dst"]
+
+
+@pytest.mark.parametrize(
+    "origin,snapshots",
+    [
+        (None, [("tank/dst@rep-1", 10)]),
+        ("-", [("tank/dst@rep-1", 10)]),
+        ("tank/dst@rep-1", [("tank/dst@old", 5), ("tank/dst@rep-1", 10)]),
+        ("tank/dst@gone", [("tank/dst@rep-1", 10)]),
+    ],
+)
+def test_snapshots_blocking_receive_is_none_when_nothing_blocks_or_unknown(monkeypatch, origin, snapshots):
+    ctx = ReplicationRun()
+    ctx.direction = "pull"
+    fake, _ = _fake_dest_zfs(origin, snapshots)
+    monkeypatch.setattr(workflow, "_dest_run", fake)
+    assert workflow._snapshots_blocking_receive(ctx, "tank/dst") is None
+
+
+def _interrupted_resume(monkeypatch, direction="pull", error="ERROR: recv error: cannot receive resume stream: kernel modules must be upgraded to receive this stream.", blocking=None):
+    ctx = ReplicationRun()
+    ctx.direction = direction
+    ctx.destFilesystem = "tank/dst"
+    ctx.remoteHost = "host"
+    calls = []
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: blocking)
+    monkeypatch.setattr(workflow, "get_receive_resume_token", lambda *args, **kwargs: calls.append(("token", kwargs)) or "token")
+    monkeypatch.setattr(workflow, "resume_receive_pull", lambda *args, **kwargs: calls.append("resume") or (False, error))
+    monkeypatch.setattr(workflow, "resume_receive_push", lambda *args, **kwargs: calls.append("resume") or (False, error))
+    monkeypatch.setattr(workflow, "clear_receive_resume_token", lambda *args, **kwargs: calls.append("clear") or (True, ""))
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: calls.append(("notify", payload["email_message"])))
+    monkeypatch.setattr(workflow, "print_transfer_summary", lambda *args, **kwargs: None)
+    return ctx, calls
+
+
+@pytest.mark.parametrize("direction", ["pull", "push"])
+def test_failed_resume_keeps_token_and_stops_instead_of_doomed_normal_send(monkeypatch, capsys, direction):
+    ctx, calls = _interrupted_resume(monkeypatch, direction)
+    with pytest.raises(SystemExit) as exc:
+        workflow._resume_interrupted_receive(ctx)
+    out = capsys.readouterr().out
+    assert exc.value.code == 2
+    assert "clear" not in calls
+    assert "Continuing with normal replication" not in out
+    assert "resume token was kept" in out
+    assert "clear token and continue" in out
+    assert workflow.GENERIC_RECV_EINVAL_HINT in out
+    assert calls[0] == ("token", {} if direction == "pull" else {"remote_user": "root", "remote_host": "host", "remote_port": "22"})
+
+
+def test_failed_resume_from_transient_error_stays_retryable(monkeypatch):
+    ctx, _ = _interrupted_resume(monkeypatch, error="Pipeline stalled: no data transferred for 120s.")
+    with pytest.raises(SystemExit) as exc:
+        workflow._resume_interrupted_receive(ctx)
+    assert exc.value.code == 1
+
+
+def test_resume_blocked_by_destination_snapshots_is_skipped_and_explained(monkeypatch, capsys):
+    ctx, calls = _interrupted_resume(monkeypatch, blocking=["tank/dst@2026-10-26-110000"])
+    with pytest.raises(SystemExit) as exc:
+        workflow._resume_interrupted_receive(ctx)
+    out = capsys.readouterr().out
+    assert exc.value.code == 2
+    assert "resume" not in calls and "clear" not in calls
+    assert "tank/dst@2026-10-26-110000" in out
+    assert "zfs receive -A tank/dst" in out
+    assert "clear token and continue" not in out
+
+
+def test_blocked_resume_clears_token_and_continues_when_authorised(monkeypatch):
+    ctx, calls = _interrupted_resume(monkeypatch, blocking=["tank/dst@foreign"])
+    ctx.resumeFailAllowOverwrite = True
+    assert workflow._resume_interrupted_receive(ctx) is False
+    assert "resume" not in calls
+    assert "clear" in calls
+
+
+def test_allow_overwrite_skips_blocking_check_because_resume_rolls_back(monkeypatch):
+    ctx, calls = _interrupted_resume(monkeypatch)
+    ctx.allowOverwrite = True
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: pytest.fail("should not check"))
+    monkeypatch.setattr(workflow, "resume_receive_pull", lambda *args, **kwargs: calls.append(("resume", kwargs["forceOverwrite"])) or (True, ""))
+    monkeypatch.setattr(workflow, "_persist_lastrun", lambda task_name: None)
+    monkeypatch.setattr(workflow, "_load_snapshot_inventory", lambda c: None)
+    assert workflow._resume_interrupted_receive(ctx) is False
+    assert ("resume", True) in calls
+
+
+def test_explain_generic_recv_error_only_for_misleading_message(monkeypatch):
+    ctx = ReplicationRun()
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
+    assert workflow._explain_generic_recv_error(ctx, "tank/dst", "cannot receive: dataset is busy") == ""
+    assert workflow._explain_generic_recv_error(ctx, "tank/dst", "Kernel modules must be upgraded") == workflow.GENERIC_RECV_EINVAL_HINT
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: ["tank/dst@a", "tank/dst@b", "tank/dst@c", "tank/dst@d"])
+    msg = workflow._explain_generic_recv_error(ctx, "tank/dst", "kernel modules must be upgraded")
+    assert "4 snapshot(s)" in msg and "(+1 more)" in msg
+
+
+def _failed_transfer(code):
+    def send():
+        raise SystemExit(code)
+    return send
+
+
+def test_failed_incremental_transfer_blocked_by_destination_snapshot_stops_retries(monkeypatch, capsys):
+    ctx = ReplicationRun()
+    ctx.destFilesystem = "tank/dst"
+    ctx.incrementalSnapName = "src@base"
+    notes = []
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: ["tank/dst@foreign"])
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: notes.append(payload))
+    with pytest.raises(SystemExit) as exc:
+        workflow._run_transfer(ctx, _failed_transfer(1))
+    assert exc.value.code == 2
+    assert "tank/dst@foreign" in capsys.readouterr().out
+    assert notes[0]["event"] == "zfs_replication_failed"
+
+
+@pytest.mark.parametrize("incremental,force,blocking", [("src@base", False, None), ("", False, ["x@y"]), ("src@base", True, ["x@y"])])
+def test_failed_transfer_keeps_original_exit_when_not_blocked(monkeypatch, incremental, force, blocking):
+    ctx = ReplicationRun()
+    ctx.destFilesystem = "tank/dst"
+    ctx.incrementalSnapName = incremental
+    ctx.forceOverwrite = force
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: blocking)
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: pytest.fail("unexpected notification"))
+    with pytest.raises(SystemExit) as exc:
+        workflow._run_transfer(ctx, _failed_transfer(1))
+    assert exc.value.code == 1
 
 
 def test_main_routes_unexpected_exception_to_failure_handler(monkeypatch):
@@ -975,6 +1136,21 @@ def test_failure_handler_keeps_traceback_for_other_errors(monkeypatch, capsys, e
     assert exc.value.code == 1
     assert "Traceback" in out
     assert "is not installed on this host" not in out
+
+
+@pytest.mark.parametrize("held,expect_busy_hint", [(True, False), (False, True)])
+def test_failure_handler_reports_destroy_error_without_traceback(monkeypatch, capsys, held, expect_busy_hint):
+    _failure_stubs(monkeypatch, [])
+    error = workflow.SnapshotDestroyError("cannot destroy snapshot d@s1: dataset is busy", held=held)
+    try:
+        raise error
+    except workflow.SnapshotDestroyError:
+        with pytest.raises(SystemExit) as exc:
+            workflow.handle_failure(ReplicationRun(), error)
+    out = capsys.readouterr().out
+    assert exc.value.code == 1
+    assert "Traceback" not in out
+    assert ("Dataset busy:" in out) is expect_busy_hint
 
 
 def test_apply_retention_skips_two_phase_progress_when_both_disabled(monkeypatch):
