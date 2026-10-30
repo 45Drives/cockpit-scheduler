@@ -8,96 +8,163 @@ from .constants import ZFS_DESTROY_TIMEOUT
 from .context import notifier
 from .logging_utils import _fmt_cmd, dbg, safe_print
 from .snapshots import dataset_of_snapshot, get_local_snapshots, get_remote_snapshots, is_task_snapshot, snapshot_suffix
-from .ssh import SSH_BASE_OPTS, ssh_run_args
+from .ssh import ssh_run_args
 
-def _snapshot_has_holds_local(snap_name: str) -> bool:
-    """Return True if *snap_name* has any user holds that would block destroy."""
+# One `zfs destroy` per batch instead of per snapshot: a connection per snapshot trips
+# sshd MaxStartups / fail2ban on the target once a dataset holds thousands of them.
+DESTROY_BATCH_SIZE = 100
+DESTROY_BATCH_MAX_CHARS = 32000
+
+
+class SnapshotDestroyError(RuntimeError):
+    """Raised when snapshots that must be cleared before a full receive could not be destroyed."""
+
+    def __init__(self, message, held=False):
+        super().__init__(message)
+        # ZFS reports a held snapshot as "dataset is busy"; this lets callers tell the two apart.
+        self.held = held
+
+
+def _run_zfs(args, remote_user=None, remote_host=None, remote_port="22", timeout=None):
+    if remote_host:
+        return ssh_run_args(remote_user, remote_host, remote_port, args,
+                            capture_output=True, check=False, text=True, timeout=timeout)
+    dbg(f"RUN {_fmt_cmd(args)}")
+    return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          universal_newlines=True, timeout=timeout)
+
+
+def _error_text(p) -> str:
+    return (p.stderr or p.stdout or "").strip() or f"exit code {p.returncode}"
+
+
+def destroy_batches(names):
+    """Group snapshot names by dataset into batches that fit in one `zfs destroy` argument."""
+    by_dataset = {}
+    for name in names:
+        by_dataset.setdefault(dataset_of_snapshot(name), []).append(name)
+    for dataset_names in by_dataset.values():
+        batch, size = [], 0
+        for name in dataset_names:
+            if batch and (len(batch) >= DESTROY_BATCH_SIZE or size + len(name) > DESTROY_BATCH_MAX_CHARS):
+                yield batch
+                batch, size = [], 0
+            batch.append(name)
+            size += len(snapshot_suffix(name)) + 1
+        if batch:
+            yield batch
+
+
+def _destroy_spec(batch) -> str:
+    return dataset_of_snapshot(batch[0]) + "@" + ",".join(snapshot_suffix(n) for n in batch)
+
+
+def _held_snapshots(names, remote_user=None, remote_host=None, remote_port="22"):
+    """Map each of *names* that carries user holds to its hold tags, using one `zfs holds` call."""
     try:
-        p = subprocess.run(
-            ["zfs", "holds", "-H", snap_name],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            universal_newlines=True, timeout=30,
-        )
-        return bool(p.stdout.strip())
+        p = _run_zfs(["zfs", "holds", "-H", *names], remote_user, remote_host, remote_port, timeout=60)
     except Exception as e:
-        dbg(f"holds check failed for {snap_name}: {e}")
-        return False
+        dbg(f"holds check failed for {len(names)} snapshot(s): {e}")
+        return {}
+    wanted = set(names)
+    held = {}
+    for line in (p.stdout or "").splitlines():
+        fields = line.split("\t")
+        name = fields[0].strip()
+        if name in wanted:
+            held.setdefault(name, []).append(fields[1].strip() if len(fields) > 1 else "?")
+    return held
 
 
-def _snapshot_has_holds_remote(snap_name, remote_user, remote_host, remote_port):
-    """Return True if remote snapshot has holds."""
+def _removed_with_ancestor(name, removed):
+    """True if *name* went with a `zfs destroy -R` of the same snapshot on an ancestor dataset."""
+    dataset, suffix = dataset_of_snapshot(name), snapshot_suffix(name)
+    return any(dataset.startswith(parent + "/") and suffix in suffixes for parent, suffixes in removed.items())
+
+
+def _remaining_snapshots(dataset, remote_user=None, remote_host=None, remote_port="22"):
+    """Snapshot names still present directly on *dataset*, or None if they could not be listed."""
     try:
-        p = ssh_run_args(
-            remote_user, remote_host, remote_port,
-            ["zfs", "holds", "-H", snap_name],
-            capture_output=True, check=False, text=True, timeout=30,
-        )
-        return bool((p.stdout or "").strip())
+        p = _run_zfs(["zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-d", "1", dataset],
+                     remote_user, remote_host, remote_port, timeout=60)
     except Exception as e:
-        dbg(f"remote holds check failed for {snap_name}: {e}")
-        return False
+        dbg(f"snapshot listing failed for {dataset}: {e}")
+        return None
+    if p.returncode != 0:
+        err = _error_text(p)
+        if "does not exist" in err:
+            return set()
+        dbg(f"snapshot listing failed for {dataset}: {err}")
+        return None
+    return {line.strip() for line in (p.stdout or "").splitlines() if line.strip()}
 
 
-def safe_destroy_local(snap_name: str) -> bool:
-    """Destroy a local snapshot with holds check + timeout. Returns True on success."""
-    if _snapshot_has_holds_local(snap_name):
-        msg = f"WARNING: snapshot {snap_name} has holds — skipping destroy"
-        print(msg)
-        dbg(msg)
-        return False
+def _destroy_one(snap_name, remote_user=None, remote_host=None, remote_port="22") -> bool:
+    where = "remote " if remote_host else ""
     try:
-        subprocess.run(
-            ["zfs", "destroy", snap_name],
-            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            universal_newlines=True, timeout=ZFS_DESTROY_TIMEOUT,
-        )
-        return True
+        p = _run_zfs(["zfs", "destroy", snap_name], remote_user, remote_host, remote_port,
+                     timeout=ZFS_DESTROY_TIMEOUT)
     except subprocess.TimeoutExpired:
-        msg = f"WARNING: zfs destroy timed out after {ZFS_DESTROY_TIMEOUT}s for {snap_name} — skipping"
+        msg = f"WARNING: {where}zfs destroy timed out after {ZFS_DESTROY_TIMEOUT}s for {snap_name} — skipping"
         print(msg)
         dbg(msg)
         return False
-    except subprocess.CalledProcessError as e:
-        detail = e.stderr.strip() if e.stderr else str(e)
-        msg = f"WARNING: zfs destroy failed for {snap_name}: {detail}"
+    if p.returncode != 0:
+        msg = f"WARNING: {where}zfs destroy failed for {snap_name}: {_error_text(p)}"
         print(msg)
         dbg(msg)
         return False
+    return True
 
 
-def safe_destroy_remote(snap_name, remote_user, remote_host, remote_port) -> bool:
-    """Destroy a remote snapshot with holds check + timeout. Returns True on success."""
-    if _snapshot_has_holds_remote(snap_name, remote_user, remote_host, remote_port):
-        msg = f"WARNING: remote snapshot {snap_name} has holds — skipping destroy"
-        print(msg)
-        dbg(msg)
-        return False
-    try:
-        p = ssh_run_args(
-            remote_user, remote_host, remote_port,
-            ["zfs", "destroy", snap_name],
-            capture_output=True, check=False, text=True,
-            timeout=ZFS_DESTROY_TIMEOUT,
-        )
-        if p.returncode != 0:
-            err = (p.stderr or p.stdout or "").strip()
-            msg = f"WARNING: remote zfs destroy failed for {snap_name}: {err}"
+def safe_destroy_batch(names, remote_user=None, remote_host=None, remote_port="22"):
+    """Destroy one dataset's snapshots with a single holds check and a single `zfs destroy`.
+
+    Held snapshots are skipped. If the batch destroy fails, each snapshot still present is
+    retried on its own so one undeletable snapshot does not block the rest. Returns the set
+    of names that are gone afterwards.
+    """
+    where = "remote " if remote_host else ""
+    held = _held_snapshots(names, remote_user, remote_host, remote_port)
+    for name in names:
+        if name in held:
+            msg = f"WARNING: {where}snapshot {name} has holds — skipping destroy"
             print(msg)
             dbg(msg)
-            return False
-        return True
+    targets = [n for n in names if n not in held]
+    if not targets:
+        return set()
+
+    try:
+        p = _run_zfs(["zfs", "destroy", _destroy_spec(targets)], remote_user, remote_host, remote_port,
+                     timeout=ZFS_DESTROY_TIMEOUT * len(targets))
+        if p.returncode == 0:
+            return set(targets)
+        err = _error_text(p)
     except subprocess.TimeoutExpired:
-        msg = f"WARNING: remote zfs destroy timed out after {ZFS_DESTROY_TIMEOUT}s for {snap_name} — skipping"
+        err = f"timed out after {ZFS_DESTROY_TIMEOUT * len(targets)}s"
+    dbg(f"batch destroy of {len(targets)} {where}snapshot(s) failed: {err}")
+
+    remaining = _remaining_snapshots(dataset_of_snapshot(targets[0]), remote_user, remote_host, remote_port)
+    if remaining is None:
+        msg = f"WARNING: {where}zfs destroy failed for {len(targets)} snapshot(s) on {dataset_of_snapshot(targets[0])}: {err}"
         print(msg)
         dbg(msg)
-        return False
+        return set()
+    destroyed = {n for n in targets if n not in remaining}
+    for name in targets:
+        if name in remaining and _destroy_one(name, remote_user, remote_host, remote_port):
+            destroyed.add(name)
+    return destroyed
 
 
 def destroy_snapshots_with_progress(snapshots, dest_fs, remote_user=None, remote_host=None,
                                     ssh_port="22", reason="for full receive"):
-    """Destroy destination snapshots ahead of a full receive, reporting progress.
+    """Destroy destination snapshots ahead of a full receive, in per-dataset batches.
 
-    Returns (destroyed, failed).
+    Stops at the first batch that leaves snapshots behind and raises SnapshotDestroyError,
+    because the receive that follows cannot succeed while any of them remain.
+    Returns the number of snapshots destroyed.
     """
     total = len(snapshots)
     where = f"remote destination {dest_fs}" if remote_host else f"destination {dest_fs}"
@@ -107,59 +174,73 @@ def destroy_snapshots_with_progress(snapshots, dest_fs, remote_user=None, remote
     dbg(f"destroy start: {total} snapshot(s) on {where} {reason}")
 
     destroyed = 0
-    failed = 0
     start = time.time()
     last_emit = 0.0
     last_print = start
+    # `zfs destroy -R` implies -r, so each batch also removes the same snapshots from every
+    # descendant dataset. Track them so child batches skip what is already gone.
+    removed = {}
+    batches = list(destroy_batches([s.name for s in snapshots]))
 
-    for idx, snap in enumerate(snapshots, 1):
-        if remote_host:
-            cmd = ["ssh"] + SSH_BASE_OPTS
-            if str(ssh_port) != "22":
-                cmd += ["-p", str(ssh_port)]
-            cmd += [f"{remote_user}@{remote_host}", "zfs", "destroy", "-R", snap.name]
-        else:
-            cmd = ["zfs", "destroy", "-R", snap.name]
-
-        dbg(f"RUN {_fmt_cmd(cmd)}")
-        dp = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            universal_newlines=True)
-        if dp.returncode != 0:
-            err_out = (dp.stderr or dp.stdout or "").strip()
-            # Already gone counts as cleared, not as a failure.
-            if "does not exist" not in err_out and "could not find" not in err_out:
-                failed += 1
-                print(f"WARNING: failed to destroy {snap.name}: {err_out}")
-                dbg(f"destroy FAILED {snap.name}: {err_out}")
+    for index, batch in enumerate(batches):
+        already_gone = [n for n in batch if _removed_with_ancestor(n, removed)]
+        destroyed += len(already_gone)
+        batch = [n for n in batch if n not in already_gone]
+        if batch:
+            dataset = dataset_of_snapshot(batch[0])
+            p = _run_zfs(["zfs", "destroy", "-R", _destroy_spec(batch)], remote_user, remote_host, ssh_port)
+            if p.returncode != 0:
+                err = _error_text(p)
+                dbg(f"batch destroy FAILED ({len(batch)} snapshot(s) on {dataset}): {err}")
+                # Snapshots that were already gone are not a failure; only the ones left behind are.
+                remaining = _remaining_snapshots(dataset, remote_user, remote_host, ssh_port)
+                left = [n for n in batch if remaining is None or n in remaining]
+                if left:
+                    destroyed += sum(
+                        1 for later in batches[index + 1:] for n in later if _removed_with_ancestor(n, removed)
+                    )
+                    held = _held_snapshots(left, remote_user, remote_host, ssh_port)
+                    if held:
+                        example = next(iter(held))
+                        tags = ", ".join(held[example])
+                        cause = (
+                            f"{len(held)} snapshot(s) have user holds (e.g. {example}, hold tag: {tags}). "
+                            "Release the holds with `zfs release <tag> <snapshot>` and run the task again"
+                        )
+                    else:
+                        example = left[0]
+                        cause = err
+                    msg = (
+                        f"Could not destroy {len(left)} snapshot(s) on {where} (e.g. {example}): {cause}. "
+                        f"Stopped after destroying {destroyed}/{total}; the full receive cannot proceed "
+                        "while destination snapshots remain."
+                    )
+                    print(f"ERROR: {msg}")
+                    notifier.notify(f"STATUS={status_label} failed — destroyed {destroyed}/{total}.")
+                    raise SnapshotDestroyError(msg, held=bool(held))
             else:
-                destroyed += 1
-        else:
-            destroyed += 1
+                removed.setdefault(dataset, set()).update(snapshot_suffix(n) for n in batch)
+            destroyed += len(batch)
 
         now = time.time()
-        pct = idx * 100.0 / total
-        if idx == total or (now - last_emit) >= 1.0:
-            notifier.notify(f"STATUS={status_label}… {idx}/{total} ({pct:.1f}%)")
+        pct = destroyed * 100.0 / total
+        if destroyed == total or (now - last_emit) >= 1.0:
+            notifier.notify(f"STATUS={status_label}… {destroyed}/{total} ({pct:.1f}%)")
             last_emit = now
 
-        if idx == total or (now - last_print) >= 5.0:
+        if destroyed == total or (now - last_print) >= 5.0:
             elapsed = now - start
-            rate = idx / elapsed if elapsed > 0 else 0
-            eta = f" ETA={int((total - idx) / rate)}s" if rate > 0 and idx < total else ""
-            safe_print(f"{status_label}… {idx}/{total} ({pct:.1f}%){eta}")
-            dbg(f"destroy progress: {idx}/{total} ({pct:.1f}%) "
-                f"destroyed={destroyed} failed={failed} rate={rate:.1f}/s{eta}")
+            rate = destroyed / elapsed if elapsed > 0 else 0
+            eta = f" ETA={int((total - destroyed) / rate)}s" if rate > 0 and destroyed < total else ""
+            safe_print(f"{status_label}… {destroyed}/{total} ({pct:.1f}%){eta}")
+            dbg(f"destroy progress: {destroyed}/{total} ({pct:.1f}%) rate={rate:.1f}/s{eta}")
             last_print = now
 
     elapsed = time.time() - start
-    dbg(f"destroy finished: total={total} destroyed={destroyed} failed={failed} elapsed={elapsed:.1f}s")
-    if failed:
-        print(f"Destination snapshots cleared with {failed} failure(s) ({destroyed}/{total} destroyed).")
-        notifier.notify(f"STATUS={status_label} — destroyed {destroyed}/{total} ({failed} failed).")
-    else:
-        print(f"Destination snapshots cleared ({destroyed}/{total}).")
-        notifier.notify(f"STATUS={status_label} — destroyed {destroyed}/{total}.")
-    return destroyed, failed
+    dbg(f"destroy finished: total={total} destroyed={destroyed} elapsed={elapsed:.1f}s")
+    print(f"Destination snapshots cleared ({destroyed}/{total}).")
+    notifier.notify(f"STATUS={status_label} — destroyed {destroyed}/{total}.")
+    return destroyed
 
 
 def prune_snapshots_by_retention(
@@ -282,20 +363,23 @@ def prune_snapshots_by_retention(
 
     pruned = 0
     skipped = 0
-    for idx, snapshot in enumerate(snapshots_to_delete, start=1):
-        dbg(f"prune: destroying {snapshot.name} ({idx}/{total})")
+    done = 0
+    for batch in destroy_batches([s.name for s in snapshots_to_delete]):
+        dbg(f"prune: destroying {len(batch)} snapshot(s) on {dataset_of_snapshot(batch[0])} ({done + len(batch)}/{total})")
         if remote_host:
-            ok = safe_destroy_remote(snapshot.name, remote_user, remote_host, remote_port)
+            gone = safe_destroy_batch(batch, remote_user, remote_host, remote_port)
         else:
-            ok = safe_destroy_local(snapshot.name)
+            gone = safe_destroy_batch(batch)
 
-        if ok:
-            pruned += 1
-            print(f"Deleted snapshot: {snapshot.name}")
-        else:
-            skipped += 1
+        for name in batch:
+            if name in gone:
+                pruned += 1
+                print(f"Deleted snapshot: {name}")
+            else:
+                skipped += 1
 
-        pct = start + int(idx * span / total)
+        done += len(batch)
+        pct = start + int(done * span / total)
         notifier.notify(f"STATUS=Pruning {total} {prefix}snapshot(s)… {pct}% complete")
 
     msg = f"Pruned {pruned} snapshots older than retention period ({retention_val} {retention_unit})."

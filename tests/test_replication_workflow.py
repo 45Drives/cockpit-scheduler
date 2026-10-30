@@ -1138,6 +1138,21 @@ def test_failure_handler_keeps_traceback_for_other_errors(monkeypatch, capsys, e
     assert "is not installed on this host" not in out
 
 
+@pytest.mark.parametrize("held,expect_busy_hint", [(True, False), (False, True)])
+def test_failure_handler_reports_destroy_error_without_traceback(monkeypatch, capsys, held, expect_busy_hint):
+    _failure_stubs(monkeypatch, [])
+    error = workflow.SnapshotDestroyError("cannot destroy snapshot d@s1: dataset is busy", held=held)
+    try:
+        raise error
+    except workflow.SnapshotDestroyError:
+        with pytest.raises(SystemExit) as exc:
+            workflow.handle_failure(ReplicationRun(), error)
+    out = capsys.readouterr().out
+    assert exc.value.code == 1
+    assert "Traceback" not in out
+    assert ("Dataset busy:" in out) is expect_busy_hint
+
+
 def test_apply_retention_skips_two_phase_progress_when_both_disabled(monkeypatch):
     ctx = ReplicationRun()
     ctx.taskName = "task-a"

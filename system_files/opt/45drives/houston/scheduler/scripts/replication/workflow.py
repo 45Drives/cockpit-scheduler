@@ -29,7 +29,7 @@ from .planner import (
     extra_send_args,
 )
 from .process import _apply_tcp_tuning, format_bytes, get_transferred_bytes
-from .retention import destroy_snapshots_with_progress, prune_snapshots_by_retention
+from .retention import SnapshotDestroyError, destroy_snapshots_with_progress, prune_snapshots_by_retention
 from .retry import UNIT_NAME_PREFIX
 from .schedules import load_schedule_json, match_current_tier
 from .ssh import preflight_ssh
@@ -1556,12 +1556,17 @@ def handle_failure(ctx: ReplicationRun, error):
         )
         # Retrying cannot help until the package is installed.
         sys.exit(2)
-    tb = traceback.format_exc()
-    safe_print(tb)
-    busy = is_dataset_busy(f'{error}\n{tb}')
+    # The destroy step already printed a full explanation; a traceback adds nothing.
+    tb = '' if isinstance(error, SnapshotDestroyError) else traceback.format_exc()
+    if tb:
+        safe_print(tb)
+    # A held snapshot also reads as "dataset is busy", but the destroy error already names the hold.
+    busy = not getattr(error, 'held', False) and is_dataset_busy(f'{error}\n{tb}')
     if busy:
         safe_print(f'Dataset busy: {BUSY_HINT}')
         notifier.notify(f'STATUS=ZFS replication task failed: dataset busy. {BUSY_HINT}')
+    elif isinstance(error, SnapshotDestroyError):
+        notifier.notify(f'STATUS=ZFS replication task failed: {error}')
     else:
         notifier.notify('STATUS=ZFS replication task failed.')
     email_error_message = f'ZFS replication failed while sending snapshot {ctx.newSnap} from {ctx.sourceFilesystem} to {receivingFilesystem}Error: {str(error)}'

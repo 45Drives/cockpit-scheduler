@@ -74,9 +74,26 @@ Regression suite for the resume + SSH cipher work (also disposable pools):
   live-replication-harness.sh scenario-cipher-send <cipher>
   live-replication-harness.sh scenario-cipher-send-all
   live-replication-harness.sh scenario-cipher-bench [cipher ...]
+  live-replication-harness.sh scenario-destroy-all
+  live-replication-harness.sh scenario-destroy-batch [direction] [transport]
+  live-replication-harness.sh scenario-destroy-batch-stops [direction] [transport]
+  live-replication-harness.sh scenario-prune-batch [direction] [transport]
+
+  The destroy scenarios cover the field case where a full resend issued one
+  `ssh … zfs destroy` per destination snapshot and the target's sshd started
+  resetting connections. Each builds HIER_DESTROY_SNAPS (default 250) snapshots
+  per destination dataset and counts the zfs destroy/holds calls the task makes.
+  scenario-destroy-batch forces a full send and expects at most one destroy per
+  100 snapshots per dataset. scenario-destroy-batch-stops holds one snapshot and
+  expects the wipe to stop at that batch with an error, start no send, and
+  recover on a rerun once the hold is released. scenario-prune-batch ages the
+  backlog past a 1-minute retention window (sleeps 65s) and expects batched
+  prunes that skip the held snapshot. These default to push/ssh; scenario-destroy-all
+  runs the wipe in every reachable mode and the rest once, falling back to
+  push/local when loopback SSH is unavailable.
 
   verify-fixes is the one-shot entry point: it runs pytest (source checkout only),
-  the resume-continuation and destination-snapshot scenarios, and the cipher scenarios, skipping the cipher
+  the resume-continuation, destination-snapshot and batched-destroy scenarios, and the cipher scenarios, skipping the cipher
   group when loopback SSH is unavailable. scenario-cipher-bench times a full send
   per cipher over loopback SSH; set CIPHER_BENCH_MB to change the 256 MiB payload.
 
@@ -2958,6 +2975,239 @@ repo_root() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 }
 
+# ---------------------------------------------------------------------------
+# Batched snapshot destroy scenarios
+#
+# Field case: a full resend had to clear ~1,800 destination snapshots and issued one
+# `ssh … zfs destroy` per snapshot. The target's sshd started resetting connections,
+# 1,709 destroys failed, and the run still went on to a receive that could never
+# succeed. Destroys now go out per dataset in batches of DESTROY_BATCH_SIZE, and the
+# wipe stops with an error as soon as a batch leaves snapshots behind.
+# ---------------------------------------------------------------------------
+
+HIER_DESTROY_SNAPS="${HIER_DESTROY_SNAPS:-250}"
+# Mirrors replication/retention.py DESTROY_BATCH_SIZE.
+HIER_DESTROY_BATCH=100
+HIER_DESTROY_CALLS=""
+
+# Logs every `zfs destroy` / `zfs holds` the task issues, locally or through ssh,
+# then runs the real command. Remote zfs runs under the remote shell's PATH, so a
+# remote destroy is counted once, by the ssh wrapper.
+hier_write_destroy_count_shim() {
+  local real_zfs real_ssh shim_dir="$HIER_WORK_DIR/destroy-shim"
+  real_zfs="$(command -v zfs)"
+  real_ssh="$(command -v ssh)"
+  mkdir -p "$shim_dir"
+  HIER_DESTROY_CALLS="$shim_dir/calls"
+  : > "$HIER_DESTROY_CALLS"
+  cat > "$shim_dir/zfs" <<EOF
+#!/bin/bash
+case "\$1" in destroy|holds) printf 'zfs %s\n' "\$*" >> "$HIER_DESTROY_CALLS" ;; esac
+exec "$real_zfs" "\$@"
+EOF
+  cat > "$shim_dir/ssh" <<EOF
+#!/bin/bash
+case " \$* " in *" zfs destroy "*|*" zfs holds "*) printf 'ssh %s\n' "\$*" >> "$HIER_DESTROY_CALLS" ;; esac
+exec "$real_ssh" "\$@"
+EOF
+  chmod +x "$shim_dir/zfs" "$shim_dir/ssh"
+  HIER_PATH_PREFIX="$shim_dir"
+}
+
+# hier_shim_call_count <destroy|holds>
+hier_shim_call_count() {
+  local n
+  n="$( grep -c "zfs $1 " "$HIER_DESTROY_CALLS" 2>/dev/null || true )"
+  echo "${n:-0}"
+}
+
+# hier_bulk_snapshots <fs> <count> <prefix>
+# ZFS allows one new snapshot per dataset per txg (EAGAIN otherwise, even from a
+# channel program), so the backlog costs <count> txgs. `zfs snapshot -r` covers the
+# whole tree in each of them.
+hier_bulk_snapshots() {
+  local fs="$1" count="$2" prefix="$3" i
+  hier_info "creating $count snapshot(s) per dataset under $fs (one txg each)…"
+  for (( i = 1; i <= count; i++ )); do
+    zfs snapshot -r "$fs@${prefix}-$(printf '%04d' "$i")"
+    if (( i % 50 == 0 && i < count )); then
+      hier_info "  $i/$count"
+    fi
+  done
+}
+
+hier_bulk_dest_snapshots() {
+  hier_bulk_snapshots "$HIER_DST_FS" "$@"
+}
+
+hier_dest_count_matching() {
+  ( zfs list -H -o name -t snapshot -r "$HIER_DST_FS" 2>/dev/null || true ) | grep -c "@$1-" || true
+}
+
+# Upper bound on destroy calls for the current destination: one per started batch per dataset.
+hier_expected_destroy_batches() {
+  ( zfs list -H -o name -t snapshot -r "$HIER_DST_FS" 2>/dev/null || true ) \
+    | awk -F@ -v b="$HIER_DESTROY_BATCH" '{n[$1]++} END {t = 0; for (d in n) t += int((n[d] + b - 1) / b); print t}'
+}
+
+# hier_expect_calls_within <destroy|holds> <max> <snapshot_count> <label>
+hier_expect_calls_within() {
+  local kind="$1" max="$2" snaps="$3" label="$4" calls
+  calls="$(hier_shim_call_count "$kind")"
+  if (( calls >= 1 && calls <= max )); then
+    hier_pass "$label: $snaps snapshot(s) handled with $calls 'zfs $kind' call(s) (limit $max; per-snapshot would be $snaps)"
+  else
+    hier_fail "$label: $calls 'zfs $kind' call(s) for $snaps snapshot(s), expected 1..$max"
+    sed 's/^/     /' "$HIER_DESTROY_CALLS" | cut -c1-200 | head -20
+  fi
+}
+
+cmd_scenario_destroy_batch() {
+  hier_say "destroy-batch [$(hier_mode_label)]: a full resend must clear a large destination backlog in batches"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"
+
+  hier_bulk_dest_snapshots "$HIER_DESTROY_SNAPS" bulk
+  local total expected left
+  total="$(hier_dest_snap_count)"
+  expected="$(hier_expected_destroy_batches)"
+  hier_info "destination holds $total snapshot(s) across $(hier_dataset_count "$HIER_DST_FS") dataset(s)"
+
+  hier_write_destroy_count_shim
+  hier_run_task false false true quiet
+  HIER_PATH_PREFIX=""
+
+  hier_expect_rc 0 "force full send over $total destination snapshot(s)"
+  hier_expect_log "Destination snapshots cleared (${total}/${total})" "wipe reported every snapshot cleared"
+  hier_expect_no_log "Could not destroy" "no destroy failures"
+  hier_expect_calls_within destroy "$expected" "$total" "wipe was batched"
+  left="$(hier_dest_count_matching bulk)"
+  if [[ "$left" -eq 0 ]]; then
+    hier_pass "no bulk snapshots remain on the destination"
+  else
+    hier_fail "$left bulk snapshot(s) survived the wipe"
+  fi
+  hier_expect_new_snapshot "forced full send"
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "forced full send landed"
+}
+
+cmd_scenario_destroy_batch_stops() {
+  hier_say "destroy-batch-stops [$(hier_mode_label)]: a wipe that cannot clear a batch must stop before the send"
+  hier_setup
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send"
+
+  hier_bulk_dest_snapshots "$HIER_DESTROY_SNAPS" bulk
+  # A hold makes the whole batch containing it undeletable, like a dropped connection would.
+  local held="$HIER_DST_FS@bulk-0150" total left
+  zfs hold harness "$held"
+  total="$(hier_dest_snap_count)"
+  hier_info "holding $held; destination holds $total snapshot(s)"
+
+  hier_write_destroy_count_shim
+  hier_run_task false false true
+  HIER_PATH_PREFIX=""
+
+  hier_expect_rc_nonzero "force full send with a held destination snapshot"
+  hier_expect_lastrun failed "failed wipe recorded as a failure"
+  hier_expect_log "Could not destroy" "failure names the snapshots left behind"
+  hier_expect_log "Stopped after destroying" "failure reports where the wipe stopped"
+  hier_expect_no_log "Destination snapshots cleared" "wipe did not claim success"
+  hier_expect_no_log "Traceback" "failure reported without a Python traceback"
+  hier_expect_log "user holds (e.g. $held, hold tag: harness)" "failure names the held snapshot and its tag"
+  hier_expect_no_log "Dataset busy:" "no misleading 'dataset busy' hint for a hold"
+  hier_expect_no_transfer "send never started after the failed wipe"
+  left="$(hier_dest_snap_count)"
+  # Continuing past the failure would leave exactly the one held batch behind.
+  if (( left > HIER_DESTROY_BATCH )); then
+    hier_pass "wipe stopped at the failing batch ($left of $total snapshot(s) left)"
+  else
+    hier_fail "wipe kept going past the failing batch: only $left snapshot(s) left"
+  fi
+  # destroy -R also clears child datasets, and the reported count must include those.
+  hier_expect_log "Stopped after destroying $(( total - left ))/${total}" "reported destroyed count matches the destination"
+
+  zfs release harness "$held"
+  hier_run_task false false true quiet
+  hier_expect_rc 0 "rerun after releasing the hold"
+  left="$(hier_dest_count_matching bulk)"
+  if [[ "$left" -eq 0 ]]; then
+    hier_pass "rerun cleared the remaining bulk snapshots"
+  else
+    hier_fail "$left bulk snapshot(s) survived the rerun"
+  fi
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "rerun full send landed"
+}
+
+cmd_scenario_prune_batch() {
+  hier_say "prune-batch [$(hier_mode_label)]: retention must prune a large destination backlog in batches and skip held snapshots"
+  hier_setup
+  hier_write_schedule
+  # The backlog has to predate the base on both sides, as a "keep forever" history does.
+  # Snapshots made on the destination after the base make it look ahead of the source,
+  # and Auto-Recover then rolls them all back with recv -F before retention ever runs.
+  hier_bulk_snapshots "$HIER_SRC_FS" "$HIER_DESTROY_SNAPS" prune
+  hier_run_task false false false quiet; hier_expect_rc 0 "initial full send carrying the backlog"
+
+  ( zfs list -H -o name -t snapshot -r "$HIER_DST_FS" | grep '@prune-' || true ) \
+    | xargs -r -n 100 zfs set "$HIER_TASK_PROP=$HIER_TASK"
+  local held="$HIER_DST_FS@prune-0150" total max left
+  zfs hold harness "$held"
+  total="$(hier_dest_count_matching prune)"
+  if [[ "$total" -lt "$HIER_DESTROY_SNAPS" ]]; then
+    hier_fail "full send delivered only $total prune snapshot(s) to the destination"
+  fi
+  # Destination retention only; the source keeps its backlog.
+  max="$(hier_expected_destroy_batches)"
+  hier_info "destination holds $total task-tagged snapshot(s); holding $held"
+
+  hier_info "waiting 65s for them to age out of a 1-minute window"
+  sleep 65
+
+  hier_write_data second "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_write_destroy_count_shim
+  HIER_DST_RET_TIME=1; HIER_DST_RET_UNIT=minutes
+  hier_run_task false false false quiet
+  HIER_DST_RET_TIME=0; HIER_DST_RET_UNIT=""
+  HIER_PATH_PREFIX=""
+
+  hier_expect_rc 0 "incremental with a 1-minute destination retention window"
+  hier_expect_new_snapshot "incremental"
+  hier_expect_log "has holds — skipping destroy" "held snapshot was skipped"
+  hier_expect_log "Skipped 1 (held/busy)" "prune summary counts the held snapshot"
+  hier_expect_calls_within destroy "$max" "$total" "prune destroys were batched"
+  hier_expect_calls_within holds "$max" "$total" "prune holds checks were batched"
+  left="$(hier_dest_count_matching prune)"
+  if [[ "$left" -eq 1 ]] && zfs list -H -t snapshot "$held" >/dev/null 2>&1; then
+    hier_pass "only the held snapshot survived retention"
+  else
+    hier_fail "expected only $held to survive; $left prune snapshot(s) remain"
+  fi
+  hier_expect_dest_snapshot "$(hier_snap_suffix "$HIER_SRC_FS")" "incremental landed"
+
+  HIER_SCHEDULE_JSON=""
+}
+
+# Wipe in every reachable mode; the stop and prune checks once each, over SSH when available.
+cmd_scenario_destroy_all() {
+  local mode dir transport reason remote_mode=""
+  for mode in "push local" "push ssh" "pull ssh"; do
+    read -r dir transport <<<"$mode"
+    hier_set_mode "$dir" "$transport"
+    if reason="$(hier_mode_unavailable)"; then
+      hier_say "SKIP destroy-batch $(hier_mode_label): $reason"
+      continue
+    fi
+    [[ "$mode" == "push ssh" ]] && remote_mode="$mode"
+    cmd_scenario_destroy_batch
+  done
+
+  read -r dir transport <<<"${remote_mode:-push local}"
+  hier_set_mode "$dir" "$transport"
+  cmd_scenario_destroy_batch_stops
+  cmd_scenario_prune_batch
+  hier_reset_mode
+}
+
 cmd_unit_tests() {
   local base rc
   base="$(repo_root)"
@@ -2996,6 +3246,7 @@ cmd_verify_fixes() {
   cmd_scenario_resume_only_stops
   cmd_scenario_resume_netcat_eof_dirs both
   cmd_scenario_dest_snapshot_all
+  cmd_scenario_destroy_all
 
   hier_set_mode push ssh
   if reason="$(hier_mode_unavailable)"; then
@@ -3291,6 +3542,29 @@ main() {
       local reason
       if reason="$(hier_mode_unavailable)"; then
         echo "cannot run $(hier_mode_label): $reason" >&2
+        exit 1
+      fi
+      # Pools are left standing for inspection; use scenario-hierarchy-teardown.
+      "cmd_${cmd//-/_}"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-destroy-all)
+      [[ $# -eq 0 ]] || { usage; exit 1; }
+      hier_require_root
+      cmd_scenario_destroy_all
+      hier_teardown
+      hier_say "destroy scenarios finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-destroy-batch|scenario-destroy-batch-stops|scenario-prune-batch)
+      [[ $# -le 2 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_reset_mode
+      hier_set_mode "${1:-push}" "${2:-ssh}"
+      local destroy_reason
+      if destroy_reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $destroy_reason (pass 'push local' to run without SSH)" >&2
         exit 1
       fi
       # Pools are left standing for inspection; use scenario-hierarchy-teardown.

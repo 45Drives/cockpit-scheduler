@@ -2,6 +2,8 @@ import io
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPTS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -19,6 +21,35 @@ if not SCRIPTS_DIR.is_dir():
 
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+
+# Opt-in suites: skipped when collecting a directory, run when named on the command line
+# (pytest tests/test_zfs_replication_consolidate.py) or with --run-consolidate.
+# The consolidation migration script lives in the repo's top-level scripts/ and is not
+# installed on appliances, so the test cannot even import there.
+OPT_IN_TESTS = {"test_zfs_replication_consolidate.py": "--run-consolidate"}
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-consolidate", action="store_true", default=False,
+        help="also run the zfs-replication-consolidate migration tests",
+    )
+
+
+def _ignore_opt_in(name, config):
+    option = OPT_IN_TESTS.get(name)
+    if option and not config.getoption(option):
+        return True
+    return None
+
+
+# pytest 7 added collection_path and later dropped the py.path `path` argument.
+if int(pytest.__version__.split(".")[0]) >= 7:
+    def pytest_ignore_collect(collection_path, config):
+        return _ignore_opt_in(collection_path.name, config)
+else:
+    def pytest_ignore_collect(path, config):
+        return _ignore_opt_in(path.basename, config)
 
 
 class RecordingNotifier:
