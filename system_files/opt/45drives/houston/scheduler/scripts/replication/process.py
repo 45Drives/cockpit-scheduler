@@ -545,34 +545,53 @@ def estimate_send_size(send_cmd):
         return None
 
 
-def _write_all_stalled(fd, data, stall_timeout, bytes_sent):
+WAIT_HEARTBEAT_INTERVAL = 30.0
+
+
+def _write_all_stalled(fd, data, stall_timeout, bytes_sent, on_wait=None):
     """Write all of data to fd, raising StallTimeout if the pipe stays unwritable.
 
     The watchdog has to cover the write side too: when the copy loop sits downstream
-    of mbuffer, a stalled network blocks in write(), not read().
+    of mbuffer, a stalled network blocks in write(), not read(). on_wait(seconds) is
+    called while the pipe stays unwritable so a slow receiver is not mistaken for a hang.
     """
     import select as _select
 
     view = memoryview(data)
     sent = 0
     while sent < len(view):
-        if stall_timeout:
+        if stall_timeout or on_wait:
             waited = 0.0
-            poll_interval = min(30.0, stall_timeout)
+            poll_interval = min(WAIT_HEARTBEAT_INTERVAL, stall_timeout) if stall_timeout else WAIT_HEARTBEAT_INTERVAL
             while True:
                 _, writable, _ = _select.select([], [fd], [], poll_interval)
                 if writable:
                     break
                 waited += poll_interval
-                if waited >= stall_timeout:
+                if stall_timeout and waited >= stall_timeout:
                     raise StallTimeout(
                         "Downstream pipe not writable for {0}s (stall timeout: {1}s). "
                         "Transferred {2:.1f} MiB before stall.".format(
                             int(waited), stall_timeout, bytes_sent / (1024 * 1024)
                         )
                     )
+                if on_wait:
+                    on_wait(waited)
         sent += os.write(fd, view[sent:])
     return sent
+
+
+def _waiting_notice(label, side, waited, bytes_sent):
+    """Status for a copy loop that is alive but blocked on one side of the pipeline."""
+    minutes = int(waited // 60)
+    elapsed = f"{minutes}m {int(waited % 60)}s" if minutes else f"{int(waited)}s"
+    if side == "receiver":
+        reason = ("the receiving zfs is not accepting data yet; on a large recursive receive it first "
+                  "checks every existing dataset and snapshot, which can take tens of minutes")
+    else:
+        reason = ("no data from the sending side yet; zfs send may still be preparing a large "
+                  "recursive stream, or the network may be stalled")
+    return f"{label}… waiting {elapsed} ({reason}; {bytes_sent / (1024 * 1024):.1f} MiB sent so far)"
 
 
 def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_interval=1.0, stall_timeout=3600, progress_note_getter=None):
@@ -612,10 +631,15 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
     # which keeps the stall watchdog and the progress bar responsive.
     _read = getattr(src, "read1", None) or src.read
 
+    def report_wait(side, waited):
+        notice = _waiting_notice(label, side, waited, bytes_sent)
+        dbg(f"heartbeat {label}: blocked waiting on the {side} for {int(waited)}s, bytes_sent={bytes_sent}")
+        notifier.notify(f"STATUS={notice}")
+
     while True:
         if stall_enabled:
             # Wait for data with a timeout chunk (check every 30s)
-            poll_interval = min(30.0, stall_timeout)
+            poll_interval = min(WAIT_HEARTBEAT_INTERVAL, stall_timeout)
             ready, _, _ = _select.select([fd], [], [], poll_interval)
             if not ready:
                 elapsed = time.time() - last_data_time
@@ -625,6 +649,7 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
                         f"No data received for {int(elapsed)}s (stall timeout: {stall_timeout}s). "
                         f"Transferred {mib:.1f} MiB before stall."
                     )
+                report_wait("sender", elapsed)
                 continue
 
         chunk = _read(read_size)
@@ -632,7 +657,10 @@ def stream_with_progress_stall(src, dst, total_bytes, label="Resuming", min_inte
             break
         last_data_time = time.time()
         try:
-            _write_all_stalled(dst_fd, chunk, stall_timeout if stall_enabled else None, bytes_sent)
+            _write_all_stalled(
+                dst_fd, chunk, stall_timeout if stall_enabled else None, bytes_sent,
+                on_wait=lambda waited: report_wait("receiver", waited),
+            )
         except (BrokenPipeError, ValueError, OSError) as e:
             if isinstance(e, OSError) and not isinstance(e, BrokenPipeError) and e.errno not in (errno.EPIPE, errno.ECONNRESET):
                 raise
