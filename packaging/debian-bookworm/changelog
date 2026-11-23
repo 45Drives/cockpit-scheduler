@@ -1,3 +1,9 @@
+cockpit-scheduler (1.9.10-1bookworm) bookworm; urgency=medium
+
+  * Adds fail-fast behaviour to replication errors
+
+ -- Jordan Keough <jkeough@45drives.com>  Mon, 23 Nov 2026 05:35:49 -0400
+
 cockpit-scheduler (1.9.9-1bookworm) bookworm; urgency=medium
 
   * Includes fixes for replication resume failures (including detection of blocking
