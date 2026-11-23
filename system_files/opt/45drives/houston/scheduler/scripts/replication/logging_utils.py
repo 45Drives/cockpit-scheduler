@@ -6,14 +6,28 @@ import shlex
 import sys
 
 class SafeStream:
-    def __init__(self, stream):
+    def __init__(self, stream, mirror=None):
         self._stream = stream
+        self._mirror = mirror
+        self._pending = ""
 
     def write(self, data):
+        if self._mirror is not None:
+            self._mirror_lines(data)
         try:
             return self._stream.write(data)
         except Exception:
             return 0
+
+    def _mirror_lines(self, data):
+        try:
+            text = self._pending + (data.decode(errors="replace") if isinstance(data, bytes) else str(data))
+            *lines, self._pending = text.split("\n")
+            for line in lines:
+                if line.strip():
+                    self._mirror(line)
+        except Exception:
+            self._pending = ""
 
     def flush(self):
         try:
@@ -37,12 +51,27 @@ class SafeStream:
         return getattr(self._stream, name)
 
 
+def _mirror_to_debug_log(stream_name):
+    """Copy console lines into the debug log, which is often the only log a user can send."""
+    def mirror(line):
+        global _MIRRORING
+        # A failing debug log reports itself through print(), which must not loop back here.
+        if _MIRRORING or _DEBUG_WRITE_FAILED or not DEBUG_ENABLED or line.startswith("[debug] "):
+            return
+        _MIRRORING = True
+        try:
+            dbg(f"{stream_name}: {line}")
+        finally:
+            _MIRRORING = False
+    return mirror
+
+
 def configure_standard_streams():
     """Make service output resilient to stdout/stderr being closed."""
     if not isinstance(sys.stdout, SafeStream):
-        sys.stdout = SafeStream(sys.stdout)
+        sys.stdout = SafeStream(sys.stdout, mirror=_mirror_to_debug_log("stdout"))
     if not isinstance(sys.stderr, SafeStream):
-        sys.stderr = SafeStream(sys.stderr)
+        sys.stderr = SafeStream(sys.stderr, mirror=_mirror_to_debug_log("stderr"))
 
 _DEBUG_TASK_NAME = os.environ.get("taskName", "").strip()
 # An empty ZFS_REP_DEBUG_LOG in the unit's env file would otherwise win over the default.
@@ -52,6 +81,7 @@ DEBUG_LOG = os.environ.get("ZFS_REP_DEBUG_LOG", "").strip() or (
 DEBUG_ENABLED = os.environ.get("ZFS_REP_DEBUG", "1").strip().lower() in ("1", "true", "yes", "on")
 DEBUG_MAX_TEXT = int(os.environ.get("ZFS_REP_DEBUG_MAX_TEXT", "4000"))
 _DEBUG_WRITE_FAILED = False
+_MIRRORING = False
 
 def safe_print(msg: str):
     try:

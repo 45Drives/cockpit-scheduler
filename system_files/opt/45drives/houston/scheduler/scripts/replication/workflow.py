@@ -656,6 +656,184 @@ def _destination_only_datasets(ctx: ReplicationRun):
     return sorted(_relative_dataset_names(dst, ctx.destFilesystem) - _relative_dataset_names(src, ctx.sourceFilesystem))
 
 
+def _dest_mount_layout(ctx: ReplicationRun):
+    """Map each filesystem in the destination tree to its mountpoint and canmount, or None if unreadable."""
+    args = ['zfs', 'get', '-H', '-r', '-t', 'filesystem', '-o', 'name,property,value', 'mountpoint,canmount', ctx.destFilesystem]
+    try:
+        p = _dest_run(ctx, args, timeout=120)
+    except Exception as e:
+        dbg(f'could not read mountpoints under {ctx.destFilesystem}: {e}')
+        return None
+    if p.returncode != 0:
+        dbg(f'zfs get mountpoint,canmount {ctx.destFilesystem} rc={p.returncode}')
+        return None
+    out = p.stdout.decode(errors='replace') if isinstance(p.stdout, bytes) else (p.stdout or '')
+    layout = {}
+    for line in out.splitlines():
+        parts = line.split('\t')
+        if len(parts) == 3:
+            layout.setdefault(parts[0], {})[parts[1]] = parts[2]
+    return layout
+
+
+def _mounts_inside_replicated_tree(ctx: ReplicationRun):
+    """Destination-only datasets whose mount folder lives inside a replicated dataset, or None if unreadable.
+
+    Each receive replaces the replicated dataset's contents with the source's, which has no folder
+    for them, and mounting them again (after a reboot, for instance) recreates it. ZFS counts that as
+    a change, so the next incremental receive into that dataset is refused.
+    Returns [(dataset, mountpoint, host_dataset, suggested_mountpoint)].
+    """
+    extra = _destination_only_datasets(ctx)
+    if not extra:
+        return extra
+    layout = _dest_mount_layout(ctx)
+    if layout is None:
+        return None
+    root = ctx.destFilesystem
+    extra_names = {f'{root}/{rel}' for rel in extra}
+
+    def mounted_at(name):
+        props = layout.get(name, {})
+        mountpoint = props.get('mountpoint', '')
+        if props.get('canmount') == 'off' or not mountpoint.startswith('/'):
+            return None
+        return mountpoint.rstrip('/') or '/'
+
+    root_mp = mounted_at(root)
+    local_base = f'{root_mp}-local' if root_mp and root_mp != '/' else '/' + root.replace('/', '-') + '-local'
+    hazards = []
+    for name in sorted(extra_names):
+        mountpoint = mounted_at(name)
+        if not mountpoint:
+            continue
+        host, host_mp = None, ''
+        for other in layout:
+            if other == name or other.startswith(f'{name}/'):
+                continue
+            other_mp = mounted_at(other)
+            if not other_mp:
+                continue
+            prefix = '/' if other_mp == '/' else f'{other_mp}/'
+            if mountpoint.startswith(prefix) and len(other_mp) > len(host_mp):
+                host, host_mp = other, other_mp
+        # A destination-only parent keeps its children's folders out of the replicated data.
+        if host and host not in extra_names:
+            hazards.append((name, mountpoint, host, f'{local_base}/{name[len(root) + 1:]}'))
+    return hazards
+
+
+def _warn_mounts_inside_replicated_tree(ctx: ReplicationRun):
+    """Point out destination-only datasets that will break incremental receives once they are remounted."""
+    if not ctx.isRecursiveSnap:
+        return
+    try:
+        hazards = _mounts_inside_replicated_tree(ctx)
+    except Exception as e:
+        dbg(f'mount layout check failed: {e}')
+        return
+    if not hazards:
+        return
+    lines = [f'WARNING: {len(hazards)} dataset(s) that exist only on the destination are mounted inside replicated datasets:']
+    lines += [f'  {name} at {mountpoint} (its folder lives in {host})' for name, mountpoint, host, _ in hazards[:10]]
+    if len(hazards) > 10:
+        lines.append(f'  … and {len(hazards) - 10} more')
+    lines.append('Each receive removes those folders, and mounting the datasets again (for example after a reboot) recreates '
+                 'them. ZFS counts that as a change and refuses incremental receives until it is undone.')
+    lines.append('Move them outside the replicated tree, for example:')
+    lines += [f'  zfs set mountpoint={suggested} {name}' for name, _, _, suggested in hazards[:10]]
+    lines.append(f'Setting readonly=on on {ctx.destFilesystem} also stops anything else from changing the backup; receives still work.')
+    print('\n'.join(lines))
+    notifier.notify(f'STATUS=Warning: {len(hazards)} destination-only dataset(s) are mounted inside the replicated tree; see the task log.')
+
+
+def _replicated_dest_changes(ctx: ReplicationRun):
+    """Replicated destination datasets changed after their newest snapshot, or None if unreadable.
+
+    ZFS refuses an incremental receive without -F into any of them, so retrying cannot succeed.
+    Returns [(dataset, bytes_written, newest_snapshot)].
+    """
+    args = ['zfs', 'get', '-H', '-p', '-o', 'name,value']
+    if ctx.isRecursiveSnap:
+        args += ['-r', '-t', 'filesystem,volume']
+    args += ['written', ctx.destFilesystem]
+    try:
+        p = _dest_run(ctx, args, timeout=120)
+    except Exception as e:
+        dbg(f'could not read written under {ctx.destFilesystem}: {e}')
+        return None
+    if p.returncode != 0:
+        dbg(f'zfs get written {ctx.destFilesystem} rc={p.returncode}')
+        return None
+    out = p.stdout.decode(errors='replace') if isinstance(p.stdout, bytes) else (p.stdout or '')
+    root = ctx.destFilesystem
+    src_groups = _group_snaps_by_relative_dataset(ctx.sourceSnapshots, ctx.sourceFilesystem)
+    dst_groups = _group_snaps_by_relative_dataset(ctx.destinationSnapshots, root)
+    changed = []
+    for line in out.splitlines():
+        name, _, value = line.partition('\t')
+        name = name.strip()
+        try:
+            amount = int(value.strip())
+        except ValueError:
+            continue
+        if amount <= 0 or '%' in name:
+            continue
+        if name == root:
+            rel = ''
+        elif name.startswith(f'{root}/'):
+            rel = name[len(root) + 1:]
+        else:
+            continue
+        # Datasets the source lacks are never received into, and ones without a snapshot here get a full stream.
+        if rel not in src_groups or not dst_groups.get(rel):
+            continue
+        newest = max(dst_groups[rel], key=lambda s: s.order_key).name
+        changed.append((name, amount, newest))
+    dbg(f'replicated destination datasets changed since their newest snapshot: {[(n, a) for n, a, _ in changed[:20]]}')
+    return changed
+
+
+def _retry_would_handle_dest_changes(ctx: ReplicationRun):
+    """True when the planner's next attempt rolls these destination changes back on its own (metadata only, Auto-Recover on)."""
+    if not ctx.autoRecover:
+        return False
+    dest_root = sorted(filter_dataset_snapshots(ctx.destinationSnapshots or [], ctx.destFilesystem), key=lambda s: s.order_key)
+    return bool(dest_root) and _dest_changes_are_metadata_only(ctx, dest_root[-1].name)
+
+
+def _modified_destination_lines(ctx: ReplicationRun, changed, during_receive):
+    """Explain a destination that changed outside the task, with the commands that fix it."""
+    shown = ', '.join(f'{name} ({format_bytes(amount)})' for name, amount, _ in changed[:5])
+    if len(changed) > 5:
+        shown += f' (+{len(changed) - 5} more)'
+    lines = [f'{len(changed)} replicated dataset(s) on the destination changed after their newest snapshot: {shown}.']
+    if during_receive:
+        lines.append('ZFS refuses an incremental receive into a changed dataset, so retrying cannot succeed until '
+                     'those changes are undone. This run will not be retried automatically.')
+    hazards = None
+    if ctx.isRecursiveSnap:
+        try:
+            hazards = _mounts_inside_replicated_tree(ctx)
+        except Exception as e:
+            dbg(f'mount layout check failed: {e}')
+    changed_names = {name for name, _, _ in changed}
+    related = [h for h in (hazards or []) if h[2] in changed_names]
+    if related:
+        lines.append('Likely cause: these datasets exist only on the destination and are mounted inside a changed dataset, '
+                     'so mounting them (for example after a reboot) recreated their folders there: '
+                     + ', '.join(f'{name} at {mountpoint}' for name, mountpoint, _, _ in related[:5]) + '.')
+        lines.append('Move them out of the replicated tree first:')
+        lines += [f'  zfs set mountpoint={suggested} {name}' for name, _, _, suggested in related[:10]]
+    lines.append('Review what changed, and if nothing there is needed, discard it:')
+    for name, _, newest in changed[:5]:
+        lines.append(f'  zfs diff {newest} {name}')
+        lines.append(f'  zfs rollback {newest}')
+    lines.append(f'To keep the backup from changing again, make sure nothing writes to it; zfs set readonly=on {ctx.destFilesystem} '
+                 'blocks local changes while receives still work.')
+    return lines
+
+
 def _ahead_is_self_inflicted(ctx: ReplicationRun, src_groups, dst_groups, base_suffix):
     """Decide whether rolling the destination back can only cost this task's own copies.
 
@@ -758,6 +936,13 @@ def _handle_unsnapshotted_destination_writes(ctx: ReplicationRun, latest_snapsho
         print(f'{dest} holds {format_bytes(written)} written since {since} that did not come from this task, '
               'and it could not be shown to be ZFS metadata only.')
         print('ZFS refuses an incremental receive into a modified dataset. Undo those changes on the destination, or choose "Always roll back" to discard them.')
+        try:
+            changed = _replicated_dest_changes(ctx)
+        except Exception as e:
+            dbg(f'could not list changed destination datasets: {e}')
+            changed = None
+        if changed:
+            print('\n'.join(_modified_destination_lines(ctx, changed, during_receive=False)))
         sys.exit(2)
 
     explanation = (f'{dest} shows {format_bytes(written)} written since {since}, but no file changed: ZFS recorded its own '
@@ -1162,6 +1347,10 @@ def _plan_send(ctx: ReplicationRun):
                     written_dest = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, recursive=ctx.isRecursiveSnap)
                 else:
                     written_dest = get_written_since_snapshot(ctx.destFilesystem, dest_latest.name, remote_user=ctx.remoteUser if ctx.remoteHost else None, remote_host=ctx.remoteHost if ctx.remoteHost else None, remote_port=ctx.sshPort, recursive=ctx.isRecursiveSnap)
+                dbg(f'destination change check since {dest_latest.name}: written={written_dest}')
+                if written_dest is None and not ctx.allowOverwrite:
+                    print(f'Note: could not measure changes on {ctx.destFilesystem} since {snapshot_suffix(dest_latest.name)}; '
+                          'continuing. If it was modified, ZFS refuses the receive and this task reports what changed.')
             if not ctx.allowOverwrite:
                 if written_dest:
                     _handle_unsnapshotted_destination_writes(ctx, dest_latest.name, written_dest)
@@ -1311,7 +1500,7 @@ def _warn_destination_only_datasets(ctx: ReplicationRun):
 
 
 def _run_transfer(ctx: ReplicationRun, send):
-    """Run send(); if it fails because the destination was snapshotted mid-receive, say so and stop retrying."""
+    """Run send(); if the destination itself guarantees the receive fails, explain it and stop retrying."""
     try:
         send()
     except SystemExit as exit_request:
@@ -1323,6 +1512,16 @@ def _run_transfer(ctx: ReplicationRun, send):
                 safe_print(f'ERROR: {msg}')
                 send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_failed', 'subject': 'ZFS Replication Failed', 'email_message': f'ZFS replication from {ctx.sourceFilesystem} to {ctx.destFilesystem} failed: {msg}', 'fileSystem': ctx.sourceFilesystem, 'snapShot': ctx.newSnap, 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': msg})
                 # A retry would resend the remaining data only for ZFS to reject it again.
+                sys.exit(2)
+            changed = _replicated_dest_changes(ctx)
+            if changed and _retry_would_handle_dest_changes(ctx):
+                dbg('destination changed during the receive, but only in ZFS metadata Auto-Recover discards on retry')
+                changed = None
+            if changed:
+                lines = _modified_destination_lines(ctx, changed, during_receive=True)
+                notifier.notify(f'STATUS=ZFS replication task failed: the destination changed outside this task. {lines[0]} See the task log for how to fix it.')
+                safe_print('ERROR: ' + '\n'.join(lines))
+                send_houston_notification({'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'event': 'zfs_replication_failed', 'subject': 'ZFS Replication Failed', 'email_message': f'ZFS replication from {ctx.sourceFilesystem} to {ctx.destFilesystem} failed because the destination changed outside this task.\n\n' + '\n'.join(lines), 'fileSystem': ctx.sourceFilesystem, 'snapShot': ctx.newSnap, 'replicationDestination': ctx.destFilesystem, 'severity': 'warning', 'errors': lines[0]})
                 sys.exit(2)
         raise
 
@@ -1514,6 +1713,7 @@ def run_replication(ctx: ReplicationRun):
         if _resume_interrupted_receive(ctx):
             return
         _announce_dry_run(ctx)
+        _warn_mounts_inside_replicated_tree(ctx)
         _plan_send(ctx)
         _report_dry_run(ctx)
         _create_and_transfer_snapshot(ctx)
