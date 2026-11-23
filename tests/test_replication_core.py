@@ -223,3 +223,30 @@ def test_safe_stream_absorbs_broken_writer():
     assert stream.flush() is None
     assert stream.isatty() is False
 
+
+def test_safe_stream_mirrors_complete_lines_even_when_the_console_is_gone():
+    class Broken:
+        def write(self, data):
+            raise BrokenPipeError()
+
+    mirrored = []
+    stream = SafeStream(Broken(), mirror=mirrored.append)
+    stream.write("ERROR: local recv error: destination P02 has been ")
+    stream.write("modified since most recent snapshot\n\nnext line\npartial")
+    assert mirrored == ["ERROR: local recv error: destination P02 has been modified since most recent snapshot", "next line"]
+
+
+def test_console_mirror_does_not_loop_when_the_debug_log_is_unwritable(monkeypatch):
+    from replication import logging_utils
+
+    written = []
+    monkeypatch.setattr(logging_utils, "DEBUG_ENABLED", True)
+    monkeypatch.setattr(logging_utils, "DEBUG_LOG", "/nonexistent-dir/zfs_rep_debug.log")
+    monkeypatch.setattr(logging_utils, "_DEBUG_WRITE_FAILED", False)
+    mirror = logging_utils._mirror_to_debug_log("stdout")
+    monkeypatch.setattr(logging_utils, "safe_print", lambda msg: (written.append(msg), mirror(msg)))
+    mirror("hello")
+    mirror("again")
+    assert logging_utils._DEBUG_WRITE_FAILED is True
+    assert any("not writable" in w for w in written)
+

@@ -305,3 +305,48 @@ def test_kill_procs_is_best_effort():
     process._kill_procs(None, Proc())
     assert calls == ["kill", ("wait", 10)]
 
+
+
+def _full_pipe():
+    read_fd, write_fd = os.pipe()
+    os.set_blocking(write_fd, False)
+    try:
+        while True:
+            os.write(write_fd, b"x" * 65536)
+    except BlockingIOError:
+        pass
+    os.set_blocking(write_fd, True)
+    return read_fd, write_fd
+
+
+def test_blocked_receiver_reports_waiting_before_stall_timeout(monkeypatch):
+    monkeypatch.setattr(process, "WAIT_HEARTBEAT_INTERVAL", 0.01)
+    read_fd, write_fd = _full_pipe()
+    waits = []
+    try:
+        with pytest.raises(process.StallTimeout):
+            process._write_all_stalled(write_fd, b"y", 0.05, 0, on_wait=waits.append)
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+    assert waits and waits == sorted(waits)
+
+
+def test_silent_sender_is_reported_as_waiting_not_hung(monkeypatch):
+    recorder = RecordingNotifier()
+    monkeypatch.setattr(process, "notifier", recorder)
+    monkeypatch.setattr(process, "WAIT_HEARTBEAT_INTERVAL", 0.01)
+    read_fd, write_fd = os.pipe()
+    try:
+        with os.fdopen(read_fd, "rb", buffering=0) as src, tempfile.TemporaryFile() as dst:
+            with pytest.raises(process.StallTimeout):
+                process.stream_with_progress_stall(src, dst, 100, min_interval=0, stall_timeout=0.05)
+    finally:
+        os.close(write_fd)
+    assert any("waiting" in m and "sending side" in m for m in recorder.messages)
+
+
+def test_waiting_notice_names_the_blocked_side():
+    receiver = process._waiting_notice("Transferring", "receiver", 750, 15 * 1024 * 1024)
+    assert "12m 30s" in receiver and "not accepting data" in receiver and "15.0 MiB" in receiver
+    assert "sending side" in process._waiting_notice("Transferring", "sender", 45, 0)

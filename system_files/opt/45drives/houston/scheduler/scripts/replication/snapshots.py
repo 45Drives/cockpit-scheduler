@@ -17,6 +17,7 @@ from zfs_busy import (
 
 from .constants import TASK_PROP, TIER_PROP, ZFS_LIST_TIMEOUT
 from .context import notifier
+from .logging_utils import dbg
 from .models import Snapshot
 from .process import format_bytes, run_logged
 from .ssh import ssh_run_args
@@ -277,37 +278,42 @@ def get_remote_snapshots(user, host, ssh_port, filesystem):
 
 
 def get_written_since_snapshot(dataset, snapshot_fullname, remote_user=None, remote_host=None, remote_port="22", recursive=False):
-    """Bytes written since a snapshot; with recursive=True, summed over the whole hierarchy."""
+    """Bytes written since a snapshot; with recursive=True, summed over the hierarchy's filesystems and volumes."""
     snap_ref = snapshot_suffix(snapshot_fullname) if recursive else snapshot_fullname
     prop = f"written@{snap_ref}"
     base_cmd = ["zfs", "get", "-H", "-p"]
     if recursive:
-        base_cmd.append("-r")
-    base_cmd += ["-o", "value", prop, dataset]
+        # Without -t, -r also lists every snapshot, whose own written@ values would inflate the total.
+        base_cmd += ["-r", "-t", "filesystem,volume", "-o", "name,value"]
+    else:
+        base_cmd += ["-o", "value"]
+    base_cmd += [prop, dataset]
 
     if remote_host:
         p = ssh_run_args(remote_user, remote_host, remote_port, base_cmd, capture_output=True, check=False, text=True)
-        if p.returncode != 0:
-            return None
-        out = (p.stdout or "").strip()
     else:
-        p = subprocess.run(base_cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if p.returncode != 0:
-            return None
-        out = (p.stdout or "").strip()
-
-    if not out or out == "-":
+        p = run_logged(base_cmd)
+    if p.returncode != 0:
+        dbg(f"{prop} on {dataset} could not be read (rc={p.returncode}): {(p.stderr or '').strip()[:500]}")
         return None
+    out = (p.stdout or "").strip()
 
     total = None
+    changed = []
     for line in out.splitlines():
-        value = line.strip()
+        name, _, value = line.rpartition("\t") if recursive else ("", "", line)
+        value = value.strip()
         if not value or value == "-":
             continue
         try:
-            total = (total or 0) + int(value)
+            amount = int(value)
         except ValueError:
             continue
+        total = (total or 0) + amount
+        if amount > 0:
+            changed.append(f"{name.strip() or dataset}={amount}")
+    shown = ", ".join(changed[:10]) + (f" (+{len(changed) - 10} more)" if len(changed) > 10 else "")
+    dbg(f"{prop} on {dataset}: total={total} changed={shown or 'none'}")
     return total
 
 

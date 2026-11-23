@@ -1080,6 +1080,7 @@ def test_failed_transfer_keeps_original_exit_when_not_blocked(monkeypatch, incre
     ctx.incrementalSnapName = incremental
     ctx.forceOverwrite = force
     monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: blocking)
+    monkeypatch.setattr(workflow, "_replicated_dest_changes", lambda ctx: [])
     monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: pytest.fail("unexpected notification"))
     with pytest.raises(SystemExit) as exc:
         workflow._run_transfer(ctx, _failed_transfer(1))
@@ -1180,3 +1181,116 @@ def test_apply_retention_skips_two_phase_progress_when_both_disabled(monkeypatch
     assert any("Retention not configured on source or destination. Skipping pruning. 100% complete" in m for m in messages)
     assert messages[-1] == "STATUS=ZFS replication task completed. 100% complete"
 
+
+
+def _p02_ctx(monkeypatch, layout_lines, written_lines="", source=None, dest=None):
+    """Recursive pull into P02 holding backup-only datasets, modelled on the P02 incident."""
+    ctx = ReplicationRun()
+    ctx.sourceFilesystem = "P01"
+    ctx.destFilesystem = "P02"
+    ctx.isRecursiveSnap = True
+    ctx.autoRecover = False
+    ctx.incrementalSnapName = "P01@job-base"
+    ctx.sourceSnapshots = [snap("P01@job-base", "g1", 1), snap("P01/proj@job-base", "g2", 1), snap("P01/new@job-next", "g3", 2)]
+    ctx.destinationSnapshots = [
+        snap("P02@job-base", "g1", 1),
+        snap("P02/proj@job-base", "g2", 1),
+        snap("P02/SEV2@local", "z1", 1),
+    ]
+    _stub_side_list(monkeypatch, {
+        "P01": source or ["P01", "P01/proj", "P01/new"],
+        "P02": dest or ["P02", "P02/proj", "P02/new", "P02/SEV2", "P02/parked", "P02/parked/INV3", "P02/moved", "P02/hidden"],
+    })
+
+    def fake_dest_run(ctx, args, timeout=30):
+        if "mountpoint,canmount" in args:
+            return _ZfsProc(0, layout_lines)
+        if "written" in args:
+            return _ZfsProc(0, written_lines)
+        raise AssertionError(f"unexpected command {args}")
+
+    monkeypatch.setattr(workflow, "_dest_run", fake_dest_run)
+    return ctx
+
+
+_P02_LAYOUT = "".join(
+    f"{name}\t{prop}\t{value}\n"
+    for name, mountpoint, canmount in [
+        ("P02", "/P02", "on"),
+        ("P02/proj", "/P02/proj", "on"),
+        ("P02/new", "/P02/new", "on"),
+        ("P02/SEV2", "/P02/SEV2", "on"),
+        ("P02/parked", "/P02/parked", "on"),
+        ("P02/parked/INV3", "/P02/parked/INV3", "on"),
+        ("P02/moved", "/P02-local/moved", "on"),
+        ("P02/hidden", "/P02/hidden", "off"),
+    ]
+    for prop, value in (("mountpoint", mountpoint), ("canmount", canmount))
+)
+
+
+def test_backup_only_datasets_mounted_in_replicated_root_are_flagged(monkeypatch):
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT)
+    hazards = workflow._mounts_inside_replicated_tree(ctx)
+    # Moved and unmountable datasets are safe, and INV3's folder lives in its backup-only parent.
+    assert hazards == [
+        ("P02/SEV2", "/P02/SEV2", "P02", "/P02-local/SEV2"),
+        ("P02/parked", "/P02/parked", "P02", "/P02-local/parked"),
+    ]
+
+
+def test_mount_warning_prints_the_commands_that_fix_it(monkeypatch, capsys):
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT)
+    workflow._warn_mounts_inside_replicated_tree(ctx)
+    out = capsys.readouterr().out
+    assert "zfs set mountpoint=/P02-local/SEV2 P02/SEV2" in out
+    assert "readonly=on on P02" in out
+
+
+def test_mount_warning_is_quiet_when_layouts_match(monkeypatch, capsys):
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT, dest=["P02", "P02/proj", "P02/new"])
+    workflow._warn_mounts_inside_replicated_tree(ctx)
+    assert capsys.readouterr().out == ""
+
+
+def test_changed_destination_lists_only_datasets_the_receive_needs(monkeypatch):
+    written = "P02\t443520\nP02/proj\t0\nP02/new\t262144\nP02/SEV2\t999\nP02/proj/%recv\t5\n"
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT, written)
+    # P02/new has no snapshot yet (full stream) and P02/SEV2 is never received into.
+    assert workflow._replicated_dest_changes(ctx) == [("P02", 443520, "P02@job-base")]
+
+
+def test_receive_into_changed_destination_stops_retries_and_explains(monkeypatch, capsys):
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT, "P02\t443520\nP02/proj\t0\n")
+    notes = []
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
+    monkeypatch.setattr(workflow, "send_houston_notification", notes.append)
+    with pytest.raises(SystemExit) as exc:
+        workflow._run_transfer(ctx, _failed_transfer(1))
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    assert "will not be retried" in out
+    assert "P02/SEV2 at /P02/SEV2" in out
+    assert "zfs rollback P02@job-base" in out
+    assert notes[0]["event"] == "zfs_replication_failed"
+
+
+def test_receive_failure_with_clean_destination_keeps_retrying(monkeypatch):
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT, "P02\t0\nP02/proj\t0\n")
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: pytest.fail("unexpected notification"))
+    with pytest.raises(SystemExit) as exc:
+        workflow._run_transfer(ctx, _failed_transfer(1))
+    assert exc.value.code == 1
+
+
+@pytest.mark.parametrize("metadata_only,expected", [(True, 1), (False, 2)])
+def test_auto_recover_keeps_retrying_when_the_change_is_only_metadata(monkeypatch, metadata_only, expected):
+    ctx = _p02_ctx(monkeypatch, _P02_LAYOUT, "P02\t443520\nP02/proj\t0\n")
+    ctx.autoRecover = True
+    monkeypatch.setattr(workflow, "_snapshots_blocking_receive", lambda *args, **kwargs: None)
+    monkeypatch.setattr(workflow, "_dest_changes_are_metadata_only", lambda ctx, latest: metadata_only)
+    monkeypatch.setattr(workflow, "send_houston_notification", lambda payload: None)
+    with pytest.raises(SystemExit) as exc:
+        workflow._run_transfer(ctx, _failed_transfer(1))
+    assert exc.value.code == expected

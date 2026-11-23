@@ -188,6 +188,19 @@ def test_property_helpers_accept_numbers_and_reject_dash(monkeypatch):
     assert snapshots.get_available_bytes("tank/data") is None
 
 
+def test_recursive_written_skips_snapshot_rows_and_datasets_without_the_base(monkeypatch):
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return result(stdout="tank\t4096\ntank/a\t0\ntank/local-only\t-\n")
+
+    monkeypatch.setattr(snapshots, "run_logged", fake_run)
+    assert snapshots.get_written_since_snapshot("tank", "tank@s1", recursive=True) == 4096
+    assert seen[0][:8] == ["zfs", "get", "-H", "-p", "-r", "-t", "filesystem,volume", "-o"]
+    assert seen[0][-2:] == ["written@s1", "tank"]
+
+
 def test_create_local_snapshot_builds_recursive_name_and_tags_whole_tree(monkeypatch):
     calls = []
     suffix = "daily-t2-2026.08.04-15.16.17"
