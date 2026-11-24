@@ -1,3 +1,3 @@
-## task scheduler 1.9.10-1
+## task scheduler 1.9.11-1
 
-* Adds fail-fast behaviour to replication errors
+* Fixes notification issues: Task failures were not being correctly identified as failures in the scheduler monitor service, now rectified

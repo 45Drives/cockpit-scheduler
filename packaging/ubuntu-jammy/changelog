@@ -1,3 +1,10 @@
+cockpit-scheduler (1.9.11-1jammy) jammy; urgency=medium
+
+  * Fixes notification issues: Task failures were not being correctly identified
+    as failures in the scheduler monitor service, now rectified
+
+ -- Jordan Keough <jkeough@45drives.com>  Tue, 24 Nov 2026 10:37:37 -0400
+
 cockpit-scheduler (1.9.10-1jammy) jammy; urgency=medium
 
   * Adds fail-fast behaviour to replication errors
