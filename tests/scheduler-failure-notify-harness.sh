@@ -126,11 +126,16 @@ write_unit() {
 
 unit_prop() { systemctl show "$1" -p "$2" --value; }
 
+# --no-block only queues the start job, so a unit's previous inactive/failed state
+# is not a result. Settled means a terminal state AND no pending job, read in one
+# snapshot. systemctl prints "Job=" (empty) when no job is queued.
 wait_settled() {
-  local unit=$1 deadline=$((SECONDS + SETTLE_TIMEOUT)) state
+  local unit=$1 deadline=$((SECONDS + SETTLE_TIMEOUT)) props state job
   while ((SECONDS < deadline)); do
-    state=$(unit_prop "${unit}" ActiveState)
-    if [[ ${state} == failed || ${state} == inactive ]]; then
+    props=$(systemctl show "${unit}" -p ActiveState -p Job)
+    state=$(sed -n 's/^ActiveState=//p' <<<"${props}")
+    job=$(sed -n 's/^Job=//p' <<<"${props}")
+    if [[ -z ${job} && ( ${state} == failed || ${state} == inactive ) ]]; then
       return 0
     fi
     sleep 1

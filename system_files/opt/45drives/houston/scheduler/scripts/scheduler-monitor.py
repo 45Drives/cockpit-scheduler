@@ -97,6 +97,14 @@ _recently_finalized = {}
 # no "Start request repeated too quickly" / "Failed to start" afterwards.
 NO_RETRY_EXIT_CODE = 90
 
+# unit -> exit status from its latest "Main process exited" journal entry.
+# Taken from the journal rather than systemctl so a lagging monitor judges each
+# attempt by its own exit status, not the unit's current (possibly later) one.
+_last_exit_status = {}
+
+_MAIN_EXIT_RE = re.compile(r"Main process exited, code=exited, status=(\d+)")
+_FAILED_RESULT_RE = re.compile(r"Failed with result '([^']*)'")
+
 
 def _get_server_identity():
     """Return (hostname, ip) for email context."""
@@ -305,12 +313,6 @@ def _finalize_failure(unit):
               file=sys.stderr, flush=True)
 
 
-def _is_no_retry_exit(unit):
-    props = get_service_result(unit)
-    return (props.get("Result") == "exit-code"
-            and props.get("ExecMainStatus") == str(NO_RETRY_EXIT_CODE))
-
-
 def handle_journal_entry(entry):
     """Track one systemd journal entry and send notifications when a run settles."""
     unit = entry.get("UNIT", "")
@@ -333,8 +335,14 @@ def handle_journal_entry(entry):
                   file=sys.stderr, flush=True)
         return
 
+    exited = _MAIN_EXIT_RE.search(message)
+    if exited:
+        _last_exit_status[unit] = int(exited.group(1))
+        return
+
     # --- Process failed (emitted on EVERY failure exit) ---
     if "Failed with result" in message:
+        exit_status = _last_exit_status.pop(unit, None)
         # Skip if this unit was just finalized (systemd emits multiple
         # messages in a burst when giving up on retries)
         finalized_at = _recently_finalized.get(unit, 0)
@@ -345,7 +353,9 @@ def handle_journal_entry(entry):
         # The task's last attempt (or a permanent failure) exits with the
         # no-retry code, so systemd will not restart it: this failure is final.
         # Earlier attempts exit 1 and wait for the restart/give-up messages.
-        if _is_no_retry_exit(unit):
+        result = _FAILED_RESULT_RE.search(message)
+        if (exit_status == NO_RETRY_EXIT_CODE
+                and result is not None and result.group(1) == "exit-code"):
             _finalize_failure(unit)
         return
 
