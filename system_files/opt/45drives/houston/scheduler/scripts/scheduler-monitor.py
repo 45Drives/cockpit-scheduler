@@ -6,7 +6,8 @@ Watches systemd journal for Task Scheduler service completions and sends
 alert notifications via the houston-notify D-Bus CLI.
 
 Sends a "Failed — Retrying" notification on first failure when systemd
-schedules a retry, then a final "Task Failed" notification when systemd
+schedules a retry, then a final "Task Failed" notification when the task
+exits with the no-retry code (final attempt or permanent failure) or systemd
 gives up retrying.
 """
 
@@ -90,6 +91,19 @@ _pending_failures = {}
 # immediately followed by "Start request repeated too quickly" + "Failed to start").
 # unit -> monotonic timestamp when finalized
 _recently_finalized = {}
+
+# Must match task_retry.py: NO_RETRY_EXIT_CODE. Task units list it in
+# RestartPreventExitStatus, so a run exiting with it is final and systemd emits
+# no "Start request repeated too quickly" / "Failed to start" afterwards.
+NO_RETRY_EXIT_CODE = 90
+
+# unit -> exit status from its latest "Main process exited" journal entry.
+# Taken from the journal rather than systemctl so a lagging monitor judges each
+# attempt by its own exit status, not the unit's current (possibly later) one.
+_last_exit_status = {}
+
+_MAIN_EXIT_RE = re.compile(r"Main process exited, code=exited, status=(\d+)")
+_FAILED_RESULT_RE = re.compile(r"Failed with result '([^']*)'")
 
 
 def _get_server_identity():
@@ -288,6 +302,85 @@ def send_retrying_notification(unit):
     print(f"[scheduler-monitor] Task retrying: {task_name} ({type_label})", flush=True)
 
 
+def _finalize_failure(unit):
+    retry_count = _pending_failures.pop(unit, {}).get("retry_count", 0)
+    _recently_finalized[unit] = time.monotonic()
+    try:
+        send_final_notification(unit, retry_count=retry_count)
+    except Exception as e:
+        print(f"[scheduler-monitor] Error handling final failure {unit}: {e}",
+              file=sys.stderr, flush=True)
+
+
+def handle_journal_entry(entry):
+    """Track one systemd journal entry and send notifications when a run settles."""
+    unit = entry.get("UNIT", "")
+    message = entry.get("MESSAGE", "")
+
+    if not unit.startswith(UNIT_PREFIX):
+        return
+    if not unit.endswith(".service"):
+        return
+
+    # --- Success: task completed normally ---
+    if "Deactivated successfully" in message or "Succeeded." in message:
+        _pending_failures.pop(unit, None)
+        _recently_finalized[unit] = time.monotonic()
+        try:
+            send_final_notification(unit)
+        except Exception as e:
+            print(f"[scheduler-monitor] Error handling {unit}: {e}",
+                  file=sys.stderr, flush=True)
+        return
+
+    exited = _MAIN_EXIT_RE.search(message)
+    if exited:
+        _last_exit_status[unit] = int(exited.group(1))
+        return
+
+    # --- Process failed (emitted on EVERY failure exit) ---
+    if "Failed with result" in message:
+        exit_status = _last_exit_status.pop(unit, None)
+        # Skip if this unit was just finalized (systemd emits multiple
+        # messages in a burst when giving up on retries)
+        finalized_at = _recently_finalized.get(unit, 0)
+        if time.monotonic() - finalized_at < 5:
+            return
+        if unit not in _pending_failures:
+            _pending_failures[unit] = {"retrying_notified": False, "retry_count": 0}
+        # The task's last attempt (or a permanent failure) exits with the
+        # no-retry code, so systemd will not restart it: this failure is final.
+        # Earlier attempts exit 1 and wait for the restart/give-up messages.
+        result = _FAILED_RESULT_RE.search(message)
+        if (exit_status == NO_RETRY_EXIT_CODE
+                and result is not None and result.group(1) == "exit-code"):
+            _finalize_failure(unit)
+        return
+
+    # --- Systemd is scheduling a retry ---
+    if "Scheduled restart job" in message:
+        state = _pending_failures.get(unit)
+        if state:
+            state["retry_count"] = state.get("retry_count", 0) + 1
+            if not state["retrying_notified"]:
+                state["retrying_notified"] = True
+                try:
+                    send_retrying_notification(unit)
+                except Exception as e:
+                    print(f"[scheduler-monitor] Error sending retry notif for {unit}: {e}",
+                          file=sys.stderr, flush=True)
+        return
+
+    # --- Systemd gave up retrying (final failure) ---
+    if "Start request repeated too quickly" in message or "Failed to start" in message:
+        # Only send if we have pending state (prevents duplicates from
+        # the burst of messages systemd emits)
+        if unit not in _pending_failures:
+            return
+        _finalize_failure(unit)
+        return
+
+
 def main():
     print("[scheduler-monitor] Starting Task Scheduler monitor daemon", flush=True)
 
@@ -313,69 +406,7 @@ def main():
                 entry = json.loads(line)
             except (json.JSONDecodeError, ValueError):
                 continue
-
-            unit = entry.get("UNIT", "")
-            message = entry.get("MESSAGE", "")
-
-            if not unit.startswith(UNIT_PREFIX):
-                continue
-            if not unit.endswith(".service"):
-                continue
-
-            # --- Success: task completed normally ---
-            if "Deactivated successfully" in message or "Succeeded." in message:
-                _pending_failures.pop(unit, None)
-                _recently_finalized[unit] = time.monotonic()
-                time.sleep(0.5)
-                try:
-                    send_final_notification(unit)
-                except Exception as e:
-                    print(f"[scheduler-monitor] Error handling {unit}: {e}",
-                          file=sys.stderr, flush=True)
-                continue
-
-            # --- Process failed (emitted on EVERY failure exit) ---
-            if "Failed with result" in message:
-                # Skip if this unit was just finalized (systemd emits multiple
-                # messages in a burst when giving up on retries)
-                finalized_at = _recently_finalized.get(unit, 0)
-                if time.monotonic() - finalized_at < 5:
-                    continue
-                # Just record that this unit has failed. Don't send anything yet.
-                if unit not in _pending_failures:
-                    _pending_failures[unit] = {"retrying_notified": False, "retry_count": 0}
-                continue
-
-            # --- Systemd is scheduling a retry ---
-            if "Scheduled restart job" in message:
-                state = _pending_failures.get(unit)
-                if state:
-                    state["retry_count"] = state.get("retry_count", 0) + 1
-                    if not state["retrying_notified"]:
-                        state["retrying_notified"] = True
-                        try:
-                            send_retrying_notification(unit)
-                        except Exception as e:
-                            print(f"[scheduler-monitor] Error sending retry notif for {unit}: {e}",
-                                  file=sys.stderr, flush=True)
-                continue
-
-            # --- Systemd gave up retrying (final failure) ---
-            if "Start request repeated too quickly" in message or "Failed to start" in message:
-                # Only send if we have pending state (prevents duplicates from
-                # the burst of messages systemd emits)
-                if unit not in _pending_failures:
-                    continue
-                retry_count = _pending_failures[unit].get("retry_count", 0)
-                _pending_failures.pop(unit, None)
-                _recently_finalized[unit] = time.monotonic()
-                time.sleep(0.5)
-                try:
-                    send_final_notification(unit, retry_count=retry_count)
-                except Exception as e:
-                    print(f"[scheduler-monitor] Error handling final failure {unit}: {e}",
-                          file=sys.stderr, flush=True)
-                continue
+            handle_journal_entry(entry)
 
     except KeyboardInterrupt:
         pass
