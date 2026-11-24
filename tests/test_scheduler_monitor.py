@@ -13,7 +13,6 @@ def monitor(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.sent = []
-    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
     # The unit's live state is the final attempt's, whatever entry is being processed.
     monkeypatch.setattr(module, "get_service_result",
                         lambda _u: {"Result": "exit-code", "ExecMainStatus": "90"})

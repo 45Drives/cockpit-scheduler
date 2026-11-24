@@ -305,7 +305,6 @@ def send_retrying_notification(unit):
 def _finalize_failure(unit):
     retry_count = _pending_failures.pop(unit, {}).get("retry_count", 0)
     _recently_finalized[unit] = time.monotonic()
-    time.sleep(0.5)
     try:
         send_final_notification(unit, retry_count=retry_count)
     except Exception as e:
@@ -327,7 +326,6 @@ def handle_journal_entry(entry):
     if "Deactivated successfully" in message or "Succeeded." in message:
         _pending_failures.pop(unit, None)
         _recently_finalized[unit] = time.monotonic()
-        time.sleep(0.5)
         try:
             send_final_notification(unit)
         except Exception as e:
