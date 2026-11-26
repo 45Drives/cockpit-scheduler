@@ -197,6 +197,31 @@ def test_schedule_tie_prefers_lower_index_and_no_match_falls_back_to_zero():
     assert schedules.match_current_tier([{"hour": {"value": "2"}}], now) == 0
 
 
+def _midnight_interval(retention, **fields):
+    interval = {"minute": {"value": "0"}, "hour": {"value": "0"}, "retention": retention}
+    interval.update(fields)
+    return interval
+
+
+@pytest.mark.parametrize(
+    "weekly_ret,monthly_ret,expected",
+    [
+        ({"source": {"retentionTime": 1, "retentionUnit": "months"}}, {"source": {"retentionTime": 1, "retentionUnit": "years"}}, 1),
+        ({"source": {"retentionTime": 1, "retentionUnit": "years"}}, {"source": {"retentionTime": 1, "retentionUnit": "months"}}, 0),
+        # A side left at 0 (absent) keeps forever, so it outranks any finite retention.
+        ({"source": {"retentionTime": 1, "retentionUnit": "days"}, "destination": {"retentionTime": 1, "retentionUnit": "months"}},
+         {"source": {"retentionTime": 1, "retentionUnit": "days"}}, 1),
+    ],
+)
+def test_schedule_specificity_tie_prefers_longest_retention(weekly_ret, monthly_ret, expected):
+    now = datetime.datetime(2026, 11, 1, 0, 0)  # Sunday the 1st: weekly and monthly both match
+    intervals = [
+        _midnight_interval(weekly_ret, dayOfWeek=["Sun"]),
+        _midnight_interval(monthly_ret, day={"value": "1"}),
+    ]
+    assert schedules.match_current_tier(intervals, now) == expected
+
+
 def test_load_schedule_json_success_and_failure(tmp_path, capsys):
     path = tmp_path / "schedule.json"
     path.write_text('{"intervals": []}')

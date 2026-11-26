@@ -492,16 +492,34 @@ def _count_specificity(interval: dict) -> int:
     return count
 
 
+_RETENTION_UNIT_SECONDS = {
+    "minutes": 60, "hours": 3600, "days": 86400,
+    "weeks": 604800, "months": 2592000, "years": 31536000,
+}
+
+
+def _interval_retention_seconds(interval: dict) -> float:
+    """Retention of an interval in seconds; unset/0 means keep forever (inf)."""
+    iv_ret = interval.get("retention") or {}
+    snap_ret = iv_ret.get("source") or iv_ret.get("destination") or {}
+    try:
+        secs = int(snap_ret.get("retentionTime", 0) or 0) * _RETENTION_UNIT_SECONDS.get(snap_ret.get("retentionUnit", ""), 0)
+    except (TypeError, ValueError):
+        secs = 0
+    return secs if secs > 0 else float("inf")
+
+
 def match_current_tier(intervals: list, now) -> int:
     """Return index of best-matching interval for current time. Falls back to 0."""
     matched = []
     for idx, interval in enumerate(intervals):
         if _interval_matches_time(interval, now):
-            matched.append((idx, _count_specificity(interval)))
+            matched.append((idx, _count_specificity(interval), _interval_retention_seconds(interval)))
     if not matched:
         return 0
-    # Most specific wins; on tie, prefer the lower index (more general / higher-priority)
-    matched.sort(key=lambda x: (x[1], -x[0]), reverse=True)
+    # Most specific wins; on tie, keep the snapshot longest (e.g. weekly vs monthly
+    # on a Sunday the 1st), then prefer the lower index.
+    matched.sort(key=lambda x: (x[1], x[2], -x[0]), reverse=True)
     return matched[0][0]
 
 
@@ -569,6 +587,7 @@ def main():
         # If present, skip tier tagging so manual snapshots get plain names.
         manual_marker = f"/run/houston-scheduler-manual/houston_scheduler_AutomatedSnapshotTask_{task_name}"
         is_manual_run = os.path.isfile(manual_marker)
+        is_multi_tier = tier_idx is not None
         if is_manual_run:
             try:
                 os.remove(manual_marker)
@@ -582,7 +601,16 @@ def main():
         notifier.notify("STATUS=Running snapshot task…")
 
         created = create_snapshot(filesystem, is_recursive, task_name, custom_name, tier_idx=tier_idx)
-        prune_snapshots_by_retention(filesystem, task_name, rt, ru, created, tier_idx=tier_idx, custom_name=custom_name or "")
+
+        # A manual run has no tier, so the retention picked above (whichever interval
+        # matches the clock) would otherwise be applied to every tier's snapshots.
+        if is_manual_run and is_multi_tier:
+            msg = "Manual run of a multi-interval task; skipping retention pruning (scheduled runs prune each interval)."
+            print(msg)
+            dbg(msg)
+            notifier.notify(f"STATUS=Snapshot created; {msg} 100% complete")
+        else:
+            prune_snapshots_by_retention(filesystem, task_name, rt, ru, created, tier_idx=tier_idx, custom_name=custom_name or "")
 
         # Clean up legacy (pre-tier) untagged snapshots when multi-tier is active.
         # Uses the longest retention window across all tiers so we don't prune

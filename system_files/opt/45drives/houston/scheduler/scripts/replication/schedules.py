@@ -91,6 +91,30 @@ def _count_specificity(interval: dict) -> int:
     return count
 
 
+_RETENTION_UNIT_SECONDS = {
+    "minutes": 60, "hours": 3600, "days": 86400,
+    "weeks": 604800, "months": 2592000, "years": 31536000,
+}
+
+
+def _side_retention_seconds(side: dict) -> float:
+    """Retention of one side in seconds; unset/0 means keep forever (inf)."""
+    side = side or {}
+    try:
+        secs = int(side.get("retentionTime", 0) or 0) * _RETENTION_UNIT_SECONDS.get(side.get("retentionUnit", ""), 0)
+    except (TypeError, ValueError):
+        secs = 0
+    return secs if secs > 0 else float("inf")
+
+
+def _retention_rank(interval: dict) -> tuple:
+    """Longest-kept side first, then the other side; used to break specificity ties."""
+    iv_ret = interval.get("retention") or {}
+    src = _side_retention_seconds(iv_ret.get("source"))
+    dst = _side_retention_seconds(iv_ret.get("destination"))
+    return (max(src, dst), min(src, dst))
+
+
 def match_current_tier(intervals: list, now: datetime.datetime) -> int:
     """
     Given schedule intervals and current time, return the index of the most
@@ -100,13 +124,14 @@ def match_current_tier(intervals: list, now: datetime.datetime) -> int:
     for idx, interval in enumerate(intervals):
         if _interval_matches_time(interval, now):
             specificity = _count_specificity(interval)
-            matched.append((idx, specificity))
+            matched.append((idx, specificity, _retention_rank(interval)))
 
     if not matched:
         return 0  # fallback to first interval
 
-    # Most specific wins; on tie, prefer the lower index (more general / higher-priority)
-    matched.sort(key=lambda x: (x[1], -x[0]), reverse=True)
+    # Most specific wins; on tie, keep the snapshot longest (e.g. weekly vs monthly
+    # on a Sunday the 1st), then prefer the lower index.
+    matched.sort(key=lambda x: (x[1], x[2], -x[0]), reverse=True)
     return matched[0][0]
 
 

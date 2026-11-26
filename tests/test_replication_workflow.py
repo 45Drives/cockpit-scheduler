@@ -1182,6 +1182,34 @@ def test_apply_retention_skips_two_phase_progress_when_both_disabled(monkeypatch
     assert messages[-1] == "STATUS=ZFS replication task completed. 100% complete"
 
 
+@pytest.mark.parametrize("manual,expect_prune", [(True, False), (False, True)])
+def test_manual_run_of_multi_tier_task_skips_retention(monkeypatch, manual, expect_prune):
+    for key in list(workflow.os.environ):
+        if key.startswith("zfsRepConfig_") or key in ("taskName", "scheduleJsonPath"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("taskName", "job-a")
+    monkeypatch.setenv("scheduleJsonPath", "/etc/systemd/system/x.json")
+    monkeypatch.setenv("zfsRepConfig_sourceDataset_pool", "tank")
+    monkeypatch.setenv("zfsRepConfig_destDataset_pool", "backup")
+    monkeypatch.setattr(workflow, "_apply_tcp_tuning", lambda: None)
+    monkeypatch.setattr(workflow.os, "remove", lambda path: None)
+    monkeypatch.setattr(workflow.os.path, "isfile", lambda path: manual and "houston-scheduler-manual" in path)
+    hourly = {"retention": {"source": {"retentionTime": 1, "retentionUnit": "days"}}}
+    monthly = {"retention": {"source": {"retentionTime": 1, "retentionUnit": "years"}}}
+    monkeypatch.setattr(workflow, "load_schedule_json", lambda path: {"intervals": [hourly, monthly]})
+    monkeypatch.setattr(workflow, "match_current_tier", lambda intervals, now: 0)
+    prune_calls = []
+    monkeypatch.setattr(workflow, "prune_snapshots_by_retention", lambda *args, **kwargs: prune_calls.append(kwargs) or 0)
+    monkeypatch.setattr(workflow, "_clear_pending_full_send", lambda task_name: None)
+    monkeypatch.setattr(workflow, "open", lambda *args, **kwargs: io.StringIO(), raising=False)
+
+    ctx = ReplicationRun()
+    workflow._initialize_run(ctx)
+    workflow._apply_retention(ctx)
+
+    assert bool(prune_calls) is expect_prune
+
+
 
 def _p02_ctx(monkeypatch, layout_lines, written_lines="", source=None, dest=None):
     """Recursive pull into P02 holding backup-only datasets, modelled on the P02 incident."""

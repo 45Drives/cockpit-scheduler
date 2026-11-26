@@ -194,6 +194,7 @@ def _initialize_run(ctx: ReplicationRun):
         except OSError:
             pass
         dbg('Manual run detected — skipping tier tag')
+        ctx.skip_tier_retention = ctx.tier_idx is not None
         ctx.tier_idx = None
     srcPool = os.environ.get('zfsRepConfig_sourceDataset_pool', '')
     srcDs = os.environ.get('zfsRepConfig_sourceDataset_dataset', '')
@@ -1635,8 +1636,15 @@ def _apply_retention(ctx: ReplicationRun):
 
     source_retention_disabled = _retention_disabled(ctx.sourceRetentionTime, ctx.sourceRetentionUnit)
     destination_retention_disabled = _retention_disabled(ctx.destinationRetentionTime, ctx.destinationRetentionUnit)
-    if source_retention_disabled and destination_retention_disabled:
-        notifier.notify('STATUS=Retention not configured on source or destination. Skipping pruning. 100% complete')
+    if ctx.skip_tier_retention:
+        skip_msg = 'Manual run of a multi-interval task; skipping retention pruning (scheduled runs prune each interval).'
+    elif source_retention_disabled and destination_retention_disabled:
+        skip_msg = 'Retention not configured on source or destination. Skipping pruning.'
+    else:
+        skip_msg = ''
+    if skip_msg:
+        safe_print(skip_msg)
+        notifier.notify(f'STATUS={skip_msg} 100% complete')
         ctx.current_pct = 100
         schedule_intervals = ctx.schedule_data.get('intervals') if ctx.schedule_data else None
         if ctx.tier_idx is not None and isinstance(schedule_intervals, list):

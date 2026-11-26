@@ -52,6 +52,8 @@ class ReplicationRun:
         self.destinationRetentionTime: RetentionValue = 0
         self.destinationRetentionUnit = ""
         self.tier_idx: Optional[int] = None
+        # Manual "Run Now" of a multi-interval task: no tier, so retention pruning is skipped.
+        self.skip_tier_retention = False
         self.schedule_data: Optional[Dict[str, Any]] = None
         self.sourceFilesystem = ""
         self.destFilesystem = ""

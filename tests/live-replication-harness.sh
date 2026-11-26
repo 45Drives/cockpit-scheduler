@@ -44,6 +44,8 @@ Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools):
   live-replication-harness.sh scenario-hierarchy-existing-data [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-tags [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-retention [direction] [transport]
+  live-replication-harness.sh scenario-intraday-snapshots [direction] [transport] [true|false|both]
+  live-replication-harness.sh scenario-tier-retention [direction] [transport]
   live-replication-harness.sh scenario-hierarchy-teardown
   live-replication-harness.sh hier-notify-run [direction] [transport]
 
@@ -51,6 +53,21 @@ Hierarchy scenarios (root; build disposable hrepsrc/hrepdst pools):
   standing, inside a transient Type=notify unit, so systemd StatusText carries the
   live progress percentage. The scenarios themselves exec the script directly and
   therefore show no percentage at all.
+
+  scenario-intraday-snapshots runs a daily recursive replication next to a separate
+  recursive Automated Snapshot task with short retention (the 12:00/18:00, 24-hour
+  field case, compressed to 1-minute windows; about 4 minutes per variant). It checks
+  that each incremental uses the replication's own previous snapshot as its base,
+  that neither task prunes the other's snapshots, what an intraday snapshot uniquely
+  holds, and whether the intraday snapshots reach the destination. The last argument
+  selects Include Intermediate Snapshots (-I), without it (-i), or both (default).
+
+  scenario-tier-retention covers multi-interval tasks (e.g. hourly/daily/weekly/
+  monthly, each with its own retention) for both an Automated Snapshot task and a
+  replication. Run Now (simulated with the same /run/houston-scheduler-manual marker
+  the UI drops) must prune nothing, scheduled runs must prune only their own
+  interval, and intervals tied on specificity must go to the longest retention.
+  About 2.5 minutes. Point ZFS_REP_SCRIPT at an installed build to compare it.
 
 Regression suite for the resume + SSH cipher work (also disposable pools):
   live-replication-harness.sh verify-fixes
@@ -862,6 +879,7 @@ HIER_SRC_RET_UNIT=""
 HIER_DST_RET_TIME="0"
 HIER_DST_RET_UNIT=""
 HIER_RECURSIVE="true"
+HIER_INCLUDE_INTERMEDIATES="true"
 HIER_AUTO_RECOVER="true"
 HIER_RESUME_ONLY="false"
 HIER_RESUME_FAIL_CLEAR="false"
@@ -875,6 +893,10 @@ HIER_EXTRA_RECV=""
 HIER_SSH_CIPHER=""
 HIER_RESUME_SNAP="resumeseed"
 HIER_LASTRUN="/etc/systemd/system/houston_scheduler_ZfsReplicationTask_${HIER_TASK}.lastrun"
+HIER_INTRADAY_TASK="hrepintraday"
+HIER_INTRADAY_LOG="/tmp/autosnap_debug_${HIER_INTRADAY_TASK}.log"
+HIER_INTRADAY_OUT="/tmp/autosnap_out_${HIER_INTRADAY_TASK}.log"
+HIER_INTRADAY_LASTRUN="/etc/systemd/system/houston_scheduler_AutomatedSnapshotTask_${HIER_INTRADAY_TASK}.lastrun"
 
 hier_say()  { printf '\n== %s ==\n' "$*"; }
 hier_info() { printf '   %s\n' "$*"; }
@@ -911,6 +933,7 @@ hier_reset_mode() {
   hier_set_mode push local
   HIER_SCHEDULE_JSON=""
   HIER_RECURSIVE="true"
+  HIER_INCLUDE_INTERMEDIATES="true"
   HIER_AUTO_RECOVER="true"
   HIER_RESUME_ONLY="false"
   HIER_RESUME_FAIL_CLEAR="false"
@@ -996,6 +1019,10 @@ hier_teardown() {
   fi
   rm -rf "$HIER_WORK_DIR"
   rm -f "$HIER_LOG" "$HIER_OUT" "$HIER_LASTRUN"
+  rm -f "$HIER_INTRADAY_LOG" "$HIER_INTRADAY_OUT" "$HIER_INTRADAY_LASTRUN"
+  rm -f "$HIER_TIER_LOG" "$HIER_TIER_OUT" "$HIER_TIER_LASTRUN"
+  rm -f "$HIER_MANUAL_DIR/houston_scheduler_AutomatedSnapshotTask_${HIER_TIER_TASK}" \
+        "$HIER_MANUAL_DIR/houston_scheduler_ZfsReplicationTask_${HIER_TASK}"
 }
 
 hier_disk_mode() {
@@ -1158,7 +1185,7 @@ zfsRepConfig_sendOptions_compressed_flag=$HIER_COMPRESSED
 zfsRepConfig_sendOptions_raw_flag=$HIER_RAW
 zfsRepConfig_sendOptions_extraSendArgs=$HIER_EXTRA_SEND
 zfsRepConfig_sendOptions_extraRecvArgs=$HIER_EXTRA_RECV
-zfsRepConfig_sendOptions_includeIntermediateSnapshots=true
+zfsRepConfig_sendOptions_includeIntermediateSnapshots=$HIER_INCLUDE_INTERMEDIATES
 zfsRepConfig_sendOptions_transferMethod=$HIER_TRANSPORT
 zfsRepConfig_sendOptions_sshCipher=$HIER_SSH_CIPHER
 zfsRepConfig_sendOptions_resumeOnly=$HIER_RESUME_ONLY
@@ -1705,6 +1732,378 @@ cmd_scenario_hierarchy_retention() {
   hier_expect_tags "$HIER_DST_FS" "$newest_suffix" "$HIER_TASK_PROP" "$HIER_TASK" "surviving destination generation"
 
   HIER_SCHEDULE_JSON=""
+}
+
+# ---------------------------------------------------------------------------
+# Intraday snapshot task alongside a pool-level replication
+#
+# Field question: a pool replicated once a day (02:00) gains a separate recursive
+# Automated Snapshot task at 12:00 and 18:00 with 24-hour retention. Could an
+# intraday snapshot become the newest snapshot both sides share, expire on the
+# source, and leave the next incremental with no base? The day is compressed into
+# minutes (1-minute retention, 65s waits) and both real task scripts run against
+# the disposable pools.
+#
+# Run it with include_intermediates=true (zfs send -I) and false (-i): the
+# replication must stay healthy either way, and only -I copies intraday snapshots
+# to the destination, where no task ever prunes them.
+# ---------------------------------------------------------------------------
+
+hier_autosnap_script() {
+  local script
+  script="$(dirname "$(hier_rep_script)")/autosnap-script.py"
+  if [[ ! -f "$script" ]]; then
+    echo "error: cannot find $script" >&2
+    return 1
+  fi
+  echo "$script"
+}
+
+# hier_run_intraday <retention_time> <retention_unit>
+hier_run_intraday() {
+  local ret_time="$1" ret_unit="$2" script rc
+  script="$(hier_autosnap_script)"
+  rm -f "$HIER_INTRADAY_OUT"
+  hier_wait_tick
+  set +e
+  env taskName="$HIER_INTRADAY_TASK" \
+      AUTOSNAP_DEBUG_LOG="$HIER_INTRADAY_LOG" \
+      scheduleJsonPath="" \
+      autoSnapConfig_filesystem_dataset="$HIER_SRC_FS" \
+      autoSnapConfig_recursive_flag=true \
+      autoSnapConfig_customName_flag=false \
+      autoSnapConfig_snapshotRetention_retentionTime="$ret_time" \
+      autoSnapConfig_snapshotRetention_retentionUnit="$ret_unit" \
+      python3 "$script" >"$HIER_INTRADAY_OUT" 2>&1
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 ]]; then
+    hier_fail "intraday snapshot task exited $rc"
+    sed 's/^/     /' "$HIER_INTRADAY_OUT" | tail -20
+  fi
+}
+
+# hier_intraday_rep_run <label>: replication run whose output is shown only on failure.
+hier_intraday_rep_run() {
+  hier_run_task false false false quiet
+  hier_expect_rc 0 "$1"
+  if [[ "$HIER_RC" -ne 0 ]]; then
+    sed 's/^/     /' "$HIER_OUT" | tail -40
+  fi
+  hier_expect_new_snapshot "$1"
+}
+
+# hier_expect_generation <fs> <suffix> <present|absent> <label>
+# A recursive snapshot is a generation: one snapshot per dataset in the tree.
+hier_expect_generation() {
+  local fs="$1" suffix="$2" want="$3" label="$4" have expected
+  have="$( ( zfs list -H -o name -t snapshot -r "$fs" 2>/dev/null || true ) | grep -c "@${suffix}\$" || true )"
+  expected="$(hier_dataset_count "$fs")"
+  if [[ "$want" == "present" && "$have" -eq "$expected" ]]; then
+    hier_pass "$label: @${suffix} on all $expected dataset(s) of $fs"
+  elif [[ "$want" == "absent" && "$have" -eq 0 ]]; then
+    hier_pass "$label: @${suffix} absent from $fs"
+  else
+    hier_fail "$label: @${suffix} on $have of $expected dataset(s) of $fs, expected $want"
+  fi
+}
+
+hier_intraday_count() {
+  ( zfs list -H -o name -t snapshot -r "$1" 2>/dev/null || true ) | grep -c "@${HIER_INTRADAY_TASK}-" || true
+}
+
+cmd_scenario_intraday_snapshots() {
+  local include="$HIER_INCLUDE_INTERMEDIATES" flag copied mount used
+  local r1 r2 r3 i1 i2 i3 i4
+  if [[ "$include" == "true" ]]; then
+    flag="-I"; copied="present"
+  else
+    flag="-i"; copied="absent"
+  fi
+  hier_say "intraday-snapshots [$(hier_mode_label), include intermediates=$include]: a short-retention recursive snapshot task must not break pool-level replication"
+  hier_setup
+  mount="$(zfs get -H -o value mountpoint "$HIER_SRC_FS")"
+
+  hier_info "day 1, 02:00: replication (full send)"
+  hier_intraday_rep_run "day 1 replication"
+  r1="$(hier_snap_suffix "$HIER_SRC_FS")"
+
+  hier_info "day 1, 12:00: write a 3 MiB file, then take an intraday snapshot"
+  dd if=/dev/urandom of="$mount/noon.bin" bs=1M count=3 status=none
+  sync
+  hier_run_intraday 0 ""
+  i1="$(hier_snap_suffix "$HIER_SRC_FS")"
+
+  hier_info "day 1, 18:00: delete that file and the file 02:00 already holds, then snapshot"
+  rm -f "$mount/noon.bin" "$mount/seed.bin"
+  sync
+  hier_run_intraday 0 ""
+  i2="$(hier_snap_suffix "$HIER_SRC_FS")"
+
+  # 12:00 alone holds noon.bin; seed.bin is shared with 02:00, so it is not unique to 12:00.
+  zpool sync "$HIER_SRC_POOL" 2>/dev/null || sync
+  used="$(zfs get -H -p -o value used "$HIER_SRC_FS@$i1")"
+  if (( used >= 2621440 && used <= 4194304 )); then
+    hier_pass "12:00 snapshot uniquely holds $(( used / 1024 )) KiB: the 3 MiB written and deleted between snapshots, not the file 02:00 already holds"
+  else
+    hier_fail "12:00 snapshot uniquely holds ${used} bytes; expected about 3 MiB (2.5-4 MiB)"
+  fi
+
+  hier_info "day 2, 02:00: replication (incremental)"
+  hier_intraday_rep_run "day 2 replication"
+  r2="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_base "$flag ${HIER_SRC_FS}@${r1}"
+  hier_expect_force_flag no
+  hier_expect_generation "$HIER_DST_FS" "$i1" "$copied" "12:00 snapshot on the destination with $flag"
+  hier_expect_generation "$HIER_DST_FS" "$i2" "$copied" "18:00 snapshot on the destination with $flag"
+  if [[ "$include" == "true" ]]; then
+    hier_info "task tag on the copied 12:00 snapshot: $(zfs get -H -o value "$HIER_TASK_PROP" "$HIER_DST_FS@$i1" 2>/dev/null || echo '?')"
+  fi
+
+  hier_info "waiting 65s so day-1 snapshots age out of a 1-minute window"
+  sleep 65
+
+  hier_info "day 2, 12:00: intraday snapshot with 1-minute retention (day-1 intraday snapshots expire)"
+  hier_write_data noon2 "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_intraday 1 minutes
+  i3="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_generation "$HIER_SRC_FS" "$i1" absent "intraday retention pruned day-1 12:00 on the source"
+  hier_expect_generation "$HIER_SRC_FS" "$i2" absent "intraday retention pruned day-1 18:00 on the source"
+  hier_expect_generation "$HIER_SRC_FS" "$r1" present "intraday retention left the older replication snapshot alone"
+  hier_expect_generation "$HIER_SRC_FS" "$r2" present "intraday retention left the replication base alone"
+
+  hier_info "day 3, 02:00: replication with 1-minute source and destination retention"
+  HIER_SRC_RET_TIME=1; HIER_SRC_RET_UNIT=minutes
+  HIER_DST_RET_TIME=1; HIER_DST_RET_UNIT=minutes
+  hier_intraday_rep_run "day 3 replication"
+  r3="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_base "$flag ${HIER_SRC_FS}@${r2}"
+  hier_expect_force_flag no
+  hier_expect_generation "$HIER_SRC_FS" "$r1" absent "replication retention pruned day-1 02:00 on the source"
+  hier_expect_generation "$HIER_DST_FS" "$r1" absent "replication retention pruned day-1 02:00 on the destination"
+  hier_expect_generation "$HIER_DST_FS" "$i1" "$copied" "replication retention and receive left day-1 12:00 on the destination"
+  hier_expect_generation "$HIER_DST_FS" "$i2" "$copied" "replication retention and receive left day-1 18:00 on the destination"
+  hier_expect_generation "$HIER_DST_FS" "$i3" "$copied" "day-2 12:00 on the destination with $flag"
+
+  hier_info "waiting 65s so the day-3 replication snapshot is older than its own retention window"
+  sleep 65
+
+  hier_info "day 3, 12:00: intraday snapshot (day-2 intraday snapshot expires on the source)"
+  hier_write_data noon3 "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_run_intraday 1 minutes
+  i4="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_generation "$HIER_SRC_FS" "$i3" absent "intraday retention pruned day-2 12:00 on the source"
+  hier_expect_generation "$HIER_SRC_FS" "$r3" present "replication base survived past its retention window"
+
+  hier_info "day 4, 02:00: replication"
+  hier_intraday_rep_run "day 4 replication"
+  hier_expect_base "$flag ${HIER_SRC_FS}@${r3}"
+  hier_expect_force_flag no
+  hier_expect_generation "$HIER_DST_FS" "$i4" "$copied" "day-3 12:00 on the destination with $flag"
+
+  HIER_SRC_RET_TIME=0; HIER_SRC_RET_UNIT=""
+  HIER_DST_RET_TIME=0; HIER_DST_RET_UNIT=""
+
+  hier_info "intraday snapshots on the source: $(hier_intraday_count "$HIER_SRC_FS"); on the destination: $(hier_intraday_count "$HIER_DST_FS") (across $(hier_dataset_count "$HIER_DST_FS") dataset(s))"
+  hier_info "destination snapshots:"; hier_dest_tree
+}
+
+# hier_intraday_variants <true|false|both>
+hier_intraday_variants() {
+  local value
+  case "$1" in
+    both) set -- true false ;;
+    true|false) ;;
+    *) echo "error: include_intermediates must be true, false or both" >&2; exit 1 ;;
+  esac
+  for value in "$@"; do
+    HIER_INCLUDE_INTERMEDIATES="$value"
+    cmd_scenario_intraday_snapshots
+  done
+  HIER_INCLUDE_INTERMEDIATES="true"
+}
+
+# ---------------------------------------------------------------------------
+# Multi-interval (tier) retention scenarios
+#
+# One task with several intervals, each with its own retention (hourly 1 day,
+# daily 1 week, weekly 1 month, monthly 1 year). Two fixes are covered:
+#
+#   1. Run Now on such a task used to prune every interval's snapshots with the
+#      retention of whichever interval matched the clock (mid-hour: hourly, 1 day),
+#      destroying weekly and monthly snapshots. A manual run must prune nothing.
+#   2. Intervals tied on specificity (weekly Sun vs monthly 1st, on a Sunday the
+#      1st) used to go to the lower index. They must go to the longest retention.
+#
+# Real intervals only match at a given calendar time, so each schedule here uses
+# month/year fields that match "now". Crossing midnight into a new month mid-run
+# makes nothing match and falls back to tier 0.
+# ---------------------------------------------------------------------------
+
+HIER_TIER_TASK="hreptiers"
+HIER_TIER_FS="${HIER_SRC_POOL}/tiers"
+HIER_TIER_SCHEDULE="$HIER_WORK_DIR/tiers.json"
+HIER_TIER_LOG="/tmp/autosnap_debug_${HIER_TIER_TASK}.log"
+HIER_TIER_OUT="/tmp/autosnap_out_${HIER_TIER_TASK}.log"
+HIER_TIER_LASTRUN="/etc/systemd/system/houston_scheduler_AutomatedSnapshotTask_${HIER_TIER_TASK}.lastrun"
+# legacy-run-task-now.py (the UI's Run Now) drops <dir>/<unit> before starting the unit.
+HIER_MANUAL_DIR="/run/houston-scheduler-manual"
+HIER_TIER_SKIP_MSG="Manual run of a multi-interval task; skipping retention pruning"
+
+# hier_tier_interval <month> <year> <retention_time> <retention_unit>
+hier_tier_interval() {
+  printf '{"minute": {"value": "*"}, "hour": {"value": "*"}, "day": {"value": "*"}, "month": {"value": "%s"}, "year": {"value": "%s"}, "dayOfWeek": [], "retention": {"source": {"retentionTime": %s, "retentionUnit": "%s"}, "destination": {"retentionTime": %s, "retentionUnit": "%s"}}}' \
+    "$1" "$2" "$3" "$4" "$3" "$4"
+}
+
+# hier_write_tier_schedule <tie|t0-wins>
+#   tie      t0 {year} keeps 1 minute, t1 {month} keeps 1 year: equal specificity,
+#            so the snapshot must go to t1. The old rule picked t0.
+#   t0-wins  t0 {year, month} keeps 1 minute, t1 {year} keeps 1 year: t0 is more
+#            specific and stands in for the hourly interval matching a mid-hour Run Now.
+hier_write_tier_schedule() {
+  local month year t0 t1
+  month="$(date +%-m)"
+  year="$(date +%Y)"
+  case "$1" in
+    tie)
+      t0="$(hier_tier_interval '*' "$year" 1 minutes)"
+      t1="$(hier_tier_interval "$month" '*' 1 years)"
+      ;;
+    t0-wins)
+      t0="$(hier_tier_interval "$month" "$year" 1 minutes)"
+      t1="$(hier_tier_interval '*' "$year" 1 years)"
+      ;;
+    *) echo "error: unknown tier schedule '$1'" >&2; exit 1 ;;
+  esac
+  mkdir -p "$HIER_WORK_DIR"
+  printf '{"intervals": [%s, %s]}\n' "$t0" "$t1" > "$HIER_TIER_SCHEDULE"
+}
+
+# hier_run_tier_autosnap <scheduled|manual>; the new suffix lands in HIER_TIER_LAST.
+hier_run_tier_autosnap() {
+  local kind="$1" script marker rc
+  script="$(hier_autosnap_script)"
+  marker="$HIER_MANUAL_DIR/houston_scheduler_AutomatedSnapshotTask_${HIER_TIER_TASK}"
+  rm -f "$HIER_TIER_OUT" "$marker"
+  if [[ "$kind" == "manual" ]]; then
+    mkdir -p "$HIER_MANUAL_DIR"
+    : > "$marker"
+  fi
+  hier_wait_tick
+  set +e
+  env taskName="$HIER_TIER_TASK" \
+      AUTOSNAP_DEBUG_LOG="$HIER_TIER_LOG" \
+      scheduleJsonPath="$HIER_TIER_SCHEDULE" \
+      autoSnapConfig_filesystem_dataset="$HIER_TIER_FS" \
+      autoSnapConfig_recursive_flag=false \
+      autoSnapConfig_customName_flag=false \
+      autoSnapConfig_snapshotRetention_retentionTime=0 \
+      autoSnapConfig_snapshotRetention_retentionUnit="" \
+      python3 "$script" >"$HIER_TIER_OUT" 2>&1
+  rc=$?
+  set -e
+  rm -f "$marker"
+  HIER_TIER_LAST="$(hier_snap_suffix "$HIER_TIER_FS")"
+  if [[ "$rc" -ne 0 ]]; then
+    hier_fail "$kind autosnap run exited $rc"
+    sed 's/^/     /' "$HIER_TIER_OUT" | tail -20
+  fi
+}
+
+# hier_expect_file_output <file> <text> <present|absent> <label>
+hier_expect_file_output() {
+  local file="$1" text="$2" want="$3" label="$4" found=absent
+  grep -qF -- "$text" "$file" 2>/dev/null && found=present
+  if [[ "$found" == "$want" ]]; then
+    hier_pass "$label"
+  else
+    hier_fail "$label: '$text' $found in $file, expected $want"
+  fi
+}
+
+cmd_scenario_tier_retention_autosnap() {
+  local fs="$HIER_TIER_FS" tie short manual
+  hier_say "tier-retention autosnap: Run Now must not prune other intervals; ties go to the longest retention"
+  hier_create_pools
+  zfs create "$fs"
+
+  hier_info "scheduled run, tied intervals (t0 keeps 1 minute, t1 keeps 1 year)"
+  hier_write_tier_schedule tie
+  hier_run_tier_autosnap scheduled
+  tie="$HIER_TIER_LAST"
+  hier_expect_tags "$fs" "$tie" "$HIER_TIER_PROP" t1 "tie went to the 1-year interval"
+
+  hier_info "scheduled run, short interval wins (t0 keeps 1 minute)"
+  hier_write_tier_schedule t0-wins
+  hier_run_tier_autosnap scheduled
+  short="$HIER_TIER_LAST"
+  hier_expect_tags "$fs" "$short" "$HIER_TIER_PROP" t0 "short interval matched"
+
+  hier_info "waiting 65s so both snapshots are past the 1-minute retention"
+  sleep 65
+
+  hier_info "Run Now while the 1-minute interval matches the clock"
+  hier_run_tier_autosnap manual
+  manual="$HIER_TIER_LAST"
+  hier_expect_tags "$fs" "$manual" "$HIER_TIER_PROP" "-" "manual snapshot carries no interval tag"
+  hier_expect_file_output "$HIER_TIER_OUT" "$HIER_TIER_SKIP_MSG" present "manual run reported that it skipped pruning"
+  hier_expect_generation "$fs" "$tie" present "manual run kept the 1-year snapshot"
+  hier_expect_generation "$fs" "$short" present "manual run kept the expired 1-minute snapshot (scheduled runs prune it)"
+
+  hier_info "scheduled run of the 1-minute interval"
+  hier_run_tier_autosnap scheduled
+  hier_expect_file_output "$HIER_TIER_OUT" "$HIER_TIER_SKIP_MSG" absent "scheduled run did not skip pruning"
+  hier_expect_generation "$fs" "$short" absent "scheduled run pruned its own expired 1-minute snapshot"
+  hier_expect_generation "$fs" "$tie" present "scheduled run left the 1-year snapshot alone"
+  hier_expect_generation "$fs" "$manual" present "scheduled run kept the fresh manual snapshot"
+}
+
+cmd_scenario_tier_retention_replication() {
+  local marker r1 r2
+  hier_say "tier-retention replication [$(hier_mode_label)]: Run Now must not prune other intervals on either side; ties go to the longest retention"
+  hier_setup
+  marker="$HIER_MANUAL_DIR/houston_scheduler_ZfsReplicationTask_${HIER_TASK}"
+  rm -f "$marker"
+
+  hier_write_tier_schedule tie
+  HIER_SCHEDULE_JSON="$HIER_TIER_SCHEDULE"
+  hier_info "scheduled run, tied intervals (t0 keeps 1 minute, t1 keeps 1 year)"
+  hier_intraday_rep_run "tied-interval replication (full send)"
+  r1="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_tags "$HIER_SRC_FS" "$r1" "$HIER_TIER_PROP" t1 "source: tie went to the 1-year interval"
+  hier_expect_tags "$HIER_DST_FS" "$r1" "$HIER_TIER_PROP" t1 "destination: tie went to the 1-year interval"
+
+  hier_write_tier_schedule t0-wins
+  hier_info "waiting 65s so the 1-year snapshot is past the 1-minute retention"
+  sleep 65
+
+  hier_info "Run Now while the 1-minute interval matches the clock"
+  hier_write_data manual "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  mkdir -p "$HIER_MANUAL_DIR"
+  : > "$marker"
+  hier_intraday_rep_run "manual replication run"
+  rm -f "$marker"
+  r2="$(hier_snap_suffix "$HIER_SRC_FS")"
+  hier_expect_output "$HIER_TIER_SKIP_MSG" "manual run reported that it skipped pruning"
+  hier_expect_generation "$HIER_SRC_FS" "$r1" present "manual run kept the 1-year snapshot on the source"
+  hier_expect_generation "$HIER_DST_FS" "$r1" present "manual run kept the 1-year snapshot on the destination"
+
+  hier_info "scheduled run of the 1-minute interval"
+  hier_write_data scheduled "$HIER_SRC_FS" "$HIER_SRC_FS/samba" "$HIER_SRC_FS/media"
+  hier_intraday_rep_run "scheduled short-interval replication"
+  hier_expect_file_output "$HIER_OUT" "$HIER_TIER_SKIP_MSG" absent "scheduled run did not skip pruning"
+  hier_expect_tags "$HIER_SRC_FS" "$(hier_snap_suffix "$HIER_SRC_FS")" "$HIER_TIER_PROP" t0 "short interval matched"
+  hier_expect_generation "$HIER_SRC_FS" "$r1" present "scheduled run left the 1-year snapshot on the source"
+  hier_expect_generation "$HIER_DST_FS" "$r1" present "scheduled run left the 1-year snapshot on the destination"
+  hier_expect_generation "$HIER_SRC_FS" "$r2" present "scheduled run kept the fresh manual snapshot on the source"
+
+  HIER_SCHEDULE_JSON=""
+}
+
+cmd_scenario_tier_retention() {
+  cmd_scenario_tier_retention_autosnap
+  cmd_scenario_tier_retention_replication
 }
 
 HIER_MATRIX_MODES=(
@@ -3247,6 +3646,8 @@ cmd_verify_fixes() {
   cmd_scenario_resume_netcat_eof_dirs both
   cmd_scenario_dest_snapshot_all
   cmd_scenario_destroy_all
+  hier_reset_mode
+  cmd_scenario_tier_retention
 
   hier_set_mode push ssh
   if reason="$(hier_mode_unavailable)"; then
@@ -3546,6 +3947,38 @@ main() {
       fi
       # Pools are left standing for inspection; use scenario-hierarchy-teardown.
       "cmd_${cmd//-/_}"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-intraday-snapshots)
+      [[ $# -le 3 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_reset_mode
+      hier_set_mode "${1:-push}" "${2:-local}"
+      local intraday_reason
+      if intraday_reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $intraday_reason" >&2
+        exit 1
+      fi
+      hier_autosnap_script >/dev/null
+      # Pools are left standing for inspection; use scenario-hierarchy-teardown.
+      hier_intraday_variants "${3:-both}"
+      hier_say "finished with $HIER_FAILURES failure(s)"
+      [[ "$HIER_FAILURES" -eq 0 ]]
+      ;;
+    scenario-tier-retention)
+      [[ $# -le 2 ]] || { usage; exit 1; }
+      hier_require_root
+      hier_reset_mode
+      hier_set_mode "${1:-push}" "${2:-local}"
+      local tier_reason
+      if tier_reason="$(hier_mode_unavailable)"; then
+        echo "cannot run $(hier_mode_label): $tier_reason" >&2
+        exit 1
+      fi
+      hier_autosnap_script >/dev/null
+      # Pools are left standing for inspection; use scenario-hierarchy-teardown.
+      cmd_scenario_tier_retention
       hier_say "finished with $HIER_FAILURES failure(s)"
       [[ "$HIER_FAILURES" -eq 0 ]]
       ;;

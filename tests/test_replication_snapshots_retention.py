@@ -129,6 +129,47 @@ def test_retention_handles_mixed_formats_without_claiming_foreign_snapshots(
     assert set(deleted) == {names[0], names[1], names[2], names[5]}
 
 
+def _four_tier_schedule():
+    def iv(retention_time, unit, **fields):
+        interval = {"minute": {"value": "0"}, "hour": {"value": "*"}, "day": {"value": "*"}}
+        interval.update(fields)
+        interval["retention"] = {"source": {"retentionTime": retention_time, "retentionUnit": unit}}
+        return interval
+
+    midnight = {"value": "0"}
+    return {"intervals": [
+        iv(1, "days"),
+        iv(1, "weeks", hour=midnight),
+        iv(1, "months", hour=midnight, dayOfWeek=["Sun"]),
+        iv(1, "years", hour=midnight, day={"value": "1"}),
+    ]}
+
+
+def test_autosnap_tier_tie_on_sunday_the_first_goes_to_monthly(autosnap):
+    intervals = _four_tier_schedule()["intervals"]
+    assert autosnap.match_current_tier(intervals, datetime.datetime(2026, 11, 1, 0, 0)) == 3
+    assert autosnap.match_current_tier(intervals, datetime.datetime(2026, 11, 8, 0, 0)) == 2
+
+
+@pytest.mark.parametrize("manual,expect_prune", [(True, False), (False, True)])
+def test_autosnap_manual_run_of_multi_tier_task_skips_prune(monkeypatch, autosnap, manual, expect_prune):
+    monkeypatch.setenv("autoSnapConfig_filesystem_dataset", "PoolA")
+    monkeypatch.setenv("taskName", "poolA")
+    monkeypatch.setenv("scheduleJsonPath", "/etc/systemd/system/x.json")
+    monkeypatch.setattr(autosnap, "load_schedule_json", lambda path: _four_tier_schedule())
+    monkeypatch.setattr(autosnap.os.path, "isfile", lambda path: manual and "houston-scheduler-manual" in path)
+    monkeypatch.setattr(autosnap.os, "remove", lambda path: None)
+    created = []
+    monkeypatch.setattr(autosnap, "create_snapshot", lambda fs, rec, task, custom, tier_idx=None: created.append(tier_idx) or "PoolA@new")
+    prunes = []
+    monkeypatch.setattr(autosnap, "prune_snapshots_by_retention", lambda *args, **kwargs: prunes.append(kwargs.get("tier_idx")))
+
+    autosnap.main()
+
+    assert (created[0] is None) is manual
+    assert bool(prunes) is expect_prune
+
+
 def test_snapshot_line_parsing_and_dataset_helpers():
     parsed = snapshots.parse_snapshot_line("tank/data@s1\tguid 1\t1700000000\t123")
     assert parsed.name == "tank/data@s1"
