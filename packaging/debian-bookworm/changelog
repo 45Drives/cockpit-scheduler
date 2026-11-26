@@ -1,3 +1,15 @@
+cockpit-scheduler (1.9.12-1bookworm) bookworm; urgency=medium
+
+  * Fixed Run Now on Automated Snapshot and ZFS Replication tasks with multiple intervals
+    deleting snapshots from other intervals (e.g. weekly and monthly snapshots removed
+    using the hourly retention). Manual runs now take a snapshot without pruning;
+    scheduled runs prune each interval as before. Also fixed multi-interval schedules
+    assigning a snapshot to the shorter-retention interval when two intervals fire
+    at the same time (e.g. weekly and monthly on a Sunday the 1st). The snapshot
+    now goes to the interval with the longest retention.
+
+ -- Jordan Keough <jkeough@45drives.com>  Thu, 26 Nov 2026 10:06:10 -0400
+
 cockpit-scheduler (1.9.11-1bookworm) bookworm; urgency=medium
 
   * Fixes notification issues: Task failures were not being correctly identified

@@ -1,3 +1,3 @@
-## task scheduler 1.9.11-1
+## task scheduler 1.9.12-1
 
-* Fixes notification issues: Task failures were not being correctly identified as failures in the scheduler monitor service, now rectified
+* Fixed Run Now on Automated Snapshot and ZFS Replication tasks with multiple intervals deleting snapshots from other intervals (e.g. weekly and monthly snapshots removed using the hourly retention). Manual runs now take a snapshot without pruning; scheduled runs prune each interval as before. Also fixed multi-interval schedules assigning a snapshot to the shorter-retention interval when two intervals fire at the same time (e.g. weekly and monthly on a Sunday the 1st). The snapshot now goes to the interval with the longest retention.
